@@ -1,5 +1,5 @@
 """
-RAG-Lernsystem – Seite „Dokumente & Ingestion" (Streamlit)
+RAG-Lernsystem: Seite „Dokumente & Ingestion" (Streamlit)
 ==========================================================
 Verwaltet die Wissensbasis: neue Dateien hochladen und indexieren, den
 Quellordner importieren, Fragen anreichern und Dokumente löschen.
@@ -27,7 +27,7 @@ from ragapp.ingestion.enrich import enrich_questions
 st.set_page_config(page_title="Dokumente & Ingestion", page_icon="📥", layout="wide")
 
 # --------------------------------------------------------------------------- #
-# Styling ("schick") – identisch zur Startseite
+# Styling ("schick"), identisch zur Startseite
 # --------------------------------------------------------------------------- #
 st.markdown("""
 <style>
@@ -140,7 +140,7 @@ if uploads and st.button("📥 Hochgeladene Dateien indexieren", type="primary")
             if r["status"] == "duplicate":
                 info = f"Duplikat von {r.get('duplicate_of', '?')}"
             elif r["status"] == "unchanged":
-                info = "unverändert – bereits im Index"
+                info = "unverändert, bereits im Index"
             elif r["status"] == "ok":
                 info = f"{r.get('chunks', 0)} Chunks, {r.get('questions', 0)} Fragen"
             elif r["status"] in ("skipped", "duplicate_chunks"):
@@ -165,10 +165,10 @@ st.divider()
 st.subheader("Kompletten Quellordner importieren")
 st.caption(f"Quellordner: `{SOURCE_DIR}`")
 st.warning(
-    "⏳ **Achtung – sehr lange Laufzeit.** Der Erstimport eines großen Korpus läuft "
-    "auf CPU in der Größenordnung von **1–2 Stunden** (Embeddings pro Chunk). Der "
+    "⏳ **Achtung, sehr lange Laufzeit.** Der Erstimport eines großen Korpus läuft "
+    "auf CPU in der Größenordnung von **1 bis 2 Stunden** (Embeddings pro Chunk). Der "
     "Streamlit-Prozess ist währenddessen blockiert. Für den **Erstimport** ist der "
-    "Ordnerwächter bzw. das CLI (`python -m ragapp.scripts.cli ingest`) empfehlenswert – "
+    "Ordnerwächter bzw. das CLI (`python -m ragapp.scripts.cli ingest`) empfehlenswert, "
     "es läuft im Hintergrund und ist unterbrechbar/fortsetzbar."
 )
 
@@ -205,7 +205,7 @@ st.subheader("🧠 Fragen-Anreicherung")
 st.caption(
     "Erzeugt hypothetische Fragen zu vorhandenen Chunks und indexiert sie. Das "
     "**erhöht die Trefferquote** spürbar, kostet auf CPU aber **~20 s pro Chunk**. "
-    "Deshalb gedeckelt (Limit) und resumierbar – bereits angereicherte Chunks werden "
+    "Deshalb gedeckelt (Limit) und resumierbar, bereits angereicherte Chunks werden "
     "übersprungen."
 )
 
@@ -239,7 +239,7 @@ if st.button("🧠 Fragen-Anreicherung starten"):
 
     if r is not None:
         if r.get("status") == "nothing_to_do":
-            st.info("Nichts zu tun – alle passenden Chunks sind bereits angereichert.")
+            st.info("Nichts zu tun, alle passenden Chunks sind bereits angereichert.")
         else:
             st.success(
                 f"{r.get('questions', 0)} Fragen für {r.get('processed', 0)} "

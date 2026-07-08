@@ -1,4 +1,4 @@
-# Qualitätssicherung – Mehrstufiger Code-Review & Fixes
+# Qualitätssicherung: Mehrstufiger Code-Review & Fixes
 
 Dieses Dokument protokolliert die Qualitätssicherung des RAG-Systems. Nach der
 Implementierung wurde das **gesamte System** durch einen mehrstufigen,
@@ -41,13 +41,13 @@ laufenden Erstimport gefahren werden konnte.
 ## Korrekt verworfenes Falsch-Positiv
 
 - **BM25 enthielte Frage-Einträge**: Verdacht, dass generierte Fragen den
-  Keyword-Index verfälschen. In der Verifikation **widerlegt** – `get_all_chunks()`
+  Keyword-Index verfälschen. In der Verifikation **widerlegt**: `get_all_chunks()`
   filtert hart auf `type="chunk"`, Frage-Einträge gelangen nie in BM25.
 
 ## Fazit
 
-Die Kernversprechen des Systems – **hohe Trefferquote** (Hybrid + funktionierender
+Die Kernversprechen des Systems, **hohe Trefferquote** (Hybrid + funktionierender
 Reranker) und **keine Halluzination** (jetzt wirksames Relevanz-Gate +
-fail-closed Faithfulness-Check + ehrlicher Dokument-Fallback) – sind nach den
+fail-closed Faithfulness-Check + ehrlicher Dokument-Fallback), sind nach den
 Fixes belegbar wirksam. Alle geänderten Module kompilieren fehlerfrei; die
 kritischen Fixes wurden funktional getestet.

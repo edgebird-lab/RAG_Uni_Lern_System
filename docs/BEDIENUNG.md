@@ -2,7 +2,7 @@
 
 Diese Anleitung zeigt, wie du mit dem System für Klausuren lernst: Oberfläche
 starten, gute Fragen stellen, Antworten richtig deuten, neue Dokumente
-hinzufügen – plus eine Referenz aller CLI-Kommandos.
+hinzufügen, plus eine Referenz aller CLI-Kommandos.
 
 ---
 
@@ -24,9 +24,9 @@ Seitenleiste findest du:
 
 - **Modell-/Statusanzeige** (verwendetes LLM und Embedding).
 - **Kennzahlen**: Anzahl Dokumente, Chunks, Fragen, Fächer.
-- **Fach filtern** – schränkt die Suche auf ein Fach ein (schneller & präziser).
-- **Quellen anzeigen** (Schalter) – blendet die Quellenkarten ein/aus.
-- **Verlauf löschen** – leert die aktuelle Chat-Sitzung.
+- **Fach filtern**: schränkt die Suche auf ein Fach ein (schneller & präziser).
+- **Quellen anzeigen** (Schalter): blendet die Quellenkarten ein/aus.
+- **Verlauf löschen**: leert die aktuelle Chat-Sitzung.
 - Hinweis auf die weiteren Seiten **Ingestion**, **Evaluation**, **Einstellungen**
   (linke Navigation).
 
@@ -44,13 +44,13 @@ Faustregeln für hohe Trefferquote:
   besser als „Erklär mir alles zu Kosten".
 - **Fachbegriffe nennen.** Der BM25-Teil der Suche belohnt exakte Begriffe,
   Abkürzungen und Formelnamen (z. B. „Herfindahl-Index", „Cournot-Nash").
-- **Fach-Filter nutzen**, wenn du weißt, aus welchem Fach die Frage stammt – das
+- **Fach-Filter nutzen**, wenn du weißt, aus welchem Fach die Frage stammt. Das
   reduziert Verwechslungen zwischen Fächern und beschleunigt die Antwort.
 - **Eine Frage pro Eingabe.** Mehrere Themen in einem Satz verwässern die Suche.
 - **Umformulieren hilft.** Findet das System nichts, frag mit anderen Worten oder
   einem anderen Kernbegriff.
 
-Rechne auf CPU-Hardware mit **~20–40 Sekunden** pro Antwort – der Spinner
+Rechne auf CPU-Hardware mit **~20 bis 40 Sekunden** pro Antwort. Der Spinner
 („Suche in deinen Unterlagen und denke nach…") zeigt an, dass gearbeitet wird.
 
 ---
@@ -67,7 +67,7 @@ Unter jeder Antwort steht ein **Badge**, das den Modus kennzeichnet:
 Ein Fallback tritt auf, wenn (a) schon die Suche zu schwach war (Relevanz-Gate),
 (b) das Modell selbst signalisiert hat, dass die Info fehlt
 (`KEINE_AUSREICHENDE_INFORMATION`), oder (c) die Faithfulness-Prüfung die Antwort
-nicht als gedeckt bestätigt hat. Das ist gewollt – es schützt dich vor erfundenen
+nicht als gedeckt bestätigt hat. Das ist gewollt. Es schützt dich vor erfundenen
 Fakten beim Lernen.
 
 **Quellenkarten** (wenn „Quellen anzeigen" aktiv) zeigen pro Treffer:
@@ -75,10 +75,10 @@ Fakten beim Lernen.
 - **[Rang] Dateiname** und **Fundstelle** (z. B. „Seite 4", „Folie 7" oder den
   Markdown-Überschriften-Pfad).
 - **Fach**, **Score** (Reranker- bzw. Fusionswert) und **Retriever**
-  (`dense`, `bm25` oder beides) – woher der Treffer stammt.
+  (`dense`, `bm25` oder beides), woher der Treffer stammt.
 - Über „Textstelle ansehen" lässt sich der Originalausschnitt aufklappen.
 
-Nutze die Quellenkarten, um die Antwort gegen dein Skript zu prüfen – das ist
+Nutze die Quellenkarten, um die Antwort gegen dein Skript zu prüfen. Das ist
 beim Lernen mindestens so wertvoll wie die Antwort selbst.
 
 ---
@@ -89,7 +89,7 @@ Unterstützte Formate: `.pdf`, `.md`, `.markdown`, `.txt`, `.docx`, `.pptx`.
 Das **Fach** ergibt sich aus dem **ersten Unterordner** unter
 `Zusammenfassungen SoSE26` (z. B. `…\KuLR\skript.pdf` → Fach `KuLR`).
 
-### Weg A – Datei in den Ordner legen + Import/Wächter
+### Weg A: Datei in den Ordner legen + Import/Wächter
 
 1. Datei nach `Zusammenfassungen SoSE26\<Fach>\` (oder nach `data\inbox\`) kopieren.
 2. Entweder einmalig importieren …
@@ -108,26 +108,26 @@ Das **Fach** ergibt sich aus dem **ersten Unterordner** unter
 Der Import ist **resumierbar**: Bereits vorhandene, unveränderte Dateien werden
 übersprungen; geänderte werden aktualisiert (alte Chunks entfernt, neu erzeugt).
 
-### Weg B – Einzelne Datei per CLI
+### Weg B: Einzelne Datei per CLI
 
 ```powershell
 python -m ragapp.scripts.cli ingest-file "C:\Pfad\zu\meiner\Zusammenfassung.pdf"
 ```
 
-### Weg C – Über die Weboberfläche
+### Weg C: Über die Weboberfläche
 
 Die Oberfläche hat links drei Unterseiten:
 
-- **📥 Ingestion** – Dateien hochladen (mit Fach-Zuordnung) und indexieren,
+- **📥 Ingestion**: Dateien hochladen (mit Fach-Zuordnung) und indexieren,
   den kompletten Quellordner importieren, die **Fragen-Anreicherung** starten,
   alle indexierten Dokumente als Tabelle sehen und einzelne löschen.
-- **📊 Evaluation** – Gold-Set erzeugen, Trefferquote (Hit@k / MRR) messen und
+- **📊 Evaluation**: Gold-Set erzeugen, Trefferquote (Hit@k / MRR) messen und
   den Verlauf über die Zeit vergleichen (zum Nachjustieren).
-- **⚙️ Einstellungen** – alle Tuning-Parameter ändern und in `data/config.json`
+- **⚙️ Einstellungen**: alle Tuning-Parameter ändern und in `data/config.json`
   speichern; auf Standard zurücksetzen.
 
 Die Ingestion-Seite nutzt dieselbe Pipeline wie die CLI (`ingest_directory` /
-`ingest_file`) – Datei auswählen bzw. Import anstoßen, der Rest (Laden → Dedup →
+`ingest_file`): Datei auswählen bzw. Import anstoßen, der Rest (Laden → Dedup →
 Chunking → Embeddings → Speichern) läuft automatisch.
 
 > **Datei-Auswahl:** Anki-/Karteikarten-Dateien (`*anki*`, `*karteikart*`) und
@@ -139,7 +139,7 @@ Chunking → Embeddings → Speichern) läuft automatisch.
 
 > **Nach Fach suchen:** Jedes Dokument ist seinem Fach zugeordnet (aus dem
 > Ordnernamen). Wähle links im Interface unter **„Fach filtern"** z. B. `KuLR`,
-> dann durchsucht das System ausschließlich KuLR – Fächer wie Analysis oder DSA
+> dann durchsucht das System ausschließlich KuLR. Fächer wie Analysis oder DSA
 > werden gar nicht betrachtet (schneller und präziser).
 
 > Hinweis: Der Erstimport eines großen Korpus dauert auf CPU sehr lange und
@@ -162,12 +162,12 @@ Aufruf immer als Modul (aus dem aktivierten venv):
 | ------------- | -------- | ------- | -------- |
 | `ingest`      | `--dir <ordner>`, `--force` | Ganzen Ordner einlesen (Standard: Quellordner). `--force` importiert auch Unverändertes neu. | `... ingest` |
 | `ingest-file` | `<pfad>` (Pflicht), `--force` | Einzelne Datei einlesen. | `... ingest-file skript.pdf` |
-| `watch`       | – | Quell- + Inbox-Ordner überwachen und neue/geänderte Dateien automatisch importieren (Strg+C beendet). | `... watch` |
+| `watch`       | keine | Quell- + Inbox-Ordner überwachen und neue/geänderte Dateien automatisch importieren (Strg+C beendet). | `... watch` |
 | `gold`        | `--sample <n>` | Held-out-Gold-Set für die Evaluation erzeugen (Standard-Stichprobe aus `EVAL_SAMPLE_SIZE`). | `... gold --sample 60` |
 | `enrich`      | `--limit <n>` (Std. 200), `--subject <Fach>` | Hypothetische Fragen für die wichtigsten Chunks erzeugen und indexieren (opt-in, resumierbar). | `... enrich --limit 100 --subject KuLR` |
-| `eval`        | – | Trefferquote gegen das Gold-Set messen (Hit@k, MRR) und Ergebnisse speichern. | `... eval` |
+| `eval`        | keine | Trefferquote gegen das Gold-Set messen (Hit@k, MRR) und Ergebnisse speichern. | `... eval` |
 | `ask`         | `<frage>` (Pflicht), `--subject <Fach>` | Eine Frage direkt im Terminal beantworten (mit Modus, Belegtheit, Quellen). | `... ask "Was ist ein Deckungsbeitrag?"` |
-| `stats`       | – | Statusübersicht: Dokumente, Chunks, Fragen, Fächer, Chroma-Einträge, Dokumentliste. | `... stats` |
+| `stats`       | keine | Statusübersicht: Dokumente, Chunks, Fragen, Fächer, Chroma-Einträge, Dokumentliste. | `... stats` |
 | `reset`       | `--yes` (Pflicht zur Ausführung) | Index **und** Manifest komplett leeren. Ohne `--yes` nur Sicherheitshinweis. | `... reset --yes` |
 
 Typischer Ablauf beim ersten Einrichten:
@@ -193,5 +193,5 @@ python -m ragapp.scripts.cli eval            # Trefferquote messen
 | **Alles zu langsam** | Normal auf CPU. Fach-Filter nutzen; ggf. `USE_RERANKER`/`ENABLE_FAITHFULNESS_CHECK` in den Einstellungen abwägen (weniger Genauigkeit gegen mehr Tempo). |
 
 Alle Anfragen werden in `data/logs/queries.jsonl` protokolliert (Frage, Modus,
-Belegtheit, Top-Quellen, Zeiten) – nützlich, um Muster bei schwachen Antworten zu
+Belegtheit, Top-Quellen, Zeiten), nützlich, um Muster bei schwachen Antworten zu
 erkennen und gezielt nachzujustieren.

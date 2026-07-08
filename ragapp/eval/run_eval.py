@@ -3,12 +3,12 @@ Evaluations-Runner (Trefferquote messen & protokollieren)
 =========================================================
 
 Führt das Gold-Set gegen die echte Retrieval-Pipeline aus und berechnet
-Hit@k / MRR – die zentrale Kennzahl, um das System zu bewerten und **nachzu-
+Hit@k / MRR, die zentrale Kennzahl, um das System zu bewerten und **nachzu-
 justieren**. Ergebnisse werden gespeichert:
 
-    data/eval/eval_<zeitstempel>.json   – vollständiger Report + Konfiguration
-    data/eval/per_query_<zeitstempel>.csv – jede Testfrage einzeln (für Fehlersuche)
-    data/eval/history.jsonl              – Verlaufskurve für das Dashboard
+    data/eval/eval_<zeitstempel>.json   : vollständiger Report + Konfiguration
+    data/eval/per_query_<zeitstempel>.csv : jede Testfrage einzeln (für Fehlersuche)
+    data/eval/history.jsonl              : Verlaufskurve für das Dashboard
 
 So lässt sich nach jeder Parameteränderung (Chunk-Größe, Reranker an/aus, k …)
 messen, ob sich die Trefferquote verbessert hat.

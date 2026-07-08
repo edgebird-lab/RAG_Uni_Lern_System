@@ -2,7 +2,7 @@
 Fragen-Anreicherung (opt-in, gedeckelt)
 ======================================
 
-Erzeugt und indexiert hypothetische Fragen für bereits vorhandene Chunks –
+Erzeugt und indexiert hypothetische Fragen für bereits vorhandene Chunks,
 gezielt und in kontrollierter Menge, damit es auch auf CPU-Hardware praktikabel
 bleibt (jede Frage-Generierung kostet dort ~20 s).
 

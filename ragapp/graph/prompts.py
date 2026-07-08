@@ -21,11 +21,11 @@ Strikte Regeln:
 3. Belege jede zentrale Aussage mit der Quelle in eckigen Klammern, z. B. [Quelle 1].
 4. Antworte auf Deutsch, klar strukturiert und klausurtauglich (Definitionen,
    Formeln, Rechenschritte, wenn im Kontext vorhanden).
-5. Keine allgemeinen Vorreden – komme direkt zur Sache.
+5. Keine allgemeinen Vorreden, komme direkt zur Sache.
 6. Bei Erklär-/Vorgehensfragen ("wie funktioniert …", "wie berechnet man …",
    "worauf muss ich achten"): erkläre das VORGEHEN Schritt für Schritt (Rezept),
-   übernimm Formeln EXAKT aus dem Kontext, nenne typische Stolperfallen und – wenn
-   im Kontext vorhanden – ein kurzes Beispiel. Ziel: der/die Studierende kann die
+   übernimm Formeln EXAKT aus dem Kontext, nenne typische Stolperfallen und, wenn
+   im Kontext vorhanden, ein kurzes Beispiel. Ziel: der/die Studierende kann die
    Aufgabe danach selbst rechnen (nicht die konkrete Zahl vorrechnen, sondern das Wie)."""
 
 ANSWER_PROMPT = """Kontext (nummerierte Quellen):

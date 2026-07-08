@@ -1,4 +1,4 @@
-# Evaluation – die Trefferquote ehrlich messen
+# Evaluation: die Trefferquote ehrlich messen
 
 Um zu wissen, ob eine Änderung die Suche wirklich verbessert (statt es nur so
 wirken zu lassen), misst das System die **Retrieval-Trefferquote** gegen ein
@@ -29,7 +29,7 @@ lässt sich jederzeit neu erzeugen oder von Hand ergänzen.
 **Warum „held-out" (nicht indexiert)?** Die Testfragen werden **bewusst nicht** in
 den Index aufgenommen. Würde man sie mitindexieren, fände die Suche bei der
 Messung schlicht die identische Frage wieder und die Trefferquote wäre künstlich
-hoch – die Messung wäre geschönt. Nur getrennte, nicht indexierte Fragen liefern
+hoch, die Messung wäre geschönt. Nur getrennte, nicht indexierte Fragen liefern
 eine ehrliche Schätzung, wie gut das System **echte, neue** Nutzerfragen auf die
 richtige Quelle abbildet.
 
@@ -101,8 +101,8 @@ Gespeichert wird in `data/eval/`:
 | Datei | Inhalt |
 | ----- | ------ |
 | `eval_<zeitstempel>.json` | vollständiger Report: Metriken **und** die verwendete Konfiguration (Embedding, Chunking, Top-K, Reranker an/aus, Fragen-Indexierung …). |
-| `per_query_<zeitstempel>.csv` | **jede Testfrage einzeln** – für die Fehleranalyse (siehe §4). UTF-8 mit BOM, direkt Excel-tauglich. |
-| `history.jsonl` | kompakter Verlaufseintrag pro Lauf (Hit@k, MRR, Konfiguration) – Basis für den Vergleich über die Zeit. |
+| `per_query_<zeitstempel>.csv` | **jede Testfrage einzeln**, für die Fehleranalyse (siehe §4). UTF-8 mit BOM, direkt Excel-tauglich. |
+| `history.jsonl` | kompakter Verlaufseintrag pro Lauf (Hit@k, MRR, Konfiguration), Basis für den Vergleich über die Zeit. |
 
 ---
 
@@ -110,12 +110,12 @@ Gespeichert wird in `data/eval/`:
 
 Die CSV enthält pro Testfrage die Spalten:
 
-- `question` – die gestellte Testfrage
-- `subject` – Fach
-- `gold_file` / `gold_location` – wo die korrekte Antwort steht
-- `found` – ob die korrekte Quelle in den Top-kmax war (True/False)
-- `rank` – auf welchem Rang sie lag (leer, wenn nicht gefunden)
-- `top1_file` – welche Datei stattdessen auf Platz 1 stand
+- `question`: die gestellte Testfrage
+- `subject`: Fach
+- `gold_file` / `gold_location`: wo die korrekte Antwort steht
+- `found`: ob die korrekte Quelle in den Top-kmax war (True/False)
+- `rank`: auf welchem Rang sie lag (leer, wenn nicht gefunden)
+- `top1_file`: welche Datei stattdessen auf Platz 1 stand
 
 So nutzt du sie:
 
@@ -127,14 +127,14 @@ So nutzt du sie:
 - **`top1_file` vs. `gold_file`** vergleichen → welche „falsche" Quelle drängt
   sich vor? Oft ein Near-Duplicate oder ein thematisch benachbarter Chunk.
 
-Aus solchen Mustern ergeben sich konkrete Stellschrauben – die passende Zuordnung
+Aus solchen Mustern ergeben sich konkrete Stellschrauben, die passende Zuordnung
 steht in der Tabelle „Symptom → Stellschraube" in [TUNING.md](TUNING.md).
 
 ---
 
 ## 5. Verlauf vergleichen (history.jsonl)
 
-Jeder `eval`-Lauf hängt einen Eintrag an `data/eval/history.jsonl` – inklusive der
+Jeder `eval`-Lauf hängt einen Eintrag an `data/eval/history.jsonl`, inklusive der
 **Konfiguration**, mit der gemessen wurde. Dadurch kannst du Konfigurationen
 direkt gegeneinander stellen: „Mit `USE_RERANKER=True` war Hit@3 = 78 %, ohne nur
 64 %." Das Evaluation-Dashboard der UI liest genau diese Historie (`load_history()`)
@@ -158,14 +158,14 @@ behalten sollte:
 
 - **LLM-generierte Testfragen.** Die Fragen erzeugt ein Modell (`gemma4:e2b`) aus
   den Chunks. Sie können leichter/„sauberer" sein als echte Klausur- oder
-  Studierendenfragen und liegen sprachlich oft nah am Quelltext – das kann die
+  Studierendenfragen und liegen sprachlich oft nah am Quelltext, das kann die
   Trefferquote **optimistischer** erscheinen lassen, als sie im echten Einsatz ist.
 - **Single-Relevant-Annahme.** Es zählt nur *der eine* Ursprungs-Chunk als
   korrekt. Findet die Pipeline einen **anderen**, inhaltlich ebenfalls richtigen
   Chunk (das kommt bei überlappenden Zusammenfassungen vor), wird das als Fehler
-  gewertet – die reale Nützlichkeit ist dann besser als die Zahl.
+  gewertet, die reale Nützlichkeit ist dann besser als die Zahl.
 - **Nur Retrieval, nicht die Antwortqualität.** Gemessen wird, ob die **richtige
-  Quelle gefunden** wird – nicht, wie gut das LLM daraus formuliert oder ob der
+  Quelle gefunden** wird, nicht, wie gut das LLM daraus formuliert oder ob der
   Faithfulness-Check greift. Die Antwortgüte ist separat (u. a. über die
   Query-Logs und stichprobenartiges Lesen der Quellenkarten) zu beurteilen.
 - **Stichprobengröße.** Bei `EVAL_SAMPLE_SIZE = 60` sind die Zahlen mit einer

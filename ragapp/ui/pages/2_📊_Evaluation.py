@@ -1,8 +1,8 @@
 """
-RAG-Lernsystem – Seite „Evaluation – Trefferquote" (Streamlit)
+RAG-Lernsystem: Seite „Evaluation: Trefferquote" (Streamlit)
 ==============================================================
 Misst die Trefferquote (Hit@k / MRR) des Retrievals gegen ein Gold-Set aus
-Held-out-Testfragen und zeigt den Verlauf über die Zeit – die Grundlage zum
+Held-out-Testfragen und zeigt den Verlauf über die Zeit, die Grundlage zum
 Nachjustieren der Parameter.
 """
 from __future__ import annotations
@@ -26,10 +26,10 @@ from ragapp import manifest
 from ragapp.eval.gold_set import build_gold_set, load_gold_set
 from ragapp.eval.run_eval import run_retrieval_eval, load_history
 
-st.set_page_config(page_title="Evaluation – Trefferquote", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Evaluation: Trefferquote", page_icon="📊", layout="wide")
 
 # --------------------------------------------------------------------------- #
-# Styling ("schick") – identisch zur Startseite
+# Styling ("schick"), identisch zur Startseite
 # --------------------------------------------------------------------------- #
 st.markdown("""
 <style>
@@ -67,10 +67,10 @@ with st.sidebar:
 # --------------------------------------------------------------------------- #
 # Kopf
 # --------------------------------------------------------------------------- #
-st.title("📊 Evaluation – Trefferquote")
+st.title("📊 Evaluation: Trefferquote")
 st.markdown(
     "<span class='small'>Es wird ein <b>Gold-Set</b> aus Testfragen erzeugt "
-    "(<i>Held-out</i> – die Fragen werden bewusst <b>nicht</b> indexiert, damit die "
+    "(<i>Held-out</i>: die Fragen werden bewusst <b>nicht</b> indexiert, damit die "
     "Messung nicht geschönt ist). Dann wird gemessen, wie oft die korrekte Quelle in "
     "den Top-k landet: <b>Hit@k</b> (Trefferquote) und <b>MRR</b> "
     "(mittlerer reziproker Rang).</span>",
@@ -113,7 +113,7 @@ if st.button("🧪 Gold-Set erzeugen", type="primary"):
 
     if res is not None:
         if res.get("status") == "no_chunks":
-            st.error("Keine Chunks vorhanden – bitte zuerst Dokumente indexieren.")
+            st.error("Keine Chunks vorhanden, bitte zuerst Dokumente indexieren.")
         else:
             st.success(f"{res.get('count', 0)} Testfragen erzeugt.")
 

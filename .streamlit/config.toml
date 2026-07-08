@@ -11,3 +11,7 @@ maxUploadSize = 500
 
 [theme]
 base = "light"
+
+[client]
+# Kein "Deploy"-Button und kein Entwickler-Menue oben rechts (wirkt wie eine echte App)
+toolbarMode = "minimal"

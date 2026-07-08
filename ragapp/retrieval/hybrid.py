@@ -65,7 +65,7 @@ def _tokset(text: str) -> set:
 
 
 def _dedup_candidates(candidates: list[dict], threshold: float) -> list[dict]:
-    """Entfernt Near-Duplicate-Chunks (Token-Jaccard) – gegen doppelte Infos.
+    """Entfernt Near-Duplicate-Chunks (Token-Jaccard), gegen doppelte Infos.
 
     Behält den jeweils höher platzierten Kandidaten; günstig, da nur über die
     ~20 fusionierten Kandidaten (nicht den ganzen Index)."""

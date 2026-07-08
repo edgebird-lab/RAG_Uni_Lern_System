@@ -1,5 +1,5 @@
 """
-RAG-Lernsystem – Seite „Einstellungen (Tuning)" (Streamlit)
+RAG-Lernsystem: Seite „Einstellungen (Tuning)" (Streamlit)
 ===========================================================
 Zentrale Stellschrauben des Systems bequem tunen und persistent in
 ``data/config.json`` speichern. Nach dem Ändern in der Evaluation messen, ob
@@ -31,7 +31,7 @@ from ragapp.hardware import (
 st.set_page_config(page_title="Einstellungen (Tuning)", page_icon="⚙️", layout="wide")
 
 # --------------------------------------------------------------------------- #
-# Styling ("schick") – identisch zur Startseite
+# Styling ("schick"), identisch zur Startseite
 # --------------------------------------------------------------------------- #
 st.markdown("""
 <style>
@@ -91,7 +91,7 @@ st.markdown(
 
 @st.cache_data(show_spinner=False)
 def _hardware_erkennen() -> dict:
-    """Erkennt die Hardware (gecacht – ändert sich zur Laufzeit nicht)."""
+    """Erkennt die Hardware (gecacht, ändert sich zur Laufzeit nicht)."""
     return detect_hardware()
 
 
@@ -170,7 +170,7 @@ if hw:
     installiert = _installierte_modelle()
     if installiert is None:
         st.warning(
-            "⚠️ Konnte die installierten Ollama-Modelle nicht abrufen – läuft der "
+            "⚠️ Konnte die installierten Ollama-Modelle nicht abrufen. Läuft der "
             f"Ollama-Server unter `{settings.OLLAMA_BASE_URL}`? Angeboten werden "
             "stattdessen die empfohlenen Modelle."
         )
@@ -263,7 +263,7 @@ if hw:
         if ergebnis.get("error"):
             st.error(
                 f"❌ Benchmark für `{tag}` fehlgeschlagen: {ergebnis['error']}\n\n"
-                "Häufigste Ursache: **Modell nicht installiert** – vorher "
+                "Häufigste Ursache: **Modell nicht installiert**, vorher "
                 f"`ollama pull {tag}` ausführen. Prüfe außerdem, ob der Ollama-Server "
                 f"unter `{settings.OLLAMA_BASE_URL}` läuft."
             )
@@ -434,7 +434,7 @@ with st.form("einstellungen"):
     gespeichert = st.form_submit_button("💾 Speichern", type="primary")
 
 if gespeichert:
-    # number_input liefert je nach Startwert int/float – Typen bereinigen
+    # number_input liefert je nach Startwert int/float: Typen bereinigen
     int_felder = {
         "DENSE_TOP_K", "BM25_TOP_K", "FUSION_TOP_K", "RRF_K", "FINAL_TOP_K",
         "CHUNK_SIZE", "CHUNK_OVERLAP", "MIN_CHUNK_CHARS", "LLM_NUM_CTX",

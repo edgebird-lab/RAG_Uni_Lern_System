@@ -10,8 +10,8 @@ Extrahiert reinen Text (inkl. Struktur-Metadaten) aus verschiedenen Formaten:
     .pptx         -> python-pptx (Text pro Folie)
 
 Rückgabe: ``LoadedDoc`` mit
-    * text   – vollständiger, normalisierter Text
-    * blocks – Liste von Textblöcken mit Metadaten (Seite/Folie), damit der
+    * text   : vollständiger, normalisierter Text
+    * blocks : Liste von Textblöcken mit Metadaten (Seite/Folie), damit der
                Chunker Quellenangaben wie "Seite 4" anhängen kann.
 """
 from __future__ import annotations
@@ -44,7 +44,7 @@ class LoadedDoc:
 # Normalisierung
 # --------------------------------------------------------------------------- #
 def normalize_text(text: str) -> str:
-    """Vereinheitlicht Whitespace/Unicode – wichtig für stabile Hashes & Dedup."""
+    """Vereinheitlicht Whitespace/Unicode, wichtig für stabile Hashes & Dedup."""
     if not text:
         return ""
     text = unicodedata.normalize("NFC", text)

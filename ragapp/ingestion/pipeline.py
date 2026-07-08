@@ -9,7 +9,7 @@ Der automatische Weg vom Rohdokument in die Vektordatenbank:
           →  Speichern (Chroma)  →  BM25-Neuaufbau  →  Manifest-Eintrag
 
 Ein PDF (oder MD/DOCX/PPTX) einfach in den Quell- oder Inbox-Ordner legen und
-``ingest_directory`` bzw. den Ordnerwächter laufen lassen – der Rest passiert
+``ingest_directory`` bzw. den Ordnerwächter laufen lassen, der Rest passiert
 automatisch. Alles wird in ``data/logs/ingestion.jsonl`` protokolliert.
 """
 from __future__ import annotations
@@ -144,7 +144,7 @@ def ingest_file(
 
     # Update (Inhalt geändert) oder Force: alte Einträge entfernen
     if existing_doc:
-        p("Aktualisiere – entferne alte Chunks …")
+        p("Aktualisiere, entferne alte Chunks …")
         get_vectorstore().delete_by_doc(doc_id)
         manifest.clear_chunk_hashes(doc_id)
 
@@ -184,7 +184,7 @@ def ingest_file(
             char_count=len(loaded.text), status="all_duplicate",
         )
         # BM25 ggf. neu aufbauen: im Update-Pfad wurden oben alte Chunks aus
-        # Chroma gelöscht – sonst behielte der BM25-Index verwaiste IDs.
+        # Chroma gelöscht, sonst behielte der BM25-Index verwaiste IDs.
         if rebuild_bm25:
             rebuild_bm25_from_store()
         _log({"event": "ingest", "file": rel, "status": "all_chunks_duplicate"})

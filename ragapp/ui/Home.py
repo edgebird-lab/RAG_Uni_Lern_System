@@ -1,11 +1,12 @@
 """
-RAG-Lernsystem – Chat-Oberfläche (Streamlit)
+RAG-Lernsystem: Chat-Oberfläche (Streamlit)
 ============================================
 Start:  streamlit run ragapp/ui/Home.py
 """
 from __future__ import annotations
 
 import sys
+import random
 import pathlib
 
 # Projektwurzel auffindbar machen (damit 'ragapp' importierbar ist)
@@ -26,6 +27,16 @@ _icon_png = _p.parents[2] / "assets" / "icon.png"
 _PAGE_ICON = str(_icon_png) if _icon_png.is_file() else "🎓"
 
 st.set_page_config(page_title="RAG-Lernsystem", page_icon=_PAGE_ICON, layout="wide")
+
+# Motivierende Sprüche für den Denk-/Lademoment (rotieren zufällig)
+_LERN_SPRUECHE = [
+    "Dranbleiben lohnt sich. Jede Frage bringt dich der Bestnote näher.",
+    "Wissen wächst mit jeder Frage. Du schaffst das!",
+    "Kleine Schritte, große Wirkung. Bleib neugierig!",
+    "Fokus an, Zweifel aus. Deine Klausur kann kommen!",
+    "Jede Wiederholung sitzt. Weiter so!",
+    "Verstehen schlägt Auswendiglernen. Frag ruhig nach.",
+]
 
 # --------------------------------------------------------------------------- #
 # Styling ("schick")
@@ -68,7 +79,7 @@ with st.sidebar:
     subjects = sorted({d["subject"] for d in manifest.list_documents()})
     subject_options = ["Alle Fächer"] + subjects
     chosen = st.selectbox("Fach filtern", subject_options,
-                          help="Sucht nur in einem Fach – schneller & präziser.")
+                          help="Sucht nur in einem Fach, das ist schneller und präziser.")
     subject_filter = None if chosen == "Alle Fächer" else chosen
 
     show_sources = st.toggle("Quellen anzeigen", value=True)
@@ -86,13 +97,13 @@ st.title("Frag deine Zusammenfassungen")
 st.markdown(
     "<span class='small'>Antworten kommen <b>ausschließlich</b> aus deinen "
     "Unterlagen. Weiß das System etwas nicht, nennt es dir ehrlich die am besten "
-    "passenden Dokumente – <b>ohne zu halluzinieren</b>.</span>",
+    "passenden Dokumente, <b>ohne zu halluzinieren</b>.</span>",
     unsafe_allow_html=True,
 )
 
 if stats["chunks"] == 0:
     st.info("Noch keine Dokumente indexiert. Gehe zu **📥 Ingestion** und starte den "
-            "Import – oder lege Dateien in den Ordner *Zusammenfassungen SoSE26*.")
+            "Import oder lege Dateien in den Ordner *Zusammenfassungen SoSE26*.")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -140,7 +151,7 @@ if prompt:
         st.markdown(prompt)
 
     with st.chat_message("assistant", avatar="🤖"):
-        with st.spinner("Suche in deinen Unterlagen und formuliere die Antwort … (GPU-beschleunigt, ~30–45 s)"):
+        with st.spinner(random.choice(_LERN_SPRUECHE)):
             from ragapp.graph.rag_graph import answer_query
             try:
                 result = answer_query(prompt, subject=subject_filter)

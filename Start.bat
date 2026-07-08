@@ -4,8 +4,8 @@ REM  RAG-Lernsystem - Kombi-Starter (Windows)
 REM  - Intel-Variante (ipex-ollama\ollama.exe vorhanden):
 REM      startet den IPEX-GPU-Server (Start_GPU_Ollama.bat) in
 REM      eigenem Fenster, wartet auf Port 11434, dann Oberflaeche.
-REM  - Sonst (NVIDIA/AMD/CPU): nimmt an, dass die Ollama-App laeuft,
-REM      und startet nur die Weboberflaeche.
+REM  - Sonst (NVIDIA/AMD/CPU): startet bei Bedarf den Standard-Ollama-Server
+REM      (NVIDIA nutzt CUDA, AMD ROCm automatisch), dann die Oberflaeche.
 REM  Nutzt %~dp0 -> voll portabel (kein hartkodierter Pfad).
 REM ============================================================
 setlocal
@@ -34,7 +34,27 @@ goto start_ui
 echo    -^> GPU-Server bereit.
 
 :start_ui
-if not exist "%~dp0ipex-ollama\ollama.exe" echo [Standard-Ollama] Es wird angenommen, dass die Ollama-App laeuft.
+if exist "%~dp0ipex-ollama\ollama.exe" goto launch_ui
+REM --- Standard-Ollama (NVIDIA/AMD/CPU): sicherstellen, dass der Server laeuft ---
+powershell -NoProfile -Command "$c=New-Object Net.Sockets.TcpClient; try{ $c.Connect('127.0.0.1',11434); exit 0 } catch { exit 1 } finally { $c.Close() }"
+if not errorlevel 1 goto ollama_ok
+where ollama >nul 2>&1
+if errorlevel 1 goto ollama_missing
+echo [Standard-Ollama] Starte Ollama-Server ...
+start "Ollama-Server - NICHT schliessen" ollama serve
+echo Warte, bis Ollama bereit ist (Port 11434) ...
+powershell -NoProfile -Command "for($t=0; $t -lt 30; $t++){ $c=New-Object Net.Sockets.TcpClient; try { $c.Connect('127.0.0.1',11434); exit 0 } catch { Start-Sleep -Milliseconds 1000 } finally { $c.Close() } }; exit 1"
+if errorlevel 1 echo [!] Ollama nicht erreichbar - Oberflaeche startet trotzdem.
+goto launch_ui
+
+:ollama_ok
+echo [Standard-Ollama] Server laeuft bereits (NVIDIA/AMD nutzt die GPU automatisch).
+goto launch_ui
+
+:ollama_missing
+echo [!] 'ollama' wurde nicht gefunden. Bitte zuerst Installieren.bat ausfuehren.
+
+:launch_ui
 echo Starte Oberflaeche als App-Fenster (kein Browser-Tab) ...
 ".venv\Scripts\python.exe" -m ragapp.desktop
 pause

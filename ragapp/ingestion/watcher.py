@@ -6,7 +6,7 @@ Ordnerwächter (automatische Ingestion-Pipeline)
 hineingelegt oder geändert wird, wird sie automatisch geladen, geslicet,
 dedupliziert, mit Fragen angereichert und in die Vektordatenbank geschrieben.
 
-"Datei rein → fertig aufbereitet im Index" – ohne manuelles Zutun.
+"Datei rein → fertig aufbereitet im Index", ohne manuelles Zutun.
 
 Debounce: Nach einem Ereignis wird gewartet, bis die Datei einige Sekunden
 unverändert (stabil) ist, damit kein halb geschriebenes PDF gelesen wird.
@@ -68,7 +68,7 @@ def watch(paths: list[Path] | None = None, poll_interval: float = 2.0) -> None:
         observer.schedule(handler, str(p), recursive=True)
     observer.start()
     print(f"[watcher] Überwache: {', '.join(str(p) for p in paths)}")
-    print("[watcher] Lege PDFs/MD/DOCX/PPTX hinein – sie werden automatisch indexiert.")
+    print("[watcher] Lege PDFs/MD/DOCX/PPTX hinein, sie werden automatisch indexiert.")
     print("[watcher] Beenden mit Strg+C.")
     try:
         while True:

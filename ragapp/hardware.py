@@ -2,7 +2,7 @@
 Hardware-Erkennung & Modell-Empfehlung (plattformübergreifend)
 ==============================================================
 
-Erkennt Betriebssystem, CPU, RAM und – am wichtigsten – die **GPU** (Hersteller,
+Erkennt Betriebssystem, CPU, RAM und, am wichtigsten, die **GPU** (Hersteller,
 Name, VRAM), um daraus die passende **Ollama-Variante** und ein **passendes
 LLM** abzuleiten. Grundlage für den plattformübergreifenden One-Click-Installer
 und den ``recommend``-Befehl.
@@ -168,7 +168,7 @@ def recommend_models(hw: dict) -> dict:
     if vendor == "intel":
         return {
             "reason": "Intel-GPU via IPEX-LLM (Ollama 0.9.3): bewährte, kompatible "
-                      "3–4B-Modelle. Größere/neuere Architekturen laden dort nicht.",
+                      "3 bis 4B-Modelle. Größere/neuere Architekturen laden dort nicht.",
             "embed_model": "bge-m3",
             "models": [
                 {**_MODELS["small"], "why": "läuft stabil auf Intel-Arc, gutes Deutsch, ~13 tok/s"},
@@ -202,7 +202,7 @@ def recommend_models(hw: dict) -> dict:
 
     note = ""
     if vendor == "none":
-        note = " (Nur-CPU: Antworten dauern deutlich länger — kleines Modell empfohlen.)"
+        note = " (Nur-CPU: Antworten dauern deutlich länger, kleines Modell empfohlen.)"
 
     return {
         "reason": f"{on}, verfügbares Budget ~{budget:.0f} GB -> Modellklasse '{tier}'.{note}",
@@ -215,9 +215,9 @@ def speed_verdict(tps: float) -> str:
     if tps >= 15:
         return "schnell (Antworten deutlich unter 30 s)"
     if tps >= 8:
-        return "brauchbar (~30–60 s pro Antwort)"
+        return "brauchbar (~30 bis 60 s pro Antwort)"
     if tps >= 4:
-        return "langsam (~1–2 Min pro Antwort)"
+        return "langsam (~1 bis 2 Min pro Antwort)"
     return "sehr langsam (Antworten dauern minutenlang)"
 
 
@@ -248,7 +248,7 @@ def benchmark_model(tag: str, base_url: str | None = None,
         except Exception as exc:
             return {"tag": tag, "error": f"Download/Load fehlgeschlagen: {exc}"}
 
-    prompt = "Erkläre in 3–4 Sätzen auf Deutsch, was ein Deckungsbeitrag ist."
+    prompt = "Erkläre in 3 bis 4 Sätzen auf Deutsch, was ein Deckungsbeitrag ist."
     opts = {"num_predict": num_predict, "temperature": 0.1}
     try:
         if progress:

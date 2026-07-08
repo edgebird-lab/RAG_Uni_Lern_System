@@ -15,7 +15,7 @@ Dieser Generator nimmt:
 und erzeugt pro Abschnitt mit dem lokalen LLM mehrere **Frage-Antwort-Paare**:
     * Frage: so, wie ein Studierender sie stellt ("Wie berechne ich …?").
     * Antwort: erklärt das **Vorgehen Schritt für Schritt** (Rezept, Formeln aus
-      dem Abschnitt exakt übernommen, typische Stolperfallen) – damit man die
+      dem Abschnitt exakt übernommen, typische Stolperfallen), damit man die
       Aufgabe **selbst rechnen** kann. Es wird nichts Neues erfunden.
 
 Ergebnis:
@@ -64,7 +64,7 @@ Erzeuge {n} Frage-Antwort-Paare für einen Klausur-Lernkatalog. Regeln:
   ich die Summe einer unendlichen geometrischen Reihe und wann konvergiert sie?").
 - ANTWORT: erkläre das VORGEHEN Schritt für Schritt (Rezept), übernimm die
   relevanten Formeln EXAKT aus dem Abschnitt (LaTeX beibehalten), nenne typische
-  Stolperfallen und – wenn im Abschnitt vorhanden – ein kurzes Beispiel.
+  Stolperfallen und, wenn im Abschnitt vorhanden, ein kurzes Beispiel.
 - Ziel ist ERKLÄREN, nicht eine konkrete Zahl ausrechnen.
 - Verwende AUSSCHLIESSLICH Informationen aus dem Abschnitt. Erfinde nichts.
 - Verschiedene Aspekte pro Thema abdecken (Definition, Vorgehen, Sonderfälle).
@@ -135,7 +135,7 @@ def _exam_hints(exam_files: list[Path]) -> dict[str, str]:
 
 
 def _match_hint(title: str, hints: dict[str, str]) -> str:
-    """Ordnet einem Abschnittstitel (z. B. '§ 4 — Reihen (Aufg. 4)') die Klausur-Aufgabe zu."""
+    """Ordnet einem Abschnittstitel (z. B. '§ 4: Reihen (Aufg. 4)') die Klausur-Aufgabe zu."""
     m = re.search(r"Aufg\.?\s*(\d+)", title) or re.search(r"§\s*(\d+)", title)
     if m and m.group(1) in hints:
         return hints[m.group(1)]
@@ -174,7 +174,7 @@ def build_exam_catalog(
     store = get_vectorstore()
 
     doc_id = dedup.doc_id_for(f"lernkatalog::{subject}")
-    catalog_md = [f"# Klausur-Lernkatalog — {subject}\n",
+    catalog_md = [f"# Klausur-Lernkatalog: {subject}\n",
                   f"*KI-generierter Lernkatalog aus deiner Zusammenfassung + Altklausuren. "
                   f"Grundlage: `{summary_path.name}`. Im Zweifel immer mit der Zusammenfassung "
                   f"abgleichen.*\n"]

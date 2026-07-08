@@ -80,7 +80,7 @@ class Settings:
     # LLM-Generierung
     LLM_TEMPERATURE: float = 0.1           # niedrig = faktentreu, wenig Halluzination
     LLM_NUM_CTX: int = 8192                # Kontextfenster für Generierung
-    LLM_NUM_PREDICT: int = 1024            # max. Antwortlänge (Tokens) – begrenzt CPU-Zeit
+    LLM_NUM_PREDICT: int = 1024            # max. Antwortlänge (Tokens), begrenzt CPU-Zeit
     LLM_TIMEOUT: int = 600                 # Sekunden (CPU-Inferenz kann dauern)
 
     # ------------------------------------------------------------------ #
@@ -216,7 +216,7 @@ class Settings:
                 setattr(self, k, v)
 
 
-# Globale Instanz – überall importierbar.
+# Globale Instanz, überall importierbar.
 settings = Settings.load()
 
 

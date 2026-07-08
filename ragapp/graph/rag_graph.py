@@ -154,7 +154,7 @@ def fallback_node(state: RAGState) -> RAGState:
         "Ich bin mir **nicht sicher genug**, um diese Frage zuverlässig aus deinen "
         "Unterlagen zu beantworten (ich möchte nichts erfinden).",
         "",
-        "Am besten passen diese Stellen – schau am besten direkt dort nach:",
+        "Am besten passen diese Stellen, schau am besten direkt dort nach:",
         "",
     ]
     for s in sources[:settings.FINAL_TOP_K]:

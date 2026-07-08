@@ -9,7 +9,7 @@ Vektordistanz.
 
 Robustheit: Lässt sich das Modell nicht laden (z. B. torch-Problem), fällt das
 System automatisch auf die Fusions-Reihenfolge zurück und protokolliert eine
-Warnung – das System bleibt funktionsfähig.
+Warnung. Das System bleibt funktionsfähig.
 """
 from __future__ import annotations
 

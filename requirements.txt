@@ -1,5 +1,5 @@
 # ============================================================================
-# RAG-Lernsystem – Python-Abhängigkeiten
+# RAG-Lernsystem: Python-Abhängigkeiten
 # Getestet mit Python 3.13 auf Windows 11 (CPU-only).
 # torch wird separat als CPU-Build installiert (siehe docs/SETUP.md).
 # ============================================================================

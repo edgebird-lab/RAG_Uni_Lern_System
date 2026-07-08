@@ -76,7 +76,7 @@ class LLM:
     def generate_json(self, prompt: str, system: str | None = None, **kwargs: Any) -> Any:
         """Fordert JSON per Prompt an und parst robust.
 
-        WICHTIG: KEIN Ollama-``format="json"`` (Grammar-constrained decoding) —
+        WICHTIG: KEIN Ollama-``format="json"`` (Grammar-constrained decoding),
         das crasht das IPEX-LLM/SYCL-Backend der Intel-iGPU ("model runner
         unexpectedly stopped"). Freie Generierung + robustes Parsen (_safe_json)
         funktioniert auf CPU wie GPU."""

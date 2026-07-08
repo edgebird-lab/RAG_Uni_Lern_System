@@ -1,6 +1,6 @@
 # Installation & Einrichtung
 
-Diese Anleitung beschreibt die Installation von Grund auf – für einen
+Diese Anleitung beschreibt die Installation von Grund auf, für einen
 Windows-11-Rechner **ohne NVIDIA-GPU** (CPU-Inferenz). Alle Kommandos sind für
 die **Windows PowerShell** gedacht.
 
@@ -14,7 +14,7 @@ die **Windows PowerShell** gedacht.
 | Python     | **3.13** |
 | Ollama     | aktuelle Version, installiert und laufend (Dienst/Tray-Icon) |
 | Festplatte | Platz für Modelle (mehrere GB) + `data/`-Index |
-| GPU        | keine erforderlich – das System ist auf CPU ausgelegt |
+| GPU        | keine erforderlich, das System ist auf CPU ausgelegt |
 
 Prüfe, dass Python und Ollama verfügbar sind:
 
@@ -82,7 +82,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ```
 
 Alternativ (funktioniert immer, auch ohne Aktivierung) lassen sich alle Kommandos
-direkt über den venv-Interpreter aufrufen – genau das tun auch die mitgelieferten
+direkt über den venv-Interpreter aufrufen, genau das tun auch die mitgelieferten
 `.bat`-Dateien:
 
 ```powershell
@@ -93,7 +93,7 @@ direkt über den venv-Interpreter aufrufen – genau das tun auch die mitgeliefe
 
 ## 4. Abhängigkeiten installieren
 
-**Wichtig – Reihenfolge beachten:** Zuerst wird `torch` als **CPU-Build**
+**Wichtig, Reihenfolge beachten:** Zuerst wird `torch` als **CPU-Build**
 installiert (ohne CUDA), erst danach der Rest. So wird nicht versehentlich eine
 große GPU-Variante gezogen.
 
@@ -158,7 +158,7 @@ Symptome: Fehler wie „connection refused", `Embedding fehlgeschlagen`,
 - Lässt sich der Cross-Encoder nicht laden (z. B. `torch`-Problem oder kein
   Internet beim ersten Download), gibt der Reranker eine **Warnung** aus und das
   System fällt automatisch auf die **RRF-Fusions-Reihenfolge** zurück. Es bleibt
-  funktionsfähig – nur die Feinsortierung fehlt (etwas niedrigere Trefferquote).
+  funktionsfähig, nur die Feinsortierung fehlt (etwas niedrigere Trefferquote).
 - Reparatur: `torch` sauber als CPU-Build neu installieren (siehe §4), dann
   `sentence-transformers` erneut installieren. Beim ersten erfolgreichen
   Retrieval wird das Reranker-Modell heruntergeladen.
@@ -167,13 +167,13 @@ Symptome: Fehler wie „connection refused", `Embedding fehlgeschlagen`,
 
 ### <a id="performance-cpu"></a>Langsame CPU-Inferenz (normal!)
 
-Ohne GPU ist die Inferenz langsam – das ist erwartbar, kein Fehler. Grobe
+Ohne GPU ist die Inferenz langsam, das ist erwartbar, kein Fehler. Grobe
 Richtwerte auf diesem System:
 
 | Vorgang | grober Richtwert |
 | ------- | ---------------- |
-| Eine LLM-Antwort (inkl. Faithfulness-Check) | **~20–40 s** |
-| Embedding | **~1–2 Chunks/s** |
+| Eine LLM-Antwort (inkl. Faithfulness-Check) | **~20 bis 40 s** |
+| Embedding | **~1 bis 2 Chunks/s** |
 | Fragen-Generierung pro Chunk (`enrich`/Question-Indexing) | **~20 s/Chunk** |
 
 Konsequenzen und Gegenmaßnahmen:

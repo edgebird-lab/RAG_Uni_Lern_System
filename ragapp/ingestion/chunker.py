@@ -2,7 +2,7 @@
 Struktur-bewusstes Chunking (Slicing)
 =====================================
 
-Ziel: Chunks, die *thematisch geschlossen* sind – das ist der wichtigste Hebel
+Ziel: Chunks, die *thematisch geschlossen* sind, das ist der wichtigste Hebel
 für die Trefferquote. Zwei Strategien:
 
 * **Markdown** wird an den Überschriften (``#``, ``##``, ``###`` …) geschnitten.

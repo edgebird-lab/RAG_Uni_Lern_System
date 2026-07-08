@@ -1,9 +1,9 @@
 """
-RAG-Lernsystem – Desktop-App-Fenster
+RAG-Lernsystem: Desktop-App-Fenster
 ====================================
 Startet die Streamlit-Oberflaeche und oeffnet sie in einem eigenen,
 rahmenlosen App-Fenster (Chromium ``--app``-Modus) statt in einem Browser-Tab.
-Kein sichtbarer Browser, keine Adressleiste, keine Tabs – es fuehlt sich wie
+Kein sichtbarer Browser, keine Adressleiste, keine Tabs, es fuehlt sich wie
 ein eigenstaendiges Programm an. Das Fenster-/Taskleisten-Icon ist unser
 App-Icon (ueber das Streamlit-Favicon).
 
@@ -13,7 +13,7 @@ Sauberer, mehrstufiger Rueckfall:
   3. Standardbrowser (normaler Tab), falls keiner der beiden da ist
 
 Robust:
-  * Waehlt automatisch einen freien Port (Standard 8501, sonst OS-vergeben) –
+  * Waehlt automatisch einen freien Port (Standard 8501, sonst OS-vergeben),
     kollidiert nie mit einem evtl. schon laufenden Streamlit.
   * ``--server.address localhost`` -> nur lokal erreichbar (nicht im Heimnetz).
   * ``--server.headless true``     -> Streamlit oeffnet KEINEN eigenen Tab.
@@ -155,7 +155,7 @@ def main() -> int:
     port = _pick_port()
     url = f"http://localhost:{port}"
     if port != PREFERRED_PORT:
-        print(f"[i] Port {PREFERRED_PORT} war belegt – nutze freien Port {port}.")
+        print(f"[i] Port {PREFERRED_PORT} war belegt, nutze freien Port {port}.")
 
     print("Starte Oberflaeche (im Hintergrund) ...")
     st_proc = _start_streamlit(port)
@@ -168,19 +168,19 @@ def main() -> int:
 
     browser, kind = _find_browser()
     if browser:
-        print(f"Oeffne App-Fenster ({kind}) – kein Browser-Rahmen.")
+        print(f"Oeffne App-Fenster ({kind}), kein Browser-Rahmen.")
         win = _open_window(browser, url)
         if win is not None:
             try:
                 win.wait()          # blockiert, bis das App-Fenster geschlossen wird
             except KeyboardInterrupt:
                 pass
-            print("Fenster geschlossen – beende Oberflaeche.")
+            print("Fenster geschlossen, beende Oberflaeche.")
             _kill_tree(st_proc)
             return 0
         # sonst: Fenster-Start fehlgeschlagen -> Standardbrowser-Fallback
 
-    print("Kein Edge/Chrome fuer den App-Modus gefunden – oeffne Standardbrowser.")
+    print("Kein Edge/Chrome fuer den App-Modus gefunden, oeffne Standardbrowser.")
     print("Zum Beenden dieses schwarze Fenster schliessen.")
     try:
         webbrowser.open(url)

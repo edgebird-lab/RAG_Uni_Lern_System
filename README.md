@@ -1,13 +1,13 @@
-# RAG-Lernsystem – Frag deine Zusammenfassungen
+# RAG-Lernsystem: Frag deine Zusammenfassungen
 
 [![Python 3.13](https://img.shields.io/badge/Python-3.13-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Local & Offline](https://img.shields.io/badge/100%25-local%20%26%20offline-orange.svg)](#datenschutz--deine-unterlagen-bleiben-lokal)
+[![Local & Offline](https://img.shields.io/badge/100%25-local%20%26%20offline-orange.svg)](#datenschutz-deine-unterlagen-bleiben-lokal)
 
 > **English (short):** A fully local, offline Retrieval-Augmented-Generation (RAG)
 > study assistant. Drop your own lecture notes and summaries (PDF, Markdown, TXT,
 > DOCX, PPTX) into a folder, ask questions, and get answers grounded **only in your
-> own documents** — nothing is sent to the cloud. All models run locally via
+> own documents**; nothing is sent to the cloud. All models run locally via
 > [Ollama](https://ollama.com). Hybrid search (dense `bge-m3` + BM25 + cross-encoder
 > reranker), anti-hallucination via LangGraph, a Streamlit UI, and built-in
 > hit-rate evaluation. Runs cross-platform on NVIDIA / AMD / Apple / Intel GPUs or
@@ -18,7 +18,7 @@
 Ein **vollständig lokales** Retrieval-Augmented-Generation-System (RAG) für die
 Klausurvorbereitung. Du legst deine Zusammenfassungen (PDF, Markdown, TXT, DOCX,
 PPTX) ab und stellst dem System Fragen dazu. Die Antworten kommen
-**ausschließlich aus deinen eigenen Unterlagen** – nichts wird aus dem Internet
+**ausschließlich aus deinen eigenen Unterlagen**, nichts wird aus dem Internet
 geladen, nichts an einen Cloud-Dienst geschickt. Alle Modelle laufen über
 [Ollama](https://ollama.com) direkt auf deinem Rechner.
 
@@ -28,14 +28,14 @@ besten passenden Stellen in deinen Dokumenten.
 
 ---
 
-## 🔒 Datenschutz – deine Unterlagen bleiben lokal
+## 🔒 Datenschutz, deine Unterlagen bleiben lokal
 
 **Dieses Repository wird OHNE persönliche Dokumente veröffentlicht.** Deine
 eigenen Kurs- und Klausurunterlagen bleiben ausschließlich auf deinem Rechner:
 
 - Die Ordner `Zusammenfassungen/` und `Zusammenfassungen SoSE26/` sowie der
   komplette `data/`-Ordner (Index, Datenbank, Logs) sind über die `.gitignore`
-  **vom Repo ausgeschlossen** – sie werden nie hochgeladen.
+  **vom Repo ausgeschlossen**, sie werden nie hochgeladen.
 - Es gibt **keine** Netzwerk-Aufrufe zu Cloud-LLMs: LLM, Embedding und Reranker
   laufen lokal (Ollama bzw. `sentence-transformers`).
 - Wer das Projekt klont, bekommt **nur Code und Anleitungen** und legt seine
@@ -59,7 +59,7 @@ eigenen Kurs- und Klausurunterlagen bleiben ausschließlich auf deinem Rechner:
 - **Anti-Halluzination:** niedrige Temperatur, strikte Prompts (nur aus dem
   Kontext antworten), Sentinel `KEINE_AUSREICHENDE_INFORMATION`, LLM-gestützte
   Faithfulness-Prüfung und ein ehrlicher **Fallback**, der statt zu raten die
-  passendsten Dokumente nennt – orchestriert über einen **LangGraph**-Ablauf.
+  passendsten Dokumente nennt, orchestriert über einen **LangGraph**-Ablauf.
 - **Automatische, resumierbare Ingestion:** Datei in den Ordner legen → laden →
   deduplizieren → chunken → einbetten → speichern. Optionaler Ordnerwächter
   (`watchdog`) indexiert neue Dateien automatisch.
@@ -80,15 +80,15 @@ eigenen Kurs- und Klausurunterlagen bleiben ausschließlich auf deinem Rechner:
 
 ## 📸 Screenshots
 
-**Chat — Fragen stellen, belegte Antworten mit Quellenangaben:**
+**Chat: Fragen stellen, belegte Antworten mit Quellenangaben**
 
 ![Chat-Oberfläche](docs/img/chat.png)
 
-**Hardware-Erkennung & Modell-Auswahl — automatische Empfehlung + Benchmark:**
+**Hardware-Erkennung & Modell-Auswahl: automatische Empfehlung + Benchmark**
 
 ![Einstellungen & Modellwahl](docs/img/settings.png)
 
-**Evaluation — Trefferquote messen und nachjustieren:**
+**Evaluation: Trefferquote messen und nachjustieren**
 
 ![Evaluation](docs/img/evaluation.png)
 
@@ -96,9 +96,9 @@ eigenen Kurs- und Klausurunterlagen bleiben ausschließlich auf deinem Rechner:
 
 ## 🚀 Schnellstart
 
-**Einzige Voraussetzung: Python 3.10 oder neuer** ([python.org](https://www.python.org/downloads/) —
+**Einzige Voraussetzung: Python 3.10 oder neuer** ([python.org](https://www.python.org/downloads/),
 beim Installieren **„Add Python to PATH" anhaken!**). **Ollama musst du NICHT
-vorher installieren** — der Installer erledigt das (bei Intel-GPUs lädt er
+vorher installieren**, der Installer erledigt das (bei Intel-GPUs lädt er
 automatisch die IPEX-LLM-Variante, sonst richtet er die Standard-Ollama ein).
 
 ```bash
@@ -107,7 +107,7 @@ git clone <REPO-URL>
 cd RAG_System
 ```
 
-**Windows — am einfachsten per Doppelklick:**
+**Windows, am einfachsten per Doppelklick:**
 
 1. Doppelklick auf **`Installieren.bat`** → richtet alles ein (venv, Abhängigkeiten,
    passende Ollama-Variante, empfohlenes Modell). Läuft weitgehend automatisch.
@@ -133,7 +133,7 @@ cd RAG_System
 > Ollama-Variante (Standard bzw. IPEX-LLM für Intel) und ein passendes Modell
 > ein. Manuelle Einrichtung von Grund auf: [docs/SETUP.md](docs/SETUP.md).
 
-Danach zum ersten Mal deine Dokumente indexieren – siehe
+Danach zum ersten Mal deine Dokumente indexieren, siehe
 [Eigene Dokumente hinzufügen](#-eigene-dokumente-hinzufügen).
 
 ### Doppelklick-Starthilfen (Windows)
@@ -159,11 +159,11 @@ passende Variante ein.
 | **AMD** (Linux, teils Win) | Standard-Ollama         | ROCm / Vulkan  | Automatisch, schnell                  |
 | **Apple Silicon** (M-Serie) | Standard-Ollama        | Metal          | Automatisch, schnell (unified memory) |
 | **Intel** (Arc / iGPU) | **IPEX-LLM-Ollama** (SYCL)  | Level-Zero     | Sonderweg, siehe [GPU_BESCHLEUNIGUNG.md](docs/GPU_BESCHLEUNIGUNG.md) |
-| **Nur CPU**            | Standard-Ollama             | –              | Funktioniert überall, aber **langsam** |
+| **Nur CPU**            | Standard-Ollama             | keine          | Funktioniert überall, aber **langsam** |
 
 **Ehrlicher Performance-Hinweis:** Auf einer echten GPU sind Antworten schnell
 (oft **< 30 s**, je nach Modell und Frage). **Nur auf der CPU ist es deutlich
-langsamer** – je nach CPU/Modell von einigen zehn Sekunden bis zu mehreren
+langsamer**, je nach CPU/Modell von einigen zehn Sekunden bis zu mehreren
 Minuten pro Antwort, weil die volle Pipeline (Embedding → Retrieval → Reranker →
 LLM → optionaler Faithfulness-Check) rein auf der CPU läuft. Kleineres Modell +
 `ENABLE_FAITHFULNESS_CHECK = false` beschleunigen spürbar. Details:
@@ -194,7 +194,7 @@ python -m ragapp.scripts.cli recommend --model qwen2.5:7b-instruct --set
 z. B. `qwen2.5:3b-instruct` / `gemma3:4b` (klein/schnell),
 `qwen2.5:7b-instruct` (mittel) oder `gemma3:12b` (groß). In der **Streamlit-
 Oberfläche** gibt es zusätzlich einen **Modell-Picker** auf der
-Einstellungen-Seite – dort lässt sich das Modell ohne CLI wechseln.
+Einstellungen-Seite, dort lässt sich das Modell ohne CLI wechseln.
 
 Lizenzen der Modelle: siehe [NOTICE.md](NOTICE.md).
 
@@ -220,10 +220,10 @@ Lizenzen der Modelle: siehe [NOTICE.md](NOTICE.md).
    python -m ragapp.scripts.cli ingest --dir ./Zusammenfassungen
    ```
 
-   Der Import ist **resumierbar** – bereits eingelesene, unveränderte Dateien
+   Der Import ist **resumierbar**: Bereits eingelesene, unveränderte Dateien
    werden übersprungen. Alternativ per Doppelklick: `Dokumente_importieren.bat`.
 
-3. **Fragen stellen** – über die Oberfläche (`Start.bat` / `start.sh`) oder per CLI:
+3. **Fragen stellen**, über die Oberfläche (`Start.bat` / `start.sh`) oder per CLI:
 
    ```bash
    python -m ragapp.scripts.cli ask "Was ist ein Deckungsbeitrag?"
@@ -276,8 +276,8 @@ Ausführliche Erklärung: [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md).
 │  ├─ scripts/cli.py           #   CLI: ingest, watch, gold, eval, ask, recommend, doctor …
 │  └─ ui/Home.py               #   Streamlit-Chat-Oberfläche
 ├─ docs/                       # Dokumentation (siehe unten)
-├─ Zusammenfassungen/          # DEINE Dokumente (lokal, nicht im Repo) – nur .gitkeep
-├─ data/                       # Lokal erzeugte Daten (Index/DB/Logs) – nicht im Repo
+├─ Zusammenfassungen/          # DEINE Dokumente (lokal, nicht im Repo), nur .gitkeep
+├─ data/                       # Lokal erzeugte Daten (Index/DB/Logs), nicht im Repo
 ├─ .streamlit/config.toml      # Streamlit-Konfiguration
 ├─ install.ps1 / install.sh    # One-Click-Installer (Windows / Linux/macOS)
 ├─ Start.bat / start.sh        # Starter für die Oberfläche
@@ -319,7 +319,7 @@ Verantwortung dafür: [NOTICE.md](NOTICE.md).
 
 ## 📄 Lizenz
 
-Der **Code** steht unter der **MIT-Lizenz** – siehe [`LICENSE`](LICENSE).
+Der **Code** steht unter der **MIT-Lizenz**, siehe [`LICENSE`](LICENSE).
 Die **Modelle** haben **eigene Lizenzen** (Gemma Terms, Qwen/Apache-2.0, bge-m3
-MIT) und werden über Ollama bzw. Hugging Face geladen – für deren Einhaltung bist
+MIT) und werden über Ollama bzw. Hugging Face geladen, für deren Einhaltung bist
 du selbst verantwortlich. Details: [NOTICE.md](NOTICE.md).

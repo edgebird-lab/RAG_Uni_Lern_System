@@ -1,11 +1,11 @@
 # ============================================================================
-#  RAG-Lernsystem – .gitignore
+#  RAG-Lernsystem: .gitignore
 #  Ziel: Der öffentliche Repo enthält NUR Code, Anleitungen und Starter.
 #  KEINE persönlichen Unterlagen, KEINE lokal erzeugten Indizes/Modelle.
 # ============================================================================
 
 # ---------------------------------------------------------------------------
-# PERSÖNLICHE DOKUMENTE — DÜRFEN NIEMALS INS ÖFFENTLICHE REPO!
+# PERSÖNLICHE DOKUMENTE: DÜRFEN NIEMALS INS ÖFFENTLICHE REPO!
 # Das sind deine eigenen Klausur-/Kursunterlagen. Sie bleiben ausschließlich
 # lokal auf deinem Rechner. Andere Nutzer legen ihre eigenen Unterlagen an.
 # ---------------------------------------------------------------------------
@@ -17,18 +17,18 @@ Zusammenfassungen/*
 docs/Lernkatalog_*.md
 
 # ---------------------------------------------------------------------------
-# Lokal erzeugte Daten (Index, Datenbank, Logs) — nicht versionieren
+# Lokal erzeugte Daten (Index, Datenbank, Logs), nicht versionieren
 # ---------------------------------------------------------------------------
 data/
 
 # ---------------------------------------------------------------------------
-# GPU-Laufzeit für Intel (IPEX-LLM) — wird vom Installer geladen (~108 MB)
+# GPU-Laufzeit für Intel (IPEX-LLM), wird vom Installer geladen (~108 MB)
 # ---------------------------------------------------------------------------
 ipex-ollama/
 *.zip
 
 # ---------------------------------------------------------------------------
-# Gebaute Setup.exe (Inno-Setup-Ausgabe) — gehört als GitHub-Release-Asset
+# Gebaute Setup.exe (Inno-Setup-Ausgabe), gehört als GitHub-Release-Asset
 # dazu, NICHT ins Repo (bläht die Historie mit Binärdaten auf).
 # Das Build-Skript setup.iss bleibt versioniert.
 # ---------------------------------------------------------------------------
@@ -46,7 +46,7 @@ venv/
 .cache/
 
 # ---------------------------------------------------------------------------
-# Streamlit – nutzerspezifische Zugangsdaten ausschließen,
+# Streamlit: nutzerspezifische Zugangsdaten ausschließen,
 # gemeinsame Konfiguration (.streamlit/config.toml) im Repo behalten.
 # ---------------------------------------------------------------------------
 .streamlit/credentials.toml

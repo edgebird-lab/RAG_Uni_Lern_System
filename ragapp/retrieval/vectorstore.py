@@ -28,7 +28,7 @@ _CHROMA_META_TYPES = (str, int, float, bool)
 
 
 def _sanitize_meta(meta: dict) -> dict:
-    """Chroma erlaubt nur str/int/float/bool – None/Listen werden konvertiert."""
+    """Chroma erlaubt nur str/int/float/bool, None/Listen werden konvertiert."""
     clean: dict[str, Any] = {}
     for k, v in meta.items():
         if v is None:

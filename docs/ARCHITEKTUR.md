@@ -87,7 +87,7 @@ Der Reranker (`BAAI/bge-reranker-v2-m3`) läuft über `sentence-transformers`.
   gebaut (nicht pro Datei).
 - Reihenfolge beim Ordner-Import ist priorisiert: Dateien mit Namensbestandteilen
   wie *zusammenfassung/kompakt/spickzettel/klausur* zuerst, dann kleinere vor
-  größeren – so ist früh viel wichtiges Material verfügbar.
+  größeren, so ist früh viel wichtiges Material verfügbar.
 - `ingestion/watcher.py` (via `cli watch`) überwacht Quell- und Inbox-Ordner mit
   `watchdog` und einem Debounce von 3 s (damit kein halb geschriebenes PDF
   gelesen wird).
@@ -131,7 +131,7 @@ Der Reranker (`BAAI/bge-reranker-v2-m3`) läuft über `sentence-transformers`.
 ```
 
 > **Hinweis zur Reihenfolge:** Der Near-Duplicate-Filter (D) läuft im Code
-> **vor** dem Reranker (E) – er arbeitet günstig auf den ~20 fusionierten
+> **vor** dem Reranker (E). Er arbeitet günstig auf den ~20 fusionierten
 > Kandidaten, nicht auf dem ganzen Index. Der Reranker sortiert anschließend die
 > bereinigte Kandidatenliste final.
 
@@ -186,7 +186,7 @@ gegenseitig ausgleichen und die Trefferquote so maximiert wird:
    (Standard 25). BM25 indexiert nur Chunks (keine Fragen).
 
 3. **Reciprocal Rank Fusion (RRF).** Vereint beide Ranglisten **rangbasiert**,
-   nicht scorebasiert – dadurch entfallen Skalierungsprobleme zwischen
+   nicht scorebasiert. Dadurch entfallen Skalierungsprobleme zwischen
    Kosinus-Ähnlichkeit und BM25-Scores. Formel:
 
    ```
@@ -209,7 +209,7 @@ gegenseitig ausgleichen und die Trefferquote so maximiert wird:
    Kandidat verworfen. Ergebnis: keine doppelten Informationen im Kontext des LLM.
 
 5. **Cross-Encoder-Rerank (`bge-reranker-v2-m3`).** Bewertet jedes
-   (Frage, Chunk)-Paar **gemeinsam** in einem Modelldurchlauf – deutlich feiner
+   (Frage, Chunk)-Paar **gemeinsam** in einem Modelldurchlauf, deutlich feiner
    als reine Vektordistanz. Das ist einer der stärksten Hebel für die
    Trefferquote. Ergebnis: die Top `FINAL_TOP_K` (Standard 6) Chunks gehen in die
    Antwortgenerierung. Kann das Modell nicht geladen werden, fällt das System auf
@@ -217,7 +217,7 @@ gegenseitig ausgleichen und die Trefferquote so maximiert wird:
 
 ---
 
-## 6. Fragen-Indexierung – die CPU-Designentscheidung (ehrlich)
+## 6. Fragen-Indexierung: die CPU-Designentscheidung (ehrlich)
 
 Die Idee (Hypothetical Questions / Multi-Representation-Indexing): Nutzer stellen
 **Fragen**, doch im Index liegt **Lehrtext**. Im Embedding-Raum liegt eine
@@ -273,17 +273,17 @@ zu machen. Details zum Abwägen siehe [TUNING.md](TUNING.md).
 
 **Knoten (`rag_graph.py`):**
 
-- **`retrieve_node`** – ruft die Hybrid-Pipeline auf. Berechnet `relevance_ok`:
+- **`retrieve_node`**: ruft die Hybrid-Pipeline auf. Berechnet `relevance_ok`:
   wahr, wenn Kandidaten vorhanden sind **und** der beste `rerank_score` ≥
   `RELEVANCE_MIN_SCORE` (Standard −2.0) ist. Andernfalls Routing zum Fallback
   (Relevanz-Gate).
-- **`generate_node`** – baut aus den Kandidaten den nummerierten Kontext (bis
+- **`generate_node`**: baut aus den Kandidaten den nummerierten Kontext (bis
   `MAX_CONTEXT_CHARS`, Standard 7000 Zeichen) und lässt `gemma4:e4b` mit
   `ANSWER_SYSTEM`/`ANSWER_PROMPT` **nur aus dem Kontext** antworten.
-- **`faithfulness_node`** – lässt das LLM prüfen, ob die Antwort vollständig durch
+- **`faithfulness_node`**: lässt das LLM prüfen, ob die Antwort vollständig durch
   den Kontext gedeckt ist (`FAITHFULNESS_PROMPT`, JSON `{"grounded": …}`). Ist
   `ENABLE_FAITHFULNESS_CHECK=False`, wird der Check übersprungen (immer grounded).
-- **`fallback_node`** – der ehrliche Ausweg: keine erfundene Antwort, sondern ein
+- **`fallback_node`**, der ehrliche Ausweg: keine erfundene Antwort, sondern ein
   Hinweis + Liste der am besten passenden Dokumente/Stellen (bzw. die Info, dass
   gar nichts Passendes gefunden wurde).
 
@@ -322,7 +322,7 @@ Mehrere Sicherungen greifen ineinander:
 
 > Hinweis: `prompts.py` enthält zusätzlich einen `GRADE_PROMPT` (LLM-basierte
 > Relevanzbewertung als Backup). Er ist als Baustein vorhanden, wird im aktuellen
-> Graphen aber **nicht** aktiv aufgerufen – das Relevanz-Gate arbeitet
+> Graphen aber **nicht** aktiv aufgerufen. Das Relevanz-Gate arbeitet
 > score-basiert über `RELEVANCE_MIN_SCORE`.
 
 ---
@@ -339,7 +339,7 @@ Metadatenfeld `type`:
 | `id`           | `<doc_id>::c<index>`                       | `<chunk_id>::q<n>` bzw. `::eq<n>` (enrich) |
 | `document`     | Chunk-Text                                | generierte Frage                         |
 | Embedding      | L2-normalisiert, 1024-dim (`bge-m3`)      | L2-normalisiert, 1024-dim                |
-| `parent_id`    | –                                         | ID des zugehörigen Chunks                |
+| `parent_id`    | entfällt                                         | ID des zugehörigen Chunks                |
 | weitere Meta   | `doc_id`, `subject`, `filename`, `source_path`, `filetype`, `location`, `header_path`/`page`, `chunk_index` | erbt Chunk-Metadaten + `type`, `parent_id` |
 
 Bei der Suche werden Frage-Treffer über `parent_id` auf ihren Chunk

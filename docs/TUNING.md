@@ -1,17 +1,17 @@
-# Tuning – Trefferquote verbessern & nachjustieren
+# Tuning: Trefferquote verbessern & nachjustieren
 
 Alle Stellschrauben stecken in der `Settings`-Dataclass in `ragapp/config.py`.
 Standardwerte sind auf **maximale Trefferquote für deutschsprachige
 Klausur-Zusammenfassungen** ausgelegt. Änderungen wirken über
 **Laufzeit-Overrides**: Werte in `data/config.json` überschreiben die
-Standardwerte – genau das speichert die **Einstellungen-Seite** der UI, ohne den
+Standardwerte, genau das speichert die **Einstellungen-Seite** der UI, ohne den
 Code anzufassen (`Settings.save()`). Der Reiz: nach einer Evaluation gezielt
 **einen** Parameter ändern und erneut messen.
 
 > **Wichtig:** Parameter, die den **Index** betreffen (Chunking, Embedding-Modell,
 > Fragen-Indexierung), wirken erst nach **Neu-Ingestion** bzw. Anreicherung.
 > Parameter, die nur die **Suche** betreffen (Top-K, RRF, Reranker, Relevanz,
-> Retrieval-Dedup), wirken **sofort** bei der nächsten Frage – ideal zum schnellen
+> Retrieval-Dedup), wirken **sofort** bei der nächsten Frage, ideal zum schnellen
 > Experimentieren.
 
 ---
@@ -31,7 +31,7 @@ Code anzufassen (`Settings.save()`). Der Reiz: nach einer Evaluation gezielt
 | `LLM_NUM_CTX` | `8192` | Kontextfenster des LLM (Token). |
 | `LLM_TIMEOUT` | `600` | Zeitbudget (s) für LLM-Läufe auf langsamer CPU. |
 
-### Chunking (Slicing) — **Index-relevant, Neu-Ingestion nötig**
+### Chunking (Slicing): **Index-relevant, Neu-Ingestion nötig**
 
 | Parameter | Standard | Wirkung |
 | --------- | -------- | ------- |
@@ -60,7 +60,7 @@ Code anzufassen (`Settings.save()`). Der Reiz: nach einer Evaluation gezielt
 | `RETRIEVAL_DEDUP` | `True` | Near-Duplicate-Filter zur Query-Zeit an/aus. |
 | `RETRIEVAL_DEDUP_JACCARD` | `0.82` | Token-Jaccard-Schwelle. Kandidaten mit Ähnlichkeit ≥ Wert gelten als Dublette; der niedriger platzierte fliegt raus. Niedriger = aggressiver entdoppeln. **Sofort wirksam.** |
 
-### Retrieval (Hybrid: dense + BM25 → RRF → Rerank) — **sofort wirksam**
+### Retrieval (Hybrid: dense + BM25 → RRF → Rerank): **sofort wirksam**
 
 | Parameter | Standard | Wirkung |
 | --------- | -------- | ------- |
@@ -98,11 +98,11 @@ Code anzufassen (`Settings.save()`). Der Reiz: nach einer Evaluation gezielt
 
 ---
 
-## 2. Welche Stellschraube beeinflusst die Trefferquote – und wie?
+## 2. Welche Stellschraube beeinflusst die Trefferquote, und wie?
 
 - **`CHUNK_SIZE` / `CHUNK_OVERLAP`** (Index): der grundlegendste Hebel. Zu große
   Chunks vermischen mehrere Themen (unscharfe Treffer), zu kleine zerreißen
-  Zusammenhänge. Für dichte Zusammenfassungen sind mittlere Chunks (~1000–1200
+  Zusammenhänge. Für dichte Zusammenfassungen sind mittlere Chunks (~1000 bis 1200
   Zeichen) mit moderatem Overlap ein guter Startpunkt. **Neu-Ingestion nötig.**
 - **`DENSE_TOP_K` / `BM25_TOP_K`** (Recall): mehr Kandidaten = höhere Chance, die
   richtige Stelle überhaupt einzufangen. Kostet Tempo, aber die richtige Quelle
@@ -134,7 +134,7 @@ Code anzufassen (`Settings.save()`). Der Reiz: nach einer Evaluation gezielt
 
 ## 3. Empfohlener Tuning-Workflow
 
-Immer **datenbasiert** und **eine Änderung nach der anderen** – sonst weißt du
+Immer **datenbasiert** und **eine Änderung nach der anderen**, sonst weißt du
 nicht, was gewirkt hat:
 
 1. **Gold-Set erzeugen** (einmalig bzw. nach größeren Index-Änderungen):
@@ -151,7 +151,7 @@ nicht, was gewirkt hat:
 
    → notiert Hit@1/3/5/10 und MRR, speichert Report + `history.jsonl`.
 
-3. **Genau einen Parameter ändern** – am bequemsten auf der **Einstellungen-Seite**
+3. **Genau einen Parameter ändern**, am bequemsten auf der **Einstellungen-Seite**
    (schreibt nach `data/config.json`) oder direkt in dieser Datei. Beispiel:
    `FUSION_TOP_K` von 20 auf 30, oder `USE_RERANKER` testweise aus.
 
@@ -174,7 +174,7 @@ nicht, was gewirkt hat:
 
 - **Mehr Fragen-Anreicherung:** `enrich --limit` schrittweise erhöhen (ggf. pro
   Fach mit `--subject`). Ideal für die wichtigsten Zusammenfassungen. Danach
-  messen – der Effekt ist bei Verständnisfragen am größten.
+  messen. Der Effekt ist bei Verständnisfragen am größten.
 - **Anderes Embedding-Modell:** `EMBED_MODEL` austauschen (muss über Ollama
   verfügbar sein). Achtung: erfordert **komplette Neu-Ingestion**, da alle Vektoren
   neu berechnet werden, und ändert ggf. `EMBED_DIM`.
