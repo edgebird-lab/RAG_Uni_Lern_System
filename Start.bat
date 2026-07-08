@@ -1,60 +1,17 @@
 @echo off
 REM ============================================================
-REM  RAG-Lernsystem - Kombi-Starter (Windows)
-REM  - Intel-Variante (ipex-ollama\ollama.exe vorhanden):
-REM      startet den IPEX-GPU-Server (Start_GPU_Ollama.bat) in
-REM      eigenem Fenster, wartet auf Port 11434, dann Oberflaeche.
-REM  - Sonst (NVIDIA/AMD/CPU): startet bei Bedarf den Standard-Ollama-Server
-REM      (NVIDIA nutzt CUDA, AMD ROCm automatisch), dann die Oberflaeche.
+REM  RAG-Lernsystem - Starter (Windows)
+REM  Startet das lokale KI-Modell (Ollama, GPU wenn moeglich) UND
+REM  die Oberflaeche als eigenes App-Fenster. Beides wird von
+REM  ragapp.desktop verwaltet und beim Schliessen des Fensters bzw.
+REM  ueber den "Beenden"-Button wieder sauber gestoppt - es laeuft
+REM  danach NICHTS mehr im Hintergrund weiter.
 REM  Nutzt %~dp0 -> voll portabel (kein hartkodierter Pfad).
 REM ============================================================
 setlocal
 cd /d "%~dp0"
 set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8
-
-if not exist "%~dp0ipex-ollama\ollama.exe" goto start_ui
-
-echo [Intel-GPU erkannt] IPEX-Ollama-Server (GPU) wird gestartet.
-REM Alte Ollama-Instanzen beenden, damit garantiert der GPU-Server laeuft
-REM (und nicht versehentlich eine CPU-Ollama-App auf Port 11434).
-taskkill /F /IM "ollama.exe" >nul 2>&1
-taskkill /F /IM "ollama app.exe" >nul 2>&1
-timeout /t 1 >nul
-echo Starte IPEX-Ollama-Server in eigenem Fenster ...
-start "IPEX-Ollama (GPU) - NICHT schliessen" "%~dp0Start_GPU_Ollama.bat"
-echo Warte, bis der GPU-Server bereit ist (Port 11434) ...
-powershell -NoProfile -Command "for($t=0; $t -lt 90; $t++){ $c=New-Object Net.Sockets.TcpClient; try { $c.Connect('127.0.0.1',11434); exit 0 } catch { Start-Sleep -Milliseconds 1000 } finally { $c.Close() } }; exit 1"
-if not errorlevel 1 goto gpu_ready
-echo [!] GPU-Server nicht erreichbar geworden - starte Oberflaeche trotzdem.
-echo     Antworten laufen dann ggf. auf der CPU.
-goto start_ui
-
-:gpu_ready
-echo    -^> GPU-Server bereit.
-
-:start_ui
-if exist "%~dp0ipex-ollama\ollama.exe" goto launch_ui
-REM --- Standard-Ollama (NVIDIA/AMD/CPU): sicherstellen, dass der Server laeuft ---
-powershell -NoProfile -Command "$c=New-Object Net.Sockets.TcpClient; try{ $c.Connect('127.0.0.1',11434); exit 0 } catch { exit 1 } finally { $c.Close() }"
-if not errorlevel 1 goto ollama_ok
-where ollama >nul 2>&1
-if errorlevel 1 goto ollama_missing
-echo [Standard-Ollama] Starte Ollama-Server ...
-start "Ollama-Server - NICHT schliessen" ollama serve
-echo Warte, bis Ollama bereit ist (Port 11434) ...
-powershell -NoProfile -Command "for($t=0; $t -lt 30; $t++){ $c=New-Object Net.Sockets.TcpClient; try { $c.Connect('127.0.0.1',11434); exit 0 } catch { Start-Sleep -Milliseconds 1000 } finally { $c.Close() } }; exit 1"
-if errorlevel 1 echo [!] Ollama nicht erreichbar - Oberflaeche startet trotzdem.
-goto launch_ui
-
-:ollama_ok
-echo [Standard-Ollama] Server laeuft bereits (NVIDIA/AMD nutzt die GPU automatisch).
-goto launch_ui
-
-:ollama_missing
-echo [!] 'ollama' wurde nicht gefunden. Bitte zuerst Installieren.bat ausfuehren.
-
-:launch_ui
-echo Starte Oberflaeche als App-Fenster (kein Browser-Tab) ...
+echo Starte RAG-Lernsystem (KI-Modell + Oberflaeche) ...
 ".venv\Scripts\python.exe" -m ragapp.desktop
 pause

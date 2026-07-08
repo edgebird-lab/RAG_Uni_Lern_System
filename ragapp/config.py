@@ -50,6 +50,7 @@ EVAL_DIR = DATA_DIR / "eval"                            # Evaluationsergebnisse
 LOG_DIR = DATA_DIR / "logs"                             # Query-/Ingestion-Logs
 MANIFEST_DB = DATA_DIR / "manifest.db"                  # SQLite: Dedup + Registry
 RUNTIME_CONFIG_FILE = DATA_DIR / "config.json"          # Laufzeit-Overrides
+SHUTDOWN_SENTINEL = DATA_DIR / ".shutdown"              # Signal zum sauberen Beenden (Beenden-Button -> Starter)
 
 for _p in (DATA_DIR, CHROMA_DIR, BM25_DIR, EVAL_DIR, LOG_DIR, INBOX_DIR):
     _p.mkdir(parents=True, exist_ok=True)
@@ -171,6 +172,15 @@ class Settings:
     # Chroma-Collections
     # ------------------------------------------------------------------ #
     COLLECTION_NAME: str = "zusammenfassungen"
+
+    # ------------------------------------------------------------------ #
+    # Handy-/Netzwerk-Zugriff (App vom Smartphone/Tablet nutzen)
+    # ------------------------------------------------------------------ #
+    # PIN, der beim Zugriff über das Netzwerk (Start_Handy-Zugriff.bat)
+    # abgefragt wird. Leer = kein PIN gesetzt -> der Netzwerkmodus verweigert
+    # den Zugriff, bis in den Einstellungen ein PIN gesetzt wurde. Im normalen
+    # lokalen Betrieb (Start.bat) spielt der Wert keine Rolle.
+    UI_ACCESS_PIN: str = ""
 
     # ------------------------------------------------------------------ #
     # Laden / Speichern von Laufzeit-Overrides

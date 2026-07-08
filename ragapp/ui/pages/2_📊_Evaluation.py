@@ -28,6 +28,9 @@ from ragapp.eval.run_eval import run_retrieval_eval, load_history
 
 st.set_page_config(page_title="Evaluation: Trefferquote", page_icon="📊", layout="wide")
 
+from ragapp.ui._auth import require_pin
+require_pin()
+
 # --------------------------------------------------------------------------- #
 # Styling ("schick"), identisch zur Startseite
 # --------------------------------------------------------------------------- #

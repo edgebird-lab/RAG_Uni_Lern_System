@@ -26,6 +26,9 @@ from ragapp.ingestion.enrich import enrich_questions
 
 st.set_page_config(page_title="Dokumente & Ingestion", page_icon="📥", layout="wide")
 
+from ragapp.ui._auth import require_pin
+require_pin()
+
 # --------------------------------------------------------------------------- #
 # Styling ("schick"), identisch zur Startseite
 # --------------------------------------------------------------------------- #

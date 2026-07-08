@@ -114,25 +114,37 @@ function Wait-Port {
 # --------------------------------------------------------------------------- #
 # 1) Python 3.10+ suchen
 # --------------------------------------------------------------------------- #
+function Get-PyVer {
+    # Fragt die Python-Version ab, ohne blockieren zu koennen: die leere Eingabe
+    # ('' |) liefert dem Prozess sofort EOF, sodass kein interaktiver Prompt
+    # (z. B. des py-Launchers bei fehlender Version) haengen bleibt. Gibt z. B.
+    # "3.12.10" zurueck oder $null.
+    param([string]$Exe, [string[]]$VArgs = @())
+    try {
+        $out = '' | & $Exe @VArgs -c 'import platform;print(platform.python_version())' 2>$null
+        if ($LASTEXITCODE -eq 0 -and $out) { return ("$(@($out)[0])").Trim() }
+        return $null
+    } catch {
+        return $null
+    }
+}
+
 function Get-BootstrapPython {
-    # Kandidaten als leerzeichen-getrennte Strings (NICHT als verschachtelte
-    # Arrays): @( ,@('py','-3.13'), ... ) verschachtelt sich in PowerShell falsch,
-    # sodass $t[0] teils selbst ein Array wird. Dann ist $py.Exe ein Object[] und
-    # spaeter scheitert 'Invoke-Native -File $py.Exe' an der String-Transformation
-    # (tritt nur auf einem frischen PC ohne .venv auf, weil sonst Schritt 3 uebersprungen wird).
-    $tries = @('py -3.13','py -3.12','py -3.11','py -3.10','python','python3','py -3')
-    foreach ($spec in $tries) {
+    # Kandidaten: py-Launcher (neuestes installiertes 3.x), dann python/python3
+    # vom PATH. BEWUSST keine Abfrage einzelner Minor-Versionen (py -3.13 usw.):
+    # fehlt so eine Version, kann der py-Launcher haengen oder nachfragen. 'py -3'
+    # liefert ohnehin das neueste installierte Python 3. Die Abfrage selbst ist
+    # ueber Get-PyVer timeout-geschuetzt und kann daher nie blockieren.
+    foreach ($spec in @('py -3', 'python', 'python3', 'py')) {
         $parts = $spec.Split(' ')
         $exe   = $parts[0]
         $rest  = if ($parts.Count -gt 1) { $parts[1..($parts.Count - 1)] } else { @() }
         if (-not (Get-Command $exe -ErrorAction SilentlyContinue)) { continue }
-        $ver = ''
-        try { $ver = (& $exe @rest -c "import sys;print('%d.%d'%sys.version_info[:2])" 2>$null) }
-        catch { continue }
+        $ver = Get-PyVer -Exe $exe -VArgs $rest
         if (-not $ver) { continue }
-        $p = "$ver".Trim().Split('.')
+        $p = $ver.Split('.')
         if ($p.Count -lt 2) { continue }
-        $maj = [int]$p[0]; $min = [int]$p[1]
+        try { $maj = [int]$p[0]; $min = [int]$p[1] } catch { continue }
         if ($maj -gt 3 -or ($maj -eq 3 -and $min -ge 10)) {
             return [pscustomobject]@{ Exe = "$exe"; Args = [string[]]$rest; Version = "$maj.$min" }
         }

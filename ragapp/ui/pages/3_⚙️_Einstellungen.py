@@ -30,6 +30,9 @@ from ragapp.hardware import (
 
 st.set_page_config(page_title="Einstellungen (Tuning)", page_icon="⚙️", layout="wide")
 
+from ragapp.ui._auth import require_pin
+require_pin()
+
 # --------------------------------------------------------------------------- #
 # Styling ("schick"), identisch zur Startseite
 # --------------------------------------------------------------------------- #
@@ -276,6 +279,69 @@ if hw:
             m3.metric("Kalt-Antwort", f"{ergebnis.get('cold_s', '?')} s",
                       help="Erste Antwort inkl. Laden ins GPU-/CPU-RAM.")
             st.info(f"**Einschätzung:** {ergebnis.get('verdict', '')}")
+
+st.divider()
+
+# --------------------------------------------------------------------------- #
+# Handy-/Tablet-Zugriff (Netzwerk)
+# --------------------------------------------------------------------------- #
+from ragapp import netinfo
+
+st.header("📱 Handy-/Tablet-Zugriff")
+st.markdown(
+    "<span class='small'>Nutze die App vom Handy oder Tablet, solange dieser PC "
+    "läuft. Zum Schutz deiner Unterlagen ist ein <b>PIN</b> nötig.</span>",
+    unsafe_allow_html=True,
+)
+
+_pc1, _pc2 = st.columns([3, 1])
+with _pc1:
+    _neuer_pin = st.text_input(
+        "PIN für den Netzwerk-Zugriff", value=str(settings.UI_ACCESS_PIN or ""),
+        type="password",
+        help="Diesen PIN gibst du am Handy einmal ein. Leer = kein Zugriff im "
+             "Netzwerkmodus.")
+with _pc2:
+    st.markdown("<div style='height:1.8rem'></div>", unsafe_allow_html=True)
+    if st.button("💾 PIN speichern", use_container_width=True):
+        settings.update(UI_ACCESS_PIN=_neuer_pin.strip())
+        settings.save()
+        st.success("PIN gespeichert." if _neuer_pin.strip()
+                   else "PIN geleert. Im Netzwerkmodus ist dann kein Zugriff möglich.")
+
+if netinfo.is_network_mode():
+    st.success("✅ Netzwerk-Zugriff ist **aktiv** (über Start_Handy-Zugriff.bat gestartet).")
+    _ziele = netinfo.access_targets()
+    if not _ziele:
+        st.warning("Keine Netzwerk-Adresse gefunden. Ist der PC mit dem WLAN verbunden?")
+    _cols = st.columns(max(1, len(_ziele)))
+    for _c, _z in zip(_cols, _ziele):
+        with _c:
+            st.markdown(f"**{_z['label']}**")
+            st.markdown(f"[{_z['url']}]({_z['url']})")
+            _png = netinfo.qr_png_bytes(_z["url"])
+            if _png:
+                st.image(_png, width=200, caption="Mit dem Handy scannen")
+            else:
+                st.caption("(QR-Code nicht verfügbar, Adresse oben im Handy-Browser eingeben.)")
+    if not any(_z["kind"] == "tailscale" for _z in _ziele):
+        st.info(
+            "**Auch von unterwegs?** Installiere **Tailscale** auf PC und Handy "
+            "(kostenlos, tailscale.com) und melde beide mit demselben Konto an. "
+            "Dann erscheint hier automatisch eine zweite Adresse für den Zugriff "
+            "von überall.")
+else:
+    st.info(
+        "Der Netzwerk-Zugriff ist gerade **aus**. Zum Aktivieren die App über "
+        "**Start_Handy-Zugriff.bat** starten (statt Start.bat). Dann erscheinen "
+        "hier Adresse + QR-Code.")
+    if not str(settings.UI_ACCESS_PIN or "").strip():
+        st.warning("⚠️ Es ist noch kein PIN gesetzt. Setze oben zuerst einen PIN.")
+
+st.caption(
+    "Hinweis: Beim ersten Start im Netzwerkmodus fragt die **Windows-Firewall**, "
+    "ob Port 8501 erlaubt sein soll. Dann einmal auf **Zulassen** klicken "
+    "(privates Netzwerk).")
 
 st.divider()
 

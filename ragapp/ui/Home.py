@@ -28,6 +28,10 @@ _PAGE_ICON = str(_icon_png) if _icon_png.is_file() else "🎓"
 
 st.set_page_config(page_title="RAG-Lernsystem", page_icon=_PAGE_ICON, layout="wide")
 
+# Netzwerk-/Handy-Zugriff: PIN-Sperre (nur im Netzwerkmodus aktiv, sonst wirkungslos)
+from ragapp.ui._auth import require_pin
+require_pin()
+
 # Motivierende Sprüche für den Denk-/Lademoment (rotieren zufällig)
 _LERN_SPRUECHE = [
     "Dranbleiben lohnt sich. Jede Frage bringt dich der Bestnote näher.",
