@@ -32,7 +32,14 @@ param(
     [switch]$CpuOnly
 )
 
-$ErrorActionPreference = 'Stop'
+# WICHTIG: 'Continue', NICHT 'Stop'. Unter Windows PowerShell 5.1 macht 'Stop'
+# aus JEDER stderr-Ausgabe eines nativen Programms (python, pip, py-Launcher)
+# einen terminierenden Fehler - sogar trotz '2>$null'. Das liess die harmlose
+# Pruefung 'python -c "import torch"' (torch noch nicht da -> ImportError auf
+# stderr) die komplette Installation mit "Traceback ..." abbrechen. Echte Fehler
+# fangen wir gezielt ab: Invoke-Native prueft Exit-Codes, kritische Cmdlets
+# nutzen -ErrorAction Stop, dazu die expliziten throws im Hauptablauf.
+$ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'   # spuerbar schnellere Invoke-WebRequest-Downloads
 
 # --------------------------------------------------------------------------- #
@@ -255,12 +262,12 @@ try {
             if (-not (Test-Path -LiteralPath $IpexZip)) {
                 Write-Info "Lade IPEX-LLM Ollama Portable Zip (~108 MB) herunter ..."
                 Write-Info $IpexUrl
-                Invoke-WebRequest -Uri $IpexUrl -OutFile $IpexZip -UseBasicParsing
+                Invoke-WebRequest -Uri $IpexUrl -OutFile $IpexZip -UseBasicParsing -ErrorAction Stop
             } else {
                 Write-Info "IPEX-Zip bereits vorhanden - wird wiederverwendet."
             }
             Write-Info "Entpacke IPEX-LLM ..."
-            Expand-Archive -LiteralPath $IpexZip -DestinationPath $Root -Force
+            Expand-Archive -LiteralPath $IpexZip -DestinationPath $Root -Force -ErrorAction Stop
             # Das Zip entpackt in einen Unterordner (ollama-ipex-llm-...-win).
             # Inhalt nach .\ipex-ollama\ normalisieren, damit Start_GPU_Ollama.bat passt.
             if (-not (Test-Path -LiteralPath $IpexExe)) {
@@ -309,7 +316,20 @@ try {
         # ---------------- NVIDIA / AMD / keine: Standard-Ollama ------------- #
         $ollama = Resolve-OllamaExe
         if (-not $ollama) {
-            Write-Warn2 "Ollama ist nicht installiert."
+            Write-Warn2 "Ollama ist nicht installiert - versuche automatische Installation via winget ..."
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                try {
+                    & winget install --id Ollama.Ollama -e --silent `
+                        --accept-source-agreements --accept-package-agreements 2>&1 | Out-Null
+                    $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' +
+                                [System.Environment]::GetEnvironmentVariable('Path','User')
+                    Write-Ok "Ollama via winget installiert."
+                } catch { Write-Warn2 "Automatische Ollama-Installation fehlgeschlagen: $($_.Exception.Message)" }
+                $ollama = Resolve-OllamaExe
+            }
+        }
+        if (-not $ollama) {
+            Write-Warn2 "Ollama konnte nicht automatisch installiert werden."
             Write-Info  "Es oeffnet sich die Download-Seite. Bitte den Windows-Installer ausfuehren."
             try { Start-Process 'https://ollama.com/download' } catch { Write-Info "https://ollama.com/download" }
             Read-Host  "    -> Nach der Ollama-Installation hier ENTER druecken"
