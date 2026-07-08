@@ -331,3 +331,24 @@ def remove_document(doc_id: str) -> None:
     get_vectorstore().delete_by_doc(doc_id)
     manifest.delete_document(doc_id)
     rebuild_bm25_from_store()
+
+
+def remove_questions(doc_id: str | None = None, subject: str | None = None) -> None:
+    """Entfernt generierte Fragen selektiv - Dokumente und Chunks bleiben erhalten.
+
+    - ``doc_id`` gesetzt   -> nur die Fragen dieses Dokuments,
+    - ``subject`` gesetzt  -> alle Fragen dieses Fachs,
+    - beides ``None``      -> alle Fragen im Index.
+
+    Der BM25-Index bleibt unberührt (er enthält nur Chunks, keine Fragen).
+    """
+    vs = get_vectorstore()
+    if doc_id:
+        vs.delete_questions_by_doc(doc_id)
+        manifest.set_num_questions(doc_id, 0)
+    elif subject:
+        vs.delete_questions_by_subject(subject)
+        manifest.clear_questions(subject=subject)
+    else:
+        vs.delete_all_questions()
+        manifest.clear_questions()

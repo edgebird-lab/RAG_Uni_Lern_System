@@ -112,6 +112,16 @@ class VectorStore:
     def delete_by_doc(self, doc_id: str) -> None:
         self._col.delete(where={"doc_id": doc_id})
 
+    def delete_questions_by_doc(self, doc_id: str) -> None:
+        """Loescht nur die generierten Fragen eines Dokuments (Chunks bleiben)."""
+        self._col.delete(where={"$and": [{"doc_id": doc_id}, {"type": "question"}]})
+
+    def delete_questions_by_subject(self, subject: str) -> None:
+        self._col.delete(where={"$and": [{"subject": subject}, {"type": "question"}]})
+
+    def delete_all_questions(self) -> None:
+        self._col.delete(where={"type": "question"})
+
     def count(self) -> int:
         return self._col.count()
 

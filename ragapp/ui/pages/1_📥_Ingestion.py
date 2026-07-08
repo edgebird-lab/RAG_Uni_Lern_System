@@ -21,7 +21,9 @@ import streamlit as st
 
 from ragapp.config import settings, INBOX_DIR, SOURCE_DIR, SUBJECT_LABELS
 from ragapp import manifest
-from ragapp.ingestion.pipeline import ingest_file, ingest_directory, remove_document
+from ragapp.ingestion.pipeline import (
+    ingest_file, ingest_directory, remove_document, remove_questions,
+)
 from ragapp.ingestion.enrich import enrich_questions
 
 st.set_page_config(page_title="Dokumente & Ingestion", page_icon="📥", layout="wide")
@@ -271,21 +273,69 @@ else:
     st.caption(f"{len(_docs)} Dokument(e) insgesamt.")
 
     # ----------------------------------------------------------------- #
-    # Löschen
+    # Dokumente löschen (Mehrfachauswahl)
     # ----------------------------------------------------------------- #
-    st.markdown("##### Dokument löschen")
-    optionen = {
-        f"[{d['subject']}] {d['filename']}  ·  {d['num_chunks']} Chunks": d["doc_id"]
+    st.markdown("##### 🗑️ Dokumente löschen")
+    st.caption("Entfernt die gewählten Dokumente **samt Chunks und Fragen** aus "
+               "Vektordatenbank, Manifest und Suchindex (BM25).")
+    _doc_label = {
+        f"[{d['subject']}] {d['filename']}  ·  {d['num_chunks']} Chunks, {d['num_questions']} Fragen": d["doc_id"]
         for d in _docs
     }
-    auswahl = st.selectbox("Dokument auswählen", list(optionen.keys()))
-    if st.button("🗑️ Löschen", type="secondary"):
-        doc_id = optionen[auswahl]
-        with st.status("Lösche Dokument …", expanded=False) as status:
-            try:
-                remove_document(doc_id)
-                status.update(label="Gelöscht", state="complete")
-            except Exception as exc:
-                status.update(label=f"Fehler: {exc}", state="error")
-        st.success(f"„{auswahl}“ wurde entfernt (Vektordatenbank + Manifest).")
+    _del_sel = st.multiselect("Dokument(e) auswählen", list(_doc_label.keys()))
+    if st.button("🗑️ Ausgewählte Dokumente löschen", type="secondary",
+                 disabled=not _del_sel):
+        fehler = 0
+        with st.status(f"Lösche {len(_del_sel)} Dokument(e) …", expanded=False) as status:
+            for lbl in _del_sel:
+                try:
+                    remove_document(_doc_label[lbl])
+                except Exception as exc:  # noqa: BLE001
+                    fehler += 1
+                    status.write(f"⚠️ {lbl}: {exc}")
+            status.update(label="Fertig", state="error" if fehler else "complete")
+        st.success(f"{len(_del_sel) - fehler} Dokument(e) entfernt.")
         st.rerun()
+
+    # ----------------------------------------------------------------- #
+    # Nur Fragen löschen (Dokumente/Chunks bleiben)
+    # ----------------------------------------------------------------- #
+    st.markdown("##### 🧠 Nur Fragen löschen (Dokumente & Chunks bleiben)")
+    st.caption("Generierte Fragen erhöhen die Trefferquote, aber sehr viele können "
+               "die Suche verlangsamen. Hier gezielt welche entfernen, ohne die "
+               "Dokumente selbst anzutasten.")
+    _q_total = sum(d["num_questions"] for d in _docs)
+    st.write(f"Aktuell **{_q_total}** Fragen im Index.")
+    _q_scope = st.radio("Umfang", ["Alle Fragen", "Nur ein Fach", "Nur bestimmte Dokumente"],
+                        horizontal=True)
+
+    if _q_scope == "Alle Fragen":
+        if st.button(f"🧹 Alle {_q_total} Fragen löschen", disabled=_q_total == 0):
+            remove_questions()
+            st.success("Alle Fragen wurden gelöscht (Chunks bleiben erhalten).")
+            st.rerun()
+    elif _q_scope == "Nur ein Fach":
+        _subj_q: dict = {}
+        for d in _docs:
+            _subj_q[d["subject"]] = _subj_q.get(d["subject"], 0) + d["num_questions"]
+        _subj_map = {f"{s}  ·  {n} Fragen": s for s, n in sorted(_subj_q.items())}
+        _sel_subj = st.selectbox("Fach", list(_subj_map.keys()))
+        if st.button("🧹 Fragen dieses Fachs löschen"):
+            remove_questions(subject=_subj_map[_sel_subj])
+            st.success(f"Fragen im Fach „{_subj_map[_sel_subj]}“ gelöscht.")
+            st.rerun()
+    else:  # Nur bestimmte Dokumente
+        _q_docs = {
+            f"[{d['subject']}] {d['filename']}  ·  {d['num_questions']} Fragen": d["doc_id"]
+            for d in _docs if d["num_questions"] > 0
+        }
+        if not _q_docs:
+            st.info("Kein Dokument hat aktuell Fragen.")
+        else:
+            _sel_qdocs = st.multiselect("Dokument(e)", list(_q_docs.keys()))
+            if st.button("🧹 Fragen der gewählten Dokumente löschen",
+                         disabled=not _sel_qdocs):
+                for lbl in _sel_qdocs:
+                    remove_questions(doc_id=_q_docs[lbl])
+                st.success(f"Fragen aus {len(_sel_qdocs)} Dokument(en) gelöscht.")
+                st.rerun()

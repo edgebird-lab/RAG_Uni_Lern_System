@@ -138,6 +138,22 @@ def delete_document(doc_id: str) -> None:
         conn.execute("DELETE FROM chunk_hashes WHERE doc_id = ?", (doc_id,))
 
 
+def set_num_questions(doc_id: str, n: int) -> None:
+    """Setzt die Fragen-Anzahl eines Dokuments (z. B. nach dem Löschen von Fragen)."""
+    with _connect() as conn:
+        conn.execute("UPDATE documents SET num_questions = ?, updated_at = ? WHERE doc_id = ?",
+                     (n, time.time(), doc_id))
+
+
+def clear_questions(subject: Optional[str] = None) -> None:
+    """Setzt num_questions auf 0 - fuer alle Dokumente oder nur ein Fach."""
+    with _connect() as conn:
+        if subject:
+            conn.execute("UPDATE documents SET num_questions = 0 WHERE subject = ?", (subject,))
+        else:
+            conn.execute("UPDATE documents SET num_questions = 0")
+
+
 def list_documents() -> list[sqlite3.Row]:
     with _connect() as conn:
         cur = conn.execute("SELECT * FROM documents ORDER BY subject, filename")
