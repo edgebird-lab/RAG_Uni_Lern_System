@@ -20,6 +20,7 @@ docs/Lernkatalog_*.md
 # Lokal erzeugte Daten (Index, Datenbank, Logs), nicht versionieren
 # ---------------------------------------------------------------------------
 data/
+install-log.txt
 
 # ---------------------------------------------------------------------------
 # GPU-Laufzeit für Intel (IPEX-LLM), wird vom Installer geladen (~108 MB)

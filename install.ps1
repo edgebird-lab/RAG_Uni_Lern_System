@@ -42,6 +42,10 @@ if ($PSScriptRoot) { $Root = $PSScriptRoot }
 else { $Root = Split-Path -Parent $MyInvocation.MyCommand.Definition }
 Set-Location -LiteralPath $Root
 
+# Vollstaendiges Installations-Protokoll mitschreiben (zeigt bei Fehlern die echte Ursache).
+$LogFile = Join-Path $Root 'install-log.txt'
+try { Start-Transcript -Path $LogFile -Append -ErrorAction Stop | Out-Null } catch { }
+
 $IpexDir  = Join-Path $Root 'ipex-ollama'
 $IpexExe  = Join-Path $IpexDir 'ollama.exe'
 $IpexZip  = Join-Path $Root 'ipex-ollama.zip'
@@ -61,8 +65,17 @@ function Invoke-Native {
     param([Parameter(Mandatory)][string]$File,
           [string[]]$Arguments = @(),
           [Parameter(Mandatory)][string]$What)
-    & $File @Arguments
-    if ($LASTEXITCODE -ne 0) { throw "$What fehlgeschlagen (Exit-Code $LASTEXITCODE)." }
+    # Waehrend des nativen Aufrufs darf stderr NICHT als terminierender Fehler
+    # gewertet werden - sonst kapert z. B. eine pip-/Python-Traceback-Zeile die
+    # Abbruchmeldung ("Traceback (most recent call last)") und verdeckt die echte
+    # Ursache. Wir entscheiden ausschliesslich anhand des Exit-Codes.
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $File @Arguments; $code = $LASTEXITCODE }
+    finally { $ErrorActionPreference = $prev }
+    if ($code -ne 0) {
+        throw "$What fehlgeschlagen (Exit-Code $code). Echte Ursache: siehe Ausgabe oben bzw. install-log.txt."
+    }
 }
 
 # --------------------------------------------------------------------------- #
@@ -215,18 +228,17 @@ try {
     Invoke-Native -File $VenvPy -Arguments @('-m','pip','install','--upgrade','pip','setuptools','wheel') -What "pip-Update"
 
     # ---- 4) torch ---------------------------------------------------------- #
-    Write-Step "PyTorch installieren (nur fuer den Reranker noetig)"
+    # torch wird NUR fuer den Cross-Encoder-Reranker gebraucht, und der laeuft
+    # bewusst auf der CPU. Darum ueberall der schlanke CPU-Build (~200 MB) statt
+    # des ~2,5-GB-CUDA-Builds: schneller, deutlich zuverlaessiger (weniger
+    # Download/Speicherbedarf) und funktional identisch.
+    Write-Step "PyTorch installieren (nur fuer den Reranker noetig, laeuft auf der CPU)"
     & $VenvPy -c "import torch" 1>$null 2>$null
     if ($LASTEXITCODE -eq 0) {
         Write-Ok "torch ist bereits installiert - uebersprungen."
     } else {
-        if ($vendor -eq 'nvidia') {
-            Write-Info "Installiere torch (CUDA/Default-Index) ..."
-            Invoke-Native -File $VenvPy -Arguments @('-m','pip','install','torch') -What "torch (CUDA)"
-        } else {
-            Write-Info "Installiere torch (CPU-Build) ..."
-            Invoke-Native -File $VenvPy -Arguments @('-m','pip','install','torch','--index-url','https://download.pytorch.org/whl/cpu') -What "torch (CPU)"
-        }
+        Write-Info "Installiere torch (schlanker CPU-Build ~200 MB) ..."
+        Invoke-Native -File $VenvPy -Arguments @('-m','pip','install','torch','--index-url','https://download.pytorch.org/whl/cpu') -What "torch (CPU)"
         Write-Ok "torch installiert."
     }
 
@@ -365,6 +377,7 @@ try {
         Write-Host " Modell nachtraeglich waehlen: .venv\Scripts\python.exe -m ragapp.scripts.cli recommend --set --test" -ForegroundColor Gray
     }
     Write-Host ""
+    try { Stop-Transcript | Out-Null } catch { }
 }
 catch {
     if ($ipexProc -and -not $ipexProc.HasExited) {
@@ -372,6 +385,8 @@ catch {
     }
     Write-Host ""
     Write-Err "Installation abgebrochen: $($_.Exception.Message)"
+    Write-Info "Vollstaendiges Protokoll (zeigt die echte Ursache): $LogFile"
     Write-Info "Nach Behebung des Problems kann das Skript einfach erneut gestartet werden (idempotent)."
+    try { Stop-Transcript | Out-Null } catch { }
     exit 1
 }
