@@ -28,6 +28,13 @@ ipex-ollama/
 *.zip
 
 # ---------------------------------------------------------------------------
+# Gebaute Setup.exe (Inno-Setup-Ausgabe) — gehört als GitHub-Release-Asset
+# dazu, NICHT ins Repo (bläht die Historie mit Binärdaten auf).
+# Das Build-Skript setup.iss bleibt versioniert.
+# ---------------------------------------------------------------------------
+installer/
+
+# ---------------------------------------------------------------------------
 # Python
 # ---------------------------------------------------------------------------
 __pycache__/

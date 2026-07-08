@@ -169,9 +169,23 @@ try {
     Write-Step "Python 3.10+ suchen"
     $py = Get-BootstrapPython
     if (-not $py) {
-        Write-Err "Es wurde kein Python 3.10 oder neuer gefunden."
+        Write-Warn2 "Kein Python 3.10+ gefunden - versuche automatische Installation via winget ..."
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+            try {
+                & winget install --id Python.Python.3.12 -e --silent `
+                    --accept-source-agreements --accept-package-agreements 2>&1 | Out-Null
+                # PATH im laufenden Prozess aktualisieren, damit python sofort gefunden wird
+                $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' +
+                            [System.Environment]::GetEnvironmentVariable('Path','User')
+                Write-Ok "Python via winget installiert."
+            } catch { Write-Warn2 "Automatische Python-Installation fehlgeschlagen: $($_.Exception.Message)" }
+            $py = Get-BootstrapPython
+        }
+    }
+    if (-not $py) {
+        Write-Err "Kein Python 3.10+ gefunden (auch die Auto-Installation half nicht)."
         Write-Info "Bitte Python 3.10+ installieren: https://www.python.org/downloads/"
-        Write-Info "Beim Setup 'Add python.exe to PATH' aktivieren, danach dieses Skript erneut ausfuehren."
+        Write-Info "Beim Setup 'Add python.exe to PATH' aktivieren, danach erneut ausfuehren."
         exit 1
     }
     Write-Ok "Python $($py.Version) gefunden ($($py.Exe) $($py.Args -join ' '))"
