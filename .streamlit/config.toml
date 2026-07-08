@@ -8,6 +8,9 @@ port = 8501
 headless = false
 # groessere Uploads erlauben (PDFs)
 maxUploadSize = 500
+# statische Dateien (PWA-Manifest + Icons unter ragapp/ui/static/) ausliefern,
+# damit das Handy die App "zum Home-Bildschirm hinzufuegen" kann
+enableStaticServing = true
 
 [theme]
 base = "light"

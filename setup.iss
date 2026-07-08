@@ -51,6 +51,7 @@ Source: "install.sh";             DestDir: "{app}"
 Source: "Installieren.bat";       DestDir: "{app}"
 Source: "Start.bat";              DestDir: "{app}"
 Source: "Start_Handy-Zugriff.bat"; DestDir: "{app}"
+Source: "Start_Unterwegs.bat";    DestDir: "{app}"
 Source: "Start_GPU_Ollama.bat";   DestDir: "{app}"
 Source: "Start_Oberflaeche.bat";  DestDir: "{app}"
 Source: "Dokumente_importieren.bat"; DestDir: "{app}"
@@ -67,6 +68,7 @@ Source: "Zusammenfassungen\.gitkeep"; DestDir: "{app}\Zusammenfassungen"; Flags:
 [Icons]
 Name: "{group}\{#MyAppName} starten";       Filename: "{app}\Start.bat";               WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\Mit Handy-Zugriff starten";  Filename: "{app}\Start_Handy-Zugriff.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
+Name: "{group}\Von unterwegs starten";      Filename: "{app}\Start_Unterwegs.bat";     WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\Einrichtung ausfuehren";     Filename: "{app}\Installieren.bat";        WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\Projektordner oeffnen";    Filename: "{app}"
 Name: "{autodesktop}\{#MyAppName}";       Filename: "{app}\Start.bat";        WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"; Tasks: desktopicon

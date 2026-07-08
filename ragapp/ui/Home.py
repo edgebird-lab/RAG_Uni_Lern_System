@@ -32,6 +32,35 @@ st.set_page_config(page_title="RAG-Lernsystem", page_icon=_PAGE_ICON, layout="wi
 from ragapp.ui._auth import require_pin
 require_pin()
 
+# PWA: Manifest + Apple-Meta in den echten Seitenkopf injizieren, damit man die
+# App am Handy "zum Home-Bildschirm hinzufuegen" kann (randlose Pseudo-App).
+import streamlit.components.v1 as _components
+_components.html(
+    """
+    <script>
+    (function () {
+      try {
+        var head = window.parent.document.head;
+        function add(tag, attrs) {
+          var el = window.parent.document.createElement(tag);
+          for (var k in attrs) { el.setAttribute(k, attrs[k]); }
+          head.appendChild(el);
+        }
+        if (!head.querySelector('link[rel="manifest"]')) {
+          add('link', {rel: 'manifest', href: 'app/static/manifest.json'});
+          add('meta', {name: 'apple-mobile-web-app-capable', content: 'yes'});
+          add('meta', {name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent'});
+          add('meta', {name: 'apple-mobile-web-app-title', content: 'Lernsystem'});
+          add('meta', {name: 'theme-color', content: '#12455a'});
+          add('link', {rel: 'apple-touch-icon', href: 'app/static/icon-180.png'});
+        }
+      } catch (e) {}
+    })();
+    </script>
+    """,
+    height=0,
+)
+
 # Motivierende Sprüche für den Denk-/Lademoment (rotieren zufällig)
 _LERN_SPRUECHE = [
     "Dranbleiben lohnt sich. Jede Frage bringt dich der Bestnote näher.",

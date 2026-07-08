@@ -14,7 +14,12 @@ from __future__ import annotations
 import io
 import os
 import socket
+import pathlib
 import subprocess
+
+# Datei, in die der Starter (ragapp.desktop) die aktuelle Cloudflare-Tunnel-
+# Adresse schreibt, sobald der Tunnel steht.
+_TUNNEL_FILE = pathlib.Path(__file__).resolve().parent.parent / "data" / "tunnel_url.txt"
 
 
 def get_port() -> int:
@@ -105,6 +110,17 @@ def tailscale_ip() -> "str | None":
     return None
 
 
+def tunnel_url() -> "str | None":
+    """Aktuelle Cloudflare-Tunnel-Adresse (von ragapp.desktop geschrieben) oder None."""
+    try:
+        if _TUNNEL_FILE.is_file():
+            u = _TUNNEL_FILE.read_text(encoding="utf-8").strip()
+            return u or None
+    except Exception:
+        pass
+    return None
+
+
 def access_targets() -> "list[dict]":
     """Erreichbare Adressen: Liste von {kind, label, ip, url}."""
     port = get_port()
@@ -113,6 +129,10 @@ def access_targets() -> "list[dict]":
     if lan:
         out.append({"kind": "lan", "label": "Im selben WLAN",
                     "ip": lan, "url": f"http://{lan}:{port}"})
+    tu = tunnel_url()
+    if tu:
+        out.append({"kind": "tunnel", "label": "Von ueberall (Cloudflare)",
+                    "ip": "", "url": tu})
     ts = tailscale_ip()
     if ts:
         out.append({"kind": "tailscale", "label": "Von ueberall (Tailscale)",

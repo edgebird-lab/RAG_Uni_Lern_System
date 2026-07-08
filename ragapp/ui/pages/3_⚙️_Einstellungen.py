@@ -324,17 +324,22 @@ if netinfo.is_network_mode():
                 st.image(_png, width=200, caption="Mit dem Handy scannen")
             else:
                 st.caption("(QR-Code nicht verfügbar, Adresse oben im Handy-Browser eingeben.)")
-    if not any(_z["kind"] == "tailscale" for _z in _ziele):
+    st.caption(
+        "📲 Als App aufs Handy: Adresse öffnen, dann im Browser-Menü "
+        "**Zum Home-Bildschirm hinzufügen**. Sie startet danach randlos wie eine "
+        "echte App.")
+    if not any(_z["kind"] == "tunnel" for _z in _ziele):
         st.info(
-            "**Auch von unterwegs?** Installiere **Tailscale** auf PC und Handy "
-            "(kostenlos, tailscale.com) und melde beide mit demselben Konto an. "
-            "Dann erscheint hier automatisch eine zweite Adresse für den Zugriff "
-            "von überall.")
+            "**Auch von unterwegs (außerhalb des WLANs)?** Starte die App über "
+            "**Start_Unterwegs.bat**. Dann wird ein sicherer Cloudflare-Tunnel "
+            "aufgebaut und hier erscheint automatisch eine öffentliche Adresse "
+            "(cloudflared wird beim ersten Mal automatisch installiert).")
 else:
     st.info(
-        "Der Netzwerk-Zugriff ist gerade **aus**. Zum Aktivieren die App über "
-        "**Start_Handy-Zugriff.bat** starten (statt Start.bat). Dann erscheinen "
-        "hier Adresse + QR-Code.")
+        "Der Netzwerk-Zugriff ist gerade **aus**. So aktivierst du ihn:\n\n"
+        "- **Zuhause (gleiches WLAN):** die App über **Start_Handy-Zugriff.bat** starten.\n"
+        "- **Von unterwegs:** die App über **Start_Unterwegs.bat** starten (Cloudflare).\n\n"
+        "Danach erscheinen hier Adresse + QR-Code.")
     if not str(settings.UI_ACCESS_PIN or "").strip():
         st.warning("⚠️ Es ist noch kein PIN gesetzt. Setze oben zuerst einen PIN.")
 

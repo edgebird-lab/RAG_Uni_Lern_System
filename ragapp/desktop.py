@@ -21,12 +21,14 @@ Aufruf:  python -m ragapp.desktop   (bzw. ueber Start.bat)
 from __future__ import annotations
 
 import os
+import re
 import sys
 import time
 import shutil
 import socket
 import atexit
 import pathlib
+import threading
 import subprocess
 import webbrowser
 
@@ -42,6 +44,8 @@ PROFILE_DIR = ROOT / "data" / ".appwindow"              # eigenes Browser-Profil
 SHUTDOWN_SENTINEL = ROOT / "data" / ".shutdown"         # der Beenden-Button legt diese Datei an
 IPEX_EXE = ROOT / "ipex-ollama" / "ollama.exe"          # vorhanden = Intel-GPU-Variante
 OLLAMA_PORT = 11434
+TUNNEL_URL_FILE = ROOT / "data" / "tunnel_url.txt"      # Cloudflare-Adresse (liest die App)
+TUNNEL_MODE = os.environ.get("RAG_TUNNEL") == "1"       # Cloudflare-Tunnel gewuenscht? (Start_Unterwegs.bat)
 
 
 def _no_window_flag() -> int:
@@ -174,6 +178,68 @@ def _stop_ollama_fully(proc: "subprocess.Popen | None") -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Cloudflare-Tunnel (Zugriff von unterwegs) - optional
+# --------------------------------------------------------------------------- #
+def _resolve_cloudflared() -> "str | None":
+    exe = shutil.which("cloudflared")
+    if exe:
+        return exe
+    for c in (os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Links\cloudflared.exe"),
+              r"C:\Program Files (x86)\cloudflared\cloudflared.exe",
+              r"C:\Program Files\cloudflared\cloudflared.exe"):
+        if os.path.isfile(c):
+            return c
+    return None
+
+
+_TUNNEL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
+
+
+def _start_tunnel(port: int) -> "subprocess.Popen | None":
+    """Startet einen Cloudflare-Quick-Tunnel auf localhost:port und schreibt die
+    oeffentliche Adresse nach data/tunnel_url.txt, sobald sie steht. Wird beim
+    Beenden mitgestoppt."""
+    try:
+        TUNNEL_URL_FILE.unlink()
+    except OSError:
+        pass
+    exe = _resolve_cloudflared()
+    if not exe:
+        print("[i] cloudflared nicht gefunden - Tunnel uebersprungen "
+              "(Start_Unterwegs.bat installiert es via winget).")
+        return None
+    print("Starte Cloudflare-Tunnel (Zugriff von unterwegs) ...")
+    try:
+        proc = subprocess.Popen(
+            [exe, "tunnel", "--url", f"http://localhost:{port}", "--no-autoupdate"],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            encoding="utf-8", errors="replace", creationflags=_no_window_flag())
+    except Exception as exc:  # noqa: BLE001
+        print(f"[!] Cloudflare-Tunnel liess sich nicht starten: {exc}")
+        return None
+
+    def _reader() -> None:
+        found = False
+        try:
+            for line in proc.stdout:  # type: ignore[union-attr]
+                if not found:
+                    m = _TUNNEL_RE.search(line or "")
+                    if m:
+                        found = True
+                        try:
+                            TUNNEL_URL_FILE.write_text(m.group(0), encoding="utf-8")
+                            print(f"Cloudflare-Adresse: {m.group(0)}")
+                        except Exception:  # noqa: BLE001
+                            pass
+                # weiterlesen, damit die Pipe nicht volllaeuft und cloudflared blockiert
+        except Exception:  # noqa: BLE001
+            pass
+
+    threading.Thread(target=_reader, daemon=True).start()
+    return proc
+
+
+# --------------------------------------------------------------------------- #
 # Streamlit + App-Fenster
 # --------------------------------------------------------------------------- #
 def _start_streamlit(port: int) -> subprocess.Popen:
@@ -265,9 +331,17 @@ def main() -> int:
     print("Starte Oberflaeche ...")
     st_proc = _start_streamlit(port)
 
+    # Optional: Cloudflare-Tunnel fuer den Zugriff von unterwegs (Start_Unterwegs.bat).
+    tunnel_proc = _start_tunnel(port) if TUNNEL_MODE else None
+
     def _cleanup() -> None:
         _kill_tree(st_proc)
         _stop_ollama_fully(ollama_proc)
+        _kill_tree(tunnel_proc)
+        try:
+            TUNNEL_URL_FILE.unlink()
+        except OSError:
+            pass
     atexit.register(_cleanup)
 
     if not _wait_until_ready(st_proc, port):
@@ -313,6 +387,11 @@ def main() -> int:
         _kill_tree(win)
     _kill_tree(st_proc)
     _stop_ollama_fully(ollama_proc)
+    _kill_tree(tunnel_proc)
+    try:
+        TUNNEL_URL_FILE.unlink()
+    except OSError:
+        pass
     print("Fertig. Es laeuft nichts mehr im Hintergrund.")
     return 0
 
