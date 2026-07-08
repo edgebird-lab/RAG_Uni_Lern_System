@@ -6,6 +6,6 @@ REM ============================================================
 cd /d "%~dp0"
 set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8
-echo Starte Oberflaeche ... (Browser oeffnet sich automatisch)
-".venv\Scripts\python.exe" -m streamlit run "ragapp\ui\Home.py"
+echo Starte Oberflaeche als App-Fenster (kein Browser-Tab) ...
+".venv\Scripts\python.exe" -m ragapp.desktop
 pause

@@ -20,7 +20,12 @@ import streamlit as st
 from ragapp.config import settings, SUBJECT_LABELS
 from ragapp import manifest
 
-st.set_page_config(page_title="RAG-Lernsystem", page_icon="🎓", layout="wide")
+# App-Icon (Fenster/Taskleiste/Favicon). Faellt auf ein Emoji zurueck,
+# falls die Icon-Datei fehlt (z. B. vor dem ersten Build).
+_icon_png = _p.parents[2] / "assets" / "icon.png"
+_PAGE_ICON = str(_icon_png) if _icon_png.is_file() else "🎓"
+
+st.set_page_config(page_title="RAG-Lernsystem", page_icon=_PAGE_ICON, layout="wide")
 
 # --------------------------------------------------------------------------- #
 # Styling ("schick")

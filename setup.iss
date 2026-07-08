@@ -30,6 +30,9 @@ SolidCompression=yes
 WizardStyle=modern
 LicenseFile=LICENSE
 UninstallDisplayName={#MyAppName}
+; Eigenes App-Icon: fuer die Setup.exe selbst und den Eintrag in "Apps & Features"
+SetupIconFile=assets\icon.ico
+UninstallDisplayIcon={app}\assets\icon.ico
 
 [Languages]
 Name: "german"; MessagesFile: "compiler:Languages\German.isl"
@@ -54,14 +57,17 @@ Source: "Auto_Ueberwachung.bat";  DestDir: "{app}"
 Source: "README.md";              DestDir: "{app}"
 Source: "LICENSE";                DestDir: "{app}"
 Source: "NOTICE.md";              DestDir: "{app}"
+; App-Icon (fuer Verknuepfungen + Streamlit-Fenster-Favicon)
+Source: "assets\icon.ico";        DestDir: "{app}\assets"
+Source: "assets\icon.png";        DestDir: "{app}\assets"
 ; leere Beispiel-Struktur fuer eigene Unterlagen
 Source: "Zusammenfassungen\.gitkeep"; DestDir: "{app}\Zusammenfassungen"; Flags: skipifsourcedoesntexist
 
 [Icons]
-Name: "{group}\{#MyAppName} starten";     Filename: "{app}\Start.bat";        WorkingDir: "{app}"
-Name: "{group}\Einrichtung ausfuehren";   Filename: "{app}\Installieren.bat"; WorkingDir: "{app}"
+Name: "{group}\{#MyAppName} starten";     Filename: "{app}\Start.bat";        WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
+Name: "{group}\Einrichtung ausfuehren";   Filename: "{app}\Installieren.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\Projektordner oeffnen";    Filename: "{app}"
-Name: "{autodesktop}\{#MyAppName}";       Filename: "{app}\Start.bat";        WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}";       Filename: "{app}\Start.bat";        WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"; Tasks: desktopicon
 
 [Run]
 ; Am Ende des Assistenten: die eigentliche Einrichtung anbieten (Haekchen).

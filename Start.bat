@@ -35,6 +35,6 @@ echo    -^> GPU-Server bereit.
 
 :start_ui
 if not exist "%~dp0ipex-ollama\ollama.exe" echo [Standard-Ollama] Es wird angenommen, dass die Ollama-App laeuft.
-echo Starte Weboberflaeche (http://localhost:8501) ...
-".venv\Scripts\python.exe" -m streamlit run "ragapp\ui\Home.py"
+echo Starte Oberflaeche als App-Fenster (kein Browser-Tab) ...
+".venv\Scripts\python.exe" -m ragapp.desktop
 pause
