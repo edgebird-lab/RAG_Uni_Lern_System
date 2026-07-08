@@ -96,25 +96,27 @@ eigenen Kurs- und Klausurunterlagen bleiben ausschließlich auf deinem Rechner:
 
 ## 🚀 Schnellstart
 
-Voraussetzungen: **Python 3.13**, **[Ollama](https://ollama.com)** installiert.
-Die One-Click-Installer richten die passende Ollama-Variante und ein zur
-Hardware passendes Modell automatisch ein.
+**Einzige Voraussetzung: Python 3.10 oder neuer** ([python.org](https://www.python.org/downloads/) —
+beim Installieren **„Add Python to PATH" anhaken!**). **Ollama musst du NICHT
+vorher installieren** — der Installer erledigt das (bei Intel-GPUs lädt er
+automatisch die IPEX-LLM-Variante, sonst richtet er die Standard-Ollama ein).
 
 ```bash
-# 1) Repository klonen
+# 1) Repository holen: klonen ODER auf GitHub "Code -> Download ZIP" + entpacken
 git clone <REPO-URL>
-cd rag-lernsystem
+cd RAG_System
 ```
 
-**Windows (PowerShell):**
+**Windows — am einfachsten per Doppelklick:**
 
-```powershell
-# 2) One-Click-Installer (venv, Abhängigkeiten, Ollama-Variante, Modell)
-./install.ps1
+1. Doppelklick auf **`Installieren.bat`** → richtet alles ein (venv, Abhängigkeiten,
+   passende Ollama-Variante, empfohlenes Modell). Läuft weitgehend automatisch.
+2. Doppelklick auf **`Start.bat`** → öffnet die Chat-Oberfläche unter
+   http://localhost:8501.
 
-# 3) Starten (öffnet die Weboberfläche unter http://localhost:8501)
-./Start.bat
-```
+> Technischer Hinweis: `.ps1`-Skripte starten unter Windows **nicht** per Doppelklick
+> (sie öffnen nur im Editor). Deshalb der `Installieren.bat`-Wrapper. Alternativ in
+> PowerShell: `powershell -ExecutionPolicy Bypass -File install.ps1`.
 
 **Linux / macOS:**
 
