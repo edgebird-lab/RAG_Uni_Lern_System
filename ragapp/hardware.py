@@ -149,10 +149,20 @@ def detect_hardware() -> dict:
 # --------------------------------------------------------------------------- #
 # Deutsch-taugliche Modelle nach Größe. Jeweils (Ollama-Tag, Params, ~GB).
 _MODELS = {
-    "small": {"tag": "gemma3:4b", "params": "4B", "gb": 3.3},
-    "small_fast": {"tag": "qwen2.5:3b-instruct", "params": "3B", "gb": 1.9},
-    "mid": {"tag": "qwen2.5:7b-instruct", "params": "7B", "gb": 4.7},
-    "large": {"tag": "gemma3:12b", "params": "12B", "gb": 8.1},
+    # Intel-IPEX-kompatibel: das alte SYCL-Backend (Ollama 0.9.3) laedt neuere
+    # Architekturen wie Qwen3/Gemma 4 nicht -> bewaehrte, kompatible Modelle.
+    "intel_de":   {"tag": "gemma3:4b",           "params": "4B", "gb": 3.3},
+    "intel_fast": {"tag": "qwen2.5:3b-instruct", "params": "3B", "gb": 1.9},
+    # Aktuelle Modelle (Stand 2026) fuer Standard-Ollama (NVIDIA/AMD/Apple/CPU).
+    # Gemma 3 = sehr starkes Deutsch, saubere Antworten (kein Thinking-Modus).
+    # Qwen3 = neueste Generation, als Alternative.
+    "q4b":  {"tag": "qwen3:4b",   "params": "4B",          "gb": 2.5},
+    "g4b":  {"tag": "gemma3:4b",  "params": "4B",          "gb": 3.3},
+    "q8b":  {"tag": "qwen3:8b",   "params": "8B",          "gb": 5.2},
+    "g12b": {"tag": "gemma3:12b", "params": "12B",         "gb": 8.1},
+    "q14b": {"tag": "qwen3:14b",  "params": "14B",         "gb": 9.3},
+    "g27b": {"tag": "gemma3:27b", "params": "27B",         "gb": 17.0},
+    "q30b": {"tag": "qwen3:30b",  "params": "30B-A3B MoE", "gb": 19.0},
 }
 
 
@@ -168,11 +178,12 @@ def recommend_models(hw: dict) -> dict:
     if vendor == "intel":
         return {
             "reason": "Intel-GPU via IPEX-LLM (Ollama 0.9.3): bewährte, kompatible "
-                      "3 bis 4B-Modelle. Größere/neuere Architekturen laden dort nicht.",
+                      "3 bis 4B-Modelle. Neuere Architekturen (Qwen3, Gemma 4) laden "
+                      "auf diesem alten SYCL-Backend leider nicht.",
             "embed_model": "bge-m3",
             "models": [
-                {**_MODELS["small"], "why": "läuft stabil auf Intel-Arc, gutes Deutsch, ~13 tok/s"},
-                {**_MODELS["small_fast"], "why": "schneller (~19 tok/s), etwas schwächer"},
+                {**_MODELS["intel_de"], "why": "läuft stabil auf Intel-Arc, gutes Deutsch, ~13 tok/s"},
+                {**_MODELS["intel_fast"], "why": "schneller (~19 tok/s), etwas schwächer"},
             ],
         }
 
@@ -180,24 +191,34 @@ def recommend_models(hw: dict) -> dict:
     if vendor in ("nvidia", "amd") and vram:
         budget = vram
         on = "GPU"
+    elif vendor in ("nvidia", "amd"):
+        # Dedizierte GPU, aber VRAM unbekannt (z. B. nvidia-smi nicht gefunden).
+        # Sichere Annahme statt RAM/2: eine dedizierte GPU schafft mindestens die
+        # 7B-Klasse. So faellt sie nie faelschlich auf das kleinste Modell zurueck.
+        budget = 8.0
+        on = "GPU"
     elif vendor == "apple":
         budget = (ram or 8) * 0.6  # Apple: unified memory, viel nutzbar
         on = "GPU (Metal)"
-    else:  # CPU only oder unbekannte VRAM
+    else:  # nur CPU
         budget = (ram or 8) / 2
         on = "CPU" if vendor == "none" else "GPU"
 
-    if budget >= 15:
-        picks = [{**_MODELS["large"], "why": f"bestes Deutsch, passt in ~{budget:.0f} GB"},
-                 {**_MODELS["mid"], "why": "sehr gut + schneller"}]
+    if budget >= 22:
+        picks = [{**_MODELS["g27b"], "why": f"top Qualität, passt in ~{budget:.0f} GB"},
+                 {**_MODELS["q30b"], "why": "sehr stark und schnell (MoE, nur 3B aktiv)"}]
+        tier = "sehr groß"
+    elif budget >= 12:
+        picks = [{**_MODELS["g12b"], "why": f"exzellentes Deutsch, passt gut in ~{budget:.0f} GB"},
+                 {**_MODELS["q14b"], "why": "neuestes Qwen3 als Alternative"}]
         tier = "groß"
     elif budget >= 7:
-        picks = [{**_MODELS["mid"], "why": f"starke Instruktionstreue, passt in ~{budget:.0f} GB"},
-                 {**_MODELS["small"], "why": "schneller Fallback, gutes Deutsch"}]
+        picks = [{**_MODELS["g12b"], "why": "deutlich besseres Deutsch, läuft größtenteils auf der GPU"},
+                 {**_MODELS["q8b"], "why": f"passt komplett in ~{budget:.0f} GB, schneller (aktuelles Qwen3)"}]
         tier = "mittel"
     else:
-        picks = [{**_MODELS["small"], "why": "gutes Deutsch bei kleiner Größe"},
-                 {**_MODELS["small_fast"], "why": "am schnellsten"}]
+        picks = [{**_MODELS["g4b"], "why": "starkes Deutsch bei kleiner Größe (Gemma 3)"},
+                 {**_MODELS["q4b"], "why": "neuestes Qwen3, kompakt"}]
         tier = "klein"
 
     note = ""
