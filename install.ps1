@@ -95,15 +95,17 @@ function Wait-Port {
 # 1) Python 3.10+ suchen
 # --------------------------------------------------------------------------- #
 function Get-BootstrapPython {
-    $tries = @(
-        ,@('py','-3.13'), ,@('py','-3.12'), ,@('py','-3.11'), ,@('py','-3.10'),
-        ,@('python'), ,@('python3'), ,@('py','-3')
-    )
-    foreach ($t in $tries) {
-        $exe = $t[0]
+    # Kandidaten als leerzeichen-getrennte Strings (NICHT als verschachtelte
+    # Arrays): @( ,@('py','-3.13'), ... ) verschachtelt sich in PowerShell falsch,
+    # sodass $t[0] teils selbst ein Array wird. Dann ist $py.Exe ein Object[] und
+    # spaeter scheitert 'Invoke-Native -File $py.Exe' an der String-Transformation
+    # (tritt nur auf einem frischen PC ohne .venv auf, weil sonst Schritt 3 uebersprungen wird).
+    $tries = @('py -3.13','py -3.12','py -3.11','py -3.10','python','python3','py -3')
+    foreach ($spec in $tries) {
+        $parts = $spec.Split(' ')
+        $exe   = $parts[0]
+        $rest  = if ($parts.Count -gt 1) { $parts[1..($parts.Count - 1)] } else { @() }
         if (-not (Get-Command $exe -ErrorAction SilentlyContinue)) { continue }
-        $rest = @()
-        if ($t.Count -gt 1) { $rest = $t[1..($t.Count - 1)] }
         $ver = ''
         try { $ver = (& $exe @rest -c "import sys;print('%d.%d'%sys.version_info[:2])" 2>$null) }
         catch { continue }
@@ -112,7 +114,7 @@ function Get-BootstrapPython {
         if ($p.Count -lt 2) { continue }
         $maj = [int]$p[0]; $min = [int]$p[1]
         if ($maj -gt 3 -or ($maj -eq 3 -and $min -ge 10)) {
-            return [pscustomobject]@{ Exe = $exe; Args = $rest; Version = "$maj.$min" }
+            return [pscustomobject]@{ Exe = "$exe"; Args = [string[]]$rest; Version = "$maj.$min" }
         }
     }
     return $null
