@@ -1,0 +1,43 @@
+# ============================================================================
+# RAG-Lernsystem – Python-Abhängigkeiten
+# Getestet mit Python 3.13 auf Windows 11 (CPU-only).
+# torch wird separat als CPU-Build installiert (siehe docs/SETUP.md).
+# ============================================================================
+
+# --- Orchestrierung (LangGraph / LangChain) ---
+langgraph>=0.2.60
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-community>=0.3.0
+langchain-ollama>=0.2.0
+ollama>=0.4.0
+
+# --- Vektordatenbank ---
+chromadb>=0.5.5
+
+# --- Dokument-Loader / Parsing ---
+pymupdf>=1.24.0          # schnelle, robuste PDF-Textextraktion (fitz)
+pypdf>=4.2.0             # Fallback-PDF-Parser
+python-docx>=1.1.0       # .docx
+python-pptx>=0.6.23      # .pptx
+python-frontmatter>=1.1.0
+
+# --- Keyword-Suche (BM25) + deutsche Sprachverarbeitung ---
+rank-bm25>=0.2.2
+snowballstemmer>=2.2.0   # deutscher Stemmer für bessere Keyword-Treffer
+
+# --- Reranking (Cross-Encoder) ---
+sentence-transformers>=3.0.0
+
+# --- Weboberfläche ---
+streamlit>=1.38.0
+plotly>=5.23.0
+
+# --- Datenauswertung / Evaluation ---
+pandas>=2.2.0
+numpy>=1.26.0
+
+# --- Hilfsmittel ---
+watchdog>=4.0.0          # automatische Ordnerüberwachung (Ingestion-Pipeline)
+tqdm>=4.66.0
+psutil>=5.9.0            # Hardware-Erkennung (RAM/CPU) für den recommend-Befehl

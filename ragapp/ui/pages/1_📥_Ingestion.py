@@ -1,0 +1,288 @@
+"""
+RAG-Lernsystem – Seite „Dokumente & Ingestion" (Streamlit)
+==========================================================
+Verwaltet die Wissensbasis: neue Dateien hochladen und indexieren, den
+Quellordner importieren, Fragen anreichern und Dokumente löschen.
+"""
+from __future__ import annotations
+
+import sys
+import pathlib
+
+# Projektwurzel auffindbar machen (damit 'ragapp' importierbar ist)
+_p = pathlib.Path(__file__).resolve()
+for _anc in _p.parents:
+    if (_anc / "ragapp").is_dir():
+        sys.path.insert(0, str(_anc))
+        break
+
+import pandas as pd
+import streamlit as st
+
+from ragapp.config import settings, INBOX_DIR, SOURCE_DIR, SUBJECT_LABELS
+from ragapp import manifest
+from ragapp.ingestion.pipeline import ingest_file, ingest_directory, remove_document
+from ragapp.ingestion.enrich import enrich_questions
+
+st.set_page_config(page_title="Dokumente & Ingestion", page_icon="📥", layout="wide")
+
+# --------------------------------------------------------------------------- #
+# Styling ("schick") – identisch zur Startseite
+# --------------------------------------------------------------------------- #
+st.markdown("""
+<style>
+.block-container {padding-top: 2rem; max-width: 1100px;}
+.stChatMessage {border-radius: 14px;}
+.source-card {
+    background: linear-gradient(135deg, #f6f8fc 0%, #eef2fb 100%);
+    border: 1px solid #e2e8f4; border-radius: 12px; padding: 12px 16px;
+    margin-bottom: 8px;
+}
+.source-title {font-weight: 600; color: #1f3a63;}
+.source-meta {color: #5b6b85; font-size: 0.85rem;}
+.badge {display:inline-block; padding: 2px 10px; border-radius: 999px;
+    font-size: 0.78rem; font-weight: 600;}
+.badge-answer {background:#e6f7ee; color:#137a4b;}
+.badge-fallback {background:#fdf0e3; color:#a15a13;}
+.small {color:#7a8aa0; font-size:0.8rem;}
+h1 {font-weight: 750; letter-spacing:-0.5px;}
+</style>
+""", unsafe_allow_html=True)
+
+# --------------------------------------------------------------------------- #
+# Sidebar (Kurzstatistik, wie auf der Startseite)
+# --------------------------------------------------------------------------- #
+with st.sidebar:
+    st.markdown("### 🎓 Lern-Assistent")
+    st.caption(f"Modell: `{settings.LLM_MODEL}` · Embedding: `{settings.EMBED_MODEL}`")
+    _stats = manifest.stats()
+    c1, c2 = st.columns(2)
+    c1.metric("Dokumente", _stats["documents"])
+    c2.metric("Chunks", _stats["chunks"])
+    c1.metric("Fragen", _stats["questions"])
+    c2.metric("Fächer", _stats["subjects"])
+
+# --------------------------------------------------------------------------- #
+# Kopf
+# --------------------------------------------------------------------------- #
+st.title("📥 Dokumente & Ingestion")
+st.markdown(
+    "<span class='small'>Hier verwaltest du die Wissensbasis: Dateien hochladen, "
+    "den Quellordner importieren, Fragen anreichern und Dokumente löschen.</span>",
+    unsafe_allow_html=True,
+)
+
+st.info(
+    "🔎 **Automatische Deduplizierung:** Inhaltsgleiche Dateien (auch unter anderem "
+    "Namen) werden erkannt und übersprungen. Ebenso werden identische Textstellen "
+    "(z. B. wiederkehrende Kopfzeilen oder Formelsammlungen) nur **einmal** indexiert. "
+    "Du kannst also bedenkenlos importieren."
+)
+
+# Klartext-Fach als Hilfe (Kürzel -> Klartext)
+def _subject_label(code: str) -> str:
+    return SUBJECT_LABELS.get(code, code)
+
+
+# --------------------------------------------------------------------------- #
+# 1) Datei-Upload
+# --------------------------------------------------------------------------- #
+st.subheader("Dateien hochladen & indexieren")
+st.caption(
+    "Unterstützt: PDF, Markdown, Text, Word (docx), PowerPoint (pptx). "
+    "Hochgeladene Dateien werden im Ordner `data/inbox/` abgelegt und sofort indexiert."
+)
+
+uploads = st.file_uploader(
+    "Dateien auswählen (Mehrfachauswahl möglich)",
+    type=["pdf", "md", "txt", "docx", "pptx"],
+    accept_multiple_files=True,
+)
+
+# Fach-Zuordnung für den Upload (sonst landet der Upload unter „inbox")
+_known_subjects = sorted(
+    set(SUBJECT_LABELS.keys())
+    | {d["subject"] for d in manifest.list_documents() if d["subject"]}
+)
+_up_choice = st.selectbox(
+    "Fach für die hochgeladenen Dateien",
+    ["(neues Fach eingeben …)"] + _known_subjects,
+    help="Ordnet den Upload einem Fach zu (für Filter & Übersicht).",
+)
+if _up_choice == "(neues Fach eingeben …)":
+    upload_subject = st.text_input("Neues Fach", value="").strip() or None
+else:
+    upload_subject = _up_choice
+
+if uploads and st.button("📥 Hochgeladene Dateien indexieren", type="primary"):
+    ergebnisse: list[dict] = []
+    with st.status("Verarbeite hochgeladene Dateien …", expanded=True) as status:
+        for up in uploads:
+            ziel = INBOX_DIR / up.name
+            try:
+                ziel.write_bytes(up.getbuffer())
+            except Exception as exc:
+                status.write(f"⚠️ {up.name}: konnte nicht gespeichert werden ({exc})")
+                ergebnisse.append({"Datei": up.name, "Status": "error", "Info": str(exc)})
+                continue
+
+            status.update(label=f"Indexiere {up.name} …")
+
+            def _fortschritt(msg: str, _name: str = up.name) -> None:
+                status.write(f"· {_name}: {msg}")
+
+            try:
+                r = ingest_file(ziel, subject=upload_subject, progress=_fortschritt)
+            except Exception as exc:
+                r = {"status": "error", "file": up.name, "error": str(exc)}
+
+            info = ""
+            if r["status"] == "duplicate":
+                info = f"Duplikat von {r.get('duplicate_of', '?')}"
+            elif r["status"] == "unchanged":
+                info = "unverändert – bereits im Index"
+            elif r["status"] == "ok":
+                info = f"{r.get('chunks', 0)} Chunks, {r.get('questions', 0)} Fragen"
+            elif r["status"] in ("skipped", "duplicate_chunks"):
+                info = r.get("reason", "übersprungen")
+            elif r["status"] == "error":
+                info = r.get("error", "Fehler")
+            ergebnisse.append({"Datei": r.get("file", up.name),
+                               "Status": r["status"], "Info": info})
+            status.write(f"✔️ {r.get('file', up.name)} → **{r['status']}** {info}")
+
+        status.update(label="Fertig", state="complete")
+
+    st.dataframe(pd.DataFrame(ergebnisse), use_container_width=True, hide_index=True)
+    ok = sum(1 for e in ergebnisse if e["Status"] == "ok")
+    st.success(f"{ok} von {len(ergebnisse)} Datei(en) neu indexiert.")
+
+st.divider()
+
+# --------------------------------------------------------------------------- #
+# 2) Kompletten Quellordner importieren
+# --------------------------------------------------------------------------- #
+st.subheader("Kompletten Quellordner importieren")
+st.caption(f"Quellordner: `{SOURCE_DIR}`")
+st.warning(
+    "⏳ **Achtung – sehr lange Laufzeit.** Der Erstimport eines großen Korpus läuft "
+    "auf CPU in der Größenordnung von **1–2 Stunden** (Embeddings pro Chunk). Der "
+    "Streamlit-Prozess ist währenddessen blockiert. Für den **Erstimport** ist der "
+    "Ordnerwächter bzw. das CLI (`python -m ragapp.scripts.cli ingest`) empfehlenswert – "
+    "es läuft im Hintergrund und ist unterbrechbar/fortsetzbar."
+)
+
+if st.button("📚 Kompletten Quellordner importieren"):
+    with st.status("Importiere Quellordner … (das kann sehr lange dauern)",
+                   expanded=True) as status:
+        def _fortschritt_dir(msg: str) -> None:
+            status.update(label=msg)
+
+        try:
+            summary = ingest_directory(progress=_fortschritt_dir)
+            status.update(label="Import abgeschlossen", state="complete")
+        except Exception as exc:
+            status.update(label=f"Fehler: {exc}", state="error")
+            summary = None
+
+    if summary is not None:
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Neu", summary.get("ok", 0))
+        m2.metric("Duplikate", summary.get("duplicate", 0))
+        m3.metric("Unverändert", summary.get("unchanged", 0))
+        m4.metric("Fehler", summary.get("error", 0))
+        st.success(
+            f"Fertig: {summary.get('chunks', 0)} Chunks und "
+            f"{summary.get('questions', 0)} Fragen indexiert."
+        )
+
+st.divider()
+
+# --------------------------------------------------------------------------- #
+# 3) Fragen-Anreicherung
+# --------------------------------------------------------------------------- #
+st.subheader("🧠 Fragen-Anreicherung")
+st.caption(
+    "Erzeugt hypothetische Fragen zu vorhandenen Chunks und indexiert sie. Das "
+    "**erhöht die Trefferquote** spürbar, kostet auf CPU aber **~20 s pro Chunk**. "
+    "Deshalb gedeckelt (Limit) und resumierbar – bereits angereicherte Chunks werden "
+    "übersprungen."
+)
+
+_subjects = sorted({d["subject"] for d in manifest.list_documents() if d["subject"]})
+col_a, col_b = st.columns(2)
+with col_a:
+    enrich_limit = st.number_input(
+        "Maximale Anzahl Chunks (Limit)", min_value=1, max_value=100000,
+        value=100, step=10,
+        help="Wichtige/kompakte Dokumente werden zuerst angereichert.",
+    )
+with col_b:
+    enrich_choice = st.selectbox(
+        "Fach-Filter (optional)", ["Alle Fächer"] + _subjects,
+        help="Nur Chunks dieses Fachs anreichern.",
+    )
+enrich_subject = None if enrich_choice == "Alle Fächer" else enrich_choice
+
+if st.button("🧠 Fragen-Anreicherung starten"):
+    with st.status("Reichere Fragen an … (~20 s pro Chunk)", expanded=True) as status:
+        def _fortschritt_enrich(msg: str) -> None:
+            status.update(label=msg)
+
+        try:
+            r = enrich_questions(limit=int(enrich_limit), subject=enrich_subject,
+                                 progress=_fortschritt_enrich)
+            status.update(label="Anreicherung abgeschlossen", state="complete")
+        except Exception as exc:
+            status.update(label=f"Fehler: {exc}", state="error")
+            r = None
+
+    if r is not None:
+        if r.get("status") == "nothing_to_do":
+            st.info("Nichts zu tun – alle passenden Chunks sind bereits angereichert.")
+        else:
+            st.success(
+                f"{r.get('questions', 0)} Fragen für {r.get('processed', 0)} "
+                f"Chunk(s) erzeugt und indexiert."
+            )
+
+st.divider()
+
+# --------------------------------------------------------------------------- #
+# 4) Dokumentübersicht
+# --------------------------------------------------------------------------- #
+st.subheader("Indexierte Dokumente")
+
+_docs = manifest.list_documents()
+if not _docs:
+    st.info("Noch keine Dokumente indexiert.")
+else:
+    df = pd.DataFrame([{
+        "Fach": d["subject"],
+        "Dateiname": d["filename"],
+        "Chunks": d["num_chunks"],
+        "Fragen": d["num_questions"],
+        "Status": d["status"],
+    } for d in _docs])
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.caption(f"{len(_docs)} Dokument(e) insgesamt.")
+
+    # ----------------------------------------------------------------- #
+    # Löschen
+    # ----------------------------------------------------------------- #
+    st.markdown("##### Dokument löschen")
+    optionen = {
+        f"[{d['subject']}] {d['filename']}  ·  {d['num_chunks']} Chunks": d["doc_id"]
+        for d in _docs
+    }
+    auswahl = st.selectbox("Dokument auswählen", list(optionen.keys()))
+    if st.button("🗑️ Löschen", type="secondary"):
+        doc_id = optionen[auswahl]
+        with st.status("Lösche Dokument …", expanded=False) as status:
+            try:
+                remove_document(doc_id)
+                status.update(label="Gelöscht", state="complete")
+            except Exception as exc:
+                status.update(label=f"Fehler: {exc}", state="error")
+        st.success(f"„{auswahl}“ wurde entfernt (Vektordatenbank + Manifest).")
+        st.rerun()

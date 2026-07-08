@@ -1,0 +1,54 @@
+# ============================================================================
+#  RAG-Lernsystem – .gitignore
+#  Ziel: Der öffentliche Repo enthält NUR Code, Anleitungen und Starter.
+#  KEINE persönlichen Unterlagen, KEINE lokal erzeugten Indizes/Modelle.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# PERSÖNLICHE DOKUMENTE — DÜRFEN NIEMALS INS ÖFFENTLICHE REPO!
+# Das sind deine eigenen Klausur-/Kursunterlagen. Sie bleiben ausschließlich
+# lokal auf deinem Rechner. Andere Nutzer legen ihre eigenen Unterlagen an.
+# ---------------------------------------------------------------------------
+Zusammenfassungen SoSE26/
+Zusammenfassungen/*
+!Zusammenfassungen/.gitkeep
+
+# Aus persönlichen Unterlagen generierte Lernkataloge (enthalten Inhalte der Docs)
+docs/Lernkatalog_*.md
+
+# ---------------------------------------------------------------------------
+# Lokal erzeugte Daten (Index, Datenbank, Logs) — nicht versionieren
+# ---------------------------------------------------------------------------
+data/
+
+# ---------------------------------------------------------------------------
+# GPU-Laufzeit für Intel (IPEX-LLM) — wird vom Installer geladen (~108 MB)
+# ---------------------------------------------------------------------------
+ipex-ollama/
+*.zip
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.stackdump
+.cache/
+
+# ---------------------------------------------------------------------------
+# Streamlit – nutzerspezifische Zugangsdaten ausschließen,
+# gemeinsame Konfiguration (.streamlit/config.toml) im Repo behalten.
+# ---------------------------------------------------------------------------
+.streamlit/credentials.toml
+.streamlit/secrets.toml
+
+# ---------------------------------------------------------------------------
+# Betriebssystem / Editor
+# ---------------------------------------------------------------------------
+Thumbs.db
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,13 @@
+# Streamlit-Konfiguration fuer das RAG-Lernsystem
+[browser]
+# kein E-Mail-Prompt / keine Nutzungsstatistik-Abfrage beim Start
+gatherUsageStats = false
+
+[server]
+port = 8501
+headless = false
+# groessere Uploads erlauben (PDFs)
+maxUploadSize = 500
+
+[theme]
+base = "light"

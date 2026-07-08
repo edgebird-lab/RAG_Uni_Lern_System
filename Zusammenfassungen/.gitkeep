@@ -1,0 +1,31 @@
+HIER kommen DEINE eigenen Unterlagen hin – lokal, nicht ins Repo.
+================================================================
+
+Dieser Ordner ist absichtlich (fast) leer. Deine persönlichen Kurs-/Klausur-
+Unterlagen bleiben ausschließlich auf deinem Rechner und werden über die
+.gitignore vom öffentlichen Repository ausgeschlossen. Nur diese .gitkeep-Datei
+wird versioniert, damit der Ordner existiert.
+
+So legst du deine Dokumente an
+------------------------------
+Pro Fach einen Unterordner, darin deine Dateien (PDF, MD, TXT, DOCX, PPTX):
+
+    Zusammenfassungen/
+    ├─ BEISPIEL_Fach/
+    │  ├─ hier_deine_pdfs.txt      (Platzhalter – durch echte Dateien ersetzen)
+    │  ├─ Vorlesung_01.pdf
+    │  └─ Zusammenfassung.md
+    ├─ Analysis/
+    │  └─ ...
+    └─ Statistik/
+       └─ ...
+
+Danach indexieren
+-----------------
+    python -m ragapp.scripts.cli ingest --dir ./Zusammenfassungen
+
+Hinweis: Der voreingestellte Quellordner im Code ist "Zusammenfassungen SoSE26/"
+(siehe ragapp/config.py, SOURCE_DIR). Du kannst entweder diesen Ordner verwenden
+oder – wie oben – mit "--dir" auf einen beliebigen Ordner zeigen.
+
+Deine Unterlagen bleiben lokal und kommen NICHT ins Repository.
