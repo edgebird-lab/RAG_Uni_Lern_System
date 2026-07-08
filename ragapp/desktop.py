@@ -5,16 +5,22 @@ Dieser Starter ist der EINZIGE Besitzer der Sitzung. Er
 
   1. startet das lokale KI-Modell (Ollama) - Intel-Arc-iGPU ueber IPEX-LLM,
      sonst Standard-Ollama - als getrackten Kindprozess,
-  2. startet die Streamlit-Oberflaeche headless,
+  2. startet die Streamlit-Oberflaeche headless (standardmaessig NUR lokal),
   3. oeffnet sie in einem eigenen, rahmenlosen App-Fenster (Edge/Chrome
      ``--app``, sonst Standardbrowser),
-  4. ueberwacht Fenster, Oberflaeche und das Beenden-Signal und
-  5. stoppt beim Schliessen des Fensters ODER ueber den "Beenden"-Button in
-     der App WIRKLICH ALLES wieder - Oberflaeche UND Ollama. Danach laeuft
-     nichts mehr im Hintergrund und belastet das System.
+  4. ueberwacht Fenster, Oberflaeche und Signale aus der App und
+  5. stoppt beim Schliessen des Fensters ODER ueber den "Beenden"-Button in der
+     App WIRKLICH ALLES (Oberflaeche + Ollama + evtl. Tunnel). Danach laeuft
+     nichts mehr im Hintergrund.
 
-Netzwerk-/Handy-Zugriff wird ueber Umgebungsvariablen gesteuert
-(Start_Handy-Zugriff.bat): RAG_BIND_HOST=0.0.0.0 und RAG_NETWORK=1.
+Netzwerk-/Handy-Zugriff:
+  * Standard = nur dieser PC (localhost).
+  * Der Button "Mit Smartphone verbinden" in der App legt UI_RESTART_FILE mit
+    "network" an -> dieser Starter startet Streamlit kurz im Netzwerkmodus
+    (0.0.0.0) neu (gleicher Port, das Fenster verbindet sich automatisch neu).
+    "Verbindung trennen" schaltet analog zurueck auf "local".
+  * RAG_NETWORK=1 / RAG_TUNNEL=1 (Start_Handy-Zugriff.bat / Start_Unterwegs.bat)
+    starten direkt im Netzwerk- bzw. Tunnelmodus.
 
 Aufruf:  python -m ragapp.desktop   (bzw. ueber Start.bat)
 """
@@ -34,14 +40,12 @@ import webbrowser
 
 HOST = "127.0.0.1"
 PREFERRED_PORT = int(os.environ.get("RAG_UI_PORT", "8501"))
-# Bind-Adresse: 'localhost' = nur dieser PC (Standard). '0.0.0.0' = auch im
-# Netzwerk erreichbar (Handy-/Tablet-Zugriff) - setzt Start_Handy-Zugriff.bat.
-BIND_HOST = os.environ.get("RAG_BIND_HOST", "localhost")
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]      # Repo-Wurzel (enthaelt 'ragapp')
 HOME = ROOT / "ragapp" / "ui" / "Home.py"
 PROFILE_DIR = ROOT / "data" / ".appwindow"              # eigenes Browser-Profil -> isolierte, wartbare Instanz
-SHUTDOWN_SENTINEL = ROOT / "data" / ".shutdown"         # der Beenden-Button legt diese Datei an
+SHUTDOWN_SENTINEL = ROOT / "data" / ".shutdown"         # "Beenden"-Button legt diese Datei an
+UI_RESTART_FILE = ROOT / "data" / ".restart_ui"         # Modus-Wechsel aus der App ("network"/"local")
 IPEX_EXE = ROOT / "ipex-ollama" / "ollama.exe"          # vorhanden = Intel-GPU-Variante
 OLLAMA_PORT = 11434
 TUNNEL_URL_FILE = ROOT / "data" / "tunnel_url.txt"      # Cloudflare-Adresse (liest die App)
@@ -49,8 +53,14 @@ TUNNEL_MODE = os.environ.get("RAG_TUNNEL") == "1"       # Cloudflare-Tunnel gewu
 
 
 def _no_window_flag() -> int:
-    """Kindprozesse ohne eigenes Konsolenfenster starten (Windows)."""
     return getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+
+
+def _rm(path: pathlib.Path) -> None:
+    try:
+        path.unlink()
+    except OSError:
+        pass
 
 
 def _port_open(host: str, port: int, timeout: float = 0.5) -> bool:
@@ -60,7 +70,6 @@ def _port_open(host: str, port: int, timeout: float = 0.5) -> bool:
 
 
 def _pick_port(preferred: int = PREFERRED_PORT) -> int:
-    """Bevorzugten Port nehmen, wenn frei; sonst einen freien vom OS."""
     if not _port_open(HOST, preferred):
         return preferred
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -77,6 +86,15 @@ def _wait_port(port: int, timeout: float = 90.0) -> bool:
     return False
 
 
+def _wait_port_free(port: int, timeout: float = 12.0) -> bool:
+    start = time.time()
+    while time.time() - start < timeout:
+        if not _port_open(HOST, port):
+            return True
+        time.sleep(0.3)
+    return False
+
+
 def _taskkill_image(name: str) -> None:
     if os.name != "nt":
         return
@@ -88,7 +106,6 @@ def _taskkill_image(name: str) -> None:
 
 
 def _kill_tree(proc: "subprocess.Popen | None") -> None:
-    """Prozess samt Kindprozessen beenden."""
     if proc is None or proc.poll() is not None:
         return
     if os.name == "nt":
@@ -124,30 +141,22 @@ def _resolve_standard_ollama() -> "str | None":
 
 def _start_ollama() -> "subprocess.Popen | None":
     """Sorgt dafuer, dass ein Ollama-Server laeuft; startet ihn bei Bedarf als
-    getrackten Kindprozess (ohne eigenes Fenster). Rueckgabe: der gestartete
-    Prozess oder None (wenn schon einer lief oder keiner gefunden wurde)."""
+    getrackten Kindprozess (ohne eigenes Fenster)."""
     intel = IPEX_EXE.is_file()
-
     if _port_open(HOST, OLLAMA_PORT):
         if intel:
-            # Auf der Intel-Variante soll garantiert der GPU-Server laufen -
-            # ein evtl. laufender CPU-Ollama weicht.
             _taskkill_image("ollama.exe")
             _taskkill_image("ollama app.exe")
             time.sleep(1.0)
         else:
-            return None  # es laeuft schon ein (Standard-)Ollama -> nutzen
-
+            return None  # laeuft schon ein (Standard-)Ollama -> nutzen
     if intel:
         print("Starte lokales KI-Modell auf der Intel-GPU (IPEX-LLM) ...")
         env = dict(os.environ)
         env.update({
-            "OLLAMA_NUM_GPU": "999",
-            "ZES_ENABLE_SYSMAN": "1",
-            "ONEAPI_DEVICE_SELECTOR": "level_zero:0",
-            "OLLAMA_HOST": "127.0.0.1:11434",
-            "OLLAMA_KEEP_ALIVE": "30m",
-            "OLLAMA_NUM_PARALLEL": "1",
+            "OLLAMA_NUM_GPU": "999", "ZES_ENABLE_SYSMAN": "1",
+            "ONEAPI_DEVICE_SELECTOR": "level_zero:0", "OLLAMA_HOST": "127.0.0.1:11434",
+            "OLLAMA_KEEP_ALIVE": "30m", "OLLAMA_NUM_PARALLEL": "1",
             "OLLAMA_MAX_LOADED_MODELS": "2",
         })
         try:
@@ -156,7 +165,6 @@ def _start_ollama() -> "subprocess.Popen | None":
         except Exception as exc:  # noqa: BLE001
             print(f"[!] IPEX-Ollama-Server liess sich nicht starten: {exc}")
             return None
-
     exe = _resolve_standard_ollama()
     if not exe:
         print("[i] Ollama nicht gefunden - bitte sicherstellen, dass Ollama laeuft.")
@@ -170,8 +178,6 @@ def _start_ollama() -> "subprocess.Popen | None":
 
 
 def _stop_ollama_fully(proc: "subprocess.Popen | None") -> None:
-    """Ollama WIRKLICH beenden - den getrackten Prozess und alle ollama-Prozesse,
-    damit nach dem Beenden nichts mehr im Hintergrund laeuft."""
     _kill_tree(proc)
     _taskkill_image("ollama.exe")
     _taskkill_image("ollama app.exe")
@@ -196,13 +202,9 @@ _TUNNEL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 
 
 def _start_tunnel(port: int) -> "subprocess.Popen | None":
-    """Startet einen Cloudflare-Quick-Tunnel auf localhost:port und schreibt die
-    oeffentliche Adresse nach data/tunnel_url.txt, sobald sie steht. Wird beim
-    Beenden mitgestoppt."""
-    try:
-        TUNNEL_URL_FILE.unlink()
-    except OSError:
-        pass
+    """Cloudflare-Quick-Tunnel auf localhost:port; schreibt die oeffentliche
+    Adresse nach data/tunnel_url.txt, sobald sie steht."""
+    _rm(TUNNEL_URL_FILE)
     exe = _resolve_cloudflared()
     if not exe:
         print("[i] cloudflared nicht gefunden - Tunnel uebersprungen "
@@ -242,13 +244,21 @@ def _start_tunnel(port: int) -> "subprocess.Popen | None":
 # --------------------------------------------------------------------------- #
 # Streamlit + App-Fenster
 # --------------------------------------------------------------------------- #
-def _start_streamlit(port: int) -> subprocess.Popen:
+def _start_streamlit(port: int, network: bool = False) -> subprocess.Popen:
+    """Startet Streamlit. network=True -> an 0.0.0.0 gebunden (im Netz erreichbar)
+    und RAG_NETWORK=1 (PIN-Sperre aktiv); sonst nur localhost."""
     env = dict(os.environ)
     env.setdefault("PYTHONUTF8", "1")
     env.setdefault("PYTHONIOENCODING", "utf-8")
+    if network:
+        env["RAG_NETWORK"] = "1"
+        addr = "0.0.0.0"
+    else:
+        env.pop("RAG_NETWORK", None)
+        addr = "localhost"
     cmd = [
         sys.executable, "-m", "streamlit", "run", str(HOME),
-        "--server.address", BIND_HOST,
+        "--server.address", addr,
         "--server.port", str(port),
         "--server.headless", "true",
         "--browser.gatherUsageStats", "false",
@@ -291,12 +301,8 @@ def _find_browser() -> "tuple[str | None, str]":
 def _open_window(browser: str, url: str) -> "subprocess.Popen | None":
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     args = [
-        browser,
-        f"--app={url}",
-        f"--user-data-dir={PROFILE_DIR}",
-        "--window-size=1240,860",
-        "--no-first-run",
-        "--no-default-browser-check",
+        browser, f"--app={url}", f"--user-data-dir={PROFILE_DIR}",
+        "--window-size=1240,860", "--no-first-run", "--no-default-browser-check",
     ]
     try:
         return subprocess.Popen(args)
@@ -313,43 +319,35 @@ def main() -> int:
         print(f"[Fehler] Oberflaeche nicht gefunden: {HOME}")
         return 1
 
-    # evtl. altes Beenden-Signal von einer frueheren Sitzung entfernen
-    try:
-        SHUTDOWN_SENTINEL.unlink()
-    except OSError:
-        pass
+    _rm(SHUTDOWN_SENTINEL)
+    _rm(UI_RESTART_FILE)
 
-    # 1) Lokales KI-Modell (Ollama) starten - waermt im Hintergrund, waehrend
-    #    die Oberflaeche hochfaehrt (nicht blockieren -> schnelleres Fenster).
     ollama_proc = _start_ollama()
 
-    # 2) Oberflaeche starten
     port = _pick_port()
     url = f"http://localhost:{port}"
     if port != PREFERRED_PORT:
         print(f"[i] Port {PREFERRED_PORT} war belegt, nutze freien Port {port}.")
-    print("Starte Oberflaeche ...")
-    st_proc = _start_streamlit(port)
 
-    # Optional: Cloudflare-Tunnel fuer den Zugriff von unterwegs (Start_Unterwegs.bat).
+    network = os.environ.get("RAG_NETWORK") == "1"
+    print("Starte Oberflaeche%s ..." % (" (Netzwerkmodus)" if network else ""))
+    st = {"proc": _start_streamlit(port, network)}
     tunnel_proc = _start_tunnel(port) if TUNNEL_MODE else None
 
     def _cleanup() -> None:
-        _kill_tree(st_proc)
+        _kill_tree(st["proc"])
         _stop_ollama_fully(ollama_proc)
         _kill_tree(tunnel_proc)
-        try:
-            TUNNEL_URL_FILE.unlink()
-        except OSError:
-            pass
+        _rm(TUNNEL_URL_FILE)
+        _rm(SHUTDOWN_SENTINEL)
+        _rm(UI_RESTART_FILE)
     atexit.register(_cleanup)
 
-    if not _wait_until_ready(st_proc, port):
+    if not _wait_until_ready(st["proc"], port):
         print(f"[Fehler] Oberflaeche wurde nicht bereit (Port {port}).")
         _cleanup()
         return 1
 
-    # 3) App-Fenster oeffnen (Fallback: Standardbrowser)
     browser, kind = _find_browser()
     win = None
     if browser:
@@ -362,36 +360,45 @@ def main() -> int:
         except Exception:  # noqa: BLE001
             pass
 
-    # 4) Ueberwachen: bis das Fenster geschlossen wird ODER die Oberflaeche
-    #    endet ODER der "Beenden"-Button das Signal legt.
     print("Laeuft. Fenster schliessen oder in der App 'Beenden' druecken zum Stoppen.")
     try:
         while True:
             if win is not None and win.poll() is not None:
                 break                                   # Fenster geschlossen
-            if st_proc.poll() is not None:
+            if st["proc"].poll() is not None:
                 break                                   # Oberflaeche beendet
             if SHUTDOWN_SENTINEL.exists():
                 break                                   # Beenden-Button
+
+            # Modus-Wechsel aus der App (lokal <-> Netzwerk)?
+            if UI_RESTART_FILE.exists():
+                try:
+                    desired = UI_RESTART_FILE.read_text(encoding="utf-8").strip()
+                except Exception:  # noqa: BLE001
+                    desired = ""
+                _rm(UI_RESTART_FILE)
+                want_net = (desired == "network")
+                if want_net != network:
+                    print("Wechsle auf %s ..." % ("Netzwerkmodus" if want_net else "lokal"))
+                    _kill_tree(st["proc"])
+                    _wait_port_free(port)
+                    network = want_net
+                    st["proc"] = _start_streamlit(port, network)
+                    _wait_until_ready(st["proc"], port)
+                    # das App-Fenster verbindet sich automatisch neu (gleiche URL)
             time.sleep(0.5)
     except KeyboardInterrupt:
         pass
 
-    # 5) Sauber runterfahren: Fenster schliessen, Oberflaeche + Ollama stoppen.
     print("Beende - Oberflaeche und lokales KI-Modell werden gestoppt ...")
-    try:
-        SHUTDOWN_SENTINEL.unlink()
-    except OSError:
-        pass
+    _rm(SHUTDOWN_SENTINEL)
+    _rm(UI_RESTART_FILE)
     if win is not None:
         _kill_tree(win)
-    _kill_tree(st_proc)
+    _kill_tree(st["proc"])
     _stop_ollama_fully(ollama_proc)
     _kill_tree(tunnel_proc)
-    try:
-        TUNNEL_URL_FILE.unlink()
-    except OSError:
-        pass
+    _rm(TUNNEL_URL_FILE)
     print("Fertig. Es laeuft nichts mehr im Hintergrund.")
     return 0
 

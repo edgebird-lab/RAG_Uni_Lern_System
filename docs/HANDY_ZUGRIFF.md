@@ -6,10 +6,15 @@ Einstellungen setzen: **Einstellungen -> Handy-Zugriff -> PIN speichern**,
 dazu die App einmal normal mit `Start.bat` starten).
 
 ## 1. Zuhause im gleichen WLAN (am einfachsten)
-1. App mit **`Start_Handy-Zugriff.bat`** starten (statt `Start.bat`).
-2. In der App unter **Einstellungen -> Handy-Zugriff** erscheinen Adresse und
-   **QR-Code**. Mit dem Handy scannen.
-3. Fertig. Kein Internet, kein Dienst noetig.
+1. Die App normal starten (`Start.bat`).
+2. Unter **Einstellungen -> Handy-Zugriff** einen **PIN** setzen und auf
+   **"Mit Smartphone verbinden"** klicken. Der Server startet kurz neu (das
+   Fenster verbindet sich automatisch wieder).
+3. Adresse und **QR-Code** erscheinen dort. Mit dem Handy scannen.
+4. Fertig. Kein Internet, kein Dienst noetig. Mit **"Verbindung trennen"** geht
+   es wieder auf nur-lokal zurueck.
+
+(Alternativ direkt im Netzmodus starten: `Start_Handy-Zugriff.bat`.)
 
 ## 2. Von unterwegs (Cloudflare-Tunnel)
 1. App mit **`Start_Unterwegs.bat`** starten.

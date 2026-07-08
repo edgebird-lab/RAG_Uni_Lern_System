@@ -286,6 +286,7 @@ st.divider()
 # Handy-/Tablet-Zugriff (Netzwerk)
 # --------------------------------------------------------------------------- #
 from ragapp import netinfo
+from ragapp.config import UI_RESTART_FILE
 
 st.header("📱 Handy-/Tablet-Zugriff")
 st.markdown(
@@ -310,7 +311,7 @@ with _pc2:
                    else "PIN geleert. Im Netzwerkmodus ist dann kein Zugriff möglich.")
 
 if netinfo.is_network_mode():
-    st.success("✅ Netzwerk-Zugriff ist **aktiv** (über Start_Handy-Zugriff.bat gestartet).")
+    st.success("✅ **Verbunden** – dein Handy/Tablet kann jetzt zugreifen (PIN nötig).")
     _ziele = netinfo.access_targets()
     if not _ziele:
         st.warning("Keine Netzwerk-Adresse gefunden. Ist der PC mit dem WLAN verbunden?")
@@ -329,19 +330,31 @@ if netinfo.is_network_mode():
         "**Zum Home-Bildschirm hinzufügen**. Sie startet danach randlos wie eine "
         "echte App.")
     if not any(_z["kind"] == "tunnel" for _z in _ziele):
-        st.info(
-            "**Auch von unterwegs (außerhalb des WLANs)?** Starte die App über "
-            "**Start_Unterwegs.bat**. Dann wird ein sicherer Cloudflare-Tunnel "
-            "aufgebaut und hier erscheint automatisch eine öffentliche Adresse "
-            "(cloudflared wird beim ersten Mal automatisch installiert).")
+        st.caption(
+            "Auch von unterwegs (außerhalb des WLANs)? Die App über "
+            "**Start_Unterwegs.bat** starten (Cloudflare-Tunnel).")
+    if st.button("🔌 Verbindung trennen"):
+        try:
+            UI_RESTART_FILE.write_text("local", encoding="utf-8")
+        except Exception:  # noqa: BLE001
+            pass
+        st.info("Trenne … der Server startet kurz neu, die Seite lädt gleich neu.")
+        st.stop()
 else:
-    st.info(
-        "Der Netzwerk-Zugriff ist gerade **aus**. So aktivierst du ihn:\n\n"
-        "- **Zuhause (gleiches WLAN):** die App über **Start_Handy-Zugriff.bat** starten.\n"
-        "- **Von unterwegs:** die App über **Start_Unterwegs.bat** starten (Cloudflare).\n\n"
-        "Danach erscheinen hier Adresse + QR-Code.")
-    if not str(settings.UI_ACCESS_PIN or "").strip():
-        st.warning("⚠️ Es ist noch kein PIN gesetzt. Setze oben zuerst einen PIN.")
+    st.write("Verbindung: **aus** – die App ist nur auf diesem PC erreichbar.")
+    _pin_ok = bool(str(settings.UI_ACCESS_PIN or "").strip())
+    if st.button("📱 Mit Smartphone verbinden", type="primary", disabled=not _pin_ok):
+        try:
+            UI_RESTART_FILE.write_text("network", encoding="utf-8")
+        except Exception:  # noqa: BLE001
+            pass
+        st.info("Verbinde … der Server startet kurz im Netzwerkmodus neu, die Seite "
+                "lädt gleich neu. Danach erscheinen hier Adresse + QR-Code.")
+        st.stop()
+    if not _pin_ok:
+        st.warning("⚠️ Setze oben zuerst einen PIN, dann lässt sich verbinden.")
+    st.caption(
+        "Von unterwegs (außerhalb des WLANs): die App über **Start_Unterwegs.bat** starten.")
 
 st.caption(
     "Hinweis: Beim ersten Start im Netzwerkmodus fragt die **Windows-Firewall**, "

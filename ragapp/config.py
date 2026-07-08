@@ -51,6 +51,7 @@ LOG_DIR = DATA_DIR / "logs"                             # Query-/Ingestion-Logs
 MANIFEST_DB = DATA_DIR / "manifest.db"                  # SQLite: Dedup + Registry
 RUNTIME_CONFIG_FILE = DATA_DIR / "config.json"          # Laufzeit-Overrides
 SHUTDOWN_SENTINEL = DATA_DIR / ".shutdown"              # Signal zum sauberen Beenden (Beenden-Button -> Starter)
+UI_RESTART_FILE = DATA_DIR / ".restart_ui"             # Modus-Wechsel lokal<->Netzwerk aus der App (Inhalt: "network"/"local")
 
 for _p in (DATA_DIR, CHROMA_DIR, BM25_DIR, EVAL_DIR, LOG_DIR, INBOX_DIR):
     _p.mkdir(parents=True, exist_ok=True)
