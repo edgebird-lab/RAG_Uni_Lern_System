@@ -403,7 +403,16 @@ else:
                 text=f"Karte {erledigt + 1} · noch {len(queue)} in der Runde")
     _tt = _fach_label(karte.get("subject") or "")
     _topic = karte.get("topic")
-    st.caption(f"📚 {_tt}" + (f" · {_topic}" if _topic else ""))
+    _capc, _stopc = st.columns([3, 1])
+    _capc.caption(f"📚 {_tt}" + (f" · {_topic}" if _topic else ""))
+    # Runde JEDERZEIT beenden bzw. Fach/Stapel wechseln (z. B. nach 5 Karten oder wenn
+    # das Tagesziel erreicht ist). Schon bewertete Karten sind bereits gespeichert.
+    if _stopc.button("⏹ Beenden", use_container_width=True,
+                     help="Lernrunde beenden und zurück zur Auswahl (Fach/Stapel "
+                          "wechseln). Bereits bewertete Karten bleiben gespeichert."):
+        for _k in (Q, ACTIVE, REVEAL, TALLY, ROUND):
+            st.session_state.pop(_k, None)
+        st.rerun()
 
     # Vorderseite
     st.markdown(f"<div class='karte karte-frage'>{karte['front']}</div>",
