@@ -496,6 +496,9 @@ def _open_window(browser: str, url: str) -> "subprocess.Popen | None":
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     args = [
         browser, f"--app={url}", f"--user-data-dir={PROFILE_DIR}",
+        # Vollbild -> die Windows-Taskleiste ist ausgeblendet und verdeckt nichts
+        # mehr (z. B. das Fach-Dropdown). Mit F11 laesst sich Vollbild umschalten.
+        "--start-fullscreen",
         "--window-size=1240,860", "--no-first-run", "--no-default-browser-check",
     ]
     try:

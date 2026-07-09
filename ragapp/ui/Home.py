@@ -77,7 +77,11 @@ _LERN_SPRUECHE = [
 # --------------------------------------------------------------------------- #
 st.markdown("""
 <style>
-.block-container {padding-top: 2rem; max-width: 1100px;}
+.block-container {padding-top: 2rem; padding-bottom: 6rem; max-width: 1100px;}
+/* Aufklapp-Listen (z. B. Fach-Dropdown) in der Hoehe begrenzen und scrollbar
+   machen, damit sie nie unten aus dem Fenster / hinter die Taskleiste laufen. */
+ul[role="listbox"], [data-testid="stSelectboxVirtualDropdown"] ul,
+[data-baseweb="menu"] {max-height: 45vh !important; overflow-y: auto !important;}
 .stChatMessage {border-radius: 14px;}
 .source-card {
     background: linear-gradient(135deg, #f6f8fc 0%, #eef2fb 100%);
