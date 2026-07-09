@@ -29,6 +29,7 @@ from ragapp.hardware import (
     pull_model_stream,
     is_model_installed,
     llm_size_gb,
+    all_llm_tags,
     EMBED_MODELS,
     RERANKER_MODELS,
 )
@@ -199,13 +200,17 @@ if hw:
             f"Ollama-Server unter `{settings.OLLAMA_BASE_URL}`? Angeboten werden "
             "stattdessen die Empfehlungen."
         )
-        optionen = list(empf_tags)
+        optionen = list(empf_tags) + [t for t in all_llm_tags() if t not in empf_tags]
     else:
         if not installiert:
             st.info("Noch **kein** Modell installiert – wähle unten eins aus und klicke "
                     "**Herunterladen**.")
-        # Empfehlungen zuerst (die man vermutlich möchte), dann bereits Installierte.
-        optionen = list(empf_tags) + [t for t in installiert if t not in empf_tags]
+        # Empfehlungen zuerst, dann der restliche Katalog (alles herunterladbar),
+        # dann noch nicht katalogisierte, aber installierte Modelle.
+        _kat = all_llm_tags()
+        optionen = (list(empf_tags)
+                    + [t for t in _kat if t not in empf_tags]
+                    + [t for t in installiert if t not in empf_tags and t not in _kat])
 
     optionen = [o for o in dict.fromkeys(optionen) if o]
     if settings.LLM_MODEL and settings.LLM_MODEL not in optionen:

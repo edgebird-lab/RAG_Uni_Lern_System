@@ -151,20 +151,29 @@ def detect_hardware() -> dict:
 # "gb" = grober Speicherbedarf in Q4-Quantisierung (Richtwert). "denk" = Denk-/
 # Reasoning-Modell (sehr gut fuer schwere Logik, aber langsamer; laeuft in der App
 # ohne sichtbare Gedankengaenge, da think=False gesetzt ist).
+# Tags + Groessen wurden im Juli 2026 direkt gegen ollama.com/library verifiziert.
 _LLM: dict[str, dict] = {
-    "gemma3:4b":         {"params": "4B",  "gb": 3.3,  "fam": "Gemma 3",     "info": "starkes Deutsch, kompakt"},
-    "qwen3:4b":          {"params": "4B",  "gb": 2.6,  "fam": "Qwen3",       "info": "sehr kompakt, aktuell"},
-    "mistral:7b":        {"params": "7B",  "gb": 4.4,  "fam": "Mistral",     "info": "schnell, ordentliches Deutsch"},
-    "llama3.1:8b":       {"params": "8B",  "gb": 4.9,  "fam": "Llama 3.1",   "info": "solider Allrounder"},
-    "qwen3:8b":          {"params": "8B",  "gb": 5.2,  "fam": "Qwen3",       "info": "schnell und stark"},
-    "mistral-nemo:12b":  {"params": "12B", "gb": 7.1,  "fam": "Mistral",     "info": "gut mehrsprachig"},
-    "gemma3:12b":        {"params": "12B", "gb": 8.1,  "fam": "Gemma 3",     "info": "exzellentes Deutsch"},
-    "deepseek-r1:14b":   {"params": "14B", "gb": 9.0,  "fam": "DeepSeek-R1", "info": "Denk-Modell, top Logik", "denk": True},
-    "phi4:14b":          {"params": "14B", "gb": 9.1,  "fam": "Phi-4",       "info": "stark in Logik & Mathe"},
-    "qwen3:14b":         {"params": "14B", "gb": 9.3,  "fam": "Qwen3",       "info": "sehr stark, aktuell"},
-    "mistral-small:24b": {"params": "24B", "gb": 14.0, "fam": "Mistral",     "info": "stark und effizient"},
+    # --- klein (~2-5 GB) --------------------------------------------------- #
+    "qwen3:4b":          {"params": "4B",  "gb": 2.6, "fam": "Qwen3",       "info": "sehr kompakt, aktuell"},
+    "gemma3:4b":         {"params": "4B",  "gb": 3.3, "fam": "Gemma 3",     "info": "starkes Deutsch, kompakt"},
+    "mistral:7b":        {"params": "7B",  "gb": 4.4, "fam": "Mistral",     "info": "schnell, ordentliches Deutsch"},
+    "llama3.1:8b":       {"params": "8B",  "gb": 4.9, "fam": "Llama 3.1",   "info": "solider Allrounder"},
+    "deepseek-r1:8b":    {"params": "8B",  "gb": 5.2, "fam": "DeepSeek-R1", "info": "Denk-Modell (R1-0528), schlank", "denk": True},
+    "qwen3:8b":          {"params": "8B",  "gb": 5.2, "fam": "Qwen3",       "info": "schnell und stark"},
+    # --- mittel (~7-10 GB) ------------------------------------------------- #
+    "mistral-nemo:12b":  {"params": "12B", "gb": 7.1, "fam": "Mistral",     "info": "gut mehrsprachig"},
+    "gemma3:12b":        {"params": "12B", "gb": 8.1, "fam": "Gemma 3",     "info": "exzellentes Deutsch"},
+    "deepseek-r1:14b":   {"params": "14B", "gb": 9.0, "fam": "DeepSeek-R1", "info": "Denk-Modell, top Logik", "denk": True},
+    "phi4:14b":          {"params": "14B", "gb": 9.1, "fam": "Phi-4",       "info": "stark in Logik & Mathe"},
+    "qwen3:14b":         {"params": "14B", "gb": 9.3, "fam": "Qwen3",       "info": "sehr stark, aktuell"},
+    "gemma4:e4b":        {"params": "E4B (eff. 4B)", "gb": 9.6, "fam": "Gemma 4", "info": "neueste Gemma, sehr gutes Deutsch (App-Standard)"},
+    # --- gross (~14-20 GB) ------------------------------------------------- #
+    "gpt-oss:20b":       {"params": "20B (MoE, ~3.6B aktiv)", "gb": 14.0, "fam": "GPT-OSS", "info": "OpenAI-Open, schnell (MoE), stark in Logik – etwas englischlastig", "denk": True},
+    "mistral-small3.2:24b": {"params": "24B", "gb": 15.0, "fam": "Mistral", "info": "aktuellstes Mistral Small, 128K Kontext"},
     "gemma3:27b":        {"params": "27B", "gb": 17.0, "fam": "Gemma 3",     "info": "Spitzen-Deutsch, Top-Qualität"},
+    "gemma4:26b":        {"params": "26B (MoE)", "gb": 18.0, "fam": "Gemma 4", "info": "neueste Gemma, stark & schnell (MoE)"},
     "qwen3:30b":         {"params": "30B (MoE, 3B aktiv)", "gb": 19.0, "fam": "Qwen3", "info": "sehr schnell für die Größe"},
+    "gemma4:31b":        {"params": "31B", "gb": 20.0, "fam": "Gemma 4",     "info": "neueste Gemma, Top-Qualität"},
     "qwen3:32b":         {"params": "32B", "gb": 20.0, "fam": "Qwen3",       "info": "sehr stark (dicht)"},
     "deepseek-r1:32b":   {"params": "32B", "gb": 20.0, "fam": "DeepSeek-R1", "info": "Spitzen-Logik, Denk-Modell", "denk": True},
 }
@@ -172,9 +181,11 @@ _LLM: dict[str, dict] = {
 # Reihenfolge grob nach Qualitaet fuer deutsches RAG (bestes zuerst). Aus dieser
 # Liste werden fuer eine Hardware die groessten noch passenden Modelle vorgeschlagen.
 _LLM_ORDER = [
-    "gemma3:27b", "qwen3:32b", "deepseek-r1:32b", "qwen3:30b", "mistral-small:24b",
-    "gemma3:12b", "qwen3:14b", "phi4:14b", "deepseek-r1:14b", "mistral-nemo:12b",
-    "qwen3:8b", "llama3.1:8b", "mistral:7b",
+    "gemma3:27b", "gemma4:31b", "gemma4:26b", "qwen3:32b", "mistral-small3.2:24b",
+    "deepseek-r1:32b", "qwen3:30b",
+    "gemma3:12b", "gemma4:e4b", "qwen3:14b", "phi4:14b", "gpt-oss:20b",
+    "deepseek-r1:14b", "mistral-nemo:12b",
+    "qwen3:8b", "deepseek-r1:8b", "llama3.1:8b", "mistral:7b",
     "gemma3:4b", "qwen3:4b",
 ]
 
@@ -189,16 +200,16 @@ _INTEL = {
 # erfordert einen NEU-IMPORT aller Dokumente. bge-m3 ist die beste Wahl fuer Deutsch.
 EMBED_MODELS = [
     {"tag": "bge-m3",                  "info": "★ Empfohlen – multilingual, sehr gut für Deutsch (1024-dim)"},
-    {"tag": "mxbai-embed-large",      "info": "stark, eher englischlastig (1024-dim)"},
-    {"tag": "snowflake-arctic-embed2", "info": "multilingual (1024-dim)"},
-    {"tag": "nomic-embed-text",       "info": "kompakt & schnell (768-dim)"},
+    {"tag": "snowflake-arctic-embed2", "info": "multilingual, für Deutsch optimiert (1024-dim)"},
+    {"tag": "embeddinggemma:300m",     "info": "sehr kompakt & CPU-freundlich, multilingual (768-dim)"},
+    {"tag": "qwen3-embedding:0.6b",    "info": "stark multilingual, kompakt"},
 ]
 
 # Reranker (HuggingFace Cross-Encoder; laedt beim ersten Benutzen automatisch).
 RERANKER_MODELS = [
     {"tag": "BAAI/bge-reranker-v2-m3",                   "info": "★ Empfohlen – multilingual, sehr genau"},
-    {"tag": "BAAI/bge-reranker-base",                    "info": "kleiner & schneller, englischlastig"},
-    {"tag": "jinaai/jina-reranker-v2-base-multilingual", "info": "multilingual, schnell"},
+    {"tag": "jinaai/jina-reranker-v2-base-multilingual", "info": "multilingual, sehr schnell (kompakt)"},
+    {"tag": "mixedbread-ai/mxbai-rerank-large-v2",       "info": "SOTA, 109 Sprachen – aber schwerer (2B)"},
 ]
 
 
@@ -269,6 +280,12 @@ def llm_size_gb(tag: str) -> "float | None":
     """Grober Speicherbedarf (GB) eines bekannten Katalog-Modells, sonst None."""
     m = _LLM.get(tag) or _INTEL.get(tag)
     return m.get("gb") if m else None
+
+
+def all_llm_tags() -> "list[str]":
+    """Alle Katalog-Modelle in Empfehlungs-Reihenfolge (fuer die Auswahl-Liste, damit
+    man auch ausserhalb der Top-Empfehlungen jedes Modell waehlen + laden kann)."""
+    return list(_LLM_ORDER)
 
 
 def is_model_installed(tag: str, installed: "list[str] | None") -> bool:
