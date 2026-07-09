@@ -189,6 +189,9 @@ def _stop_ollama_fully(proc: "subprocess.Popen | None") -> None:
     _kill_tree(proc)
     _taskkill_image("ollama.exe")
     _taskkill_image("ollama app.exe")
+    # Intel-IPEX spawnt den eigentlichen Server als ollama-lib.exe (haelt Port
+    # 11434) - der muss mit, sonst laeuft er nach dem Beenden weiter.
+    _taskkill_image("ollama-lib.exe")
 
 
 # --------------------------------------------------------------------------- #

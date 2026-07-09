@@ -1,12 +1,11 @@
 @echo off
 REM ============================================================
-REM  Ollama auf der Intel-Arc-iGPU starten (IPEX-LLM)
-REM  -> schnelle Antworten (gemma3:4b, ~12s statt ~10 Min)
-REM  -> schnelle Embeddings (bge-m3, ~8x)
+REM  Ollama auf der Intel-Arc-iGPU starten (IPEX-LLM) - MANUELL.
 REM
-REM  WICHTIG: Diesen Server STATT der normalen Ollama-App starten.
-REM  Danach die Oberflaeche mit Start_Oberflaeche.bat oeffnen.
-REM  Fenster offen lassen, solange du das System nutzt.
+REM  HINWEIS: Im Normalbetrieb NICHT noetig! Start.bat (bzw. das
+REM  Desktop-Icon) startet den GPU-Server automatisch mit und
+REM  beendet ihn beim Schliessen/Beenden wieder. Diese Datei ist
+REM  nur ein manueller Einzelstart - OHNE Auto-Neustart-Schleife.
 REM ============================================================
 cd /d "%~dp0ipex-ollama"
 set OLLAMA_NUM_GPU=999
@@ -15,15 +14,15 @@ set ONEAPI_DEVICE_SELECTOR=level_zero:0
 set OLLAMA_HOST=127.0.0.1:11434
 set OLLAMA_KEEP_ALIVE=30m
 set OLLAMA_NUM_PARALLEL=1
-REM Beide Modelle (Embedding bge-m3 + Antwort gemma3:4b) gleichzeitig geladen halten
-REM -> kein Modell-Swapping pro Frage (spart ~20s/Antwort)
 set OLLAMA_MAX_LOADED_MODELS=2
-:restart
+
 echo Starte Ollama auf der Intel-Arc-iGPU (gemma3:4b + bge-m3) ...
-echo (Erststart laedt das Modell auf die GPU - einen Moment Geduld.)
-ollama.exe serve
+echo (Fenster schliessen = Server beenden. KEIN automatischer Neustart.)
 echo.
-echo [!] Der GPU-Server hat sich beendet (die iGPU-Laufzeit ist experimentell).
-echo     Automatischer Neustart in 3 Sekunden ... (Fenster einfach offen lassen)
-timeout /t 3 >nul
-goto restart
+ollama.exe serve
+
+echo.
+echo ============================================================
+echo  Ollama-Server beendet. Dieses Fenster kann geschlossen werden.
+echo ============================================================
+pause

@@ -69,7 +69,7 @@ def _best_effort_stop_ollama() -> None:
     import subprocess
     if os.name != "nt":
         return
-    for name in ("ollama.exe", "ollama app.exe"):
+    for name in ("ollama.exe", "ollama app.exe", "ollama-lib.exe"):
         try:
             subprocess.run(["taskkill", "/IM", name, "/F", "/T"],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
