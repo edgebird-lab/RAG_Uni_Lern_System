@@ -19,15 +19,24 @@ abzustürzen.
 """
 from __future__ import annotations
 
+import os
 import platform
 import shutil
 import subprocess
 
 
+def _no_window_flag() -> int:
+    """CREATE_NO_WINDOW unter Windows - sonst blitzt bei jedem Shell-Aufruf (z. B.
+    beim Oeffnen der Einstellungen: CPU/GPU-Erkennung, ollama-Abfragen) kurz ein
+    Terminalfenster auf."""
+    return getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+
+
 def _run(cmd: list[str], timeout: int = 15) -> str:
     try:
         return subprocess.run(cmd, capture_output=True, text=True,
-                              timeout=timeout, errors="replace").stdout or ""
+                              timeout=timeout, errors="replace",
+                              creationflags=_no_window_flag()).stdout or ""
     except Exception:
         return ""
 

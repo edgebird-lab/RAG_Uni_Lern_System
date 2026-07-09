@@ -51,6 +51,7 @@ LOG_DIR = DATA_DIR / "logs"                             # Query-/Ingestion-Logs
 MANIFEST_DB = DATA_DIR / "manifest.db"                  # SQLite: Dedup + Registry
 RUNTIME_CONFIG_FILE = DATA_DIR / "config.json"          # Laufzeit-Overrides
 SHUTDOWN_SENTINEL = DATA_DIR / ".shutdown"              # Signal zum sauberen Beenden (Beenden-Button -> Starter)
+OPEN_WINDOW_FILE = DATA_DIR / ".open_window"            # Signal: zweites App-Fenster oeffnen (Button -> Starter)
 UI_RESTART_FILE = DATA_DIR / ".restart_ui"             # Modus-Wechsel aus der App (Inhalt: "local"/"network"/"tunnel")
 UI_MODE_FILE = DATA_DIR / ".mode"                      # aktueller Zugriffsmodus (der Starter schreibt ihn)
 

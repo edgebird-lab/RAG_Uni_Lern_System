@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from ragapp.config import settings, SHUTDOWN_SENTINEL
+from ragapp.config import settings, SHUTDOWN_SENTINEL, OPEN_WINDOW_FILE
 from ragapp import netinfo
 
 
@@ -116,16 +116,31 @@ def _best_effort_stop_ollama() -> None:
     import subprocess
     if os.name != "nt":
         return
+    _flag = getattr(subprocess, "CREATE_NO_WINDOW", 0)   # kein aufblitzendes Terminal
     for name in ("ollama.exe", "ollama app.exe", "ollama-lib.exe"):
         try:
             subprocess.run(["taskkill", "/IM", name, "/F", "/T"],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           check=False, creationflags=_flag)
         except Exception:  # noqa: BLE001
             pass
 
 
 def _quit_button() -> None:
     with st.sidebar:
+        # Zweites Fenster (z. B. fuer einen zweiten Bildschirm) - nur sinnvoll, wenn
+        # die App ueber den Starter (ragapp.desktop) laeuft, der den Wunsch mitliest.
+        import os as _os
+        if _os.environ.get("RAG_LOCAL_TOKEN"):
+            if st.button("🖥️ Zweites Fenster öffnen", use_container_width=True,
+                         help="Öffnet die App in einem zweiten Fenster – ideal für einen "
+                              "zweiten Bildschirm. Beide Fenster teilen sich denselben "
+                              "Server und dasselbe KI-Modell."):
+                try:
+                    OPEN_WINDOW_FILE.write_text("1", encoding="utf-8")
+                    st.toast("Zweites Fenster wird geöffnet …")
+                except Exception:  # noqa: BLE001
+                    pass
         if st.button("⏻ App beenden", use_container_width=True,
                      help="Stoppt die Oberfläche UND das lokale KI-Modell (Ollama), "
                           "damit im Hintergrund nichts weiterläuft und dein System "

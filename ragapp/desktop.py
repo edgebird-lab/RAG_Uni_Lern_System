@@ -35,6 +35,7 @@ import shutil
 import socket
 import atexit
 import base64
+import json
 import secrets
 import pathlib
 import threading
@@ -58,6 +59,8 @@ TUNNEL_MODE = os.environ.get("RAG_TUNNEL") == "1"       # Cloudflare-Tunnel gewu
 SPLASH_FILE = ROOT / "data" / ".splash.html"           # schoener Ladebildschirm im App-Fenster
 ICON_PNG = ROOT / "assets" / "icon.png"
 LOG_FILE = ROOT / "data" / "app.log"                    # Startprotokoll (auch unter pythonw, sonst unsichtbar)
+INSTANCE_FILE = ROOT / "data" / ".instance.json"        # laufende Instanz (pid/port/url) -> Zweitfenster auf 2. Bildschirm
+OPEN_WINDOW_FILE = ROOT / "data" / ".open_window"       # Button in der App: zweites Fenster oeffnen
 
 _LOG_FH = None  # offener Datei-Handle fuer app.log (nur gesetzt, wenn wir selbst schreiben)
 
@@ -90,6 +93,87 @@ def _rm(path: pathlib.Path) -> None:
         path.unlink()
     except OSError:
         pass
+
+
+def _pid_alive(pid: "int | None") -> bool:
+    """Laeuft der Prozess mit dieser PID noch? (Fuer die Unterscheidung 'laufende
+    Instanz' vs. 'verwaiste Sperrdatei nach Absturz'.)"""
+    if not pid:
+        return False
+    if os.name == "nt":
+        try:
+            import ctypes
+            k = ctypes.windll.kernel32
+            h = k.OpenProcess(0x1000, False, int(pid))   # PROCESS_QUERY_LIMITED_INFORMATION
+            if not h:
+                return False
+            code = ctypes.c_ulong()
+            k.GetExitCodeProcess(h, ctypes.byref(code))
+            k.CloseHandle(h)
+            return code.value == 259                      # STILL_ACTIVE
+        except Exception:  # noqa: BLE001
+            return False
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except OSError:
+        return False
+
+
+def _monitors() -> "list[tuple[int, int, int, int]]":
+    """Bildschirm-Rechtecke (x, y, b, h), von links nach rechts sortiert - fuer die
+    Platzierung eines zweiten Fensters auf dem zweiten Bildschirm."""
+    if os.name != "nt":
+        return []
+    try:
+        import ctypes
+        from ctypes import wintypes
+        rects: list[tuple[int, int, int, int]] = []
+        proc = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p,
+                                  ctypes.POINTER(wintypes.RECT), ctypes.c_void_p)
+
+        def _cb(_h, _hdc, lprc, _d):
+            r = lprc.contents
+            rects.append((r.left, r.top, r.right - r.left, r.bottom - r.top))
+            return 1
+
+        ctypes.windll.user32.EnumDisplayMonitors(0, 0, proc(_cb), 0)
+        rects.sort(key=lambda t: t[0])
+        return rects
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _write_instance(port: int, url: str) -> None:
+    try:
+        INSTANCE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        INSTANCE_FILE.write_text(
+            json.dumps({"pid": os.getpid(), "port": port, "url": url}), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _running_instance() -> "str | None":
+    """Laeuft bereits eine App-Instanz? Dann deren URL zurueckgeben (fuer ein zweites
+    Fenster auf dem zweiten Bildschirm). Verwaiste Sperrdateien (Absturz) werden
+    ignoriert; ein noch bootender Owner wird kurz abgewartet."""
+    if not INSTANCE_FILE.exists():
+        return None
+    try:
+        d = json.loads(INSTANCE_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    pid, port, url = d.get("pid"), d.get("port"), d.get("url")
+    if not (url and port) or not _pid_alive(pid):
+        return None                                   # verwaist -> Primaerstart raeumt auf
+    deadline = time.time() + 45.0                     # Owner evtl. noch am Booten
+    while time.time() < deadline:
+        if _port_open(HOST, int(port)):
+            return url
+        if not _pid_alive(pid):
+            return None
+        time.sleep(0.4)
+    return url
 
 
 def _write_mode(m: str) -> None:
@@ -555,7 +639,8 @@ def _find_browser() -> "tuple[str | None, str]":
     return None, ""
 
 
-def _open_window(browser: str, url: str) -> "subprocess.Popen | None":
+def _open_window(browser: str, url: str,
+                 position: "tuple[int, int] | None" = None) -> "subprocess.Popen | None":
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     args = [
         browser, f"--app={url}", f"--user-data-dir={PROFILE_DIR}",
@@ -564,6 +649,10 @@ def _open_window(browser: str, url: str) -> "subprocess.Popen | None":
         "--start-fullscreen",
         "--window-size=1240,860", "--no-first-run", "--no-default-browser-check",
     ]
+    # Zweites Fenster gezielt auf den zweiten Bildschirm setzen (dorthin geht dann
+    # auch der Vollbild-Modus). Ohne Angabe erscheint es auf dem Hauptbildschirm.
+    if position is not None:
+        args.insert(3, f"--window-position={int(position[0])},{int(position[1])}")
     try:
         return subprocess.Popen(args)
     except Exception as exc:  # noqa: BLE001
@@ -617,6 +706,25 @@ def main() -> int:
     _setup_logging()
     print("=" * 60)
     print("Start RAG-Lernsystem (%s)" % time.strftime("%Y-%m-%d %H:%M:%S"))
+
+    # Laeuft schon eine Instanz? -> KEINEN zweiten Server starten, sondern nur ein
+    # zusaetzliches Fenster oeffnen (2. Bildschirm). So kann man die App zweimal
+    # nebeneinander betreiben, ohne Modell/RAM doppelt zu laden.
+    existing = _running_instance()
+    if existing:
+        print("Bereits laufende Instanz erkannt -> oeffne zusaetzliches Fenster.")
+        browser, kind = _find_browser()
+        mons = _monitors()
+        pos = (mons[-1][0], mons[-1][1]) if len(mons) > 1 else None   # zweiter Bildschirm
+        w = _open_window(browser, existing, position=pos) if browser else None
+        if w is None:
+            try:
+                webbrowser.open(existing)
+            except Exception:  # noqa: BLE001
+                pass
+        print("Zweites Fenster geoeffnet (die erste Instanz verwaltet Server/Modell).")
+        return 0
+
     if not HOME.is_file():
         print(f"[Fehler] Oberflaeche nicht gefunden: {HOME}")
         return 1
@@ -626,6 +734,8 @@ def main() -> int:
     _rm(TUNNEL_URL_FILE)      # Altlasten eines frueheren (evtl. hart beendeten) Laufs
     _rm(TUNNEL_ERROR_FILE)
     _rm(SPLASH_FILE)
+    _rm(OPEN_WINDOW_FILE)    # evtl. alter Fenster-Wunsch soll nicht sofort feuern
+    _rm(INSTANCE_FILE)       # evtl. verwaiste Instanz-Sperre eines abgestuerzten Laufs
     # Verwaiste Server frueherer (hart beendeter) Laeufe aufraeumen, damit sich im
     # Hintergrund nichts ansammelt (Streamlit + evtl. offener Cloudflare-Tunnel).
     _kill_stray_streamlit()
@@ -640,6 +750,9 @@ def main() -> int:
     url = f"http://localhost:{port}/?k={os.environ['RAG_LOCAL_TOKEN']}"
     if port != PREFERRED_PORT:
         print(f"[i] Port {PREFERRED_PORT} war belegt, nutze freien Port {port}.")
+    # Instanz-Sperre schreiben, damit ein zweiter Start nur ein weiteres Fenster
+    # oeffnet (statt einen zweiten Server) - auch schon waehrend des Bootens.
+    _write_instance(port, url)
 
     def _mode_from_env() -> str:
         if os.environ.get("RAG_TUNNEL") == "1":
@@ -670,6 +783,7 @@ def main() -> int:
         _rm(SHUTDOWN_SENTINEL)
         _rm(UI_RESTART_FILE)
         _rm(UI_MODE_FILE)
+        _rm(INSTANCE_FILE)
     atexit.register(_cleanup)
 
     # Ladebildschirm SOFORT im App-Fenster zeigen, waehrend Ollama/Streamlit hochfahren.
@@ -721,6 +835,15 @@ def main() -> int:
                 break                                   # Oberflaeche beendet
             if SHUTDOWN_SENTINEL.exists():
                 break                                   # Beenden-Button
+
+            # Button in der App: zusaetzliches Fenster (2. Bildschirm) oeffnen.
+            if OPEN_WINDOW_FILE.exists():
+                _rm(OPEN_WINDOW_FILE)
+                _mons = _monitors()
+                _pos = (_mons[-1][0], _mons[-1][1]) if len(_mons) > 1 else None
+                if browser:
+                    print("Oeffne zusaetzliches Fenster (2. Bildschirm) ...")
+                    _open_window(browser, url, position=_pos)
 
             # Modus-Wechsel aus der App (lokal / WLAN / Cloudflare)?
             if UI_RESTART_FILE.exists():

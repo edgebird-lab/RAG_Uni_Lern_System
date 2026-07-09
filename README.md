@@ -146,18 +146,50 @@ cd RAG_System
 
 **Linux / macOS:**
 
+Entweder das fertige Quellpaket **`RAG-Lernsystem-Linux.tar.gz`** von der
+GitHub-Release-Seite herunterladen **oder** das Repository klonen – dann den
+One-Click-Installer ausführen:
+
 ```bash
-./install.sh   # One-Click-Installer
-./start.sh     # Starten
+# Variante A – Quellpaket (Release-Seite):
+tar xzf RAG-Lernsystem-Linux.tar.gz
+cd RAG-Lernsystem
+
+# Variante B – geklont:
+#   git clone <REPO-URL> && cd RAG_System
+
+bash install.sh   # erkennt Hardware, baut die venv, installiert Ollama + ein
+                  # passendes Modell; unter Linux wird zusätzlich ein Menü-/
+                  # Desktop-Starter (Icon) angelegt
+./start.sh        # startet die Oberfläche unter http://localhost:8501
 ```
 
 > ℹ️ Die Installer `install.ps1` / `install.sh` erkennen deine Hardware
 > (CPU/GPU-Hersteller, RAM/VRAM) und richten **automatisch** die richtige
 > Ollama-Variante (Standard bzw. IPEX-LLM für Intel) und ein passendes Modell
 > ein. Manuelle Einrichtung von Grund auf: [docs/SETUP.md](docs/SETUP.md).
+>
+> Das Quellpaket erzeugst du selbst mit `bash build_linux.sh` (nutzt `git archive`
+> – enthält nur den Quellcode, **keine** persönlichen Unterlagen/Datenbank).
 
 Danach zum ersten Mal deine Dokumente indexieren, siehe
 [Eigene Dokumente hinzufügen](#-eigene-dokumente-hinzufügen).
+
+### 🖥️ Auf zwei Bildschirmen nutzen
+
+Die App lässt sich in **zwei Fenstern gleichzeitig** öffnen (z. B. je Bildschirm) –
+beide teilen sich denselben Server und dasselbe KI-Modell, es wird also **kein**
+Speicher/Modell doppelt geladen. Zwei Wege:
+
+- In der App links in der Seitenleiste auf **„🖥️ Zweites Fenster öffnen"** klicken.
+  Das neue Fenster erscheint automatisch auf dem zweiten Bildschirm (falls
+  vorhanden).
+- Oder einfach das **Desktop-Icon erneut anklicken** – erkennt die laufende
+  Instanz und öffnet nur ein weiteres Fenster.
+
+Beim Schließen bleibt die App aktiv, solange **noch ein Fenster offen** ist; erst
+das Schließen des letzten Fensters (oder **„⏻ App beenden"**) stoppt Server und
+KI-Modell.
 
 ### Doppelklick-Starthilfen (Windows)
 
