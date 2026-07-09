@@ -339,6 +339,13 @@ if netinfo.is_network_mode():
     _ziele = netinfo.access_targets()
     if not _ziele:
         st.warning("Keine Netzwerk-Adresse gefunden. Ist der PC mit dem WLAN verbunden?")
+    _hinweise = {
+        "lan": "📶 Funktioniert, wenn das Handy im **selben WLAN** ist.",
+        "tunnel": "🌍 Von **überall** erreichbar, **keine App** am Handy nötig.",
+        "tailscale": "🔒 Funktioniert **nur**, wenn Tailscale auch **am Handy** mit "
+                     "demselben Konto angemeldet **und eingeschaltet** (VPN an) ist. "
+                     "App installieren allein reicht nicht.",
+    }
     _cols = st.columns(max(1, len(_ziele)))
     for _c, _z in zip(_cols, _ziele):
         with _c:
@@ -349,6 +356,8 @@ if netinfo.is_network_mode():
                 st.image(_png, width=200, caption="Mit dem Handy scannen")
             else:
                 st.caption("(QR-Code nicht verfügbar, Adresse oben im Handy-Browser eingeben.)")
+            if _hinweise.get(_z["kind"]):
+                st.caption(_hinweise[_z["kind"]])
     st.caption(
         "📲 Als App aufs Handy: Adresse öffnen, dann im Browser-Menü "
         "**Zum Home-Bildschirm hinzufügen**. Sie startet danach randlos wie eine "
