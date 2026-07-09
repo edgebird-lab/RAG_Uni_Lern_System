@@ -73,7 +73,8 @@ CREATE TABLE IF NOT EXISTS review_items (
     due         REAL,               -- naechster Faelligkeits-Zeitpunkt (epoch)
     last_review REAL,
     created_at  REAL,
-    suspended   INTEGER DEFAULT 0
+    suspended   INTEGER DEFAULT 0,
+    deck        TEXT                -- optionaler Stapel/Themenstapel (frei benannt)
 );
 CREATE INDEX IF NOT EXISTS idx_review_due ON review_items(due);
 CREATE INDEX IF NOT EXISTS idx_review_subject ON review_items(subject);
@@ -107,6 +108,14 @@ def _connect() -> Iterator[sqlite3.Connection]:
 def init_db() -> None:
     with _connect() as conn:
         conn.executescript(_SCHEMA)
+        # Additive Migration: 'deck'-Spalte fuer bestehende Karten-DBs nachziehen.
+        try:
+            cols = {r["name"] for r in conn.execute("PRAGMA table_info(review_items)")}
+            if "deck" not in cols:
+                conn.execute("ALTER TABLE review_items ADD COLUMN deck TEXT")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_review_deck ON review_items(deck)")
+        except Exception:  # noqa: BLE001
+            pass
 
 
 # --------------------------------------------------------------------------- #
@@ -265,15 +274,30 @@ def upsert_review_items(cards: list[dict]) -> int:
         return neu
 
 
-def review_counts(subject: Optional[str] = None) -> dict:
+def _filter(subject: Optional[str], deck: Optional[str]) -> tuple[str, list]:
+    """Baut die WHERE-Zusaetze fuer Fach/Stapel. deck='__none__' = ohne Stapel."""
+    sql, args = "", []
+    if subject:
+        sql += " AND subject=?"
+        args.append(subject)
+    if deck is not None:
+        if deck == "__none__":
+            sql += " AND deck IS NULL"
+        else:
+            sql += " AND deck=?"
+            args.append(deck)
+    return sql, args
+
+
+def review_counts(subject: Optional[str] = None, deck: Optional[str] = None) -> dict:
     """Zaehlt Karten: gesamt / faellig / neu (nie geuebt) / gelernt (schon geuebt)."""
     now = time.time()
-    where = "WHERE suspended=0" + (" AND subject=?" if subject else "")
-    args = [subject] if subject else []
+    fsql, fargs = _filter(subject, deck)
+    where = "WHERE suspended=0" + fsql
     with _connect() as conn:
         def one(extra, a):
             return conn.execute(f"SELECT COUNT(*) AS c FROM review_items {where}{extra}",
-                                args + a).fetchone()["c"]
+                                fargs + a).fetchone()["c"]
         return {
             "total": one("", []),
             "due": one(" AND due<=?", [now]),
@@ -283,18 +307,14 @@ def review_counts(subject: Optional[str] = None) -> dict:
 
 
 def get_due_cards(subject: Optional[str] = None, limit: int = 20,
-                  now: Optional[float] = None) -> list[dict]:
+                  now: Optional[float] = None, deck: Optional[str] = None) -> list[dict]:
     """Faellige Karten (Wiederholungen zuerst, dann neue), aufsteigend nach Faelligkeit."""
     now = now if now is not None else time.time()
-    q = "SELECT * FROM review_items WHERE suspended=0 AND due<=? "
-    args: list = [now]
-    if subject:
-        q += "AND subject=? "
-        args.append(subject)
-    q += "ORDER BY CASE WHEN reps>0 THEN 0 ELSE 1 END, due ASC LIMIT ?"
-    args.append(int(limit))
+    fsql, fargs = _filter(subject, deck)
+    q = ("SELECT * FROM review_items WHERE suspended=0 AND due<=?" + fsql
+         + " ORDER BY CASE WHEN reps>0 THEN 0 ELSE 1 END, due ASC LIMIT ?")
     with _connect() as conn:
-        return [dict(r) for r in conn.execute(q, args).fetchall()]
+        return [dict(r) for r in conn.execute(q, [now] + fargs + [int(limit)]).fetchall()]
 
 
 def record_review(card_id: str, rating: int, *, ease: float, interval: int, reps: int,
@@ -332,6 +352,55 @@ def delete_cards(subject: Optional[str] = None) -> None:
         else:
             conn.execute("DELETE FROM review_items")
             conn.execute("DELETE FROM review_log")
+
+
+# --------------------------------------------------------------------------- #
+# Stapel (Decks): Karten frei benannten Themenstapeln zuordnen
+# --------------------------------------------------------------------------- #
+def assign_deck(deck: Optional[str], *, doc_ids: Optional[list[str]] = None,
+                subjects: Optional[list[str]] = None, card_ids: Optional[list[str]] = None) -> int:
+    """Ordnet Karten einem Stapel zu (deck=None hebt die Zuordnung auf). Auswahl ueber
+    Dokumente, Faecher und/oder einzelne Karten. Gibt die Anzahl geaenderter Karten zurueck."""
+    conds, args = [], []
+    if doc_ids:
+        conds.append(f"doc_id IN ({','.join('?' * len(doc_ids))})"); args += list(doc_ids)
+    if subjects:
+        conds.append(f"subject IN ({','.join('?' * len(subjects))})"); args += list(subjects)
+    if card_ids:
+        conds.append(f"card_id IN ({','.join('?' * len(card_ids))})"); args += list(card_ids)
+    if not conds:
+        return 0
+    with _connect() as conn:
+        cur = conn.execute(
+            f"UPDATE review_items SET deck=? WHERE ({' OR '.join(conds)})", [deck] + args)
+        return cur.rowcount
+
+
+def list_decks() -> list[str]:
+    """Alle vorhandenen Stapelnamen."""
+    with _connect() as conn:
+        return [r["deck"] for r in conn.execute(
+            "SELECT DISTINCT deck FROM review_items WHERE deck IS NOT NULL AND deck<>'' "
+            "ORDER BY deck")]
+
+
+def dissolve_deck(deck: str) -> int:
+    """Hebt die Zuordnung aller Karten eines Stapels auf (deck -> NULL)."""
+    with _connect() as conn:
+        cur = conn.execute("UPDATE review_items SET deck=NULL WHERE deck=?", (deck,))
+        return cur.rowcount
+
+
+def deck_overview() -> list[dict]:
+    """Pro Stapel: Kartenzahl + faellig (fuer die Verwaltung/Anzeige)."""
+    now = time.time()
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT COALESCE(deck,'') AS deck, COUNT(*) AS total, "
+            "SUM(CASE WHEN due<=? THEN 1 ELSE 0 END) AS due "
+            "FROM review_items WHERE suspended=0 GROUP BY COALESCE(deck,'') ORDER BY deck",
+            (now,)).fetchall()
+        return [{"deck": r["deck"] or None, "total": r["total"], "due": r["due"]} for r in rows]
 
 
 # Initialisierung beim Import

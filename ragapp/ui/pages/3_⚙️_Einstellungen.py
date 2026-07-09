@@ -30,6 +30,7 @@ from ragapp.hardware import (
     is_model_installed,
     llm_size_gb,
     all_llm_tags,
+    probe_model,
     EMBED_MODELS,
     RERANKER_MODELS,
 )
@@ -245,15 +246,26 @@ if hw:
     starte_bench = b3.button("⏱️ Testen (tok/s)", use_container_width=True)
 
     if setzen and gewaehlt:
-        if not _da:
+        _blocked = False
+        if _da:
+            # Installiert heisst nicht ladbar (z. B. Gemma 4 auf altem Intel-IPEX) ->
+            # vorher testen, damit nicht ein nicht-ladbares Modell aktiv gesetzt wird.
+            with st.spinner(f"Prüfe, ob `{gewaehlt}` lädt …"):
+                _pok, _pmsg = probe_model(gewaehlt)
+            if not _pok:
+                st.error(f"❌ `{gewaehlt}` lädt auf diesem Rechner nicht: {_pmsg}  Nicht "
+                         "gesetzt – wähle ein laufendes Modell (z. B. `gemma3:4b`).")
+                _blocked = True
+        else:
             st.warning(f"ℹ️ `{gewaehlt}` ist noch nicht installiert – lade es zuerst über "
                        "**Herunterladen**, sonst schlägt die Antwort fehl.")
-        try:
-            settings.update(LLM_MODEL=gewaehlt, LLM_MODEL_FAST=gewaehlt)
-            settings.save()
-            st.success(f"Antwort-Modell auf `{gewaehlt}` gesetzt. Neue Fragen nutzen es sofort.")
-        except Exception as exc:  # pragma: no cover - defensiv
-            st.error(f"Konnte das Modell nicht setzen: {exc}")
+        if not _blocked:
+            try:
+                settings.update(LLM_MODEL=gewaehlt, LLM_MODEL_FAST=gewaehlt)
+                settings.save()
+                st.success(f"Antwort-Modell auf `{gewaehlt}` gesetzt. Neue Fragen nutzen es sofort.")
+            except Exception as exc:  # pragma: no cover - defensiv
+                st.error(f"Konnte das Modell nicht setzen: {exc}")
 
     # --- Download (Ollama pull mit Fortschritt) --------------------------- #
     if starte_dl and gewaehlt:

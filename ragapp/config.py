@@ -69,8 +69,12 @@ class Settings:
     # Separater Ollama-Server für Embeddings. Leer -> nutzt OLLAMA_BASE_URL.
     # Für die Intel-iGPU (IPEX-LLM) z. B. "http://127.0.0.1:11435" -> ~8x schnellere Embeddings.
     EMBED_OLLAMA_URL: str = ""
-    LLM_MODEL: str = "gemma4:e4b"          # Haupt-LLM (Antwortgenerierung)
-    LLM_MODEL_FAST: str = "gemma4:e2b"     # schnelleres Modell (Hilfsaufgaben)
+    # Sicherer Standard, der auf JEDEM Backend laedt (auch altes Intel-IPEX/SYCL) und
+    # gutes Deutsch liefert. Auf staerkerer Hardware wird ueber die Einstellungen
+    # (Hardware-Empfehlung) auf ein groesseres Modell hochgestuft. Gemma 4 z. B. laedt
+    # auf dem alten IPEX-Backend NICHT - daher nicht als globaler Default.
+    LLM_MODEL: str = "gemma3:4b"           # Haupt-LLM (Antwortgenerierung)
+    LLM_MODEL_FAST: str = "gemma3:4b"      # Modell fuer Hilfsaufgaben (Fragen, Checks)
     EMBED_MODEL: str = "bge-m3"            # multilinguales Embedding (1024-dim)
     EMBED_DIM: int = 1024
     # Parallele Embedding-Anfragen an Ollama. HINWEIS (empirisch gemessen):

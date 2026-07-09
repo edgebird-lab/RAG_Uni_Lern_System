@@ -18,6 +18,31 @@ from __future__ import annotations
 from ragapp.config import settings
 from ragapp.llm import get_llm
 
+
+class QuestionGenError(RuntimeError):
+    """Echter LLM-/Backend-Fehler bei der Fragen-Generierung (z. B. Modell laedt nicht).
+    Wird - anders als ein LEERES Ergebnis - nach oben durchgereicht, damit die UI den
+    Fehler sichtbar machen kann (statt faelschlich '0 Fragen = Erfolg')."""
+
+
+# Auch Aufforderungs-/Imperativ-Fragen sind gueltige Pruefungsfragen ("Berechnen Sie …",
+# "Nennen Sie …") - nicht nur solche mit Fragezeichen.
+_IMPERATIVE = ("nenne", "erklär", "erklaer", "berechne", "beschreib", "definier",
+               "begründe", "begruende", "leite", "zeige", "bestimme", "skizzier",
+               "vergleich", "unterscheide", "ordne", "analysier", "diskutier", "gib ",
+               "berechnen sie", "nennen sie", "erklären sie", "erklaeren sie",
+               "beschreiben sie", "bestimmen sie", "geben sie", "leiten sie")
+
+
+def _is_frage(q: str) -> bool:
+    if len(q) < 10:
+        return False
+    if "?" in q:
+        return True
+    ql = q.lower()
+    return any(ql.startswith(v) for v in _IMPERATIVE)
+
+
 _SYSTEM = (
     "Du bist ein erfahrener Prüfungs-Coach an einer deutschen Hochschule. "
     "Du formulierst knappe, eigenständige Klausur-/Verständnisfragen auf Deutsch."
@@ -55,8 +80,8 @@ def generate_questions(chunk_text: str, n: int | None = None, model: str | None 
             system=_SYSTEM,
             temperature=0.3,
         )
-    except Exception:
-        return []
+    except Exception as exc:  # echter LLM-/Backend-Fehler -> NICHT verschlucken
+        raise QuestionGenError(str(exc)) from exc
     if not isinstance(data, dict):
         return []
     questions = data.get("questions", [])
@@ -66,7 +91,7 @@ def generate_questions(chunk_text: str, n: int | None = None, model: str | None 
         if isinstance(q, str):
             q = q.strip()
             key = q.lower()
-            if q and key not in seen and q.endswith("?"):
+            if q and key not in seen and _is_frage(q):
                 seen.add(key)
                 out.append(q)
     return out[:n]

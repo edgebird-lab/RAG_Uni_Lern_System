@@ -61,7 +61,8 @@ class LLM:
                 return (resp.get("message", {}) or {}).get("content", "") or ""
             except Exception as exc:  # pragma: no cover
                 last_err = exc
-                time.sleep(1.0 * (attempt + 1))
+                if attempt < retries:            # nach dem letzten Versuch nicht mehr warten
+                    time.sleep(1.0 * (attempt + 1))
         raise RuntimeError(f"LLM-Aufruf fehlgeschlagen ({self.model}): {last_err}")
 
     def generate(

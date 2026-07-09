@@ -22,7 +22,8 @@ from ragapp.config import settings
 from ragapp import manifest
 from ragapp.retrieval.vectorstore import get_vectorstore
 from ragapp.retrieval.embeddings import get_embedder
-from ragapp.ingestion.question_gen import generate_questions
+from ragapp.ingestion.question_gen import generate_questions, QuestionGenError
+from ragapp.hardware import probe_model
 
 _SUMMARY_HINTS = ("zusammenfassung", "kompakt", "spickzettel", "klausur")
 
@@ -42,13 +43,21 @@ def _existing_question_parents() -> set:
 
 def enrich_questions(limit: Optional[int] = None,
                      subject: Optional[str] = None,
+                     doc_ids: Optional[list[str]] = None,
                      progress=None) -> dict:
+    """Erzeugt Fragen fuer noch nicht angereicherte Chunks. Optional gezielt fuer ein
+    Fach (subject) und/oder bestimmte Dateien (doc_ids). Gibt ein EHRLICHES Ergebnis
+    zurueck: status (ok/empty/llm_error/nothing_to_do), Zahlen, Fehlermeldung und eine
+    Aufschluesselung pro Dokument (per_doc)."""
     store = get_vectorstore()
     embedder = get_embedder()
 
     chunks = store.get_all_chunks()
     if subject:
         chunks = [c for c in chunks if c["meta"].get("subject") == subject]
+    if doc_ids:
+        _wanted = set(doc_ids)
+        chunks = [c for c in chunks if c["meta"].get("doc_id") in _wanted]
     chunks = [c for c in chunks if len(c["document"]) >= max(settings.MIN_CHUNK_CHARS, 200)]
 
     already = _existing_question_parents()
@@ -58,14 +67,39 @@ def enrich_questions(limit: Optional[int] = None,
         chunks = chunks[:limit]
 
     if not chunks:
-        return {"status": "nothing_to_do", "processed": 0, "questions": 0}
+        return {"status": "nothing_to_do", "processed": 0, "questions": 0,
+                "errors": 0, "error_msg": None, "per_doc": {}}
+
+    # Vorab-Check: laedt das schnelle Modell ueberhaupt? Sonst liefe man ~20 s/Chunk
+    # ins Leere und bekaeme am Ende faelschlich "0 = Erfolg".
+    ok, msg = probe_model(settings.LLM_MODEL_FAST)
+    if not ok:
+        return {"status": "llm_error", "processed": 0, "questions": 0, "errors": 0,
+                "error_msg": f"Modell '{settings.LLM_MODEL_FAST}' laeuft nicht: {msg}",
+                "per_doc": {}}
 
     total_q = 0
-    per_doc: dict[str, int] = {}
+    errors = 0
+    error_msg: Optional[str] = None
+    per_doc: dict[str, dict] = {}
     for i, ch in enumerate(chunks, 1):
+        did = ch["meta"].get("doc_id")
+        slot = per_doc.setdefault(did, {"filename": ch["meta"].get("filename"),
+                                        "questions": 0, "chunks": 0, "errors": 0})
         if progress:
-            progress(f"Anreicherung {i}/{len(chunks)} · {ch['meta'].get('filename','?')}")
-        qs = generate_questions(ch["document"])
+            progress(f"Anreicherung {i}/{len(chunks)} · {ch['meta'].get('filename', '?')}")
+        try:
+            qs = generate_questions(ch["document"])
+        except QuestionGenError as exc:          # echter LLM-Fehler -> sichtbar machen
+            errors += 1
+            slot["errors"] += 1
+            if error_msg is None:
+                error_msg = str(exc)
+            if errors >= 3 and total_q == 0:     # Fail-fast: nicht endlos ins Leere
+                return {"status": "llm_error", "processed": i, "questions": total_q,
+                        "errors": errors, "error_msg": error_msg, "per_doc": per_doc}
+            continue
+        slot["chunks"] += 1
         if not qs:
             continue
         q_embs = embedder.embed_texts(qs)
@@ -80,18 +114,22 @@ def enrich_questions(limit: Optional[int] = None,
             metadatas.append(qmeta)
         store.add(ids, embeddings, documents, metadatas)
         total_q += len(qs)
-        doc_id = ch["meta"].get("doc_id")
-        per_doc[doc_id] = per_doc.get(doc_id, 0) + len(qs)
+        slot["questions"] += len(qs)
 
     # Manifest-Zähler aktualisieren
-    for doc_id, n in per_doc.items():
-        d = manifest.get_document(doc_id)
+    for did, slot in per_doc.items():
+        n = slot["questions"]
+        if n <= 0:
+            continue
+        d = manifest.get_document(did)
         if d:
             manifest.upsert_document(
-                doc_id=doc_id, content_hash=d["content_hash"], source_path=d["source_path"],
+                doc_id=did, content_hash=d["content_hash"], source_path=d["source_path"],
                 filename=d["filename"], subject=d["subject"], filetype=d["filetype"],
                 num_chunks=d["num_chunks"], num_questions=(d["num_questions"] or 0) + n,
                 char_count=d["char_count"], status=d["status"],
             )
 
-    return {"status": "ok", "processed": len(chunks), "questions": total_q}
+    status = "ok" if total_q > 0 else ("llm_error" if errors else "empty")
+    return {"status": status, "processed": len(chunks), "questions": total_q,
+            "errors": errors, "error_msg": error_msg, "per_doc": per_doc}

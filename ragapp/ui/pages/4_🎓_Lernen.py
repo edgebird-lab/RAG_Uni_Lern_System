@@ -18,6 +18,7 @@ for _anc in _p.parents:
         break
 
 import streamlit as st
+import pandas as pd
 
 from ragapp import manifest, study
 from ragapp.config import SUBJECT_LABELS
@@ -87,11 +88,60 @@ with st.expander("⚙️ Karten verwalten"):
         if st.button("🔄 Karten aktualisieren (neue Fragen aufnehmen)"):
             with st.status("Aktualisiere …", expanded=True) as s:
                 res = study.harvest_cards(progress=lambda m: s.update(label=m))
-                s.update(label=f"{res['neu']} neue Karten hinzugefügt", state="complete")
-            st.rerun()
+                s.update(label="Aktualisierung fertig", state="complete")
+            if res["gefunden"] == 0:
+                st.warning("Kein Fragenmaterial gefunden – erst auf **📥 Import** Fragen "
+                           "anreichern bzw. den Klausur-Lernkatalog erzeugen.")
+            elif res["neu"] == 0:
+                st.info("Alles aktuell – keine neuen Karten.")
+            else:
+                st.success(f"➕ {res['neu']} neue Karten hinzugefügt.")
     with cc2:
         st.caption("Karten kommen aus dem generierten Fragenmaterial – neue Fragen/"
                    "Katalog-Einträge werden per Aktualisieren übernommen.")
+
+with st.expander("🗂️ Stapel verwalten (Themen trennen)"):
+    st.caption("Ordne Karten frei benannten Stapeln zu (z. B. Integralrechnung oder "
+               "Statistik-Grundlagen), um verschiedene Themen gezielt zu lernen.")
+    _ov = [o for o in manifest.deck_overview() if o["deck"]]
+    if _ov:
+        st.dataframe(pd.DataFrame([{"Stapel": o["deck"], "Karten": o["total"],
+                                    "fällig": o["due"]} for o in _ov]),
+                     hide_index=True, use_container_width=True)
+    _faecher_v = manifest.study_subjects()
+    _doc_map = {f"{d['filename']} · {_fach_label(d['subject'] or '—')}": d["doc_id"]
+                for d in manifest.list_documents()}
+    _name = st.text_input("Stapelname", placeholder="z. B. Integralrechnung", key="deck_name")
+    _art = st.radio("Karten auswählen nach", ["Fach", "Dokument"], horizontal=True, key="deck_art")
+    _subj_sel, _doc_sel = None, None
+    if _art == "Fach":
+        _fs = st.multiselect("Fächer", _faecher_v, format_func=_fach_label, key="deck_fs")
+        _subj_sel = _fs or None
+    else:
+        _ds = st.multiselect("Dokumente", list(_doc_map.keys()), key="deck_ds")
+        _doc_sel = [_doc_map[k] for k in _ds] or None
+    if st.button("➕ Zu Stapel hinzufügen"):
+        if not (_name or "").strip():
+            st.warning("Bitte einen Stapelnamen eingeben.")
+        elif not (_subj_sel or _doc_sel):
+            st.warning("Bitte Fächer oder Dokumente auswählen.")
+        else:
+            _n = manifest.assign_deck(_name.strip(), doc_ids=_doc_sel, subjects=_subj_sel)
+            if _n:
+                st.success(f"{_n} Karten dem Stapel `{_name.strip()}` zugeordnet.")
+                st.rerun()
+            else:
+                st.warning("0 Karten zugeordnet – zu dieser Auswahl gibt es noch keine "
+                           "Karten (erst Fragen/Katalog erzeugen).")
+    _dks = manifest.list_decks()
+    if _dks:
+        _dcol1, _dcol2 = st.columns([2, 1])
+        _dsolve = _dcol1.selectbox("Stapel auflösen", ["—"] + _dks, key="deck_dis")
+        _dcol2.markdown("<div style='height:1.8rem'></div>", unsafe_allow_html=True)
+        if _dcol2.button("🗑️ Auflösen") and _dsolve != "—":
+            manifest.dissolve_deck(_dsolve)
+            st.success(f"Stapel `{_dsolve}` aufgelöst (Karten bleiben erhalten).")
+            st.rerun()
 
 st.divider()
 
@@ -106,16 +156,20 @@ ROUND = "_study_round"
 
 if not st.session_state.get(ACTIVE):
     _faecher = manifest.study_subjects()
-    fopts = ["Alle Fächer"] + _faecher
-    fchoice = st.selectbox("Fach", fopts, format_func=lambda c: c if c == "Alle Fächer"
-                           else _fach_label(c))
-    subj = None if fchoice == "Alle Fächer" else fchoice
+    _decks = manifest.list_decks()
+    _choices = {"Alle Karten": (None, None)}
+    for _d in _decks:
+        _choices[f"🗂️ Stapel: {_d}"] = (None, _d)
+    for _f in _faecher:
+        _choices[f"📚 Fach: {_fach_label(_f)}"] = (_f, None)
+    _pick = st.selectbox("Was möchtest du lernen?", list(_choices.keys()))
+    subj, deck = _choices[_pick]
 
-    _fc = manifest.review_counts(subj)
+    _fc = manifest.review_counts(subj, deck)
     faellig = _fc["due"]
     if faellig == 0:
         st.success("✅ Für diese Auswahl ist gerade **nichts fällig** – gut gemacht! "
-                   "Komm später wieder oder wähle ein anderes Fach.")
+                   "Komm später wieder oder wähle etwas anderes.")
     else:
         maxr = min(faellig, 50)
         anzahl = st.slider("Karten in dieser Runde", min_value=1,
@@ -123,7 +177,7 @@ if not st.session_state.get(ACTIVE):
                            value=int(min(20, maxr)))
         if st.button(f"▶️ Lernrunde starten ({anzahl} von {faellig} fällig)",
                      type="primary", use_container_width=True):
-            karten = manifest.get_due_cards(subj, limit=int(anzahl))
+            karten = manifest.get_due_cards(subj, limit=int(anzahl), deck=deck)
             st.session_state[Q] = karten
             st.session_state[ACTIVE] = True
             st.session_state[REVEAL] = False

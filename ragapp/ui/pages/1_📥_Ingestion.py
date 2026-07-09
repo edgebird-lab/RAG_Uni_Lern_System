@@ -209,47 +209,80 @@ st.divider()
 st.subheader("🧠 Fragen-Anreicherung")
 st.caption(
     "Erzeugt hypothetische Fragen zu vorhandenen Chunks und indexiert sie. Das "
-    "**erhöht die Trefferquote** spürbar, kostet auf CPU aber **~20 s pro Chunk**. "
-    "Deshalb gedeckelt (Limit) und resumierbar, bereits angereicherte Chunks werden "
-    "übersprungen."
+    "**erhöht die Trefferquote** und liefert **Karteikarten** für die 🎓 Lernen-Seite. "
+    "Kostet auf CPU **~20 s pro Chunk** – deshalb gedeckelt (Limit) und resumierbar "
+    "(bereits angereicherte Chunks werden übersprungen)."
 )
 
-_subjects = sorted({d["subject"] for d in manifest.list_documents() if d["subject"]})
+_docs_all = manifest.list_documents()
+_subjects = sorted({d["subject"] for d in _docs_all if d["subject"]})
+_doc_label = {
+    f"{d['filename']}  ·  {d['subject'] or '—'}  ({d['num_chunks']} Chunks · "
+    f"{d['num_questions']} Fragen)": d["doc_id"]
+    for d in _docs_all
+}
+_sel_docs = st.multiselect(
+    "Dateien auswählen (leer = alle passenden)", list(_doc_label.keys()),
+    help="Gezielt nur diese Dateien anreichern. Leer lassen = alle (nach Priorität).")
+_doc_ids = [_doc_label[k] for k in _sel_docs] or None
+
 col_a, col_b = st.columns(2)
 with col_a:
     enrich_limit = st.number_input(
         "Maximale Anzahl Chunks (Limit)", min_value=1, max_value=100000,
-        value=100, step=10,
-        help="Wichtige/kompakte Dokumente werden zuerst angereichert.",
-    )
+        value=100, step=10, help="Deckelt die Menge; wichtige/kompakte Dokumente zuerst.")
 with col_b:
     enrich_choice = st.selectbox(
         "Fach-Filter (optional)", ["Alle Fächer"] + _subjects,
-        help="Nur Chunks dieses Fachs anreichern.",
-    )
+        help="Nur Chunks dieses Fachs (wirkt zusätzlich zur Datei-Auswahl).")
 enrich_subject = None if enrich_choice == "Alle Fächer" else enrich_choice
 
-if st.button("🧠 Fragen-Anreicherung starten"):
+_mt1, _mt2 = st.columns([1, 2])
+with _mt1:
+    if st.button("🩺 Modell testen"):
+        from ragapp.hardware import probe_model
+        with st.spinner(f"Teste `{settings.LLM_MODEL_FAST}` …"):
+            _ok, _msg = probe_model(settings.LLM_MODEL_FAST)
+        if _ok:
+            st.success(f"✅ `{settings.LLM_MODEL_FAST}` antwortet – die Anreicherung kann starten.")
+        else:
+            st.error(f"❌ `{settings.LLM_MODEL_FAST}` läuft nicht: {_msg}  Wähle unter "
+                     "**⚙️ Einstellungen → Hardware & Modell-Auswahl** ein laufendes "
+                     "Modell (z. B. `gemma3:4b`).")
+
+if st.button("🧠 Fragen-Anreicherung starten", type="primary"):
     with st.status("Reichere Fragen an … (~20 s pro Chunk)", expanded=True) as status:
         def _fortschritt_enrich(msg: str) -> None:
             status.update(label=msg)
 
         try:
             r = enrich_questions(limit=int(enrich_limit), subject=enrich_subject,
-                                 progress=_fortschritt_enrich)
+                                 doc_ids=_doc_ids, progress=_fortschritt_enrich)
             status.update(label="Anreicherung abgeschlossen", state="complete")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             status.update(label=f"Fehler: {exc}", state="error")
             r = None
 
     if r is not None:
-        if r.get("status") == "nothing_to_do":
-            st.info("Nichts zu tun, alle passenden Chunks sind bereits angereichert.")
+        _st = r.get("status")
+        if _st == "nothing_to_do":
+            st.info("Nichts zu tun – die gewählten Chunks sind bereits angereichert.")
+        elif _st == "llm_error":
+            st.error(
+                f"❌ Es wurden **0 Fragen** erzeugt. {r.get('error_msg', '')}  Meist lädt "
+                "das schnelle Modell nicht: prüfe es oben mit **Modell testen** und wähle "
+                "unter **⚙️ Einstellungen** ein laufendes Modell (z. B. `gemma3:4b`).")
+        elif r.get("questions", 0) == 0:
+            st.warning("Es wurden **0 Fragen** erzeugt – die Chunks ergaben keine (kein "
+                       "Modellfehler). Wähle ggf. andere/längere Dokumente.")
         else:
             st.success(
-                f"{r.get('questions', 0)} Fragen für {r.get('processed', 0)} "
-                f"Chunk(s) erzeugt und indexiert."
-            )
+                f"✅ **{r['questions']} Fragen** für {r['processed']} Chunk(s) erzeugt und "
+                "indexiert. Tipp: auf **🎓 Lernen** die Karten aktualisieren, dann üben.")
+            _rows = [{"Datei": v["filename"], "Fragen erzeugt": v["questions"]}
+                     for v in r.get("per_doc", {}).values() if v["questions"]]
+            if _rows:
+                st.dataframe(pd.DataFrame(_rows), hide_index=True, use_container_width=True)
 
 st.divider()
 

@@ -288,6 +288,27 @@ def all_llm_tags() -> "list[str]":
     return list(_LLM_ORDER)
 
 
+def probe_model(tag: str, base_url: "str | None" = None, timeout: int = 60) -> "tuple[bool, str]":
+    """Prueft SCHNELL, ob ein Ollama-Modell wirklich LAEDT (nicht nur installiert ist) -
+    ein winziger generate-Ping. Faengt genau den Intel-IPEX/SYCL-Ladefehler ab
+    ("unable to load model ... status code 500"). Gibt (ok, meldung) zurueck."""
+    try:
+        import ollama
+        from ragapp.config import settings
+        client = ollama.Client(host=base_url or settings.OLLAMA_BASE_URL, timeout=timeout)
+        client.generate(model=tag, prompt="OK", options={"num_predict": 1}, stream=False)
+        return True, "ok"
+    except Exception as exc:  # noqa: BLE001
+        msg = str(exc)
+        low = msg.lower()
+        if "unable to load model" in low or "status code: 500" in low or "runner" in low:
+            return False, ("Das Modell laedt auf diesem Rechner/Backend nicht (z. B. neuere "
+                           "Architektur auf altem Intel-IPEX-Backend).")
+        if "not found" in low or "no such model" in low or "status code: 404" in low:
+            return False, "Modell ist nicht installiert (erst herunterladen)."
+        return False, msg[:200]
+
+
 def is_model_installed(tag: str, installed: "list[str] | None") -> bool:
     """True, wenn das Ollama-Modell lokal vorhanden ist (exakter Tag; ohne Version
     zaehlt jede vorhandene Version)."""
