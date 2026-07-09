@@ -384,6 +384,7 @@ def main() -> int:
         _kill_tree(st["proc"])
         _stop_ollama_fully(ollama_proc)
         _kill_tree(tunnel["proc"])
+        _taskkill_image("cloudflared.exe")
         _rm(TUNNEL_URL_FILE)
         _rm(SHUTDOWN_SENTINEL)
         _rm(UI_RESTART_FILE)
@@ -432,15 +433,20 @@ def main() -> int:
                         _wait_port_free(port)
                         st["proc"] = _start_streamlit(port, _is_net(desired))
                         _wait_until_ready(st["proc"], port)
+                    mode = desired
+                    _write_mode(mode)   # Modus SOFORT melden (UI zeigt "Tunnel wird aufgebaut")
                     # Cloudflare-Tunnel starten bzw. stoppen
                     if desired == "tunnel" and tunnel["proc"] is None:
-                        tunnel["proc"] = _start_tunnel(port)
+                        # nicht-blockierend: cloudflared-Installation kann dauern,
+                        # der Starter bleibt dabei bedienbar (Beenden funktioniert).
+                        threading.Thread(
+                            target=lambda: tunnel.__setitem__("proc", _start_tunnel(port)),
+                            daemon=True).start()
                     elif desired != "tunnel" and tunnel["proc"] is not None:
                         _kill_tree(tunnel["proc"])
                         tunnel["proc"] = None
+                        _taskkill_image("cloudflared.exe")
                         _rm(TUNNEL_URL_FILE)
-                    mode = desired
-                    _write_mode(mode)
                     # das App-Fenster verbindet sich automatisch neu (gleiche URL)
             time.sleep(0.5)
     except KeyboardInterrupt:
@@ -454,6 +460,7 @@ def main() -> int:
     _kill_tree(st["proc"])
     _stop_ollama_fully(ollama_proc)
     _kill_tree(tunnel["proc"])
+    _taskkill_image("cloudflared.exe")
     _rm(TUNNEL_URL_FILE)
     print("Fertig. Es laeuft nichts mehr im Hintergrund.")
     return 0

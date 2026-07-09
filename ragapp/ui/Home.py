@@ -158,6 +158,23 @@ def _load_full_text(src: dict) -> "str | None":
         return None
 
 
+def _locate(full: str, chunk: str) -> "tuple[int, int]":
+    """Textstelle im Volltext finden - robust auch bei Markdown (der Chunk hat dort
+    einen Breadcrumb-Präfix, der so nicht im Original steht)."""
+    if chunk:
+        i = full.find(chunk[:200])
+        if i >= 0:
+            return i, min(i + len(chunk), len(full))
+    # Anker: längste inhaltliche Zeilen des Chunks, die im Volltext vorkommen
+    cands = sorted((ln.strip() for ln in (chunk or "").split("\n") if len(ln.strip()) >= 20),
+                   key=len, reverse=True)
+    for c in cands[:10]:
+        i = full.find(c)
+        if i >= 0:
+            return i, min(i + len(chunk), len(full))
+    return -1, -1
+
+
 @st.dialog("📄 Dokument ansehen", width="large")
 def _view_document(src: dict) -> None:
     """Zeigt das ganze Dokument und springt zur gefundenen Textstelle (markiert)."""
@@ -170,16 +187,13 @@ def _view_document(src: dict) -> None:
                 "Hier die gefundene Textstelle:")
         st.write(chunk or "—")
         return
-    idx = full.find(chunk[:200]) if chunk else -1
-    if idx < 0 and chunk:
-        idx = full.find(chunk[:60])
-    if idx < 0:
+    start, end = _locate(full, chunk)
+    if start < 0:
         body = html.escape(full)
     else:
-        end = idx + len(chunk)
-        body = (html.escape(full[:idx])
+        body = (html.escape(full[:start])
                 + "<mark id='rag-hl' style='background:#ffe98a; padding:1px 0;'>"
-                + html.escape(full[idx:end]) + "</mark>"
+                + html.escape(full[start:end]) + "</mark>"
                 + html.escape(full[end:]))
     _components.html(
         "<div style='max-height:58vh; overflow:auto; white-space:pre-wrap; "
@@ -195,20 +209,22 @@ def _view_document(src: dict) -> None:
 def render_sources(sources: list[dict], key_prefix: str = "s"):
     if not sources:
         return
-    st.markdown("**Quellen:**")
-    for s in sources:
-        loc = f" · {s['location']}" if s.get("location") else ""
-        st.markdown(
-            f"<div class='source-card'>"
-            f"<span class='source-title'>[{s['rank']}] {s['filename']}</span>{loc}<br>"
-            f"<span class='source-meta'>Fach: {s['subject']} · Score: {s['score']} "
-            f"· Retriever: {s.get('retrievers','')}</span></div>",
-            unsafe_allow_html=True,
-        )
-        if st.button("📄 Im Dokument ansehen", key=f"doc_{key_prefix}_{s['rank']}"):
-            _view_document(s)
-        with st.expander("Nur die Textstelle anzeigen"):
-            st.write(s.get("snippet", ""))
+    # Quellen eingeklappt: so bleibt die Antwort im Blick und man landet nicht
+    # unter einer langen Quellen-Liste.
+    with st.expander(f"📚 Quellen ({len(sources)})", expanded=False):
+        for s in sources:
+            loc = f" · {s['location']}" if s.get("location") else ""
+            st.markdown(
+                f"<div class='source-card'>"
+                f"<span class='source-title'>[{s['rank']}] {s['filename']}</span>{loc}<br>"
+                f"<span class='source-meta'>Fach: {s['subject']} · Score: {s['score']} "
+                f"· Retriever: {s.get('retrievers','')}</span></div>",
+                unsafe_allow_html=True,
+            )
+            _snip = s.get("snippet", "")
+            st.caption("„" + _snip[:240] + ("…" if len(_snip) > 240 else "") + "”")
+            if st.button("📄 Im Dokument ansehen", key=f"doc_{key_prefix}_{s['rank']}"):
+                _view_document(s)
 
 
 # Verlauf rendern
@@ -261,17 +277,20 @@ if prompt:
         "sources": sources,
     })
 
-    # Nach dem Generieren zur ANTWORT scrollen (nicht ganz nach unten unter die Quellen).
+    # Nach dem Generieren an den ANFANG der Antwort scrollen (mehrfach, um Streamlits
+    # Auto-Scroll ans Ende zu ueberstimmen).
     _components.html(
         """
         <script>
-        setTimeout(function () {
+        var n = 0;
+        function toAnswer() {
           try {
-            var m = window.parent.document.querySelectorAll(
-              '[data-testid="stChatMessage"], .stChatMessage');
-            if (m.length) { m[m.length - 1].scrollIntoView({block: 'start', behavior: 'smooth'}); }
+            var m = window.parent.document.querySelectorAll('[data-testid="stChatMessage"]');
+            if (m.length) { m[m.length - 1].scrollIntoView({block: 'start'}); }
           } catch (e) {}
-        }, 400);
+          if (++n < 6) setTimeout(toAnswer, 280);
+        }
+        setTimeout(toAnswer, 250);
         </script>
         """,
         height=0,
