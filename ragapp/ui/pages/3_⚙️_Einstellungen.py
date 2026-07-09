@@ -289,20 +289,18 @@ from ragapp import netinfo
 from ragapp.config import UI_RESTART_FILE, UI_MODE_FILE
 
 
-def _auto_refresh(seconds: int) -> None:
-    """Lädt die Seite nach N Sekunden neu (Polling, bis z. B. der Tunnel steht) –
-    ABER nur das lokale PC-Fenster (Token in localStorage). Ein Handy ohne Token
-    würde durch einen Vollreload seine PIN-Sitzung verlieren, daher dort KEIN Reload."""
-    import streamlit.components.v1 as _components
-    _components.html(
-        "<script>setTimeout(function(){"
-        "var loc=window.parent.location; var k=null;"
-        "try{k=window.parent.localStorage.getItem('rag_local_token');}catch(e){}"
-        "if(!k){return;}"
-        "window.parent.location.href=loc.origin+loc.pathname+'?k='+encodeURIComponent(k);"
-        "}, " + str(int(seconds) * 1000) + ");</script>",
-        height=0,
-    )
+@st.fragment(run_every=3)
+def _tunnel_wait_box() -> None:
+    """Wartet SERVERSEITIG (per st.fragment-Polling, KEIN Browser-Reload), bis die
+    Cloudflare-Adresse steht oder ein Fehler gemeldet wird. Das ist unabhaengig von
+    localStorage-Token, Vollbild und Seiten-Navigation - dadurch bleibt die Anzeige
+    nie mehr auf „wird aufgebaut" haengen. Sobald sich der Zustand aendert, wird die
+    ganze Seite neu gerendert (zeigt dann QR-Code bzw. Fehlermeldung)."""
+    if netinfo.tunnel_url() is not None or netinfo.tunnel_error():
+        st.rerun()   # ganze Seite neu -> QR-Code / Fehlermeldung
+    st.info("🌍 Cloudflare-Tunnel wird aufgebaut … (beim ersten Mal inkl. Installation, "
+            "1–2 Minuten). Die Seite aktualisiert sich automatisch, sobald die "
+            "Adresse bereit ist.")
 
 
 st.header("📱 Handy-/Tablet-Zugriff")
@@ -372,10 +370,7 @@ elif _cur == "tunnel" and netinfo.tunnel_url() is None:
                 pass
             st.rerun()
     else:
-        st.info("🌍 Cloudflare-Tunnel wird aufgebaut … (beim ersten Mal inkl. Installation, "
-                "1–2 Minuten). Die Seite aktualisiert sich automatisch, sobald die "
-                "Adresse bereit ist.")
-        _auto_refresh(4)
+        _tunnel_wait_box()
 else:
     # network -> WLAN-Ziel; tunnel (bereit) -> Cloudflare-Ziel. Genau EIN passendes Ziel.
     _ziele = netinfo.access_targets()
