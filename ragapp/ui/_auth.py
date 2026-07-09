@@ -26,9 +26,39 @@ def require_pin() -> None:
 # --------------------------------------------------------------------------- #
 # PIN-Sperre
 # --------------------------------------------------------------------------- #
+def _is_local_window() -> bool:
+    """True für das lokale App-Fenster am PC (es trägt das geheime Token in der
+    URL). Das Handy kennt das Token nicht und muss deshalb den PIN eingeben."""
+    if st.session_state.get("_local_ok"):
+        return True
+    import os
+    token = os.environ.get("RAG_LOCAL_TOKEN", "")
+    if not token:
+        return False
+    try:
+        q = st.query_params.get("k")
+    except Exception:  # noqa: BLE001
+        q = None
+    if q and q == token:
+        st.session_state["_local_ok"] = True
+        # Token clientseitig sichern, damit es Navigation + Moduswechsel überlebt.
+        try:
+            import json
+            import streamlit.components.v1 as _c
+            _c.html("<script>try{window.parent.localStorage.setItem('rag_local_token',"
+                    + json.dumps(q) + ");}catch(e){}</script>", height=0)
+        except Exception:  # noqa: BLE001
+            pass
+        return True
+    return False
+
+
 def _pin_gate() -> None:
     # Lokaler Modus (Start.bat / App-Fenster): keine Sperre.
     if not netinfo.is_network_mode():
+        return
+    # Lokales PC-Fenster (kennt das Token): kein PIN nötig - nur das Handy.
+    if _is_local_window():
         return
 
     pin = (str(settings.UI_ACCESS_PIN) if settings.UI_ACCESS_PIN else "").strip()

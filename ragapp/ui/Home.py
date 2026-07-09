@@ -6,6 +6,7 @@ Start:  streamlit run ragapp/ui/Home.py
 from __future__ import annotations
 
 import sys
+import html
 import random
 import pathlib
 
@@ -18,7 +19,7 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp.config import settings, SUBJECT_LABELS
+from ragapp.config import settings, SUBJECT_LABELS, PROJECT_ROOT
 from ragapp import manifest
 
 # App-Icon (Fenster/Taskleiste/Favicon). Faellt auf ein Emoji zurueck,
@@ -142,7 +143,56 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 
-def render_sources(sources: list[dict]):
+def _load_full_text(src: dict) -> "str | None":
+    """Volltext des Quell-Dokuments laden (aus der Originaldatei)."""
+    sp = src.get("source_path", "")
+    if not sp:
+        return None
+    path = PROJECT_ROOT / sp
+    if not path.is_file():
+        return None
+    try:
+        from ragapp.ingestion.loaders import load_document
+        return load_document(path).text
+    except Exception:
+        return None
+
+
+@st.dialog("📄 Dokument ansehen", width="large")
+def _view_document(src: dict) -> None:
+    """Zeigt das ganze Dokument und springt zur gefundenen Textstelle (markiert)."""
+    _loc = f"  ·  {src['location']}" if src.get("location") else ""
+    st.markdown(f"**{src.get('filename', '?')}**  ·  Fach: {src.get('subject', '?')}{_loc}")
+    full = _load_full_text(src)
+    chunk = (src.get("document") or src.get("snippet") or "").strip()
+    if not full:
+        st.info("Der Volltext ist nicht verfügbar (Originaldatei nicht gefunden). "
+                "Hier die gefundene Textstelle:")
+        st.write(chunk or "—")
+        return
+    idx = full.find(chunk[:200]) if chunk else -1
+    if idx < 0 and chunk:
+        idx = full.find(chunk[:60])
+    if idx < 0:
+        body = html.escape(full)
+    else:
+        end = idx + len(chunk)
+        body = (html.escape(full[:idx])
+                + "<mark id='rag-hl' style='background:#ffe98a; padding:1px 0;'>"
+                + html.escape(full[idx:end]) + "</mark>"
+                + html.escape(full[end:]))
+    _components.html(
+        "<div style='max-height:58vh; overflow:auto; white-space:pre-wrap; "
+        "font-family:system-ui,-apple-system,sans-serif; font-size:14px; "
+        "line-height:1.55; padding:10px; color:#1a2233;'>" + body + "</div>"
+        "<script>var e=document.getElementById('rag-hl');"
+        "if(e){setTimeout(function(){e.scrollIntoView({block:'center'});}, 60);}</script>",
+        height=470, scrolling=True,
+    )
+    st.caption("Die gelb markierte Stelle ist die gefundene Textstelle.")
+
+
+def render_sources(sources: list[dict], key_prefix: str = "s"):
     if not sources:
         return
     st.markdown("**Quellen:**")
@@ -155,12 +205,14 @@ def render_sources(sources: list[dict]):
             f"· Retriever: {s.get('retrievers','')}</span></div>",
             unsafe_allow_html=True,
         )
-        with st.expander("Textstelle ansehen"):
+        if st.button("📄 Im Dokument ansehen", key=f"doc_{key_prefix}_{s['rank']}"):
+            _view_document(s)
+        with st.expander("Nur die Textstelle anzeigen"):
             st.write(s.get("snippet", ""))
 
 
 # Verlauf rendern
-for msg in st.session_state.messages:
+for _mi, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"], avatar="🧑‍🎓" if msg["role"] == "user" else "🤖"):
         st.markdown(msg["content"])
         if msg.get("meta"):
@@ -171,7 +223,7 @@ for msg in st.session_state.messages:
                         f"<span class='small'>· {m.get('total_time','?')}s</span>",
                         unsafe_allow_html=True)
         if msg.get("sources"):
-            render_sources(msg["sources"])
+            render_sources(msg["sources"], key_prefix=f"h{_mi}")
 
 
 # --------------------------------------------------------------------------- #
@@ -200,7 +252,7 @@ if prompt:
                     unsafe_allow_html=True)
         sources = result.get("sources", []) if show_sources else []
         if sources:
-            render_sources(sources)
+            render_sources(sources, key_prefix="new")
 
     st.session_state.messages.append({
         "role": "assistant",
@@ -208,3 +260,19 @@ if prompt:
         "meta": meta,
         "sources": sources,
     })
+
+    # Nach dem Generieren zur ANTWORT scrollen (nicht ganz nach unten unter die Quellen).
+    _components.html(
+        """
+        <script>
+        setTimeout(function () {
+          try {
+            var m = window.parent.document.querySelectorAll(
+              '[data-testid="stChatMessage"], .stChatMessage');
+            if (m.length) { m[m.length - 1].scrollIntoView({block: 'start', behavior: 'smooth'}); }
+          } catch (e) {}
+        }, 400);
+        </script>
+        """,
+        height=0,
+    )

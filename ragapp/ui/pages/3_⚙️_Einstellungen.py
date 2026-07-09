@@ -298,13 +298,17 @@ def _reload_when_server_ready() -> None:
         """
         <script>
         (function () {
-          var target = window.parent.location.href;
-          function ping() {
+          var loc = window.parent.location;
+          var k = null;
+          try { k = window.parent.localStorage.getItem('rag_local_token'); } catch (e) {}
+          // Lokales Fenster: Token wieder anhaengen -> kein PIN. Handy: kein Token -> PIN.
+          var target = loc.origin + loc.pathname + (k ? ('?k=' + encodeURIComponent(k)) : '');
+          function go() {
             fetch(target, {method: 'GET', cache: 'no-store'})
-              .then(function () { window.parent.location.reload(); })
-              .catch(function () { setTimeout(ping, 1000); });
+              .then(function () { window.parent.location.href = target; })
+              .catch(function () { setTimeout(go, 1000); });
           }
-          setTimeout(ping, 2500);   // erst warten, bis der alte Server weg ist
+          setTimeout(go, 2500);   // erst warten, bis der alte Server weg ist
         })();
         </script>
         """,
@@ -401,7 +405,11 @@ else:
         # Nur EINEN QR-Code zeigen (per Auswahl), damit die Handy-Kamera nicht
         # mehrere gleichzeitig erfasst.
         _map = {_z["label"]: _z for _z in _ziele}
-        _sel = st.selectbox("Welchen Zugang als QR-Code anzeigen?", list(_map.keys()))
+        _keys = list(_map.keys())
+        # Standard: der QR passend zum gewählten Modus (Cloudflare -> Cloudflare-QR).
+        _prefer = "tunnel" if _cur == "tunnel" else "lan"
+        _def_idx = next((i for i, _zz in enumerate(_ziele) if _zz["kind"] == _prefer), 0)
+        _sel = st.selectbox("Welchen Zugang als QR-Code anzeigen?", _keys, index=_def_idx)
         _z = _map[_sel]
         st.markdown(f"**{_z['label']}** — [{_z['url']}]({_z['url']})")
         _png = netinfo.qr_png_bytes(_z["url"])

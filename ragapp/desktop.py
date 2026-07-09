@@ -33,6 +33,7 @@ import time
 import shutil
 import socket
 import atexit
+import secrets
 import pathlib
 import threading
 import subprocess
@@ -356,7 +357,10 @@ def main() -> int:
     ollama_proc = _start_ollama()
 
     port = _pick_port()
-    url = f"http://localhost:{port}"
+    # Geheimes Token nur fuer das lokale App-Fenster: damit am PC KEIN PIN noetig
+    # ist (nur das Handy, das dieses Token nicht kennt, muss den PIN eingeben).
+    os.environ["RAG_LOCAL_TOKEN"] = secrets.token_urlsafe(16)
+    url = f"http://localhost:{port}/?k={os.environ['RAG_LOCAL_TOKEN']}"
     if port != PREFERRED_PORT:
         print(f"[i] Port {PREFERRED_PORT} war belegt, nutze freien Port {port}.")
 
