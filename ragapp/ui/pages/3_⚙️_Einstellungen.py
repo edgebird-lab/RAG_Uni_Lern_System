@@ -288,6 +288,30 @@ st.divider()
 from ragapp import netinfo
 from ragapp.config import UI_RESTART_FILE
 
+
+def _reload_when_server_ready() -> None:
+    """Lädt die Seite automatisch neu, sobald der (neu startende) Server wieder
+    antwortet. Sonst bliebe das Fenster nach dem Moduswechsel hängen und der
+    QR-Code erschiene nicht."""
+    import streamlit.components.v1 as _components
+    _components.html(
+        """
+        <script>
+        (function () {
+          var target = window.parent.location.href;
+          function ping() {
+            fetch(target, {method: 'GET', cache: 'no-store'})
+              .then(function () { window.parent.location.reload(); })
+              .catch(function () { setTimeout(ping, 1000); });
+          }
+          setTimeout(ping, 2500);   // erst warten, bis der alte Server weg ist
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
+
 st.header("📱 Handy-/Tablet-Zugriff")
 st.markdown(
     "<span class='small'>Nutze die App vom Handy oder Tablet, solange dieser PC "
@@ -338,7 +362,8 @@ if netinfo.is_network_mode():
             UI_RESTART_FILE.write_text("local", encoding="utf-8")
         except Exception:  # noqa: BLE001
             pass
-        st.info("Trenne … der Server startet kurz neu, die Seite lädt gleich neu.")
+        st.info("Trenne … der Server startet kurz neu, die Seite lädt automatisch neu.")
+        _reload_when_server_ready()
         st.stop()
 else:
     st.write("Verbindung: **aus** – die App ist nur auf diesem PC erreichbar.")
@@ -348,8 +373,10 @@ else:
             UI_RESTART_FILE.write_text("network", encoding="utf-8")
         except Exception:  # noqa: BLE001
             pass
-        st.info("Verbinde … der Server startet kurz im Netzwerkmodus neu, die Seite "
-                "lädt gleich neu. Danach erscheinen hier Adresse + QR-Code.")
+        st.info("Verbinde … der Server startet kurz im Netzwerkmodus neu und die Seite "
+                "lädt automatisch neu (ein paar Sekunden). Danach erscheinen hier "
+                "Adresse + QR-Code. Falls nicht: einmal manuell aktualisieren (F5).")
+        _reload_when_server_ready()
         st.stop()
     if not _pin_ok:
         st.warning("⚠️ Setze oben zuerst einen PIN, dann lässt sich verbinden.")
