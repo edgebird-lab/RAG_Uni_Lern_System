@@ -33,28 +33,102 @@ st.set_page_config(page_title="RAG-Lernsystem", page_icon=_PAGE_ICON, layout="wi
 from ragapp.ui._auth import require_pin
 require_pin()
 
-# PWA: Manifest + Apple-Meta in den echten Seitenkopf injizieren, damit man die
-# App am Handy "zum Home-Bildschirm hinzufuegen" kann (randlose Pseudo-App).
+# PWA: Manifest + Apple-Meta in den echten Seitenkopf injizieren UND ein
+# Installations-Banner ("Als App aufs Handy") anbieten - nur auf dem Handy (nicht am
+# PC-Fenster) und nur, wenn noch nicht installiert. Android/Chrome: echter
+# Installieren-Button ueber 'beforeinstallprompt'. iOS/Safari: Kurzanleitung.
 import streamlit.components.v1 as _components
 _components.html(
     """
     <script>
     (function () {
       try {
-        var head = window.parent.document.head;
+        var pwin = window.parent, pdoc = pwin.document, head = pdoc.head;
         function add(tag, attrs) {
-          var el = window.parent.document.createElement(tag);
+          var el = pdoc.createElement(tag);
           for (var k in attrs) { el.setAttribute(k, attrs[k]); }
           head.appendChild(el);
         }
         if (!head.querySelector('link[rel="manifest"]')) {
           add('link', {rel: 'manifest', href: 'app/static/manifest.json'});
           add('meta', {name: 'apple-mobile-web-app-capable', content: 'yes'});
+          add('meta', {name: 'mobile-web-app-capable', content: 'yes'});
           add('meta', {name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent'});
           add('meta', {name: 'apple-mobile-web-app-title', content: 'Lernsystem'});
           add('meta', {name: 'theme-color', content: '#12455a'});
           add('link', {rel: 'apple-touch-icon', href: 'app/static/icon-180.png'});
         }
+        if ('serviceWorker' in pwin.navigator) {
+          pwin.navigator.serviceWorker.register('app/static/sw.js').catch(function () {});
+        }
+
+        // Banner NUR auf dem Handy: das PC-Fenster hat das lokale Token.
+        var isPC = false;
+        try { isPC = !!pwin.localStorage.getItem('rag_local_token'); } catch (e) {}
+        var standalone = (pwin.matchMedia && pwin.matchMedia('(display-mode: standalone)').matches)
+                         || pwin.navigator.standalone === true;
+        if (isPC || standalone) return;
+        // Installieren nur bei STABILER Adresse anbieten (WLAN/LAN, localhost) - NICHT
+        // bei der wechselnden Cloudflare-Adresse (dort waere das Icon morgen tot).
+        var host = pwin.location.hostname || '';
+        var isLan = (host === 'localhost') || (host.slice(-6) === '.local')
+          || (host.indexOf('192.168.') === 0) || (host.indexOf('10.') === 0)
+          || (host.indexOf('172.') === 0 && (function () {
+               var o = parseInt(host.split('.')[1], 10); return o >= 16 && o <= 31; })());
+        if (!isLan) return;
+        if (pwin.__ragPwaInit) return; pwin.__ragPwaInit = true;   // Listener nur einmal binden
+
+        function banner(inner) {
+          var old = pdoc.getElementById('rag-pwa'); if (old) old.remove();
+          var b = pdoc.createElement('div'); b.id = 'rag-pwa';
+          b.style.cssText = 'position:fixed;left:12px;right:12px;bottom:14px;margin:0 auto;'
+            + 'max-width:520px;z-index:2147483647;background:#12455a;color:#fff;border-radius:14px;'
+            + 'padding:12px 14px;box-shadow:0 10px 34px rgba(0,0,0,.4);font-family:system-ui,'
+            + '-apple-system,sans-serif;font-size:14px;line-height:1.35;display:flex;'
+            + 'align-items:center;gap:10px;';
+          b.innerHTML = inner;
+          var x = pdoc.createElement('button'); x.textContent = '\\u2715';
+          x.style.cssText = 'margin-left:auto;background:transparent;border:0;color:#bcd7df;'
+            + 'font-size:17px;cursor:pointer;flex:none;';
+          x.onclick = function () { b.remove(); };
+          b.appendChild(x);
+          pdoc.body.appendChild(b); return b;
+        }
+
+        var deferred = null;
+        pwin.addEventListener('beforeinstallprompt', function (e) {
+          e.preventDefault(); deferred = e;
+          var b = banner('<span style="font-size:20px">\\uD83D\\uDCF2</span>'
+                         + '<span>Als App aufs Handy installieren?</span>');
+          var btn = pdoc.createElement('button'); btn.textContent = 'Installieren';
+          btn.style.cssText = 'background:#fff;color:#12455a;border:0;border-radius:9px;'
+            + 'padding:7px 15px;font-weight:600;cursor:pointer;flex:none;';
+          btn.onclick = function () {
+            b.remove();
+            if (deferred) { deferred.prompt(); deferred.userChoice.finally(function () { deferred = null; }); }
+          };
+          b.insertBefore(btn, b.lastChild);
+        });
+        pwin.addEventListener('appinstalled', function () {
+          var b = pdoc.getElementById('rag-pwa'); if (b) b.remove();
+        });
+
+        // Nach kurzem Warten: falls KEIN Installieren-Button kam (kein
+        // 'beforeinstallprompt' - z. B. iOS/Safari oder Android ueber http) -> Anleitung.
+        var ua = pwin.navigator.userAgent || '';
+        var isIOS = /iphone|ipad|ipod/i.test(ua);
+        pwin.setTimeout(function () {
+          if (pdoc.getElementById('rag-pwa')) return;   // Button-Banner ist schon da
+          if (isIOS) {
+            banner('<span style="font-size:20px">\\uD83D\\uDCF2</span>'
+                   + '<span>Als App installieren: unten auf das <b>Teilen</b>-Symbol '
+                   + 'tippen, dann <b>Zum Home-Bildschirm</b>.</span>');
+          } else {
+            banner('<span style="font-size:20px">\\uD83D\\uDCF2</span>'
+                   + '<span>Als App installieren: im Browser-Men&uuml; (&#8942;) auf '
+                   + '<b>Zum Startbildschirm hinzuf&uuml;gen</b> tippen.</span>');
+          }
+        }, 2200);
       } catch (e) {}
     })();
     </script>

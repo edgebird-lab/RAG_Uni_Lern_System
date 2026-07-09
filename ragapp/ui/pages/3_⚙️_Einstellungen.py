@@ -391,9 +391,17 @@ else:
         }
         if _hinweise.get(_z["kind"]):
             st.caption(_hinweise[_z["kind"]])
-        st.caption(
-            "📲 Als App aufs Handy: Adresse öffnen, dann im Browser-Menü "
-            "**Zum Home-Bildschirm hinzufügen**.")
+        if _z["kind"] == "lan":
+            st.caption(
+                "📲 **Dauerhaft aufs Handy**: Adresse öffnen und **installieren** – am "
+                "Handy erscheint dazu unten ein Banner (sonst Browser-Menü → *Zum "
+                "Startbildschirm hinzufügen*). Die WLAN-Adresse bleibt zuhause "
+                "normalerweise gleich; für Garantie im Router eine **feste IP** vergeben.")
+        elif _z["kind"] == "tunnel":
+            st.caption(
+                "ℹ️ Diese Cloudflare-Adresse **ändert sich bei jedem Start** – ideal für "
+                "spontanen Zugriff von unterwegs, aber **nicht zum Installieren** "
+                "(das Icon würde beim nächsten Mal ins Leere zeigen).")
 
 st.caption(
     "Hinweis: Beim ersten Start im Netzwerkmodus fragt die **Windows-Firewall**, "
