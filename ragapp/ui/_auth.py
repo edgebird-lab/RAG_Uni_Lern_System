@@ -19,6 +19,7 @@ from ragapp import netinfo
 
 
 def require_pin() -> None:
+    _sync_local_token()
     _pin_gate()
     _quit_button()
 
@@ -26,22 +27,21 @@ def require_pin() -> None:
 # --------------------------------------------------------------------------- #
 # PIN-Sperre
 # --------------------------------------------------------------------------- #
-def _is_local_window() -> bool:
-    """True für das lokale App-Fenster am PC (es trägt das geheime Token in der
-    URL). Das Handy kennt das Token nicht und muss deshalb den PIN eingeben."""
-    if st.session_state.get("_local_ok"):
-        return True
+def _sync_local_token() -> None:
+    """In JEDEM Modus ausgeführt: steht das lokale Token in der URL, es merken und
+    in localStorage sichern. So überlebt es Navigation + den Moduswechsel-Neustart,
+    damit das PC-Fenster danach ohne PIN erkannt wird. (Das erste Laden passiert im
+    lokalen Modus, wo das PIN-Gate sonst gar nicht bis hierher käme.)"""
     import os
     token = os.environ.get("RAG_LOCAL_TOKEN", "")
     if not token:
-        return False
+        return
     try:
         q = st.query_params.get("k")
     except Exception:  # noqa: BLE001
         q = None
     if q and q == token:
         st.session_state["_local_ok"] = True
-        # Token clientseitig sichern, damit es Navigation + Moduswechsel überlebt.
         try:
             import json
             import streamlit.components.v1 as _c
@@ -49,7 +49,22 @@ def _is_local_window() -> bool:
                     + json.dumps(q) + ");}catch(e){}</script>", height=0)
         except Exception:  # noqa: BLE001
             pass
+
+
+def _is_local_window() -> bool:
+    """True für das lokale PC-Fenster (kennt das geheime Token). Das Handy kennt es
+    nicht und muss den PIN eingeben."""
+    if st.session_state.get("_local_ok"):
         return True
+    import os
+    token = os.environ.get("RAG_LOCAL_TOKEN", "")
+    if token:
+        try:
+            if st.query_params.get("k") == token:
+                st.session_state["_local_ok"] = True
+                return True
+        except Exception:  # noqa: BLE001
+            pass
     return False
 
 
