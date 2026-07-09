@@ -30,9 +30,11 @@ import os
 import re
 import sys
 import time
+import random
 import shutil
 import socket
 import atexit
+import base64
 import secrets
 import pathlib
 import threading
@@ -53,6 +55,8 @@ OLLAMA_PORT = 11434
 TUNNEL_URL_FILE = ROOT / "data" / "tunnel_url.txt"      # Cloudflare-Adresse (liest die App)
 TUNNEL_ERROR_FILE = ROOT / "data" / ".tunnel_error"    # Tunnelaufbau fehlgeschlagen (liest die App)
 TUNNEL_MODE = os.environ.get("RAG_TUNNEL") == "1"       # Cloudflare-Tunnel gewuenscht? (Start_Unterwegs.bat)
+SPLASH_FILE = ROOT / "data" / ".splash.html"           # schoener Ladebildschirm im App-Fenster
+ICON_PNG = ROOT / "assets" / "icon.png"
 
 
 def _no_window_flag() -> int:
@@ -351,7 +355,8 @@ def _start_streamlit(port: int, network: bool = True) -> subprocess.Popen:
         "--server.headless", "true",
         "--browser.gatherUsageStats", "false",
     ]
-    return subprocess.Popen(cmd, cwd=str(ROOT), env=env)
+    return subprocess.Popen(cmd, cwd=str(ROOT), env=env,
+                            creationflags=_no_window_flag())
 
 
 def _wait_until_ready(proc: subprocess.Popen, port: int, timeout: float = 90.0) -> bool:
@@ -363,6 +368,107 @@ def _wait_until_ready(proc: subprocess.Popen, port: int, timeout: float = 90.0) 
             return True
         time.sleep(0.4)
     return False
+
+
+_SPLASH_QUOTES = [
+    "Jeder Experte war einmal ein Anfänger.",
+    "Erfolg ist die Summe kleiner Anstrengungen – Tag für Tag.",
+    "Lernen ist wie Rudern gegen den Strom: Hörst du auf, treibt es dich zurück.",
+    "Der beste Zeitpunkt zu lernen war gestern. Der zweitbeste ist jetzt.",
+    "Ein Kapitel nach dem anderen – so wird aus Stoff Verständnis.",
+    "Nicht für die Klausur, für dich lernst du.",
+    "Wissen wächst, wenn man es teilt.",
+    "Konzentration schlägt Zeitdruck.",
+    "Kleine Schritte bringen dich weiter als kein Schritt.",
+    "Du hast schon schwierigere Dinge geschafft.",
+]
+
+_SPLASH_TEMPLATE = """<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG-Lernsystem wird gestartet …</title>
+<style>
+  *{box-sizing:border-box}html,body{height:100%;margin:0}
+  body{font-family:"Segoe UI",system-ui,-apple-system,sans-serif;display:flex;
+    align-items:center;justify-content:center;
+    background:radial-gradient(1200px 800px at 50% -10%,#1e293b 0%,#0f172a 55%,#0b1120 100%);
+    color:#e5e7eb;overflow:hidden}
+  .card{text-align:center;padding:40px 44px;max-width:480px;animation:fadeIn .6s ease both}
+  .logo{width:84px;height:84px;border-radius:20px;margin:0 auto 22px;display:flex;
+    align-items:center;justify-content:center;background:rgba(255,255,255,.06);
+    box-shadow:0 10px 40px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.08);
+    animation:float 3s ease-in-out infinite}
+  .logo img{width:60px;height:60px}
+  h1{font-size:25px;font-weight:650;margin:0 0 8px;letter-spacing:.2px}
+  .quote{font-size:15px;font-style:italic;color:#94a3b8;line-height:1.5;margin:0 0 30px}
+  .spinner{width:42px;height:42px;margin:0 auto 18px;border-radius:50%;
+    border:3px solid rgba(255,255,255,.12);border-top-color:#6366f1;
+    animation:spin .9s linear infinite}
+  .status{font-size:13.5px;color:#cbd5e1;min-height:20px;transition:opacity .3s}
+  .hint{font-size:12px;color:#64748b;margin-top:14px;min-height:16px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  @media (prefers-color-scheme:light){
+    body{background:radial-gradient(1200px 800px at 50% -10%,#eef2ff 0%,#f1f5f9 55%,#e2e8f0 100%);color:#1e293b}
+    .logo{background:#fff;box-shadow:0 10px 40px rgba(2,6,23,.12),inset 0 0 0 1px rgba(2,6,23,.06)}
+    .quote{color:#64748b}.status{color:#334155}.hint{color:#94a3b8}
+    .spinner{border-color:rgba(2,6,23,.10);border-top-color:#6366f1}
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo"><img src="%%ICON%%" alt=""></div>
+    <h1>RAG-Lernsystem</h1>
+    <p class="quote">%%QUOTE%%</p>
+    <div class="spinner"></div>
+    <div class="status" id="s">Wird gestartet …</div>
+    <div class="hint" id="h"></div>
+  </div>
+<script>
+  var APP="%%APP_URL%%",HEALTH="%%HEALTH_URL%%";
+  var msgs=["Starte lokales KI-Modell …","Lade Oberfläche …","Bereite die Suche vor …","Fast fertig …"];
+  var i=0,s=document.getElementById("s"),h=document.getElementById("h"),done=false,t0=Date.now();
+  setInterval(function(){if(!done){i=(i+1)%msgs.length;s.style.opacity=0;
+    setTimeout(function(){s.textContent=msgs[i];s.style.opacity=1;},300);}},2600);
+  function go(){if(done)return;done=true;window.location.replace(APP);}
+  function ping(){
+    if(done)return;
+    fetch(HEALTH,{mode:"no-cors",cache:"no-store"}).then(go).catch(function(){
+      if(Date.now()-t0>90000){h.innerHTML='Das dauert länger als sonst. <a href="'+APP+'" style="color:#818cf8;text-decoration:none">Jetzt öffnen ›</a>';}
+      setTimeout(ping,700);
+    });
+  }
+  ping();
+</script>
+</body>
+</html>
+"""
+
+
+def _write_splash(app_url: str, health_url: str) -> "str | None":
+    """Schreibt einen schoenen Ladebildschirm (self-contained HTML) und gibt seine
+    file://-Adresse zurueck. Der Splash zeigt sich sofort im App-Fenster und leitet
+    per JS selbst auf die App weiter, sobald Streamlit antwortet."""
+    try:
+        icon = ""
+        if ICON_PNG.is_file():
+            icon = "data:image/png;base64," + base64.b64encode(
+                ICON_PNG.read_bytes()).decode("ascii")
+        html = (_SPLASH_TEMPLATE
+                .replace("%%APP_URL%%", app_url)
+                .replace("%%HEALTH_URL%%", health_url)
+                .replace("%%ICON%%", icon)
+                .replace("%%QUOTE%%", random.choice(_SPLASH_QUOTES)))
+        SPLASH_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SPLASH_FILE.write_text(html, encoding="utf-8")
+        return SPLASH_FILE.as_uri()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[i] Ladebildschirm konnte nicht erstellt werden: {exc}")
+        return None
 
 
 def _find_browser() -> "tuple[str | None, str]":
@@ -411,6 +517,7 @@ def main() -> int:
     _rm(UI_RESTART_FILE)
     _rm(TUNNEL_URL_FILE)      # Altlasten eines frueheren (evtl. hart beendeten) Laufs
     _rm(TUNNEL_ERROR_FILE)
+    _rm(SPLASH_FILE)
 
     ollama_proc = _start_ollama()
 
@@ -447,27 +554,51 @@ def main() -> int:
         _taskkill_image("cloudflared.exe")
         _rm(TUNNEL_URL_FILE)
         _rm(TUNNEL_ERROR_FILE)
+        _rm(SPLASH_FILE)
         _rm(SHUTDOWN_SENTINEL)
         _rm(UI_RESTART_FILE)
         _rm(UI_MODE_FILE)
     atexit.register(_cleanup)
 
+    # Ladebildschirm SOFORT im App-Fenster zeigen, waehrend Ollama/Streamlit hochfahren.
+    # Der Splash leitet per JS selbst auf die App weiter, sobald sie bereit ist.
+    health_url = f"http://localhost:{port}/_stcore/health"
+    splash_uri = _write_splash(url, health_url)
+    browser, kind = _find_browser()
+
+    win = None
+    opened = False
+    if splash_uri:
+        if browser:
+            print(f"Oeffne App-Fenster ({kind}) ...")
+            win = _open_window(browser, splash_uri)
+        if win is not None:
+            opened = True
+        else:
+            try:
+                webbrowser.open(splash_uri)
+                opened = True
+            except Exception:  # noqa: BLE001
+                opened = False
+
+    # Auf die fertige Oberflaeche warten (fuer sauberes Cleanup bei Fehlstart).
     if not _wait_until_ready(st["proc"], port):
         print(f"[Fehler] Oberflaeche wurde nicht bereit (Port {port}).")
+        _kill_tree(win)   # auch das (Splash-)Fenster schliessen
         _cleanup()
         return 1
 
-    browser, kind = _find_browser()
-    win = None
-    if browser:
-        print(f"Oeffne App-Fenster ({kind}) ...")
-        win = _open_window(browser, url)
-    if win is None:
-        print("Kein App-Modus verfuegbar - oeffne Standardbrowser.")
-        try:
-            webbrowser.open(url)
-        except Exception:  # noqa: BLE001
-            pass
+    if not opened:
+        # Kein Splash sichtbar -> jetzt (bereit) direkt die App oeffnen.
+        if browser:
+            print(f"Oeffne App-Fenster ({kind}) ...")
+            win = _open_window(browser, url)
+        if win is None:
+            print("Kein App-Modus verfuegbar - oeffne Standardbrowser.")
+            try:
+                webbrowser.open(url)
+            except Exception:  # noqa: BLE001
+                pass
 
     print("Laeuft. Fenster schliessen oder in der App 'Beenden' druecken zum Stoppen.")
     try:

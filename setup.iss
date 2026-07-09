@@ -50,6 +50,7 @@ Source: "install.ps1";            DestDir: "{app}"
 Source: "install.sh";             DestDir: "{app}"
 Source: "Installieren.bat";       DestDir: "{app}"
 Source: "Start.bat";              DestDir: "{app}"
+Source: "Start.vbs";              DestDir: "{app}"
 Source: "Start_Handy-Zugriff.bat"; DestDir: "{app}"
 Source: "Start_Unterwegs.bat";    DestDir: "{app}"
 Source: "Start_GPU_Ollama.bat";   DestDir: "{app}"
@@ -66,12 +67,12 @@ Source: "assets\icon.png";        DestDir: "{app}\assets"
 Source: "Zusammenfassungen\.gitkeep"; DestDir: "{app}\Zusammenfassungen"; Flags: skipifsourcedoesntexist
 
 [Icons]
-Name: "{group}\{#MyAppName} starten";       Filename: "{app}\Start.bat";               WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
+Name: "{group}\{#MyAppName} starten";       Filename: "wscript.exe"; Parameters: """{app}\Start.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\Mit Handy-Zugriff starten";  Filename: "{app}\Start_Handy-Zugriff.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\Von unterwegs starten";      Filename: "{app}\Start_Unterwegs.bat";     WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\Einrichtung ausfuehren";     Filename: "{app}\Installieren.bat";        WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\Projektordner oeffnen";    Filename: "{app}"
-Name: "{autodesktop}\{#MyAppName}";       Filename: "{app}\Start.bat";        WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}";       Filename: "wscript.exe"; Parameters: """{app}\Start.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"; Tasks: desktopicon
 
 [Run]
 ; Am Ende des Assistenten: die eigentliche Einrichtung anbieten (Haekchen).
