@@ -17,9 +17,26 @@ import socket
 import pathlib
 import subprocess
 
-# Datei, in die der Starter (ragapp.desktop) die aktuelle Cloudflare-Tunnel-
-# Adresse schreibt, sobald der Tunnel steht.
+# Dateien, die der Starter (ragapp.desktop) schreibt.
 _TUNNEL_FILE = pathlib.Path(__file__).resolve().parent.parent / "data" / "tunnel_url.txt"
+_MODE_FILE = pathlib.Path(__file__).resolve().parent.parent / "data" / ".mode"
+
+
+def current_mode() -> str:
+    """Aktueller Zugriffsmodus: 'local', 'network' oder 'tunnel'."""
+    try:
+        if _MODE_FILE.is_file():
+            m = _MODE_FILE.read_text(encoding="utf-8").strip()
+            if m in ("local", "network", "tunnel"):
+                return m
+    except Exception:
+        pass
+    # Fallback ueber Umgebungsvariablen (falls kein Starter das File schreibt)
+    if os.environ.get("RAG_TUNNEL") == "1":
+        return "tunnel"
+    if is_network_mode():
+        return "network"
+    return "local"
 
 
 def get_port() -> int:
@@ -131,11 +148,11 @@ def access_targets() -> "list[dict]":
                     "ip": lan, "url": f"http://{lan}:{port}"})
     tu = tunnel_url()
     if tu:
-        out.append({"kind": "tunnel", "label": "Von ueberall (Cloudflare)",
+        out.append({"kind": "tunnel", "label": "Von überall (Cloudflare)",
                     "ip": "", "url": tu})
     ts = tailscale_ip()
     if ts:
-        out.append({"kind": "tailscale", "label": "Von ueberall (Tailscale)",
+        out.append({"kind": "tailscale", "label": "Von überall (Tailscale)",
                     "ip": ts, "url": f"http://{ts}:{port}"})
     return out
 

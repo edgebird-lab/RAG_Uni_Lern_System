@@ -45,7 +45,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]      # Repo-Wurzel (enthaelt 
 HOME = ROOT / "ragapp" / "ui" / "Home.py"
 PROFILE_DIR = ROOT / "data" / ".appwindow"              # eigenes Browser-Profil -> isolierte, wartbare Instanz
 SHUTDOWN_SENTINEL = ROOT / "data" / ".shutdown"         # "Beenden"-Button legt diese Datei an
-UI_RESTART_FILE = ROOT / "data" / ".restart_ui"         # Modus-Wechsel aus der App ("network"/"local")
+UI_RESTART_FILE = ROOT / "data" / ".restart_ui"         # Modus-Wechsel aus der App ("local"/"network"/"tunnel")
+UI_MODE_FILE = ROOT / "data" / ".mode"                  # aktueller Modus (fuer die Anzeige in der App)
 IPEX_EXE = ROOT / "ipex-ollama" / "ollama.exe"          # vorhanden = Intel-GPU-Variante
 OLLAMA_PORT = 11434
 TUNNEL_URL_FILE = ROOT / "data" / "tunnel_url.txt"      # Cloudflare-Adresse (liest die App)
@@ -59,6 +60,13 @@ def _no_window_flag() -> int:
 def _rm(path: pathlib.Path) -> None:
     try:
         path.unlink()
+    except OSError:
+        pass
+
+
+def _write_mode(m: str) -> None:
+    try:
+        UI_MODE_FILE.write_text(m, encoding="utf-8")
     except OSError:
         pass
 
@@ -198,6 +206,24 @@ def _resolve_cloudflared() -> "str | None":
     return None
 
 
+def _ensure_cloudflared() -> "str | None":
+    """cloudflared finden; auf Windows bei Bedarf via winget installieren."""
+    exe = _resolve_cloudflared()
+    if exe:
+        return exe
+    if os.name == "nt" and shutil.which("winget"):
+        print("Installiere cloudflared (einmalig, via winget) - kann 1-2 Minuten dauern ...")
+        try:
+            subprocess.run(
+                ["winget", "install", "--id", "Cloudflare.cloudflared", "-e", "--silent",
+                 "--accept-source-agreements", "--accept-package-agreements"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=360)
+        except Exception:  # noqa: BLE001
+            pass
+        return _resolve_cloudflared()
+    return None
+
+
 _TUNNEL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 
 
@@ -205,15 +231,17 @@ def _start_tunnel(port: int) -> "subprocess.Popen | None":
     """Cloudflare-Quick-Tunnel auf localhost:port; schreibt die oeffentliche
     Adresse nach data/tunnel_url.txt, sobald sie steht."""
     _rm(TUNNEL_URL_FILE)
-    exe = _resolve_cloudflared()
+    exe = _ensure_cloudflared()
     if not exe:
-        print("[i] cloudflared nicht gefunden - Tunnel uebersprungen "
-              "(Start_Unterwegs.bat installiert es via winget).")
+        print("[i] cloudflared nicht gefunden/installierbar - Tunnel uebersprungen.")
         return None
     print("Starte Cloudflare-Tunnel (Zugriff von unterwegs) ...")
     try:
         proc = subprocess.Popen(
-            [exe, "tunnel", "--url", f"http://localhost:{port}", "--no-autoupdate"],
+            # --protocol http2: QUIC (UDP 7844) wird von vielen Netzen blockiert
+            # (Fehler 1033). HTTP/2 laeuft ueber TCP 443 und kommt fast immer durch.
+            [exe, "tunnel", "--url", f"http://localhost:{port}",
+             "--protocol", "http2", "--no-autoupdate"],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             encoding="utf-8", errors="replace", creationflags=_no_window_flag())
     except Exception as exc:  # noqa: BLE001
@@ -329,18 +357,30 @@ def main() -> int:
     if port != PREFERRED_PORT:
         print(f"[i] Port {PREFERRED_PORT} war belegt, nutze freien Port {port}.")
 
-    network = os.environ.get("RAG_NETWORK") == "1"
-    print("Starte Oberflaeche%s ..." % (" (Netzwerkmodus)" if network else ""))
-    st = {"proc": _start_streamlit(port, network)}
-    tunnel_proc = _start_tunnel(port) if TUNNEL_MODE else None
+    def _mode_from_env() -> str:
+        if os.environ.get("RAG_TUNNEL") == "1":
+            return "tunnel"
+        if os.environ.get("RAG_NETWORK") == "1":
+            return "network"
+        return "local"
+
+    def _is_net(m: str) -> bool:
+        return m in ("network", "tunnel")
+
+    mode = _mode_from_env()
+    _write_mode(mode)
+    print("Starte Oberflaeche%s ..." % ("" if mode == "local" else " (%s)" % mode))
+    st = {"proc": _start_streamlit(port, _is_net(mode))}
+    tunnel = {"proc": _start_tunnel(port) if mode == "tunnel" else None}
 
     def _cleanup() -> None:
         _kill_tree(st["proc"])
         _stop_ollama_fully(ollama_proc)
-        _kill_tree(tunnel_proc)
+        _kill_tree(tunnel["proc"])
         _rm(TUNNEL_URL_FILE)
         _rm(SHUTDOWN_SENTINEL)
         _rm(UI_RESTART_FILE)
+        _rm(UI_MODE_FILE)
     atexit.register(_cleanup)
 
     if not _wait_until_ready(st["proc"], port):
@@ -370,21 +410,30 @@ def main() -> int:
             if SHUTDOWN_SENTINEL.exists():
                 break                                   # Beenden-Button
 
-            # Modus-Wechsel aus der App (lokal <-> Netzwerk)?
+            # Modus-Wechsel aus der App (lokal / WLAN / Cloudflare)?
             if UI_RESTART_FILE.exists():
                 try:
                     desired = UI_RESTART_FILE.read_text(encoding="utf-8").strip()
                 except Exception:  # noqa: BLE001
                     desired = ""
                 _rm(UI_RESTART_FILE)
-                want_net = (desired == "network")
-                if want_net != network:
-                    print("Wechsle auf %s ..." % ("Netzwerkmodus" if want_net else "lokal"))
-                    _kill_tree(st["proc"])
-                    _wait_port_free(port)
-                    network = want_net
-                    st["proc"] = _start_streamlit(port, network)
-                    _wait_until_ready(st["proc"], port)
+                if desired in ("local", "network", "tunnel") and desired != mode:
+                    print("Wechsle auf '%s' ..." % desired)
+                    # Bind-Adresse aendert sich nur zwischen lokal <-> Netz/Tunnel
+                    if _is_net(desired) != _is_net(mode):
+                        _kill_tree(st["proc"])
+                        _wait_port_free(port)
+                        st["proc"] = _start_streamlit(port, _is_net(desired))
+                        _wait_until_ready(st["proc"], port)
+                    # Cloudflare-Tunnel starten bzw. stoppen
+                    if desired == "tunnel" and tunnel["proc"] is None:
+                        tunnel["proc"] = _start_tunnel(port)
+                    elif desired != "tunnel" and tunnel["proc"] is not None:
+                        _kill_tree(tunnel["proc"])
+                        tunnel["proc"] = None
+                        _rm(TUNNEL_URL_FILE)
+                    mode = desired
+                    _write_mode(mode)
                     # das App-Fenster verbindet sich automatisch neu (gleiche URL)
             time.sleep(0.5)
     except KeyboardInterrupt:
@@ -397,7 +446,7 @@ def main() -> int:
         _kill_tree(win)
     _kill_tree(st["proc"])
     _stop_ollama_fully(ollama_proc)
-    _kill_tree(tunnel_proc)
+    _kill_tree(tunnel["proc"])
     _rm(TUNNEL_URL_FILE)
     print("Fertig. Es laeuft nichts mehr im Hintergrund.")
     return 0

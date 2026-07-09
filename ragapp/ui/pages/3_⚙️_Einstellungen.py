@@ -312,6 +312,16 @@ def _reload_when_server_ready() -> None:
     )
 
 
+def _auto_refresh(seconds: int) -> None:
+    """Lädt die Seite nach N Sekunden einmal neu (Polling, bis z. B. der Tunnel steht)."""
+    import streamlit.components.v1 as _components
+    _components.html(
+        f"<script>setTimeout(function(){{window.parent.location.reload();}}, "
+        f"{int(seconds) * 1000});</script>",
+        height=0,
+    )
+
+
 st.header("📱 Handy-/Tablet-Zugriff")
 st.markdown(
     "<span class='small'>Nutze die App vom Handy oder Tablet, solange dieser PC "
@@ -334,63 +344,76 @@ with _pc2:
         st.success("PIN gespeichert." if _neuer_pin.strip()
                    else "PIN geleert. Im Netzwerkmodus ist dann kein Zugriff möglich.")
 
-if netinfo.is_network_mode():
-    st.success("✅ **Verbunden** – dein Handy/Tablet kann jetzt zugreifen (PIN nötig).")
+_pin_ok = bool(str(settings.UI_ACCESS_PIN or "").strip())
+_cur = netinfo.current_mode()   # "local" / "network" / "tunnel"
+_mode_labels = {
+    "local": "Aus – nur dieser PC",
+    "network": "Im WLAN – Handy im selben Netz (zuhause)",
+    "tunnel": "Von überall – über Cloudflare (auch mobil)",
+}
+_opts = ["local", "network", "tunnel"]
+_desired = st.radio(
+    "Zugriff", _opts, index=_opts.index(_cur),
+    format_func=lambda m: _mode_labels[m],
+    help="Alles direkt in der App – keine Extra-Datei nötig. Cloudflare wird beim "
+         "ersten Mal automatisch installiert.",
+)
+
+if _desired != _cur:
+    if _desired != "local" and not _pin_ok:
+        st.warning("⚠️ Setze oben zuerst einen PIN, dann lässt sich der Zugriff einschalten.")
+    elif st.button("✅ Übernehmen", type="primary"):
+        try:
+            UI_RESTART_FILE.write_text(_desired, encoding="utf-8")
+        except Exception:  # noqa: BLE001
+            pass
+        _txt = {
+            "local": "Trenne …",
+            "network": "Schalte den WLAN-Zugriff frei …",
+            "tunnel": "Baue den Cloudflare-Tunnel auf … (beim ersten Mal wird cloudflared "
+                      "installiert, das kann 1–2 Minuten dauern)",
+        }[_desired]
+        st.info(_txt + " Die Seite lädt automatisch neu.")
+        _reload_when_server_ready()
+        st.stop()
+
+# ---- Aktueller Zustand + QR-Code ---------------------------------------- #
+if _cur == "local":
+    st.caption("Der Zugriff ist **aus** – die App ist nur auf diesem PC erreichbar.")
+else:
+    if _cur == "tunnel" and netinfo.tunnel_url() is None:
+        st.info("🌍 Cloudflare-Tunnel wird aufgebaut … (beim ersten Mal inkl. Installation, "
+                "1–2 Minuten). Die Seite aktualisiert sich automatisch, sobald die "
+                "Adresse bereit ist.")
+        _auto_refresh(4)
+
     _ziele = netinfo.access_targets()
     if not _ziele:
-        st.warning("Keine Netzwerk-Adresse gefunden. Ist der PC mit dem WLAN verbunden?")
-    _hinweise = {
-        "lan": "📶 Funktioniert, wenn das Handy im **selben WLAN** ist.",
-        "tunnel": "🌍 Von **überall** erreichbar, **keine App** am Handy nötig.",
-        "tailscale": "🔒 Funktioniert **nur**, wenn Tailscale auch **am Handy** mit "
-                     "demselben Konto angemeldet **und eingeschaltet** (VPN an) ist. "
-                     "App installieren allein reicht nicht.",
-    }
-    _cols = st.columns(max(1, len(_ziele)))
-    for _c, _z in zip(_cols, _ziele):
-        with _c:
-            st.markdown(f"**{_z['label']}**")
-            st.markdown(f"[{_z['url']}]({_z['url']})")
-            _png = netinfo.qr_png_bytes(_z["url"])
-            if _png:
-                st.image(_png, width=200, caption="Mit dem Handy scannen")
-            else:
-                st.caption("(QR-Code nicht verfügbar, Adresse oben im Handy-Browser eingeben.)")
-            if _hinweise.get(_z["kind"]):
-                st.caption(_hinweise[_z["kind"]])
-    st.caption(
-        "📲 Als App aufs Handy: Adresse öffnen, dann im Browser-Menü "
-        "**Zum Home-Bildschirm hinzufügen**. Sie startet danach randlos wie eine "
-        "echte App.")
-    if not any(_z["kind"] == "tunnel" for _z in _ziele):
+        st.warning("Noch keine Adresse verfügbar. Ist der PC mit dem Netzwerk verbunden?")
+    else:
+        st.success("✅ **Aktiv** – dein Handy/Tablet kann zugreifen (PIN nötig).")
+        _hinweise = {
+            "lan": "📶 Funktioniert, wenn das Handy im **selben WLAN** ist.",
+            "tunnel": "🌍 Von **überall** erreichbar, **keine App** am Handy nötig.",
+            "tailscale": "🔒 Funktioniert **nur**, wenn Tailscale auch **am Handy** mit "
+                         "demselben Konto angemeldet **und eingeschaltet** ist.",
+        }
+        # Nur EINEN QR-Code zeigen (per Auswahl), damit die Handy-Kamera nicht
+        # mehrere gleichzeitig erfasst.
+        _map = {_z["label"]: _z for _z in _ziele}
+        _sel = st.selectbox("Welchen Zugang als QR-Code anzeigen?", list(_map.keys()))
+        _z = _map[_sel]
+        st.markdown(f"**{_z['label']}** — [{_z['url']}]({_z['url']})")
+        _png = netinfo.qr_png_bytes(_z["url"])
+        if _png:
+            st.image(_png, width=240, caption="Mit dem Handy scannen")
+        else:
+            st.caption("(QR-Code nicht verfügbar, Adresse oben im Handy-Browser eingeben.)")
+        if _hinweise.get(_z["kind"]):
+            st.caption(_hinweise[_z["kind"]])
         st.caption(
-            "Auch von unterwegs (außerhalb des WLANs)? Die App über "
-            "**Start_Unterwegs.bat** starten (Cloudflare-Tunnel).")
-    if st.button("🔌 Verbindung trennen"):
-        try:
-            UI_RESTART_FILE.write_text("local", encoding="utf-8")
-        except Exception:  # noqa: BLE001
-            pass
-        st.info("Trenne … der Server startet kurz neu, die Seite lädt automatisch neu.")
-        _reload_when_server_ready()
-        st.stop()
-else:
-    st.write("Verbindung: **aus** – die App ist nur auf diesem PC erreichbar.")
-    _pin_ok = bool(str(settings.UI_ACCESS_PIN or "").strip())
-    if st.button("📱 Mit Smartphone verbinden", type="primary", disabled=not _pin_ok):
-        try:
-            UI_RESTART_FILE.write_text("network", encoding="utf-8")
-        except Exception:  # noqa: BLE001
-            pass
-        st.info("Verbinde … der Server startet kurz im Netzwerkmodus neu und die Seite "
-                "lädt automatisch neu (ein paar Sekunden). Danach erscheinen hier "
-                "Adresse + QR-Code. Falls nicht: einmal manuell aktualisieren (F5).")
-        _reload_when_server_ready()
-        st.stop()
-    if not _pin_ok:
-        st.warning("⚠️ Setze oben zuerst einen PIN, dann lässt sich verbinden.")
-    st.caption(
-        "Von unterwegs (außerhalb des WLANs): die App über **Start_Unterwegs.bat** starten.")
+            "📲 Als App aufs Handy: Adresse öffnen, dann im Browser-Menü "
+            "**Zum Home-Bildschirm hinzufügen**.")
 
 st.caption(
     "Hinweis: Beim ersten Start im Netzwerkmodus fragt die **Windows-Firewall**, "
