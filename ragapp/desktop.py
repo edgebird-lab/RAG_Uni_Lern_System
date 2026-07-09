@@ -276,21 +276,17 @@ def _start_tunnel(port: int) -> "subprocess.Popen | None":
 # --------------------------------------------------------------------------- #
 # Streamlit + App-Fenster
 # --------------------------------------------------------------------------- #
-def _start_streamlit(port: int, network: bool = False) -> subprocess.Popen:
-    """Startet Streamlit. network=True -> an 0.0.0.0 gebunden (im Netz erreichbar)
-    und RAG_NETWORK=1 (PIN-Sperre aktiv); sonst nur localhost."""
+def _start_streamlit(port: int, network: bool = True) -> subprocess.Popen:
+    """Startet Streamlit - IMMER an 0.0.0.0 gebunden. Dadurch braucht ein
+    Moduswechsel (lokal/WLAN/Cloudflare) KEINEN Neustart und kein Neuladen (kein
+    Verbindungsabbruch). Der Zugriff wird stattdessen ueber den Modus (data/.mode)
+    und PIN/Token in der App geregelt - nicht ueber die Bind-Adresse."""
     env = dict(os.environ)
     env.setdefault("PYTHONUTF8", "1")
     env.setdefault("PYTHONIOENCODING", "utf-8")
-    if network:
-        env["RAG_NETWORK"] = "1"
-        addr = "0.0.0.0"
-    else:
-        env.pop("RAG_NETWORK", None)
-        addr = "localhost"
     cmd = [
         sys.executable, "-m", "streamlit", "run", str(HOME),
-        "--server.address", addr,
+        "--server.address", "0.0.0.0",
         "--server.port", str(port),
         "--server.headless", "true",
         "--browser.gatherUsageStats", "false",
@@ -427,18 +423,12 @@ def main() -> int:
                 _rm(UI_RESTART_FILE)
                 if desired in ("local", "network", "tunnel") and desired != mode:
                     print("Wechsle auf '%s' ..." % desired)
-                    # Bind-Adresse aendert sich nur zwischen lokal <-> Netz/Tunnel
-                    if _is_net(desired) != _is_net(mode):
-                        _kill_tree(st["proc"])
-                        _wait_port_free(port)
-                        st["proc"] = _start_streamlit(port, _is_net(desired))
-                        _wait_until_ready(st["proc"], port)
                     mode = desired
-                    _write_mode(mode)   # Modus SOFORT melden (UI zeigt "Tunnel wird aufgebaut")
-                    # Cloudflare-Tunnel starten bzw. stoppen
+                    _write_mode(mode)
+                    # KEIN Streamlit-Neustart (Bind ist immer 0.0.0.0) -> kein
+                    # Neuladen. Nur den Cloudflare-Tunnel starten bzw. stoppen.
                     if desired == "tunnel" and tunnel["proc"] is None:
-                        # nicht-blockierend: cloudflared-Installation kann dauern,
-                        # der Starter bleibt dabei bedienbar (Beenden funktioniert).
+                        # nicht-blockierend: cloudflared-Installation kann dauern.
                         threading.Thread(
                             target=lambda: tunnel.__setitem__("proc", _start_tunnel(port)),
                             daemon=True).start()
@@ -447,7 +437,6 @@ def main() -> int:
                         tunnel["proc"] = None
                         _taskkill_image("cloudflared.exe")
                         _rm(TUNNEL_URL_FILE)
-                    # das App-Fenster verbindet sich automatisch neu (gleiche URL)
             time.sleep(0.5)
     except KeyboardInterrupt:
         pass

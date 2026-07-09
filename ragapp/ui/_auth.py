@@ -69,23 +69,25 @@ def _is_local_window() -> bool:
 
 
 def _pin_gate() -> None:
-    # Lokaler Modus (Start.bat / App-Fenster): keine Sperre.
-    if not netinfo.is_network_mode():
-        return
-    # Lokales PC-Fenster (kennt das Token): kein PIN nötig - nur das Handy.
+    # Lokales PC-Fenster (kennt das geheime Token): immer erlaubt, kein PIN.
     if _is_local_window():
         return
+    # Nicht-lokaler Zugriff (Handy). Nur wenn am PC freigeschaltet.
+    mode = netinfo.current_mode()   # local / network / tunnel
+    if mode == "local":
+        st.title("🔒 Zugriff nicht aktiv")
+        st.info("Der Handy-/Netzwerk-Zugriff ist an diesem PC nicht eingeschaltet. "
+                "Schalte ihn dort in der App unter **⚙️ Einstellungen → 📱 "
+                "Handy-Zugriff** ein.")
+        st.stop()
 
     pin = (str(settings.UI_ACCESS_PIN) if settings.UI_ACCESS_PIN else "").strip()
 
-    # Netzwerkmodus, aber kein PIN gesetzt -> Zugriff sicherheitshalber sperren.
+    # Zugriff aktiv, aber kein PIN gesetzt -> sicherheitshalber sperren.
     if not pin:
         st.title("🔒 Kein PIN gesetzt")
-        st.error("Der Handy-/Netzwerk-Zugriff ist aktiv, aber es wurde noch kein "
-                 "PIN festgelegt.")
-        st.info("Starte die App einmal normal (Doppelklick auf **Start.bat**) und "
-                "setze unter **⚙️ Einstellungen → 📱 Handy-Zugriff** einen PIN. "
-                "Danach den Handy-Zugriff neu starten.")
+        st.error("Der Zugriff ist aktiv, aber es wurde noch kein PIN festgelegt.")
+        st.info("Setze am PC unter **⚙️ Einstellungen → 📱 Handy-Zugriff** einen PIN.")
         st.stop()
 
     if st.session_state.get("_auth_ok"):

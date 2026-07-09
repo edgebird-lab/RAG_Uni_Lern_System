@@ -286,7 +286,7 @@ st.divider()
 # Handy-/Tablet-Zugriff (Netzwerk)
 # --------------------------------------------------------------------------- #
 from ragapp import netinfo
-from ragapp.config import UI_RESTART_FILE
+from ragapp.config import UI_RESTART_FILE, UI_MODE_FILE
 
 
 def _reload_when_server_ready() -> None:
@@ -317,11 +317,15 @@ def _reload_when_server_ready() -> None:
 
 
 def _auto_refresh(seconds: int) -> None:
-    """Lädt die Seite nach N Sekunden einmal neu (Polling, bis z. B. der Tunnel steht)."""
+    """Lädt die Seite nach N Sekunden neu (Polling, bis z. B. der Tunnel steht) und
+    hängt das lokale Token wieder an, damit das PC-Fenster ohne PIN bleibt."""
     import streamlit.components.v1 as _components
     _components.html(
-        f"<script>setTimeout(function(){{window.parent.location.reload();}}, "
-        f"{int(seconds) * 1000});</script>",
+        "<script>setTimeout(function(){"
+        "var loc=window.parent.location; var k=null;"
+        "try{k=window.parent.localStorage.getItem('rag_local_token');}catch(e){}"
+        "var t=loc.origin+loc.pathname+(k?('?k='+encodeURIComponent(k)):'');"
+        "window.parent.location.href=t;}, " + str(int(seconds) * 1000) + ");</script>",
         height=0,
     )
 
@@ -368,18 +372,11 @@ if _desired != _cur:
         st.warning("⚠️ Setze oben zuerst einen PIN, dann lässt sich der Zugriff einschalten.")
     elif st.button("✅ Übernehmen", type="primary"):
         try:
-            UI_RESTART_FILE.write_text(_desired, encoding="utf-8")
+            UI_MODE_FILE.write_text(_desired, encoding="utf-8")      # Anzeige + Gate sofort
+            UI_RESTART_FILE.write_text(_desired, encoding="utf-8")   # Starter: Tunnel an/aus
         except Exception:  # noqa: BLE001
             pass
-        _txt = {
-            "local": "Trenne …",
-            "network": "Schalte den WLAN-Zugriff frei …",
-            "tunnel": "Baue den Cloudflare-Tunnel auf … (beim ersten Mal wird cloudflared "
-                      "installiert, das kann 1–2 Minuten dauern)",
-        }[_desired]
-        st.info(_txt + " Die Seite lädt automatisch neu.")
-        _reload_when_server_ready()
-        st.stop()
+        st.rerun()   # kein Neustart/Neuladen nötig (Bind ist immer 0.0.0.0)
 
 # ---- Aktueller Zustand + QR-Code ---------------------------------------- #
 if _cur == "local":
