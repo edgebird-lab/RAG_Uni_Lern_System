@@ -168,7 +168,8 @@ def _taskkill_image(name: str) -> None:
         return
     try:
         subprocess.run(["taskkill", "/IM", name, "/F", "/T"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+                       creationflags=_no_window_flag())
     except Exception:  # noqa: BLE001
         pass
 
@@ -205,7 +206,8 @@ def _kill_tree(proc: "subprocess.Popen | None") -> None:
     if os.name == "nt":
         try:
             subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+                           creationflags=_no_window_flag())
             return
         except Exception:  # noqa: BLE001
             pass
@@ -306,7 +308,8 @@ def _ensure_cloudflared() -> "str | None":
             subprocess.run(
                 ["winget", "install", "--id", "Cloudflare.cloudflared", "-e", "--silent",
                  "--accept-source-agreements", "--accept-package-agreements"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=360)
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=360,
+                creationflags=_no_window_flag())
         except Exception:  # noqa: BLE001
             pass
         return _resolve_cloudflared()

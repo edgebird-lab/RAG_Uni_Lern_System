@@ -22,7 +22,7 @@ from ragapp.config import settings
 from ragapp import manifest
 from ragapp.retrieval.vectorstore import get_vectorstore
 from ragapp.retrieval.embeddings import get_embedder
-from ragapp.ingestion.question_gen import generate_questions, QuestionGenError
+from ragapp.ingestion.question_gen import generate_questions, generate_answer, QuestionGenError
 from ragapp.hardware import probe_model
 
 _SUMMARY_HINTS = ("zusammenfassung", "kompakt", "spickzettel", "klausur")
@@ -44,9 +44,13 @@ def _existing_question_parents() -> set:
 def enrich_questions(limit: Optional[int] = None,
                      subject: Optional[str] = None,
                      doc_ids: Optional[list[str]] = None,
+                     n_per_chunk: Optional[int] = None,
+                     with_answers: bool = False,
                      progress=None) -> dict:
     """Erzeugt Fragen fuer noch nicht angereicherte Chunks. Optional gezielt fuer ein
-    Fach (subject) und/oder bestimmte Dateien (doc_ids). Gibt ein EHRLICHES Ergebnis
+    Fach (subject) und/oder bestimmte Dateien (doc_ids), mit ``n_per_chunk`` Fragen je
+    Chunk. Mit ``with_answers`` wird zu jeder Frage gleich eine KI-Musterloesung erzeugt
+    und in den Frage-Metadaten (Feld 'answer') abgelegt. Gibt ein EHRLICHES Ergebnis
     zurueck: status (ok/empty/llm_error/nothing_to_do), Zahlen, Fehlermeldung und eine
     Aufschluesselung pro Dokument (per_doc)."""
     store = get_vectorstore()
@@ -89,7 +93,7 @@ def enrich_questions(limit: Optional[int] = None,
         if progress:
             progress(f"Anreicherung {i}/{len(chunks)} · {ch['meta'].get('filename', '?')}")
         try:
-            qs = generate_questions(ch["document"])
+            qs = generate_questions(ch["document"], n=n_per_chunk)
         except QuestionGenError as exc:          # echter LLM-Fehler -> sichtbar machen
             errors += 1
             slot["errors"] += 1
@@ -102,12 +106,24 @@ def enrich_questions(limit: Optional[int] = None,
         slot["chunks"] += 1
         if not qs:
             continue
+        # Optional: zu jeder Frage gleich eine Musterloesung erzeugen (kostet extra Zeit).
+        answers: list[str] = []
+        if with_answers:
+            for q in qs:
+                try:
+                    answers.append(generate_answer(ch["document"], q))
+                except QuestionGenError as exc:
+                    answers.append("")
+                    if error_msg is None:
+                        error_msg = str(exc)
         q_embs = embedder.embed_texts(qs)
         ids, embeddings, documents, metadatas = [], [], [], []
         for j, (q, qe) in enumerate(zip(qs, q_embs)):
             qmeta = {k: v for k, v in ch["meta"].items()}
             qmeta["type"] = "question"
             qmeta["parent_id"] = ch["id"]
+            if with_answers and j < len(answers) and answers[j]:
+                qmeta["answer"] = answers[j]
             ids.append(f"{ch['id']}::eq{j}")
             embeddings.append(qe)
             documents.append(q)

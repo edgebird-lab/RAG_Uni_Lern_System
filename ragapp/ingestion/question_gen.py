@@ -67,6 +67,55 @@ Gib NUR gültiges JSON in diesem Format zurück:
 {{"questions": ["...", "..."]}}"""
 
 
+_ANSWER_SYSTEM = (
+    "Du bist ein präziser Tutor an einer deutschen Hochschule. Du beantwortest "
+    "Prüfungsfragen kurz, korrekt und nur mit dem gegebenen Stoff."
+)
+
+_ANSWER_PROMPT = """Beantworte die folgende Prüfungsfrage AUSSCHLIESSLICH mit den
+Informationen aus dem gegebenen Abschnitt. Schreibe eine klare, vollständige
+Musterlösung auf Deutsch (2–6 Sätze; bei Rechnungen die Schritte). Formeln in
+LaTeX (z. B. $\\frac{{a}}{{b}}$). Kein Vorspann wie „Antwort:", keine Verweise auf
+„den Abschnitt". Steht die Antwort nicht im Abschnitt, schreibe nur: NICHT_IM_TEXT
+
+Frage:
+{frage}
+
+Abschnitt:
+\"\"\"
+{chunk}
+\"\"\"
+
+Musterlösung:"""
+
+
+def generate_answer(chunk_text: str, question: str, model: str | None = None) -> str:
+    """Erzeugt aus Frage + Eltern-Chunk eine echte Musterlösung (statt den rohen Chunk
+    als 'Antwort' zu zeigen). Gibt '' zurück, wenn die Antwort nicht im Text steht oder
+    leer bleibt. Wirft QuestionGenError bei echtem LLM-/Backend-Fehler."""
+    if not (question or "").strip() or not (chunk_text or "").strip():
+        return ""
+    llm = get_llm(model or settings.LLM_MODEL_FAST)
+    try:
+        raw = llm.generate(
+            _ANSWER_PROMPT.format(frage=question.strip(), chunk=chunk_text[:2800]),
+            system=_ANSWER_SYSTEM,
+            temperature=0.2,
+        )
+    except Exception as exc:  # echter LLM-/Backend-Fehler -> NICHT verschlucken
+        raise QuestionGenError(str(exc)) from exc
+    ans = (raw or "").strip()
+    # gelegentliche Vorspann-/Codefence-Reste entfernen
+    if ans.startswith("```"):
+        ans = ans.strip("`").split("\n", 1)[-1].strip()
+    for pref in ("Antwort:", "Musterlösung:", "Lösung:"):
+        if ans.lower().startswith(pref.lower()):
+            ans = ans[len(pref):].strip()
+    if not ans or "NICHT_IM_TEXT" in ans:
+        return ""
+    return ans
+
+
 def generate_questions(chunk_text: str, n: int | None = None, model: str | None = None) -> list[str]:
     n = n or settings.NUM_INDEX_QUESTIONS
     # Für die Bulk-Fragenerzeugung nutzen wir standardmäßig das schnellere Modell.

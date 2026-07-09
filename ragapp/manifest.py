@@ -74,7 +74,11 @@ CREATE TABLE IF NOT EXISTS review_items (
     last_review REAL,
     created_at  REAL,
     suspended   INTEGER DEFAULT 0,
-    deck        TEXT                -- optionaler Stapel/Themenstapel (frei benannt)
+    deck        TEXT,               -- optionaler Stapel/Themenstapel (frei benannt)
+    answer      TEXT,               -- KI-generierte Antwort (statt rohem Chunk); leer = Chunk zeigen
+    use_flashcard INTEGER DEFAULT 1,-- Karte fuer die Abfrage (Lernrunde) nutzen?
+    use_embedding INTEGER DEFAULT 1,-- zugehoerige Frage im Vektorindex (Suche) halten?
+    edited        INTEGER DEFAULT 0 -- 1 = manuell bearbeitet -> Ernte ueberschreibt nicht mehr
 );
 CREATE INDEX IF NOT EXISTS idx_review_due ON review_items(due);
 CREATE INDEX IF NOT EXISTS idx_review_subject ON review_items(subject);
@@ -108,11 +112,19 @@ def _connect() -> Iterator[sqlite3.Connection]:
 def init_db() -> None:
     with _connect() as conn:
         conn.executescript(_SCHEMA)
-        # Additive Migration: 'deck'-Spalte fuer bestehende Karten-DBs nachziehen.
+        # Additive Migrationen fuer bestehende Karten-DBs: neue Spalten nachziehen.
         try:
             cols = {r["name"] for r in conn.execute("PRAGMA table_info(review_items)")}
-            if "deck" not in cols:
-                conn.execute("ALTER TABLE review_items ADD COLUMN deck TEXT")
+            _adds = [
+                ("deck", "ALTER TABLE review_items ADD COLUMN deck TEXT"),
+                ("answer", "ALTER TABLE review_items ADD COLUMN answer TEXT"),
+                ("use_flashcard", "ALTER TABLE review_items ADD COLUMN use_flashcard INTEGER DEFAULT 1"),
+                ("use_embedding", "ALTER TABLE review_items ADD COLUMN use_embedding INTEGER DEFAULT 1"),
+                ("edited", "ALTER TABLE review_items ADD COLUMN edited INTEGER DEFAULT 0"),
+            ]
+            for name, ddl in _adds:
+                if name not in cols:
+                    conn.execute(ddl)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_review_deck ON review_items(deck)")
         except Exception:  # noqa: BLE001
             pass
@@ -251,24 +263,45 @@ def upsert_review_items(cards: list[dict]) -> int:
         return 0
     now = time.time()
     with _connect() as conn:
-        existing = {r["card_id"] for r in conn.execute("SELECT card_id FROM review_items")}
+        existing = {r["card_id"]: r["edited"]
+                    for r in conn.execute("SELECT card_id, edited FROM review_items")}
         neu = 0
         for c in cards:
             cid = c["card_id"]
+            ans = (c.get("answer") or "").strip() or None
             if cid in existing:
-                conn.execute(
-                    "UPDATE review_items SET source=?, chroma_id=?, subject=?, topic=?, "
-                    "front=?, back=?, doc_id=? WHERE card_id=?",
-                    (c.get("source"), c.get("chroma_id"), c.get("subject"), c.get("topic"),
-                     c["front"], c["back"], c.get("doc_id"), cid),
-                )
+                if existing[cid]:
+                    # Manuell bearbeitet -> Frage/Antwort NICHT ueberschreiben, nur Metadaten.
+                    conn.execute(
+                        "UPDATE review_items SET source=?, chroma_id=?, subject=?, topic=?, "
+                        "doc_id=? WHERE card_id=?",
+                        (c.get("source"), c.get("chroma_id"), c.get("subject"),
+                         c.get("topic"), c.get("doc_id"), cid),
+                    )
+                else:
+                    # answer nur setzen, wenn die Ernte eine liefert (sonst bestehende behalten).
+                    if ans is not None:
+                        conn.execute(
+                            "UPDATE review_items SET source=?, chroma_id=?, subject=?, topic=?, "
+                            "front=?, back=?, answer=?, doc_id=? WHERE card_id=?",
+                            (c.get("source"), c.get("chroma_id"), c.get("subject"), c.get("topic"),
+                             c["front"], c["back"], ans, c.get("doc_id"), cid),
+                        )
+                    else:
+                        conn.execute(
+                            "UPDATE review_items SET source=?, chroma_id=?, subject=?, topic=?, "
+                            "front=?, back=?, doc_id=? WHERE card_id=?",
+                            (c.get("source"), c.get("chroma_id"), c.get("subject"), c.get("topic"),
+                             c["front"], c["back"], c.get("doc_id"), cid),
+                        )
             else:
                 conn.execute(
                     "INSERT INTO review_items (card_id, source, chroma_id, subject, topic, "
-                    "front, back, doc_id, ease, interval, reps, lapses, due, created_at, "
-                    "suspended) VALUES (?,?,?,?,?,?,?,?,2.5,0,0,0,?,?,0)",
+                    "front, back, answer, doc_id, ease, interval, reps, lapses, due, created_at, "
+                    "suspended, use_flashcard, use_embedding, edited) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,2.5,0,0,0,?,?,0,1,1,0)",
                     (cid, c.get("source"), c.get("chroma_id"), c.get("subject"), c.get("topic"),
-                     c["front"], c["back"], c.get("doc_id"), now, now),
+                     c["front"], c["back"], ans, c.get("doc_id"), now, now),
                 )
                 neu += 1
         return neu
@@ -293,7 +326,7 @@ def review_counts(subject: Optional[str] = None, deck: Optional[str] = None) -> 
     """Zaehlt Karten: gesamt / faellig / neu (nie geuebt) / gelernt (schon geuebt)."""
     now = time.time()
     fsql, fargs = _filter(subject, deck)
-    where = "WHERE suspended=0" + fsql
+    where = "WHERE suspended=0 AND use_flashcard=1" + fsql
     with _connect() as conn:
         def one(extra, a):
             return conn.execute(f"SELECT COUNT(*) AS c FROM review_items {where}{extra}",
@@ -311,7 +344,7 @@ def get_due_cards(subject: Optional[str] = None, limit: int = 20,
     """Faellige Karten (Wiederholungen zuerst, dann neue), aufsteigend nach Faelligkeit."""
     now = now if now is not None else time.time()
     fsql, fargs = _filter(subject, deck)
-    q = ("SELECT * FROM review_items WHERE suspended=0 AND due<=?" + fsql
+    q = ("SELECT * FROM review_items WHERE suspended=0 AND use_flashcard=1 AND due<=?" + fsql
          + " ORDER BY CASE WHEN reps>0 THEN 0 ELSE 1 END, due ASC LIMIT ?")
     with _connect() as conn:
         return [dict(r) for r in conn.execute(q, [now] + fargs + [int(limit)]).fetchall()]
@@ -352,6 +385,122 @@ def delete_cards(subject: Optional[str] = None) -> None:
         else:
             conn.execute("DELETE FROM review_items")
             conn.execute("DELETE FROM review_log")
+
+
+def list_cards(subject: Optional[str] = None, deck: Optional[str] = None,
+               source: Optional[str] = None, only_unanswered: bool = False,
+               limit: Optional[int] = None, offset: int = 0) -> list[dict]:
+    """Karten fuer die Verwaltung/Katalog-Liste (mit Frage, Antwort, Nutzung, Stapel)."""
+    fsql, fargs = _filter(subject, deck)
+    sql = "SELECT * FROM review_items WHERE 1=1" + fsql
+    args = list(fargs)
+    if source:
+        sql += " AND source=?"; args.append(source)
+    if only_unanswered:
+        sql += " AND source='question' AND (answer IS NULL OR answer='')"
+    sql += " ORDER BY subject, deck, front"
+    if limit is not None:
+        sql += " LIMIT ? OFFSET ?"; args += [int(limit), int(offset)]
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+
+def count_cards(subject: Optional[str] = None, deck: Optional[str] = None,
+                source: Optional[str] = None, only_unanswered: bool = False) -> int:
+    fsql, fargs = _filter(subject, deck)
+    sql = "SELECT COUNT(*) AS c FROM review_items WHERE 1=1" + fsql
+    args = list(fargs)
+    if source:
+        sql += " AND source=?"; args.append(source)
+    if only_unanswered:
+        sql += " AND source='question' AND (answer IS NULL OR answer='')"
+    with _connect() as conn:
+        return conn.execute(sql, args).fetchone()["c"]
+
+
+def get_cards_by_ids(card_ids: list[str]) -> list[dict]:
+    if not card_ids:
+        return []
+    ph = ",".join("?" * len(card_ids))
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(
+            f"SELECT * FROM review_items WHERE card_id IN ({ph})", list(card_ids)).fetchall()]
+
+
+def delete_card_ids(card_ids: list[str]) -> list[str]:
+    """Loescht einzelne Karten (+ deren Log). Gibt die zugehoerigen Chroma-IDs zurueck,
+    damit der Aufrufer die Frage bei Bedarf auch aus dem Vektorindex entfernen kann."""
+    if not card_ids:
+        return []
+    ph = ",".join("?" * len(card_ids))
+    with _connect() as conn:
+        chroma = [r["chroma_id"] for r in conn.execute(
+            f"SELECT chroma_id FROM review_items WHERE card_id IN ({ph})", list(card_ids))
+            if r["chroma_id"]]
+        conn.execute(f"DELETE FROM review_items WHERE card_id IN ({ph})", list(card_ids))
+        conn.execute(f"DELETE FROM review_log WHERE card_id IN ({ph})", list(card_ids))
+    return chroma
+
+
+def delete_deck(deck: str) -> list[str]:
+    """Loescht ALLE Karten eines Stapels (+ Log). Gibt deren Chroma-IDs zurueck."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT card_id, chroma_id FROM review_items WHERE deck=?", (deck,)).fetchall()
+        ids = [r["card_id"] for r in rows]
+        chroma = [r["chroma_id"] for r in rows if r["chroma_id"]]
+        if ids:
+            ph = ",".join("?" * len(ids))
+            conn.execute(f"DELETE FROM review_items WHERE card_id IN ({ph})", ids)
+            conn.execute(f"DELETE FROM review_log WHERE card_id IN ({ph})", ids)
+    return chroma
+
+
+def set_card_usage(card_ids: list[str], *, use_flashcard: Optional[bool] = None,
+                   use_embedding: Optional[bool] = None) -> int:
+    """Setzt fuer Karten, ob sie zum Abfragen (Lernrunde) und/oder fuers Embedding
+    (Suche) genutzt werden. Gibt die Anzahl geaenderter Karten zurueck."""
+    sets, args = [], []
+    if use_flashcard is not None:
+        sets.append("use_flashcard=?"); args.append(1 if use_flashcard else 0)
+    if use_embedding is not None:
+        sets.append("use_embedding=?"); args.append(1 if use_embedding else 0)
+    if not sets or not card_ids:
+        return 0
+    ph = ",".join("?" * len(card_ids))
+    with _connect() as conn:
+        cur = conn.execute(
+            f"UPDATE review_items SET {','.join(sets)} WHERE card_id IN ({ph})",
+            args + list(card_ids))
+        return cur.rowcount
+
+
+def update_card(card_id: str, *, front: Optional[str] = None,
+                answer: Optional[str] = None) -> None:
+    """Bearbeitet Frage und/oder Antwort einer Karte und markiert sie als bearbeitet
+    (die Ernte ueberschreibt bearbeitete Karten danach nicht mehr)."""
+    sets, args = ["edited=1"], []
+    if front is not None:
+        sets.append("front=?"); args.append(front)
+    if answer is not None:
+        sets.append("answer=?"); args.append(answer)
+    with _connect() as conn:
+        conn.execute(f"UPDATE review_items SET {','.join(sets)} WHERE card_id=?",
+                     args + [card_id])
+
+
+def set_answer(card_id: str, answer: str) -> None:
+    """Setzt die (KI-)Antwort einer Karte, ohne sie als 'bearbeitet' zu markieren."""
+    with _connect() as conn:
+        conn.execute("UPDATE review_items SET answer=? WHERE card_id=?", (answer, card_id))
+
+
+def cards_needing_answer(subject: Optional[str] = None, deck: Optional[str] = None,
+                         limit: Optional[int] = None) -> list[dict]:
+    """Karten aus generierten Fragen, die noch KEINE eigene Antwort haben (zeigen bisher
+    den rohen Chunk). Kandidaten fuer die Antwort-Generierung."""
+    return list_cards(subject=subject, deck=deck, source="question",
+                      only_unanswered=True, limit=limit)
 
 
 # --------------------------------------------------------------------------- #

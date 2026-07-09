@@ -226,7 +226,7 @@ _sel_docs = st.multiselect(
     help="Gezielt nur diese Dateien anreichern. Leer lassen = alle (nach Priorität).")
 _doc_ids = [_doc_label[k] for k in _sel_docs] or None
 
-col_a, col_b = st.columns(2)
+col_a, col_b, col_c = st.columns(3)
 with col_a:
     enrich_limit = st.number_input(
         "Maximale Anzahl Chunks (Limit)", min_value=1, max_value=100000,
@@ -235,7 +235,16 @@ with col_b:
     enrich_choice = st.selectbox(
         "Fach-Filter (optional)", ["Alle Fächer"] + _subjects,
         help="Nur Chunks dieses Fachs (wirkt zusätzlich zur Datei-Auswahl).")
+with col_c:
+    enrich_n = st.number_input(
+        "Fragen pro Chunk", min_value=1, max_value=10,
+        value=int(getattr(settings, "NUM_INDEX_QUESTIONS", 3)), step=1,
+        help="Wie viele verschiedene Fragen je Textabschnitt erzeugt werden.")
 enrich_subject = None if enrich_choice == "Alle Fächer" else enrich_choice
+enrich_answers = st.checkbox(
+    "Musterlösungen gleich mitgenerieren (KI-Antwort statt Chunk)", value=True,
+    help="Erzeugt zu jeder Frage direkt eine echte Antwort. Braucht mehr Zeit "
+         "(~20 s pro Frage zusätzlich), spart aber das spätere Nachziehen auf der Lernen-Seite.")
 
 _mt1, _mt2 = st.columns([1, 2])
 with _mt1:
@@ -257,7 +266,9 @@ if st.button("🧠 Fragen-Anreicherung starten", type="primary"):
 
         try:
             r = enrich_questions(limit=int(enrich_limit), subject=enrich_subject,
-                                 doc_ids=_doc_ids, progress=_fortschritt_enrich)
+                                 doc_ids=_doc_ids, n_per_chunk=int(enrich_n),
+                                 with_answers=bool(enrich_answers),
+                                 progress=_fortschritt_enrich)
             status.update(label="Anreicherung abgeschlossen", state="complete")
         except Exception as exc:  # noqa: BLE001
             status.update(label=f"Fehler: {exc}", state="error")

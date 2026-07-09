@@ -109,6 +109,20 @@ class VectorStore:
             })
         return out
 
+    def delete_by_ids(self, ids: list[str]) -> None:
+        """Entfernt einzelne Eintraege (z. B. eine Frage 'aus dem Katalog nehmen')."""
+        if ids:
+            self._col.delete(ids=ids)
+
+    def update_document(self, _id: str, document: str,
+                        embedding: Optional[list[float]] = None) -> None:
+        """Aktualisiert Text (und optional Embedding) eines vorhandenen Eintrags -
+        z. B. nach dem Bearbeiten einer Frage."""
+        kw: dict[str, Any] = {"ids": [_id], "documents": [document]}
+        if embedding is not None:
+            kw["embeddings"] = [embedding]
+        self._col.update(**kw)
+
     def delete_by_doc(self, doc_id: str) -> None:
         self._col.delete(where={"doc_id": doc_id})
 

@@ -83,22 +83,54 @@ c3.metric("Neu", _counts["neu"])
 c4.metric("Schon geübt", _counts["gelernt"])
 
 with st.expander("⚙️ Karten verwalten"):
-    cc1, cc2 = st.columns(2)
-    with cc1:
-        if st.button("🔄 Karten aktualisieren (neue Fragen aufnehmen)"):
-            with st.status("Aktualisiere …", expanded=True) as s:
-                res = study.harvest_cards(progress=lambda m: s.update(label=m))
-                s.update(label="Aktualisierung fertig", state="complete")
-            if res["gefunden"] == 0:
-                st.warning("Kein Fragenmaterial gefunden – erst auf **📥 Import** Fragen "
-                           "anreichern bzw. den Klausur-Lernkatalog erzeugen.")
-            elif res["neu"] == 0:
-                st.info("Alles aktuell – keine neuen Karten.")
-            else:
-                st.success(f"➕ {res['neu']} neue Karten hinzugefügt.")
-    with cc2:
-        st.caption("Karten kommen aus dem generierten Fragenmaterial – neue Fragen/"
-                   "Katalog-Einträge werden per Aktualisieren übernommen.")
+    st.caption("Karten kommen aus dem generierten Fragenmaterial. Wähle, aus welchem "
+               "Fach und wie viele Fragen je Textabschnitt du aufnimmst.")
+    cc1, cc2, cc3 = st.columns(3)
+    _hv_subj = cc1.selectbox("Fach", ["Alle Fächer"] + manifest.study_subjects(),
+                             format_func=lambda s: "Alle Fächer" if s == "Alle Fächer"
+                             else _fach_label(s), key="hv_subj")
+    _hv_max = cc2.number_input("Max. Fragen pro Chunk", min_value=0, max_value=20, value=0,
+                               step=1, key="hv_max",
+                               help="0 = alle vorhandenen Fragen aufnehmen.")
+    _hv_subj_arg = None if _hv_subj == "Alle Fächer" else _hv_subj
+    _hv_max_arg = int(_hv_max) or None
+    if cc3.button("🔄 Karten aktualisieren", use_container_width=True):
+        with st.status("Aktualisiere …", expanded=True) as s:
+            res = study.harvest_cards(subject=_hv_subj_arg, max_per_chunk=_hv_max_arg,
+                                      progress=lambda m: s.update(label=m))
+            s.update(label="Aktualisierung fertig", state="complete")
+        if res["gefunden"] == 0:
+            st.warning("Kein Fragenmaterial gefunden – erst auf **📥 Import** Fragen "
+                       "anreichern bzw. den Klausur-Lernkatalog erzeugen.")
+        elif res["neu"] == 0:
+            st.info("Alles aktuell – keine neuen Karten.")
+        else:
+            st.success(f"➕ {res['neu']} neue Karten hinzugefügt.")
+
+    st.divider()
+    _offen = manifest.count_cards(subject=_hv_subj_arg, source="question", only_unanswered=True)
+    st.caption(f"**Musterlösungen erzeugen:** {_offen} Karte(n) zeigen bisher nur den "
+               "Originaltext. Die KI erzeugt daraus echte Antworten (~20 s pro Karte).")
+    ca1, ca2 = st.columns([1, 2])
+    _ans_n = ca1.number_input("Anzahl", min_value=1, max_value=500,
+                              value=min(20, max(1, _offen)), step=5, key="ans_n",
+                              disabled=_offen == 0)
+    if ca2.button(f"🤖 Antworten erzeugen ({_offen} offen)", disabled=_offen == 0,
+                  use_container_width=True):
+        with st.status("Erzeuge Musterlösungen …", expanded=True) as s:
+            ares = study.generate_answers(subject=_hv_subj_arg, limit=int(_ans_n),
+                                          progress=lambda m: s.update(label=m))
+            s.update(label="Fertig", state="complete")
+        if ares["status"] == "llm_error":
+            st.error(f"❌ Modellfehler: {ares.get('error_msg', '')} – prüfe unter "
+                     "**⚙️ Einstellungen** ein laufendes Modell (z. B. `gemma3:4b`).")
+        elif ares["status"] == "nothing_to_do":
+            st.info("Alle Karten haben bereits eine Antwort.")
+        elif ares["filled"] == 0:
+            st.warning("Es konnte keine Antwort erzeugt werden (der Text gab nichts her).")
+        else:
+            st.success(f"✅ {ares['filled']} Musterlösung(en) erzeugt.")
+            st.rerun()
 
 with st.expander("🗂️ Stapel verwalten (Themen trennen)"):
     st.caption("Ordne Karten frei benannten Stapeln zu (z. B. Integralrechnung oder "
@@ -133,14 +165,145 @@ with st.expander("🗂️ Stapel verwalten (Themen trennen)"):
             else:
                 st.warning("0 Karten zugeordnet – zu dieser Auswahl gibt es noch keine "
                            "Karten (erst Fragen/Katalog erzeugen).")
-    _dks = manifest.list_decks()
-    if _dks:
-        _dcol1, _dcol2 = st.columns([2, 1])
-        _dsolve = _dcol1.selectbox("Stapel auflösen", ["—"] + _dks, key="deck_dis")
-        _dcol2.markdown("<div style='height:1.8rem'></div>", unsafe_allow_html=True)
-        if _dcol2.button("🗑️ Auflösen") and _dsolve != "—":
-            manifest.dissolve_deck(_dsolve)
-            st.success(f"Stapel `{_dsolve}` aufgelöst (Karten bleiben erhalten).")
+    _ov3 = [o for o in manifest.deck_overview() if o["deck"]]
+    if _ov3:
+        st.markdown("**Stapel verwalten:**")
+        st.caption("**Auflösen** hebt nur die Zuordnung auf (Karten bleiben). "
+                   "**Löschen** entfernt den Stapel samt seinen Karten.")
+        for _o in _ov3:
+            _d = _o["deck"]
+            _dc1, _dc2, _dc3 = st.columns([3, 1, 1])
+            _dc1.markdown(f"🗂️ **{_d}** · {_o['total']} Karten")
+            if _dc2.button("Auflösen", key=f"dissolve_{_d}", use_container_width=True):
+                manifest.dissolve_deck(_d)
+                st.success(f"Stapel „{_d}“ aufgelöst (Karten bleiben erhalten).")
+                st.rerun()
+            if _dc3.button("🗑️ Löschen", key=f"delete_{_d}", use_container_width=True):
+                manifest.delete_deck(_d)
+                st.success(f"Stapel „{_d}“ samt {_o['total']} Karten gelöscht.")
+                st.rerun()
+
+with st.expander("📋 Karten & Fragen verwalten (auswählen, bearbeiten, löschen)"):
+    st.caption("Frage/Antwort direkt in der Tabelle bearbeiten. Häkchen setzen, um Karten "
+               "zu löschen, einem Stapel zuzuordnen oder Antworten zu erzeugen. "
+               "**Abfrage** = in der Lernrunde zeigen · **Embedding** = Frage im Suchindex halten.")
+    _mf1, _mf2, _mf3 = st.columns(3)
+    _mv_subj = _mf1.selectbox("Fach", ["Alle"] + manifest.study_subjects(),
+                              format_func=lambda s: "Alle" if s == "Alle" else _fach_label(s),
+                              key="mv_subj")
+    _mv_decks = manifest.list_decks()
+    _mv_deck = _mf2.selectbox("Stapel", ["Alle", "— ohne Stapel —"] + _mv_decks, key="mv_deck")
+    _mv_limit = _mf3.number_input("Max. Zeilen", min_value=10, max_value=2000, value=200,
+                                  step=10, key="mv_limit")
+    _mv_subj_arg = None if _mv_subj == "Alle" else _mv_subj
+    _mv_deck_arg = (None if _mv_deck == "Alle"
+                    else "__none__" if _mv_deck.startswith("—") else _mv_deck)
+    _mv_rows = manifest.list_cards(subject=_mv_subj_arg, deck=_mv_deck_arg, limit=int(_mv_limit))
+    _mv_total = manifest.count_cards(subject=_mv_subj_arg, deck=_mv_deck_arg)
+
+    if not _mv_rows:
+        st.info("Keine Karten für diese Auswahl.")
+    else:
+        _orig = {r["card_id"]: r for r in _mv_rows}
+        _df = pd.DataFrame([{
+            "✓": False,
+            "Frage": r["front"],
+            "Antwort": r.get("answer") or "",
+            "Fach": _fach_label(r.get("subject") or ""),
+            "Stapel": r.get("deck") or "",
+            "Abfrage": bool(r.get("use_flashcard", 1)),
+            "Embedding": bool(r.get("use_embedding", 1)),
+            "_id": r["card_id"],
+        } for r in _mv_rows])
+        _edited = st.data_editor(
+            _df, hide_index=True, use_container_width=True, key="mv_editor",
+            column_config={
+                "✓": st.column_config.CheckboxColumn(width="small"),
+                "Frage": st.column_config.TextColumn(width="large"),
+                "Antwort": st.column_config.TextColumn(width="large"),
+                "Fach": st.column_config.TextColumn(disabled=True),
+                "Stapel": st.column_config.TextColumn(help="Stapelname (leer = kein Stapel)"),
+                "Abfrage": st.column_config.CheckboxColumn(),
+                "Embedding": st.column_config.CheckboxColumn(),
+                "_id": None,
+            },
+        )
+        _sel = [row["_id"] for _, row in _edited.iterrows() if row["✓"]]
+        st.caption(f"{len(_sel)} ausgewählt · {len(_mv_rows)} angezeigt · {_mv_total} gesamt "
+                   "(mit dieser Filterung)")
+
+        _b1, _b2, _b3 = st.columns(3)
+        if _b1.button("💾 Änderungen speichern", use_container_width=True):
+            from ragapp.retrieval.vectorstore import get_vectorstore
+            _n_edit = _emb_changed = 0
+            _emb_ids: list[str] = []
+            for _, row in _edited.iterrows():
+                cid = row["_id"]
+                o = _orig.get(cid)
+                if o is None:
+                    continue
+                nf, na = (row["Frage"] or "").strip(), (row["Antwort"] or "").strip()
+                of, oa = (o["front"] or "").strip(), (o.get("answer") or "").strip()
+                if nf != of or na != oa:
+                    manifest.update_card(cid, front=nf if nf != of else None,
+                                         answer=na if na != oa else None)
+                    if nf != of and o.get("source") == "question" and o.get("chroma_id"):
+                        try:
+                            get_vectorstore().update_document(o["chroma_id"], nf)
+                        except Exception:  # noqa: BLE001
+                            pass
+                    _n_edit += 1
+                nd = (row["Stapel"] or "").strip() or None
+                if nd != (o.get("deck") or None):
+                    manifest.assign_deck(nd, card_ids=[cid])
+                nfc, nem = bool(row["Abfrage"]), bool(row["Embedding"])
+                ofc, oem = bool(o.get("use_flashcard", 1)), bool(o.get("use_embedding", 1))
+                if nfc != ofc or nem != oem:
+                    manifest.set_card_usage([cid],
+                                            use_flashcard=nfc if nfc != ofc else None,
+                                            use_embedding=nem if nem != oem else None)
+                    if nem != oem:
+                        _emb_ids.append(cid)
+            if _emb_ids:
+                _r = study.apply_embedding_flags(_emb_ids)
+                _emb_changed = _r["removed"] + _r["added"]
+            st.success(f"Gespeichert. {_n_edit} Frage/Antwort-Änderung(en), "
+                       f"{_emb_changed} Index-Anpassung(en).")
+            st.rerun()
+
+        _also_chroma = _b2.checkbox("beim Löschen auch aus Suchindex", key="mv_delchroma",
+                                    help="Entfernt die Frage zusätzlich aus dem Katalog/Suchindex.")
+        if _b2.button("🗑️ Auswahl löschen", use_container_width=True, disabled=not _sel):
+            _chroma = manifest.delete_card_ids(_sel)
+            if _also_chroma and _chroma:
+                try:
+                    from ragapp.retrieval.vectorstore import get_vectorstore
+                    get_vectorstore().delete_by_ids(_chroma)
+                except Exception:  # noqa: BLE001
+                    pass
+            st.success(f"{len(_sel)} Karte(n) gelöscht"
+                       + (" (auch aus dem Suchindex)." if _also_chroma else "."))
+            st.rerun()
+
+        if _b3.button("🤖 Antworten für Auswahl", use_container_width=True, disabled=not _sel):
+            with st.status("Erzeuge Musterlösungen …", expanded=True) as s:
+                _ar = study.generate_answers(card_ids=_sel, progress=lambda m: s.update(label=m))
+                s.update(label="Fertig", state="complete")
+            if _ar["status"] == "llm_error":
+                st.error(f"❌ Modellfehler: {_ar.get('error_msg', '')}")
+            elif _ar["filled"] == 0:
+                st.info("Nichts zu erzeugen (Auswahl hat schon Antworten oder ergab keine).")
+            else:
+                st.success(f"✅ {_ar['filled']} Antwort(en) erzeugt.")
+                st.rerun()
+
+        _asg1, _asg2 = st.columns([2, 1])
+        _asg_name = _asg1.text_input("Ausgewählte einem Stapel zuordnen", key="mv_assign_name",
+                                     placeholder="z. B. Integralrechnung")
+        if _asg2.button("➕ zu Stapel", use_container_width=True,
+                        disabled=not _sel or not _asg_name.strip()):
+            _n = manifest.assign_deck(_asg_name.strip(), card_ids=_sel)
+            st.success(f"{_n} Karte(n) dem Stapel „{_asg_name.strip()}“ zugeordnet.")
             st.rerun()
 
 st.divider()
@@ -228,8 +391,19 @@ else:
             st.session_state[REVEAL] = True
             st.rerun()
     else:
-        # Rueckseite (LaTeX-faehig via Markdown)
-        st.markdown(karte["back"])
+        # Rueckseite: bevorzugt die echte Antwort (Musterloesung); nur wenn keine da
+        # ist, der Original-Chunk als Notbehelf. LaTeX rendert via Markdown.
+        _ans = (karte.get("answer") or "").strip()
+        if _ans:
+            st.markdown(_ans)
+            if (karte.get("back") or "").strip() and karte.get("source") == "question":
+                with st.expander("📄 Beleg / Originaltext"):
+                    st.markdown(karte["back"])
+        else:
+            st.warning("Für diese Karte gibt es noch **keine** Musterlösung – gezeigt "
+                       "wird der Originaltext. Tipp: oben unter **⚙️ Karten verwalten → "
+                       "Antworten erzeugen** die KI-Antworten nachziehen.")
+            st.markdown(karte.get("back") or "")
         st.write("")
         st.caption("Wie gut wusstest du es?")
         r1, r2, r3 = st.columns(3)
