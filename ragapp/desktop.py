@@ -151,6 +151,32 @@ def _taskkill_image(name: str) -> None:
         pass
 
 
+def _kill_stray_streamlit() -> None:
+    """Beendet VERWAISTE Streamlit-Server frueherer Laeufe (App abgestuerzt, hart
+    beendet oder z. B. durch Ruhezustand getrennt). Erkennung ueber die Kommandozeile
+    UND darueber, dass der Elternprozess (ragapp.desktop) nicht mehr laeuft - so wird
+    garantiert KEIN fremdes Python und keine zweite, LAUFENDE Instanz getroffen.
+    Verhindert, dass sich im Hintergrund Server ansammeln (L/RAM/Port)."""
+    if os.name != "nt":
+        return
+    ps = (
+        "$a=Get-CimInstance Win32_Process -Filter \"Name='python.exe' OR Name='pythonw.exe'\" | "
+        "Where-Object {$_.CommandLine -match 'ragapp.desktop'} | "
+        "Select-Object -ExpandProperty ProcessId; "
+        "Get-CimInstance Win32_Process -Filter \"Name='python.exe' OR Name='pythonw.exe'\" | "
+        "Where-Object {$_.CommandLine -match 'streamlit run' -and $_.CommandLine -match 'ragapp' "
+        "-and ($a -notcontains $_.ParentProcessId)} | "
+        "ForEach-Object {Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue}"
+    )
+    try:
+        subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=20, creationflags=_no_window_flag())
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _kill_tree(proc: "subprocess.Popen | None") -> None:
     if proc is None or proc.poll() is not None:
         return
@@ -521,6 +547,10 @@ def main() -> int:
     _rm(TUNNEL_URL_FILE)      # Altlasten eines frueheren (evtl. hart beendeten) Laufs
     _rm(TUNNEL_ERROR_FILE)
     _rm(SPLASH_FILE)
+    # Verwaiste Server frueherer (hart beendeter) Laeufe aufraeumen, damit sich im
+    # Hintergrund nichts ansammelt (Streamlit + evtl. offener Cloudflare-Tunnel).
+    _kill_stray_streamlit()
+    _taskkill_image("cloudflared.exe")
 
     ollama_proc = _start_ollama()
 
