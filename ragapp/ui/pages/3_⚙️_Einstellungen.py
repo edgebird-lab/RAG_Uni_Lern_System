@@ -19,7 +19,7 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp.config import settings, RUNTIME_CONFIG_FILE
+from ragapp.config import settings, RUNTIME_CONFIG_FILE, Settings
 from ragapp import manifest
 from ragapp.hardware import (
     detect_hardware,
@@ -417,144 +417,195 @@ with st.form("einstellungen"):
     neu: dict = {}
 
     # ------------------------------------------------------------------ #
-    st.subheader("Retrieval (Suche)")
+    st.subheader("🔎 Suche (Retrieval)")
+    st.caption("Wie viele Fundstellen gesucht, zusammengeführt und an die KI gegeben werden.")
     r1, r2, r3 = st.columns(3)
     with r1:
         neu["DENSE_TOP_K"] = st.number_input(
-            "DENSE_TOP_K", min_value=1, max_value=500,
-            value=int(settings.DENSE_TOP_K), step=1,
-            help="Kandidaten aus der Vektorsuche.")
+            "Fundstellen aus der Bedeutungssuche", min_value=1, max_value=500,
+            value=int(settings.DENSE_TOP_K), step=1, key="cfg_DENSE_TOP_K",
+            help="Wie viele Treffer die sinngemäße Suche (Vektor/Embedding) liefert. "
+                 "Mehr = gründlicher, aber langsamer. Technisch: DENSE_TOP_K")
         neu["FUSION_TOP_K"] = st.number_input(
-            "FUSION_TOP_K", min_value=1, max_value=500,
-            value=int(settings.FUSION_TOP_K), step=1,
-            help="Kandidaten nach der Fusion (gehen ins Rerank).")
+            "Fundstellen nach dem Zusammenführen", min_value=1, max_value=500,
+            value=int(settings.FUSION_TOP_K), step=1, key="cfg_FUSION_TOP_K",
+            help="Wie viele der zusammengeführten Treffer feinsortiert werden. "
+                 "Technisch: FUSION_TOP_K")
         neu["FINAL_TOP_K"] = st.number_input(
-            "FINAL_TOP_K", min_value=1, max_value=100,
-            value=int(settings.FINAL_TOP_K), step=1,
-            help="Finale Chunks, die ins LLM gehen.")
+            "Fundstellen an die KI (final)", min_value=1, max_value=100,
+            value=int(settings.FINAL_TOP_K), step=1, key="cfg_FINAL_TOP_K",
+            help="Wie viele Textstellen am Ende in die Antwort einfließen. Mehr = mehr "
+                 "Kontext, aber langsamer/mehr Ablenkung. Technisch: FINAL_TOP_K")
     with r2:
         neu["BM25_TOP_K"] = st.number_input(
-            "BM25_TOP_K", min_value=1, max_value=500,
-            value=int(settings.BM25_TOP_K), step=1,
-            help="Kandidaten aus der Keyword-Suche.")
+            "Fundstellen aus der Stichwortsuche", min_value=1, max_value=500,
+            value=int(settings.BM25_TOP_K), step=1, key="cfg_BM25_TOP_K",
+            help="Wie viele Treffer die wortgenaue Stichwortsuche liefert. "
+                 "Technisch: BM25_TOP_K")
         neu["RRF_K"] = st.number_input(
-            "RRF_K", min_value=1, max_value=1000,
-            value=int(settings.RRF_K), step=1,
-            help="Reciprocal-Rank-Fusion-Konstante.")
+            "Ausgleich beider Suchen", min_value=1, max_value=1000,
+            value=int(settings.RRF_K), step=1, key="cfg_RRF_K",
+            help="Steuert, wie stark einzelne Spitzen-Treffer beim Zusammenführen der "
+                 "beiden Suchen zählen (höher = ausgeglichener). "
+                 "Technisch: RRF_K (Reciprocal Rank Fusion)")
         neu["RELEVANCE_MIN_SCORE"] = st.number_input(
-            "RELEVANCE_MIN_SCORE", value=float(settings.RELEVANCE_MIN_SCORE), step=0.5,
-            help="Mindest-Rerank-Score, ab dem frei geantwortet wird "
-                 "(darunter: nur Dokumente nennen, keine Halluzination).")
+            "Mindest-Relevanz zum freien Antworten",
+            value=float(settings.RELEVANCE_MIN_SCORE), step=0.5,
+            key="cfg_RELEVANCE_MIN_SCORE",
+            help="Ist der beste Treffer schlechter als dieser Wert, antwortet die KI "
+                 "NICHT frei, sondern nennt nur die passenden Dokumente (Schutz vor "
+                 "Erfindungen). Höher = strenger. Technisch: RELEVANCE_MIN_SCORE")
     with r3:
         neu["DENSE_WEIGHT"] = st.number_input(
-            "DENSE_WEIGHT", min_value=0.0, max_value=10.0,
-            value=float(settings.DENSE_WEIGHT), step=0.1,
-            help="Gewicht der Vektorsuche (falls Rerank aus).")
+            "Gewicht der Bedeutungssuche", min_value=0.0, max_value=10.0,
+            value=float(settings.DENSE_WEIGHT), step=0.1, key="cfg_DENSE_WEIGHT",
+            help="Wie stark die sinngemäße Suche zählt (nur wenn Feinsortierung aus). "
+                 "Technisch: DENSE_WEIGHT")
         neu["BM25_WEIGHT"] = st.number_input(
-            "BM25_WEIGHT", min_value=0.0, max_value=10.0,
-            value=float(settings.BM25_WEIGHT), step=0.1,
-            help="Gewicht der Keyword-Suche (falls Rerank aus).")
+            "Gewicht der Stichwortsuche", min_value=0.0, max_value=10.0,
+            value=float(settings.BM25_WEIGHT), step=0.1, key="cfg_BM25_WEIGHT",
+            help="Wie stark die wortgenaue Suche zählt (nur wenn Feinsortierung aus). "
+                 "Technisch: BM25_WEIGHT")
         neu["USE_RERANKER"] = st.toggle(
-            "USE_RERANKER", value=bool(settings.USE_RERANKER),
-            help="Cross-Encoder-Reranking der Kandidaten (Trefferquote ↑).")
+            "Treffer fein nachsortieren", value=bool(settings.USE_RERANKER),
+            key="cfg_USE_RERANKER",
+            help="Ordnet die Treffer mit einem genaueren Modell noch einmal nach "
+                 "Relevanz (bessere Qualität, etwas langsamer). "
+                 "Technisch: USE_RERANKER (Reranker)")
 
     st.divider()
 
     # ------------------------------------------------------------------ #
-    st.subheader("Chunking (Slicing)")
+    st.subheader("✂️ Textabschnitte (Chunking)")
+    st.caption("Wie Dokumente beim Import in durchsuchbare Häppchen zerlegt werden. "
+               "Wirkt erst nach einem **Neu-Import**.")
     c1, c2, c3 = st.columns(3)
     with c1:
         neu["CHUNK_SIZE"] = st.number_input(
-            "CHUNK_SIZE", min_value=100, max_value=8000,
-            value=int(settings.CHUNK_SIZE), step=50,
-            help="Zielgröße pro Chunk (Zeichen).")
+            "Abschnittsgröße (Zeichen)", min_value=100, max_value=8000,
+            value=int(settings.CHUNK_SIZE), step=50, key="cfg_CHUNK_SIZE",
+            help="Angepeilte Länge eines Häppchens. Größer = mehr Zusammenhang je "
+                 "Treffer, aber weniger gezielt. Technisch: CHUNK_SIZE")
     with c2:
         neu["CHUNK_OVERLAP"] = st.number_input(
-            "CHUNK_OVERLAP", min_value=0, max_value=2000,
-            value=int(settings.CHUNK_OVERLAP), step=10,
-            help="Überlappung zwischen Chunks (Kontexterhalt).")
+            "Überlappung der Abschnitte (Zeichen)", min_value=0, max_value=2000,
+            value=int(settings.CHUNK_OVERLAP), step=10, key="cfg_CHUNK_OVERLAP",
+            help="Wie stark sich benachbarte Häppchen überschneiden, damit kein "
+                 "Zusammenhang verloren geht. Technisch: CHUNK_OVERLAP")
     with c3:
         neu["MIN_CHUNK_CHARS"] = st.number_input(
-            "MIN_CHUNK_CHARS", min_value=0, max_value=2000,
-            value=int(settings.MIN_CHUNK_CHARS), step=10,
-            help="Kleinere Fragmente werden verworfen/gemerged.")
+            "Mindestlänge eines Abschnitts (Zeichen)", min_value=0, max_value=2000,
+            value=int(settings.MIN_CHUNK_CHARS), step=10, key="cfg_MIN_CHUNK_CHARS",
+            help="Kürzere Schnipsel werden verworfen oder zusammengelegt. "
+                 "Technisch: MIN_CHUNK_CHARS")
     neu["RESPECT_MARKDOWN_HEADERS"] = st.toggle(
-        "RESPECT_MARKDOWN_HEADERS", value=bool(settings.RESPECT_MARKDOWN_HEADERS),
-        help="Markdown an Überschriften schneiden.")
+        "An Überschriften trennen (Markdown)",
+        value=bool(settings.RESPECT_MARKDOWN_HEADERS), key="cfg_RESPECT_MARKDOWN_HEADERS",
+        help="Schneidet Texte bevorzugt an Überschriften – hält Themen sauber "
+             "zusammen. Technisch: RESPECT_MARKDOWN_HEADERS")
 
     st.divider()
 
     # ------------------------------------------------------------------ #
-    st.subheader("Antwort & Anti-Halluzination")
+    st.subheader("💬 Antwort & Schutz vor Erfindungen")
+    st.caption("Wie faktentreu die KI antwortet und wie viel Kontext sie bekommt.")
     a1, a2, a3 = st.columns(3)
     with a1:
         neu["LLM_TEMPERATURE"] = st.slider(
-            "LLM_TEMPERATURE", min_value=0.0, max_value=1.0,
-            value=float(settings.LLM_TEMPERATURE), step=0.05,
-            help="Niedrig = faktentreu, wenig Halluzination.")
+            "Fantasie der KI", min_value=0.0, max_value=1.0,
+            value=float(settings.LLM_TEMPERATURE), step=0.05, key="cfg_LLM_TEMPERATURE",
+            help="Niedrig = nüchtern & faktentreu (empfohlen), hoch = kreativer, aber "
+                 "mehr Erfindungsgefahr. Technisch: LLM_TEMPERATURE")
     with a2:
         neu["LLM_NUM_CTX"] = st.number_input(
-            "LLM_NUM_CTX", min_value=512, max_value=131072,
-            value=int(settings.LLM_NUM_CTX), step=512,
-            help="Kontextfenster für die Generierung.")
+            "Gedächtnis der KI (Tokens)", min_value=512, max_value=131072,
+            value=int(settings.LLM_NUM_CTX), step=512, key="cfg_LLM_NUM_CTX",
+            help="Wie viel Text die KI gleichzeitig verarbeiten kann. Größer = mehr "
+                 "Kontext, braucht aber mehr Speicher/Zeit. Technisch: LLM_NUM_CTX")
     with a3:
         neu["MAX_CONTEXT_CHARS"] = st.number_input(
-            "MAX_CONTEXT_CHARS", min_value=500, max_value=100000,
-            value=int(settings.MAX_CONTEXT_CHARS), step=500,
-            help="Obergrenze des Kontexts an das LLM.")
+            "Max. Textmenge an die KI (Zeichen)", min_value=500, max_value=100000,
+            value=int(settings.MAX_CONTEXT_CHARS), step=500, key="cfg_MAX_CONTEXT_CHARS",
+            help="Obergrenze, wie viel aus den Dokumenten mitgegeben wird. "
+                 "Technisch: MAX_CONTEXT_CHARS")
     neu["ENABLE_FAITHFULNESS_CHECK"] = st.toggle(
-        "ENABLE_FAITHFULNESS_CHECK", value=bool(settings.ENABLE_FAITHFULNESS_CHECK),
-        help="LLM prüft, ob die Antwort durch den Kontext belegt ist.")
+        "Antwort auf Beleg prüfen", value=bool(settings.ENABLE_FAITHFULNESS_CHECK),
+        key="cfg_ENABLE_FAITHFULNESS_CHECK",
+        help="Die KI prüft am Ende, ob ihre Antwort wirklich durch die Dokumente "
+             "gedeckt ist (weniger Erfindungen, etwas langsamer). "
+             "Technisch: ENABLE_FAITHFULNESS_CHECK")
 
     st.divider()
 
     # ------------------------------------------------------------------ #
-    st.subheader("Deduplizierung")
+    st.subheader("🧹 Doppelte aussortieren (Deduplizierung)")
+    st.caption("Filtert doppelte/fast gleiche Inhalte – beim Import und in den Treffern.")
     d1, d2, d3 = st.columns(3)
     with d1:
         neu["DEDUP_NEAR_DUPLICATE_THRESHOLD"] = st.slider(
-            "DEDUP_NEAR_DUPLICATE_THRESHOLD", min_value=0.0, max_value=1.0,
+            "Doppelte beim Import erkennen", min_value=0.0, max_value=1.0,
             value=float(settings.DEDUP_NEAR_DUPLICATE_THRESHOLD), step=0.005,
-            help="Cosine-Schwelle für Chunk-Near-Duplicates beim Import.")
+            key="cfg_DEDUP_NEAR_DUPLICATE_THRESHOLD",
+            help="Ab welcher Ähnlichkeit zwei Abschnitte beim Import als Dublette "
+                 "gelten (höher = nur sehr Ähnliches wird aussortiert). "
+                 "Technisch: DEDUP_NEAR_DUPLICATE_THRESHOLD")
     with d2:
         neu["RETRIEVAL_DEDUP_JACCARD"] = st.slider(
-            "RETRIEVAL_DEDUP_JACCARD", min_value=0.0, max_value=1.0,
+            "Doppelte Treffer erkennen", min_value=0.0, max_value=1.0,
             value=float(settings.RETRIEVAL_DEDUP_JACCARD), step=0.01,
-            help="Token-Jaccard-Schwelle gegen doppelte Treffer.")
+            key="cfg_RETRIEVAL_DEDUP_JACCARD",
+            help="Ab welcher Wort-Überschneidung zwei Treffer als doppelt gelten. "
+                 "Technisch: RETRIEVAL_DEDUP_JACCARD")
     with d3:
         neu["RETRIEVAL_DEDUP"] = st.toggle(
-            "RETRIEVAL_DEDUP", value=bool(settings.RETRIEVAL_DEDUP),
-            help="Doppelte Informationen in den Treffern herausfiltern.")
+            "Doppelte Treffer herausfiltern", value=bool(settings.RETRIEVAL_DEDUP),
+            key="cfg_RETRIEVAL_DEDUP",
+            help="Entfernt fast identische Treffer, damit die Antwort nichts doppelt "
+                 "verwendet. Technisch: RETRIEVAL_DEDUP")
 
     st.divider()
 
     # ------------------------------------------------------------------ #
-    st.subheader("Modelle")
-    st.caption("Lokale Ollama-/HuggingFace-Modellnamen. Müssen lokal verfügbar sein.")
+    st.subheader("🧠 Modelle")
+    st.caption("Welche lokalen Modelle genutzt werden (müssen installiert/verfügbar sein).")
     m1, m2, m3 = st.columns(3)
     with m1:
-        neu["LLM_MODEL"] = st.text_input("LLM_MODEL", value=str(settings.LLM_MODEL))
+        neu["LLM_MODEL"] = st.text_input(
+            "Antwort-Modell", value=str(settings.LLM_MODEL), key="cfg_LLM_MODEL",
+            help="Das Sprachmodell, das die Antworten schreibt (Ollama). "
+                 "Technisch: LLM_MODEL")
     with m2:
-        neu["EMBED_MODEL"] = st.text_input("EMBED_MODEL", value=str(settings.EMBED_MODEL))
+        neu["EMBED_MODEL"] = st.text_input(
+            "Such-Modell (Embedding)", value=str(settings.EMBED_MODEL),
+            key="cfg_EMBED_MODEL",
+            help="Wandelt Texte in Zahlen-Vektoren für die Bedeutungssuche um. "
+                 "Technisch: EMBED_MODEL")
     with m3:
         neu["RERANKER_MODEL"] = st.text_input(
-            "RERANKER_MODEL", value=str(settings.RERANKER_MODEL))
+            "Nachsortier-Modell (Reranker)", value=str(settings.RERANKER_MODEL),
+            key="cfg_RERANKER_MODEL",
+            help="Sortiert die gefundenen Treffer noch einmal nach Relevanz. "
+                 "Technisch: RERANKER_MODEL")
 
     st.divider()
 
     # ------------------------------------------------------------------ #
-    st.subheader("Evaluation")
+    st.subheader("📊 Evaluation (Qualitätsmessung)")
+    st.caption("Für den Test der Suchqualität auf der Seite „Evaluation\".")
     e1, e2 = st.columns(2)
     with e1:
         neu["EVAL_SAMPLE_SIZE"] = st.number_input(
-            "EVAL_SAMPLE_SIZE", min_value=1, max_value=100000,
-            value=int(settings.EVAL_SAMPLE_SIZE), step=10,
-            help="Anzahl gesampelter Chunks fürs Gold-Set.")
+            "Anzahl Test-Textstellen", min_value=1, max_value=100000,
+            value=int(settings.EVAL_SAMPLE_SIZE), step=10, key="cfg_EVAL_SAMPLE_SIZE",
+            help="Wie viele zufällige Textstellen für den Qualitätstest gezogen "
+                 "werden. Technisch: EVAL_SAMPLE_SIZE")
     with e2:
         neu["EVAL_QUESTIONS_PER_CHUNK"] = st.number_input(
-            "EVAL_QUESTIONS_PER_CHUNK", min_value=1, max_value=10,
+            "Testfragen pro Textstelle", min_value=1, max_value=10,
             value=int(settings.EVAL_QUESTIONS_PER_CHUNK), step=1,
-            help="Held-out-Fragen pro gesampeltem Chunk.")
+            key="cfg_EVAL_QUESTIONS_PER_CHUNK",
+            help="Wie viele Prüf-Fragen je Textstelle erzeugt werden. "
+                 "Technisch: EVAL_QUESTIONS_PER_CHUNK")
 
     st.caption(
         f"Hinweis: `EVAL_K_VALUES = {tuple(settings.EVAL_K_VALUES)}` (fest, nicht "
@@ -586,17 +637,59 @@ if gespeichert:
     )
 
 # --------------------------------------------------------------------------- #
-# Zurücksetzen (außerhalb des Formulars)
+# Zurücksetzen (außerhalb des Formulars, da st.button in Formularen nicht erlaubt ist)
 # --------------------------------------------------------------------------- #
 st.divider()
-st.subheader("Zurücksetzen")
+st.subheader("↺ Zurücksetzen")
 st.caption(
-    "Löscht `data/config.json` und stellt alle Standardwerte wieder her."
+    "Einen einzelnen Bereich auf die Standardwerte zurücksetzen – praktisch, wenn du "
+    "dich vertippt hast oder ein Wert nicht wie gewünscht funktioniert hat. Betrifft "
+    "nur den gewählten Bereich (ungespeicherte Änderungen im Formular gehen dabei "
+    "verloren)."
 )
-if st.button("↩️ Auf Standard zurücksetzen"):
-    RUNTIME_CONFIG_FILE.unlink(missing_ok=True)
-    # Das laufende (Modul-globale) settings-Objekt ebenfalls auf Defaults setzen,
-    # sonst wirken die alten Werte in dieser Sitzung weiter.
-    settings.reset()
-    st.success("Standardwerte wiederhergestellt (data/config.json gelöscht).")
-    st.rerun()
+
+# Bereich -> zugehörige Einstellungs-Schlüssel (gleiche Namen wie die cfg_-Widget-Keys)
+_BEREICHE = {
+    "🔎 Suche": ["DENSE_TOP_K", "BM25_TOP_K", "FUSION_TOP_K", "FINAL_TOP_K", "RRF_K",
+                 "RELEVANCE_MIN_SCORE", "DENSE_WEIGHT", "BM25_WEIGHT", "USE_RERANKER"],
+    "✂️ Textabschnitte": ["CHUNK_SIZE", "CHUNK_OVERLAP", "MIN_CHUNK_CHARS",
+                          "RESPECT_MARKDOWN_HEADERS"],
+    "💬 Antwort": ["LLM_TEMPERATURE", "LLM_NUM_CTX", "MAX_CONTEXT_CHARS",
+                  "ENABLE_FAITHFULNESS_CHECK"],
+    "🧹 Deduplizierung": ["DEDUP_NEAR_DUPLICATE_THRESHOLD", "RETRIEVAL_DEDUP_JACCARD",
+                         "RETRIEVAL_DEDUP"],
+    "🧠 Modelle": ["LLM_MODEL", "EMBED_MODEL", "RERANKER_MODEL"],
+    "📊 Evaluation": ["EVAL_SAMPLE_SIZE", "EVAL_QUESTIONS_PER_CHUNK"],
+}
+
+
+def _reset_bereich(keys: list) -> None:
+    """Setzt nur die angegebenen Schlüssel auf die dataclass-Standardwerte, speichert
+    und lädt die zugehörigen Formularfelder neu (Widget-State entfernen)."""
+    _def = Settings()
+    settings.update(**{k: getattr(_def, k) for k in keys})
+    settings.save()
+    for k in keys:
+        st.session_state.pop(f"cfg_{k}", None)
+
+
+_items = list(_BEREICHE.items())
+for _start in range(0, len(_items), 3):
+    _cols = st.columns(3)
+    for _col, (_name, _keys) in zip(_cols, _items[_start:_start + 3]):
+        if _col.button(f"↺ {_name}", key=f"reset_{_name}", use_container_width=True):
+            _reset_bereich(_keys)
+            st.success(f"**{_name}** auf Standardwerte zurückgesetzt.")
+            st.rerun()
+
+with st.expander("⚠️ Alles zurücksetzen"):
+    st.caption("Löscht `data/config.json` komplett und stellt für **alle** Bereiche die "
+               "Standardwerte wieder her.")
+    if st.button("↩️ Alles auf Standard zurücksetzen"):
+        RUNTIME_CONFIG_FILE.unlink(missing_ok=True)
+        settings.reset()
+        for _k in list(st.session_state.keys()):
+            if _k.startswith("cfg_"):
+                st.session_state.pop(_k, None)
+        st.success("Alle Standardwerte wiederhergestellt (data/config.json gelöscht).")
+        st.rerun()
