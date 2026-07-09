@@ -53,6 +53,15 @@ st.markdown("""
 .badge-fallback {background:#fdf0e3; color:#a15a13;}
 .small {color:#7a8aa0; font-size:0.8rem;}
 h1 {font-weight: 750; letter-spacing:-0.5px;}
+/* Beschriftungen der Tuning-Felder auf einheitliche Mindesthöhe (Platz für bis zu
+   2 Zeilen). So beginnen die Eingabefelder einer Zeile ALLE gleich hoch, auch wenn
+   manche Beschriftung ein- und manche zweizeilig ist -> ruhiges, symmetrisches Bild. */
+div[data-testid="stNumberInput"] [data-testid="stWidgetLabel"],
+div[data-testid="stTextInput"] [data-testid="stWidgetLabel"],
+div[data-testid="stSlider"] [data-testid="stWidgetLabel"] {
+    min-height: 3rem;
+    align-items: flex-start;
+}
 </style>
 """, unsafe_allow_html=True)
 
