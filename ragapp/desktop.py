@@ -51,6 +51,7 @@ UI_MODE_FILE = ROOT / "data" / ".mode"                  # aktueller Modus (fuer 
 IPEX_EXE = ROOT / "ipex-ollama" / "ollama.exe"          # vorhanden = Intel-GPU-Variante
 OLLAMA_PORT = 11434
 TUNNEL_URL_FILE = ROOT / "data" / "tunnel_url.txt"      # Cloudflare-Adresse (liest die App)
+TUNNEL_ERROR_FILE = ROOT / "data" / ".tunnel_error"    # Tunnelaufbau fehlgeschlagen (liest die App)
 TUNNEL_MODE = os.environ.get("RAG_TUNNEL") == "1"       # Cloudflare-Tunnel gewuenscht? (Start_Unterwegs.bat)
 
 
@@ -66,10 +67,42 @@ def _rm(path: pathlib.Path) -> None:
 
 
 def _write_mode(m: str) -> None:
+    # Atomar schreiben (Temp + os.replace), damit die App nie einen halb/leer
+    # geschriebenen Modus liest und faelschlich auf 'local' zurueckfaellt.
     try:
-        UI_MODE_FILE.write_text(m, encoding="utf-8")
+        tmp = UI_MODE_FILE.parent / (UI_MODE_FILE.name + ".tmp")
+        tmp.write_text(m, encoding="utf-8")
+        os.replace(tmp, UI_MODE_FILE)
     except OSError:
         pass
+
+
+def _write_tunnel_error() -> None:
+    try:
+        TUNNEL_ERROR_FILE.write_text("1", encoding="utf-8")
+    except OSError:
+        pass
+
+
+# Generation der Tunnel-Versuche: jeder neue Start UND jedes Wegschalten erhoeht sie.
+# reader/watchdog eines Versuchs schreiben Tunnel-Dateien nur, solange ihre Generation
+# noch die aktuelle ist - so kann ein alter/abgebrochener Versuch keine stale Datei
+# hinterlassen (bzw. einen spaeteren, legitim aufbauenden Versuch nicht faelschlich als
+# Fehler markieren).
+_tunnel_lock = threading.Lock()
+_tunnel_gen = 0
+
+
+def _bump_tunnel_gen() -> int:
+    global _tunnel_gen
+    with _tunnel_lock:
+        _tunnel_gen += 1
+        return _tunnel_gen
+
+
+def _tunnel_gen_current() -> int:
+    with _tunnel_lock:
+        return _tunnel_gen
 
 
 def _port_open(host: str, port: int, timeout: float = 0.5) -> bool:
@@ -233,11 +266,17 @@ _TUNNEL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 
 def _start_tunnel(port: int) -> "subprocess.Popen | None":
     """Cloudflare-Quick-Tunnel auf localhost:port; schreibt die oeffentliche
-    Adresse nach data/tunnel_url.txt, sobald sie steht."""
+    Adresse nach data/tunnel_url.txt, sobald sie steht. Scheitert der Aufbau, wird
+    data/.tunnel_error gesetzt, damit die App nicht ewig auf 'wird aufgebaut' haengt,
+    sondern einen Hinweis + 'Erneut versuchen' zeigen kann."""
+    gen = _bump_tunnel_gen()   # diese Generation; aeltere Versuche verstummen dadurch
     _rm(TUNNEL_URL_FILE)
+    _rm(TUNNEL_ERROR_FILE)
     exe = _ensure_cloudflared()
     if not exe:
         print("[i] cloudflared nicht gefunden/installierbar - Tunnel uebersprungen.")
+        if gen == _tunnel_gen_current():
+            _write_tunnel_error()
         return None
     print("Starte Cloudflare-Tunnel (Zugriff von unterwegs) ...")
     try:
@@ -250,6 +289,8 @@ def _start_tunnel(port: int) -> "subprocess.Popen | None":
             encoding="utf-8", errors="replace", creationflags=_no_window_flag())
     except Exception as exc:  # noqa: BLE001
         print(f"[!] Cloudflare-Tunnel liess sich nicht starten: {exc}")
+        if gen == _tunnel_gen_current():
+            _write_tunnel_error()
         return None
 
     def _reader() -> None:
@@ -260,16 +301,35 @@ def _start_tunnel(port: int) -> "subprocess.Popen | None":
                     m = _TUNNEL_RE.search(line or "")
                     if m:
                         found = True
-                        try:
-                            TUNNEL_URL_FILE.write_text(m.group(0), encoding="utf-8")
-                            print(f"Cloudflare-Adresse: {m.group(0)}")
-                        except Exception:  # noqa: BLE001
-                            pass
+                        if gen == _tunnel_gen_current():
+                            try:
+                                TUNNEL_URL_FILE.write_text(m.group(0), encoding="utf-8")
+                                _rm(TUNNEL_ERROR_FILE)
+                                print(f"Cloudflare-Adresse: {m.group(0)}")
+                            except Exception:  # noqa: BLE001
+                                pass
                 # weiterlesen, damit die Pipe nicht volllaeuft und cloudflared blockiert
         except Exception:  # noqa: BLE001
             pass
+        if not found and gen == _tunnel_gen_current() and not TUNNEL_URL_FILE.exists():
+            # cloudflared endete, ohne je eine Adresse zu liefern.
+            _write_tunnel_error()
+
+    def _watchdog() -> None:
+        # Laeuft DIESER Prozess nach 90s noch, ohne je eine Adresse geliefert zu haben
+        # (z. B. Netz blockiert QUIC UND HTTP/2): hart beenden + Fehler signalisieren.
+        # Bindung an 'proc' (poll) + Generation verhindert, dass ein alter Watchdog einen
+        # spaeteren, noch legitim aufbauenden Versuch faelschlich als Fehler markiert. Das
+        # Beenden sorgt zugleich dafuer, dass ein 'Erneut versuchen' danach wieder greift.
+        if (proc.poll() is None and gen == _tunnel_gen_current()
+                and not TUNNEL_URL_FILE.exists()):
+            _kill_tree(proc)
+            _write_tunnel_error()
 
     threading.Thread(target=_reader, daemon=True).start()
+    _wd = threading.Timer(90.0, _watchdog)
+    _wd.daemon = True
+    _wd.start()
     return proc
 
 
@@ -349,6 +409,8 @@ def main() -> int:
 
     _rm(SHUTDOWN_SENTINEL)
     _rm(UI_RESTART_FILE)
+    _rm(TUNNEL_URL_FILE)      # Altlasten eines frueheren (evtl. hart beendeten) Laufs
+    _rm(TUNNEL_ERROR_FILE)
 
     ollama_proc = _start_ollama()
 
@@ -374,7 +436,9 @@ def main() -> int:
     _write_mode(mode)
     print("Starte Oberflaeche%s ..." % ("" if mode == "local" else " (%s)" % mode))
     st = {"proc": _start_streamlit(port, _is_net(mode))}
-    tunnel = {"proc": _start_tunnel(port) if mode == "tunnel" else None}
+    tunnel = {"proc": None, "starting": False, "cancel": False}
+    if mode == "tunnel":
+        tunnel["proc"] = _start_tunnel(port)
 
     def _cleanup() -> None:
         _kill_tree(st["proc"])
@@ -382,6 +446,7 @@ def main() -> int:
         _kill_tree(tunnel["proc"])
         _taskkill_image("cloudflared.exe")
         _rm(TUNNEL_URL_FILE)
+        _rm(TUNNEL_ERROR_FILE)
         _rm(SHUTDOWN_SENTINEL)
         _rm(UI_RESTART_FILE)
         _rm(UI_MODE_FILE)
@@ -421,22 +486,56 @@ def main() -> int:
                 except Exception:  # noqa: BLE001
                     desired = ""
                 _rm(UI_RESTART_FILE)
-                if desired in ("local", "network", "tunnel") and desired != mode:
-                    print("Wechsle auf '%s' ..." % desired)
-                    mode = desired
-                    _write_mode(mode)
-                    # KEIN Streamlit-Neustart (Bind ist immer 0.0.0.0) -> kein
-                    # Neuladen. Nur den Cloudflare-Tunnel starten bzw. stoppen.
-                    if desired == "tunnel" and tunnel["proc"] is None:
-                        # nicht-blockierend: cloudflared-Installation kann dauern.
-                        threading.Thread(
-                            target=lambda: tunnel.__setitem__("proc", _start_tunnel(port)),
-                            daemon=True).start()
-                    elif desired != "tunnel" and tunnel["proc"] is not None:
-                        _kill_tree(tunnel["proc"])
-                        tunnel["proc"] = None
+                if desired in ("local", "network", "tunnel"):
+                    if desired != mode:
+                        print("Wechsle auf '%s' ..." % desired)
+                        mode = desired
+                        _write_mode(mode)
+                    # KEIN Streamlit-Neustart (Bind ist immer 0.0.0.0) -> kein Neuladen.
+                    # Nur den Cloudflare-Tunnel starten bzw. stoppen.
+                    if desired == "tunnel":
+                        tunnel["cancel"] = False   # aktuelle Absicht: Tunnel gewuenscht
+                        proc = tunnel["proc"]
+                        # (Neu-)Start, wenn keiner laeuft ODER noch keine Adresse steht
+                        # (deckt "Erneut versuchen" bei haengendem cloudflared ab).
+                        _need = (proc is None or proc.poll() is not None
+                                 or not TUNNEL_URL_FILE.exists())
+                        if not tunnel["starting"] and _need:
+                            # evtl. noch lebenden, aber haengenden Tunnel hart beenden.
+                            if proc is not None and proc.poll() is None:
+                                _kill_tree(proc)
+                            tunnel["starting"] = True
+                            tunnel["proc"] = None
+                            _taskkill_image("cloudflared.exe")
+
+                            def _go() -> None:
+                                # nicht-blockierend: cloudflared-Installation kann dauern.
+                                try:
+                                    p = _start_tunnel(port)
+                                    if tunnel["cancel"]:
+                                        # Nutzer hat waehrenddessen weggeschaltet -> den
+                                        # frisch gestarteten Tunnel sofort wieder beenden,
+                                        # damit die App NICHT ungewollt exponiert bleibt.
+                                        _kill_tree(p)
+                                        _taskkill_image("cloudflared.exe")
+                                        _rm(TUNNEL_URL_FILE)
+                                        _rm(TUNNEL_ERROR_FILE)
+                                        tunnel["proc"] = None
+                                    else:
+                                        tunnel["proc"] = p
+                                finally:
+                                    tunnel["starting"] = False
+
+                            threading.Thread(target=_go, daemon=True).start()
+                    else:
+                        tunnel["cancel"] = True   # laufenden Startvorgang abbrechen
+                        _bump_tunnel_gen()        # in-flight reader/watchdog verstummen
+                        if tunnel["proc"] is not None:
+                            _kill_tree(tunnel["proc"])
+                            tunnel["proc"] = None
                         _taskkill_image("cloudflared.exe")
                         _rm(TUNNEL_URL_FILE)
+                        _rm(TUNNEL_ERROR_FILE)
             time.sleep(0.5)
     except KeyboardInterrupt:
         pass
@@ -451,6 +550,7 @@ def main() -> int:
     _kill_tree(tunnel["proc"])
     _taskkill_image("cloudflared.exe")
     _rm(TUNNEL_URL_FILE)
+    _rm(TUNNEL_ERROR_FILE)
     print("Fertig. Es laeuft nichts mehr im Hintergrund.")
     return 0
 

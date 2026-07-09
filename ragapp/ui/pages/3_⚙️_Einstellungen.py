@@ -289,43 +289,18 @@ from ragapp import netinfo
 from ragapp.config import UI_RESTART_FILE, UI_MODE_FILE
 
 
-def _reload_when_server_ready() -> None:
-    """Lädt die Seite automatisch neu, sobald der (neu startende) Server wieder
-    antwortet. Sonst bliebe das Fenster nach dem Moduswechsel hängen und der
-    QR-Code erschiene nicht."""
-    import streamlit.components.v1 as _components
-    _components.html(
-        """
-        <script>
-        (function () {
-          var loc = window.parent.location;
-          var k = null;
-          try { k = window.parent.localStorage.getItem('rag_local_token'); } catch (e) {}
-          // Lokales Fenster: Token wieder anhaengen -> kein PIN. Handy: kein Token -> PIN.
-          var target = loc.origin + loc.pathname + (k ? ('?k=' + encodeURIComponent(k)) : '');
-          function go() {
-            fetch(target, {method: 'GET', cache: 'no-store'})
-              .then(function () { window.parent.location.href = target; })
-              .catch(function () { setTimeout(go, 1000); });
-          }
-          setTimeout(go, 2500);   // erst warten, bis der alte Server weg ist
-        })();
-        </script>
-        """,
-        height=0,
-    )
-
-
 def _auto_refresh(seconds: int) -> None:
-    """Lädt die Seite nach N Sekunden neu (Polling, bis z. B. der Tunnel steht) und
-    hängt das lokale Token wieder an, damit das PC-Fenster ohne PIN bleibt."""
+    """Lädt die Seite nach N Sekunden neu (Polling, bis z. B. der Tunnel steht) –
+    ABER nur das lokale PC-Fenster (Token in localStorage). Ein Handy ohne Token
+    würde durch einen Vollreload seine PIN-Sitzung verlieren, daher dort KEIN Reload."""
     import streamlit.components.v1 as _components
     _components.html(
         "<script>setTimeout(function(){"
         "var loc=window.parent.location; var k=null;"
         "try{k=window.parent.localStorage.getItem('rag_local_token');}catch(e){}"
-        "var t=loc.origin+loc.pathname+(k?('?k='+encodeURIComponent(k)):'');"
-        "window.parent.location.href=t;}, " + str(int(seconds) * 1000) + ");</script>",
+        "if(!k){return;}"
+        "window.parent.location.href=loc.origin+loc.pathname+'?k='+encodeURIComponent(k);"
+        "}, " + str(int(seconds) * 1000) + ");</script>",
         height=0,
     )
 
@@ -381,39 +356,44 @@ if _desired != _cur:
 # ---- Aktueller Zustand + QR-Code ---------------------------------------- #
 if _cur == "local":
     st.caption("Der Zugriff ist **aus** – die App ist nur auf diesem PC erreichbar.")
-else:
-    if _cur == "tunnel" and netinfo.tunnel_url() is None:
+elif _cur == "tunnel" and netinfo.tunnel_url() is None:
+    # Cloudflare-Modus, aber die Adresse steht noch nicht -> baut auf ODER fehlgeschlagen.
+    # KEINE „Aktiv"-Box und KEIN (falscher WLAN-)QR in diesem Zustand.
+    if netinfo.tunnel_error():
+        st.error("❌ Der Cloudflare-Tunnel konnte nicht aufgebaut werden – meist fehlt "
+                 "Internet, das Netz/die Firewall blockiert, oder die cloudflared-"
+                 "Installation ist fehlgeschlagen.")
+        st.info("Nimm solange **Im WLAN** (Handy im selben Netz) – oder versuch es erneut.")
+        if st.button("🔄 Erneut versuchen", type="primary"):
+            netinfo.clear_tunnel_error()
+            try:
+                UI_RESTART_FILE.write_text("tunnel", encoding="utf-8")
+            except Exception:  # noqa: BLE001
+                pass
+            st.rerun()
+    else:
         st.info("🌍 Cloudflare-Tunnel wird aufgebaut … (beim ersten Mal inkl. Installation, "
                 "1–2 Minuten). Die Seite aktualisiert sich automatisch, sobald die "
                 "Adresse bereit ist.")
         _auto_refresh(4)
-
+else:
+    # network -> WLAN-Ziel; tunnel (bereit) -> Cloudflare-Ziel. Genau EIN passendes Ziel.
     _ziele = netinfo.access_targets()
     if not _ziele:
         st.warning("Noch keine Adresse verfügbar. Ist der PC mit dem Netzwerk verbunden?")
     else:
+        _z = _ziele[0]
         st.success("✅ **Aktiv** – dein Handy/Tablet kann zugreifen (PIN nötig).")
-        _hinweise = {
-            "lan": "📶 Funktioniert, wenn das Handy im **selben WLAN** ist.",
-            "tunnel": "🌍 Von **überall** erreichbar, **keine App** am Handy nötig.",
-            "tailscale": "🔒 Funktioniert **nur**, wenn Tailscale auch **am Handy** mit "
-                         "demselben Konto angemeldet **und eingeschaltet** ist.",
-        }
-        # Nur EINEN QR-Code zeigen (per Auswahl), damit die Handy-Kamera nicht
-        # mehrere gleichzeitig erfasst.
-        _map = {_z["label"]: _z for _z in _ziele}
-        _keys = list(_map.keys())
-        # Standard: der QR passend zum gewählten Modus (Cloudflare -> Cloudflare-QR).
-        _prefer = "tunnel" if _cur == "tunnel" else "lan"
-        _def_idx = next((i for i, _zz in enumerate(_ziele) if _zz["kind"] == _prefer), 0)
-        _sel = st.selectbox("Welchen Zugang als QR-Code anzeigen?", _keys, index=_def_idx)
-        _z = _map[_sel]
         st.markdown(f"**{_z['label']}** — [{_z['url']}]({_z['url']})")
         _png = netinfo.qr_png_bytes(_z["url"])
         if _png:
             st.image(_png, width=240, caption="Mit dem Handy scannen")
         else:
             st.caption("(QR-Code nicht verfügbar, Adresse oben im Handy-Browser eingeben.)")
+        _hinweise = {
+            "lan": "📶 Funktioniert, wenn das Handy im **selben WLAN** ist.",
+            "tunnel": "🌍 Von **überall** erreichbar, **keine App** am Handy nötig.",
+        }
         if _hinweise.get(_z["kind"]):
             st.caption(_hinweise[_z["kind"]])
         st.caption(

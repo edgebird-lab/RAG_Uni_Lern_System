@@ -19,19 +19,23 @@ import subprocess
 
 # Dateien, die der Starter (ragapp.desktop) schreibt.
 _TUNNEL_FILE = pathlib.Path(__file__).resolve().parent.parent / "data" / "tunnel_url.txt"
+_TUNNEL_ERR_FILE = pathlib.Path(__file__).resolve().parent.parent / "data" / ".tunnel_error"
 _MODE_FILE = pathlib.Path(__file__).resolve().parent.parent / "data" / ".mode"
 
 
 def current_mode() -> str:
-    """Aktueller Zugriffsmodus: 'local', 'network' oder 'tunnel'."""
-    try:
-        if _MODE_FILE.is_file():
+    """Aktueller Zugriffsmodus: 'local', 'network' oder 'tunnel'.
+
+    Existiert die Modus-Datei, GEWINNT sie immer (leer/unlesbar -> sicher 'local',
+    damit ein bewusst abgeschalteter Zugriff nicht durch einen alten Umgebungswert
+    wiederbelebt wird - der Bind ist ja immer 0.0.0.0). Nur wenn gar keine Datei da
+    ist (z. B. Erststart ueber eine .bat), greift der Umgebungs-Fallback."""
+    if _MODE_FILE.exists():
+        try:
             m = _MODE_FILE.read_text(encoding="utf-8").strip()
-            if m in ("local", "network", "tunnel"):
-                return m
-    except Exception:
-        pass
-    # Fallback ueber Umgebungsvariablen (falls kein Starter das File schreibt)
+        except Exception:
+            return "local"
+        return m if m in ("local", "network", "tunnel") else "local"
     if os.environ.get("RAG_TUNNEL") == "1":
         return "tunnel"
     if is_network_mode():
@@ -128,7 +132,12 @@ def tailscale_ip() -> "str | None":
 
 
 def tunnel_url() -> "str | None":
-    """Aktuelle Cloudflare-Tunnel-Adresse (von ragapp.desktop geschrieben) oder None."""
+    """Cloudflare-Tunnel-Adresse (von ragapp.desktop geschrieben) oder None.
+
+    Nur im Tunnel-Modus gueltig: eine veraltete Datei ausserhalb des Tunnel-Modus
+    (z. B. nach einem harten Absturz) erzeugt so nie ein totes Ziel."""
+    if current_mode() != "tunnel":
+        return None
     try:
         if _TUNNEL_FILE.is_file():
             u = _TUNNEL_FILE.read_text(encoding="utf-8").strip()
@@ -138,23 +147,47 @@ def tunnel_url() -> "str | None":
     return None
 
 
+def tunnel_error() -> bool:
+    """True, wenn der Cloudflare-Tunnel nicht aufgebaut werden konnte
+    (nur im Tunnel-Modus aussagekraeftig)."""
+    if current_mode() != "tunnel":
+        return False
+    try:
+        return _TUNNEL_ERR_FILE.is_file()
+    except Exception:
+        return False
+
+
+def clear_tunnel_error() -> None:
+    """Fehlerzustand loeschen (z. B. wenn der Nutzer 'Erneut versuchen' klickt)."""
+    try:
+        _TUNNEL_ERR_FILE.unlink()
+    except OSError:
+        pass
+
+
 def access_targets() -> "list[dict]":
-    """Erreichbare Adressen: Liste von {kind, label, ip, url}."""
+    """Erreichbare Adresse(n) PASSEND zum aktuellen Modus: Liste von {kind,label,ip,url}.
+
+    Streng an current_mode() gekoppelt, damit die angebotenen Ziele nie dem gewaehlten
+    Modus widersprechen (kein WLAN-QR im Cloudflare-Modus und umgekehrt). Pro Modus gibt
+    es hoechstens EIN Ziel - so kann die Handy-Kamera nie mehrere QR-Codes gleichzeitig
+    erfassen und der angezeigte QR passt immer zur Auswahl."""
+    mode = current_mode()
     port = get_port()
-    out: list = []
-    lan = lan_ip()
-    if lan:
-        out.append({"kind": "lan", "label": "Im selben WLAN",
-                    "ip": lan, "url": f"http://{lan}:{port}"})
-    tu = tunnel_url()
-    if tu:
-        out.append({"kind": "tunnel", "label": "Von überall (Cloudflare)",
-                    "ip": "", "url": tu})
-    ts = tailscale_ip()
-    if ts:
-        out.append({"kind": "tailscale", "label": "Von überall (Tailscale)",
-                    "ip": ts, "url": f"http://{ts}:{port}"})
-    return out
+    if mode == "network":
+        lan = lan_ip()
+        if lan:
+            return [{"kind": "lan", "label": "Im selben WLAN",
+                     "ip": lan, "url": f"http://{lan}:{port}"}]
+        return []
+    if mode == "tunnel":
+        tu = tunnel_url()
+        if tu:
+            return [{"kind": "tunnel", "label": "Von überall (Cloudflare)",
+                     "ip": "", "url": tu}]
+        return []
+    return []   # local -> kein externer Zugriff
 
 
 def qr_png_bytes(data: str) -> "bytes | None":
