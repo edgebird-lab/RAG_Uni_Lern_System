@@ -26,6 +26,11 @@ from ragapp.hardware import (
     format_hardware,
     recommend_models,
     benchmark_model,
+    pull_model_stream,
+    is_model_installed,
+    llm_size_gb,
+    EMBED_MODELS,
+    RERANKER_MODELS,
 )
 
 st.set_page_config(page_title="Einstellungen (Tuning)", page_icon="⚙️", layout="wide")
@@ -152,6 +157,9 @@ if hw:
     with st.expander("Vollständige Hardware-Details anzeigen"):
         st.code(format_hardware(hw), language="text")
 
+    # --- installierte Modelle (fuer Markierung "schon da") ----------------- #
+    installiert = _installierte_modelle()
+
     # --- Empfehlung -------------------------------------------------------- #
     try:
         rec = recommend_models(hw)
@@ -163,43 +171,42 @@ if hw:
     if rec:
         st.subheader("Empfohlene Modelle für deinen PC")
         st.info(f"ℹ️ {rec.get('reason', '')}")
-        st.caption(
-            f"Empfohlenes Embedding-Modell: `{rec.get('embed_model', 'bge-m3')}`"
-        )
-        tabelle = "| | Modell (Ollama-Tag) | Params | ~GB | Begründung |\n"
-        tabelle += "|---|---|---|---|---|\n"
+        tabelle = "| | Modell | Familie | Größe | ~GB | gut für … |\n"
+        tabelle += "|---|---|---|---|---|---|\n"
         for i, m in enumerate(rec.get("models", [])):
             empf_tags.append(m["tag"])
-            mark = "⭐ **empfohlen**" if i == 0 else ""
+            mark = "⭐" if i == 0 else ""
+            da = " ✅" if is_model_installed(m["tag"], installiert) else ""
+            denk = " 🧠" if m.get("denk") else ""
             tabelle += (
-                f"| {mark} | `{m['tag']}` | {m.get('params', '')} | "
-                f"{m.get('gb', '')} | {m.get('why', '')} |\n"
+                f"| {mark} | `{m['tag']}`{da} | {m.get('fam','')}{denk} | "
+                f"{m.get('params','')} | {m.get('gb','')} | {m.get('why','')} |\n"
             )
         st.markdown(tabelle)
+        st.caption("⭐ beste Empfehlung · ✅ schon installiert · 🧠 Denk-Modell (sehr gut "
+                   "für Logik, aber langsamer) · Embedding-Modell für die Suche: "
+                   f"`{rec.get('embed_model','bge-m3')}`")
 
-    # --- Modell-Picker ----------------------------------------------------- #
-    st.subheader("Antwort-Modell wählen")
-    installiert = _installierte_modelle()
+    # --- Modell-Picker + Download ----------------------------------------- #
+    st.subheader("Antwort-Modell wählen & herunterladen")
+    _dl_msg = st.session_state.pop("_dl_msg", None)
+    if _dl_msg:
+        st.success("✅ " + _dl_msg)
+
     if installiert is None:
         st.warning(
             "⚠️ Konnte die installierten Ollama-Modelle nicht abrufen. Läuft der "
             f"Ollama-Server unter `{settings.OLLAMA_BASE_URL}`? Angeboten werden "
-            "stattdessen die empfohlenen Modelle."
-        )
-        optionen = list(empf_tags)
-    elif not installiert:
-        beispiel = empf_tags[0] if empf_tags else "gemma3:4b"
-        st.warning(
-            "⚠️ Es ist noch **kein** Ollama-Modell installiert. Installiere z. B. "
-            f"das empfohlene mit `ollama pull {beispiel}` (oder über den Installer)."
+            "stattdessen die Empfehlungen."
         )
         optionen = list(empf_tags)
     else:
-        st.caption(f"{len(installiert)} lokal installierte Modelle gefunden.")
-        # Installierte zuerst, dann empfohlene, die noch nicht installiert sind.
-        optionen = list(installiert) + [t for t in empf_tags if t not in installiert]
+        if not installiert:
+            st.info("Noch **kein** Modell installiert – wähle unten eins aus und klicke "
+                    "**Herunterladen**.")
+        # Empfehlungen zuerst (die man vermutlich möchte), dann bereits Installierte.
+        optionen = list(empf_tags) + [t for t in installiert if t not in empf_tags]
 
-    # Aktuelles Antwort-Modell immer als Option führen und vorauswählen.
     optionen = [o for o in dict.fromkeys(optionen) if o]
     if settings.LLM_MODEL and settings.LLM_MODEL not in optionen:
         optionen = [settings.LLM_MODEL] + optionen
@@ -208,43 +215,71 @@ if hw:
     default_idx = (optionen.index(settings.LLM_MODEL)
                    if settings.LLM_MODEL in optionen else 0)
 
+    def _opt_label(tag: str) -> str:
+        stat = "✅ installiert" if is_model_installed(tag, installiert) else "⬇️ noch laden"
+        gb = llm_size_gb(tag)
+        return f"{tag}   ({stat}{f' · ~{gb:.0f} GB' if gb else ''})"
+
     gewaehlt = st.selectbox(
-        "Modell für die Antwortgenerierung",
-        options=optionen,
-        index=default_idx,
-        help="Auswahl = lokal installierte Ollama-Modelle (+ Empfehlungen). "
-             "Das aktuell aktive Modell ist vorausgewählt.",
-    )
+        "Modell für die Antwortgenerierung", options=optionen, index=default_idx,
+        format_func=_opt_label,
+        help="Empfehlungen + bereits installierte Modelle. Noch nicht installierte "
+             "kannst du direkt hier herunterladen.")
     st.caption(f"Aktuell aktives Antwort-Modell: `{settings.LLM_MODEL}`")
 
-    b1, b2 = st.columns(2)
-    with b1:
-        setzen = st.button("✅ Als Antwort-Modell setzen",
-                           use_container_width=True)
-    with b2:
-        starte_bench = st.button("⏱️ Modell testen (tok/s)",
-                                 use_container_width=True)
+    _da = is_model_installed(gewaehlt, installiert)
+    b1, b2, b3 = st.columns(3)
+    setzen = b1.button("✅ Als Antwort-Modell setzen", use_container_width=True)
+    if _da:
+        b2.button("⬇️ Schon installiert", disabled=True, use_container_width=True)
+        starte_dl = False
+    else:
+        _gb = llm_size_gb(gewaehlt)
+        starte_dl = b2.button(f"⬇️ Herunterladen{f' (~{_gb:.0f} GB)' if _gb else ''}",
+                              type="primary", use_container_width=True)
+    starte_bench = b3.button("⏱️ Testen (tok/s)", use_container_width=True)
 
     if setzen and gewaehlt:
+        if not _da:
+            st.warning(f"ℹ️ `{gewaehlt}` ist noch nicht installiert – lade es zuerst über "
+                       "**Herunterladen**, sonst schlägt die Antwort fehl.")
         try:
             settings.update(LLM_MODEL=gewaehlt, LLM_MODEL_FAST=gewaehlt)
             settings.save()
-            st.success(
-                f"Antwort-Modell auf `{gewaehlt}` gesetzt "
-                "(auch als schnelles Hilfsmodell). Neue Fragen nutzen es sofort."
-            )
-            st.info(
-                f"ℹ️ Das Modell muss lokal installiert sein: `ollama pull {gewaehlt}` "
-                "(oder über den One-Click-Installer). Ohne installiertes Modell "
-                "schlägt die Antwortgenerierung fehl."
-            )
+            st.success(f"Antwort-Modell auf `{gewaehlt}` gesetzt. Neue Fragen nutzen es sofort.")
         except Exception as exc:  # pragma: no cover - defensiv
             st.error(f"Konnte das Modell nicht setzen: {exc}")
 
+    # --- Download (Ollama pull mit Fortschritt) --------------------------- #
+    if starte_dl and gewaehlt:
+        _fehler = None
+        with st.status(f"Lade `{gewaehlt}` herunter … (Fenster geöffnet lassen)",
+                       expanded=True) as status:
+            bar = st.progress(0.0)
+            try:
+                for text, frac, done, tot in pull_model_stream(gewaehlt):
+                    if frac is not None:
+                        bar.progress(min(max(frac, 0.0), 1.0))
+                    lbl = text or "lädt …"
+                    if done and tot:
+                        lbl += f" — {done / 1e9:.1f} / {tot / 1e9:.1f} GB"
+                    status.update(label=lbl)
+                bar.progress(1.0)
+                status.update(label=f"✅ `{gewaehlt}` heruntergeladen", state="complete")
+            except Exception as exc:  # noqa: BLE001
+                _fehler = str(exc)
+                status.update(label="Download fehlgeschlagen", state="error")
+        if _fehler:
+            st.error(f"❌ Download fehlgeschlagen: {_fehler}\n\nPrüfe die Internet-"
+                     "verbindung und ob der Ollama-Server läuft.")
+        else:
+            st.session_state["_dl_msg"] = (f"`{gewaehlt}` wurde installiert. Klicke jetzt "
+                                           "**Als Antwort-Modell setzen**.")
+            st.rerun()
+
     st.caption(
-        "⚠️ Der Benchmark lädt das Modell und generiert zweimal Text (kalt + warm). "
-        "Auf CPU oder schwacher GPU kann das **einige Minuten** dauern. Ist das "
-        "Modell noch nicht installiert, wird es zuerst heruntergeladen."
+        "⚠️ Der Benchmark lädt das Modell (falls nötig) und generiert zweimal Text "
+        "(kalt + warm). Auf CPU/schwacher GPU kann das **einige Minuten** dauern."
     )
 
     # --- Benchmark ausführen ---------------------------------------------- #
@@ -576,25 +611,42 @@ with st.form("einstellungen"):
 
     # ------------------------------------------------------------------ #
     st.subheader("🧠 Modelle")
-    st.caption("Welche lokalen Modelle genutzt werden (müssen installiert/verfügbar sein).")
-    m1, m2, m3 = st.columns(3)
+    st.caption("Das **Antwort-Modell** (KI) wählst und lädst du oben unter "
+               "**🖥️ Hardware & Modell-Auswahl**. Hier stellst du das Such- und das "
+               "Nachsortier-Modell ein – bequem per Auswahl statt Tippen.")
+    _EIGEN = "✏️ eigener Name …"
+
+    def _modell_feld(label, key, current, katalog, hilfe, platzhalter):
+        """Auswahl (Katalog + aktuell + eigener Name) + optionales Eigen-Textfeld.
+        Gibt den aufgeloesten Modellnamen zurueck (Eigen-Text schlaegt Auswahl)."""
+        info = {m["tag"]: m["info"] for m in katalog}
+        opts = [m["tag"] for m in katalog]
+        if current and current not in opts:
+            opts = [current] + opts
+        opts = opts + [_EIGEN]
+        idx = opts.index(current) if current in opts else 0
+        sel = st.selectbox(
+            label, opts, index=idx, key=key,
+            format_func=lambda t: t if t == _EIGEN else f"{t} — {info.get(t, 'aktuell gesetzt')}",
+            help=hilfe)
+        eigen = st.text_input("… eigener Name", value="", key=key + "_custom",
+                              placeholder=platzhalter, label_visibility="collapsed")
+        return eigen.strip() or (current if sel == _EIGEN else sel)
+
+    m1, m2 = st.columns(2)
     with m1:
-        neu["LLM_MODEL"] = st.text_input(
-            "Antwort-Modell", value=str(settings.LLM_MODEL), key="cfg_LLM_MODEL",
-            help="Das Sprachmodell, das die Antworten schreibt (Ollama). "
-                 "Technisch: LLM_MODEL")
+        neu["EMBED_MODEL"] = _modell_feld(
+            "Such-Modell (Embedding)", "cfg_EMBED_MODEL", settings.EMBED_MODEL, EMBED_MODELS,
+            "Wandelt Texte in Vektoren für die Bedeutungssuche. ⚠️ Ein Wechsel ändert die "
+            "Vektor-Größe → alle Dokumente müssen NEU importiert werden. Technisch: EMBED_MODEL",
+            "nur falls oben eigener Name gewählt (Ollama-Tag)")
     with m2:
-        neu["EMBED_MODEL"] = st.text_input(
-            "Such-Modell (Embedding)", value=str(settings.EMBED_MODEL),
-            key="cfg_EMBED_MODEL",
-            help="Wandelt Texte in Zahlen-Vektoren für die Bedeutungssuche um. "
-                 "Technisch: EMBED_MODEL")
-    with m3:
-        neu["RERANKER_MODEL"] = st.text_input(
-            "Nachsortier-Modell (Reranker)", value=str(settings.RERANKER_MODEL),
-            key="cfg_RERANKER_MODEL",
-            help="Sortiert die gefundenen Treffer noch einmal nach Relevanz. "
-                 "Technisch: RERANKER_MODEL")
+        neu["RERANKER_MODEL"] = _modell_feld(
+            "Nachsortier-Modell (Reranker)", "cfg_RERANKER_MODEL", settings.RERANKER_MODEL,
+            RERANKER_MODELS,
+            "Sortiert die Treffer nach Relevanz. Lädt beim ersten Benutzen automatisch von "
+            "HuggingFace (kein manueller Download nötig). Technisch: RERANKER_MODEL",
+            "nur falls oben eigener Name gewählt (HuggingFace-Pfad)")
 
     st.divider()
 
@@ -667,7 +719,7 @@ _BEREICHE = {
                   "ENABLE_FAITHFULNESS_CHECK"],
     "🧹 Deduplizierung": ["DEDUP_NEAR_DUPLICATE_THRESHOLD", "RETRIEVAL_DEDUP_JACCARD",
                          "RETRIEVAL_DEDUP"],
-    "🧠 Modelle": ["LLM_MODEL", "EMBED_MODEL", "RERANKER_MODEL"],
+    "🧠 Modelle": ["LLM_MODEL", "LLM_MODEL_FAST", "EMBED_MODEL", "RERANKER_MODEL"],
     "📊 Evaluation": ["EVAL_SAMPLE_SIZE", "EVAL_QUESTIONS_PER_CHUNK"],
 }
 
@@ -680,6 +732,7 @@ def _reset_bereich(keys: list) -> None:
     settings.save()
     for k in keys:
         st.session_state.pop(f"cfg_{k}", None)
+        st.session_state.pop(f"cfg_{k}_custom", None)   # evtl. Eigen-Namensfeld
 
 
 _items = list(_BEREICHE.items())

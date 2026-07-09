@@ -147,89 +147,160 @@ def detect_hardware() -> dict:
 # --------------------------------------------------------------------------- #
 # Modell-Empfehlung
 # --------------------------------------------------------------------------- #
-# Deutsch-taugliche Modelle nach Größe. Jeweils (Ollama-Tag, Params, ~GB).
-_MODELS = {
-    # Intel-IPEX-kompatibel: das alte SYCL-Backend (Ollama 0.9.3) laedt neuere
-    # Architekturen wie Qwen3/Gemma 4 nicht -> bewaehrte, kompatible Modelle.
-    "intel_de":   {"tag": "gemma3:4b",           "params": "4B", "gb": 3.3},
-    "intel_fast": {"tag": "qwen2.5:3b-instruct", "params": "3B", "gb": 1.9},
-    # Aktuelle Modelle (Stand 2026) fuer Standard-Ollama (NVIDIA/AMD/Apple/CPU).
-    # Gemma 3 = sehr starkes Deutsch, saubere Antworten (kein Thinking-Modus).
-    # Qwen3 = neueste Generation, als Alternative.
-    "q4b":  {"tag": "qwen3:4b",   "params": "4B",          "gb": 2.5},
-    "g4b":  {"tag": "gemma3:4b",  "params": "4B",          "gb": 3.3},
-    "q8b":  {"tag": "qwen3:8b",   "params": "8B",          "gb": 5.2},
-    "g12b": {"tag": "gemma3:12b", "params": "12B",         "gb": 8.1},
-    "q14b": {"tag": "qwen3:14b",  "params": "14B",         "gb": 9.3},
-    "g27b": {"tag": "gemma3:27b", "params": "27B",         "gb": 17.0},
-    "q30b": {"tag": "qwen3:30b",  "params": "30B-A3B MoE", "gb": 19.0},
+# LLM-Katalog: deutsch-taugliche Modelle fuer Standard-Ollama (NVIDIA/AMD/Apple/CPU).
+# "gb" = grober Speicherbedarf in Q4-Quantisierung (Richtwert). "denk" = Denk-/
+# Reasoning-Modell (sehr gut fuer schwere Logik, aber langsamer; laeuft in der App
+# ohne sichtbare Gedankengaenge, da think=False gesetzt ist).
+_LLM: dict[str, dict] = {
+    "gemma3:4b":         {"params": "4B",  "gb": 3.3,  "fam": "Gemma 3",     "info": "starkes Deutsch, kompakt"},
+    "qwen3:4b":          {"params": "4B",  "gb": 2.6,  "fam": "Qwen3",       "info": "sehr kompakt, aktuell"},
+    "mistral:7b":        {"params": "7B",  "gb": 4.4,  "fam": "Mistral",     "info": "schnell, ordentliches Deutsch"},
+    "llama3.1:8b":       {"params": "8B",  "gb": 4.9,  "fam": "Llama 3.1",   "info": "solider Allrounder"},
+    "qwen3:8b":          {"params": "8B",  "gb": 5.2,  "fam": "Qwen3",       "info": "schnell und stark"},
+    "mistral-nemo:12b":  {"params": "12B", "gb": 7.1,  "fam": "Mistral",     "info": "gut mehrsprachig"},
+    "gemma3:12b":        {"params": "12B", "gb": 8.1,  "fam": "Gemma 3",     "info": "exzellentes Deutsch"},
+    "deepseek-r1:14b":   {"params": "14B", "gb": 9.0,  "fam": "DeepSeek-R1", "info": "Denk-Modell, top Logik", "denk": True},
+    "phi4:14b":          {"params": "14B", "gb": 9.1,  "fam": "Phi-4",       "info": "stark in Logik & Mathe"},
+    "qwen3:14b":         {"params": "14B", "gb": 9.3,  "fam": "Qwen3",       "info": "sehr stark, aktuell"},
+    "mistral-small:24b": {"params": "24B", "gb": 14.0, "fam": "Mistral",     "info": "stark und effizient"},
+    "gemma3:27b":        {"params": "27B", "gb": 17.0, "fam": "Gemma 3",     "info": "Spitzen-Deutsch, Top-Qualität"},
+    "qwen3:30b":         {"params": "30B (MoE, 3B aktiv)", "gb": 19.0, "fam": "Qwen3", "info": "sehr schnell für die Größe"},
+    "qwen3:32b":         {"params": "32B", "gb": 20.0, "fam": "Qwen3",       "info": "sehr stark (dicht)"},
+    "deepseek-r1:32b":   {"params": "32B", "gb": 20.0, "fam": "DeepSeek-R1", "info": "Spitzen-Logik, Denk-Modell", "denk": True},
 }
+
+# Reihenfolge grob nach Qualitaet fuer deutsches RAG (bestes zuerst). Aus dieser
+# Liste werden fuer eine Hardware die groessten noch passenden Modelle vorgeschlagen.
+_LLM_ORDER = [
+    "gemma3:27b", "qwen3:32b", "deepseek-r1:32b", "qwen3:30b", "mistral-small:24b",
+    "gemma3:12b", "qwen3:14b", "phi4:14b", "deepseek-r1:14b", "mistral-nemo:12b",
+    "qwen3:8b", "llama3.1:8b", "mistral:7b",
+    "gemma3:4b", "qwen3:4b",
+]
+
+# Intel-IPEX (altes SYCL-Backend, Ollama 0.9.3): neuere Architekturen laden dort
+# nicht -> bewaehrte kleine Modelle.
+_INTEL = {
+    "gemma3:4b":           {"params": "4B", "gb": 3.3, "info": "läuft stabil auf Intel-Arc, gutes Deutsch, ~13 tok/s"},
+    "qwen2.5:3b-instruct": {"params": "3B", "gb": 1.9, "info": "schneller (~19 tok/s), etwas schwächer"},
+}
+
+# Embedding-Modelle (Ollama). ACHTUNG: Ein Wechsel aendert die Vektor-Dimension und
+# erfordert einen NEU-IMPORT aller Dokumente. bge-m3 ist die beste Wahl fuer Deutsch.
+EMBED_MODELS = [
+    {"tag": "bge-m3",                  "info": "★ Empfohlen – multilingual, sehr gut für Deutsch (1024-dim)"},
+    {"tag": "mxbai-embed-large",      "info": "stark, eher englischlastig (1024-dim)"},
+    {"tag": "snowflake-arctic-embed2", "info": "multilingual (1024-dim)"},
+    {"tag": "nomic-embed-text",       "info": "kompakt & schnell (768-dim)"},
+]
+
+# Reranker (HuggingFace Cross-Encoder; laedt beim ersten Benutzen automatisch).
+RERANKER_MODELS = [
+    {"tag": "BAAI/bge-reranker-v2-m3",                   "info": "★ Empfohlen – multilingual, sehr genau"},
+    {"tag": "BAAI/bge-reranker-base",                    "info": "kleiner & schneller, englischlastig"},
+    {"tag": "jinaai/jina-reranker-v2-base-multilingual", "info": "multilingual, schnell"},
+]
 
 
 def recommend_models(hw: dict) -> dict:
-    """Empfiehlt anhand der Hardware geeignete Modelle (bestes zuerst)."""
+    """Empfiehlt anhand der Hardware geeignete Antwort-Modelle (bestes zuerst).
+    Gibt bis zu 5 Vorschlaege aus verschiedenen Familien zurueck."""
     gpu = hw["gpu"]
     vendor = gpu["vendor"]
     vram = gpu.get("vram_gb")
     ram = hw.get("ram_gb") or 8
 
-    # Intel iGPU über IPEX-LLM (Ollama 0.9.3): neuere Architekturen (Gemma 4,
-    # gemma3n) laden NICHT auf dem SYCL-Backend -> bewährte kleine Modelle.
     if vendor == "intel":
         return {
-            "reason": "Intel-GPU via IPEX-LLM (Ollama 0.9.3): bewährte, kompatible "
-                      "3 bis 4B-Modelle. Neuere Architekturen (Qwen3, Gemma 4) laden "
-                      "auf diesem alten SYCL-Backend leider nicht.",
+            "reason": "Intel-GPU via IPEX-LLM (Ollama 0.9.3): bewährte, kompatible 3–4B-"
+                      "Modelle. Neuere Architekturen (Qwen3, Gemma 4, DeepSeek) laden auf "
+                      "diesem alten SYCL-Backend leider nicht.",
             "embed_model": "bge-m3",
+            "budget_gb": None,
             "models": [
-                {**_MODELS["intel_de"], "why": "läuft stabil auf Intel-Arc, gutes Deutsch, ~13 tok/s"},
-                {**_MODELS["intel_fast"], "why": "schneller (~19 tok/s), etwas schwächer"},
+                {"tag": "gemma3:4b", "fam": "Gemma 3", "denk": False, **_INTEL["gemma3:4b"],
+                 "why": _INTEL["gemma3:4b"]["info"]},
+                {"tag": "qwen2.5:3b-instruct", "fam": "Qwen2.5", "denk": False,
+                 **_INTEL["qwen2.5:3b-instruct"], "why": _INTEL["qwen2.5:3b-instruct"]["info"]},
             ],
         }
 
-    # "Budget" in GB: dedizierte VRAM, sonst grob RAM/2 (CPU teilt sich RAM).
+    # "Budget" in GB: dedizierte VRAM, sonst grob RAM/2 (CPU teilt sich das RAM).
     if vendor in ("nvidia", "amd") and vram:
-        budget = vram
-        on = "GPU"
+        budget, on = vram, "GPU"
     elif vendor in ("nvidia", "amd"):
-        # Dedizierte GPU, aber VRAM unbekannt (z. B. nvidia-smi nicht gefunden).
-        # Sichere Annahme statt RAM/2: eine dedizierte GPU schafft mindestens die
-        # 7B-Klasse. So faellt sie nie faelschlich auf das kleinste Modell zurueck.
-        budget = 8.0
-        on = "GPU"
+        budget, on = 8.0, "GPU"   # dedizierte GPU, VRAM unbekannt -> min. 7B-Klasse
     elif vendor == "apple":
-        budget = (ram or 8) * 0.6  # Apple: unified memory, viel nutzbar
-        on = "GPU (Metal)"
-    else:  # nur CPU
-        budget = (ram or 8) / 2
-        on = "CPU" if vendor == "none" else "GPU"
-
-    if budget >= 22:
-        picks = [{**_MODELS["g27b"], "why": f"top Qualität, passt in ~{budget:.0f} GB"},
-                 {**_MODELS["q30b"], "why": "sehr stark und schnell (MoE, nur 3B aktiv)"}]
-        tier = "sehr groß"
-    elif budget >= 12:
-        picks = [{**_MODELS["g12b"], "why": f"exzellentes Deutsch, passt gut in ~{budget:.0f} GB"},
-                 {**_MODELS["q14b"], "why": "neuestes Qwen3 als Alternative"}]
-        tier = "groß"
-    elif budget >= 7:
-        picks = [{**_MODELS["g12b"], "why": "deutlich besseres Deutsch, läuft größtenteils auf der GPU"},
-                 {**_MODELS["q8b"], "why": f"passt komplett in ~{budget:.0f} GB, schneller (aktuelles Qwen3)"}]
-        tier = "mittel"
+        budget, on = (ram or 8) * 0.6, "GPU (Metal)"
     else:
-        picks = [{**_MODELS["g4b"], "why": "starkes Deutsch bei kleiner Größe (Gemma 3)"},
-                 {**_MODELS["q4b"], "why": "neuestes Qwen3, kompakt"}]
-        tier = "klein"
+        budget, on = (ram or 8) / 2, "CPU"
 
-    note = ""
-    if vendor == "none":
-        note = " (Nur-CPU: Antworten dauern deutlich länger, kleines Modell empfohlen.)"
+    picks: list[dict] = []
+    for tag in _LLM_ORDER:
+        m = _LLM[tag]
+        if m["gb"] <= budget + 2.0:          # +2 GB Toleranz: leichtes Offload ins RAM ist ok
+            if on.startswith("GPU"):
+                lauf = ("läuft komplett auf der GPU" if m["gb"] <= budget
+                        else "läuft teils über RAM (etwas langsamer)")
+                why = f"{m['info']} · {lauf}"
+            else:
+                why = m["info"]
+            picks.append({"tag": tag, "params": m["params"], "gb": m["gb"],
+                          "fam": m["fam"], "denk": m.get("denk", False), "why": why})
+        if len(picks) >= 5:
+            break
 
+    if not picks:  # extrem wenig Speicher -> kleinstes Modell
+        m = _LLM["qwen3:4b"]
+        picks = [{"tag": "qwen3:4b", "params": m["params"], "gb": m["gb"],
+                  "fam": m["fam"], "denk": False, "why": m["info"]}]
+
+    note = " (Nur-CPU: Antworten dauern länger, kleineres Modell empfohlen.)" if vendor == "none" else ""
     return {
-        "reason": f"{on}, verfügbares Budget ~{budget:.0f} GB -> Modellklasse '{tier}'.{note}",
+        "reason": f"{on}, verfügbares Budget ~{budget:.0f} GB.{note} Gezeigt werden die "
+                  "stärksten Modelle, die dabei noch flüssig laufen (bestes zuerst).",
         "embed_model": "bge-m3",
+        "budget_gb": round(budget, 1),
         "models": picks,
     }
+
+
+def llm_size_gb(tag: str) -> "float | None":
+    """Grober Speicherbedarf (GB) eines bekannten Katalog-Modells, sonst None."""
+    m = _LLM.get(tag) or _INTEL.get(tag)
+    return m.get("gb") if m else None
+
+
+def is_model_installed(tag: str, installed: "list[str] | None") -> bool:
+    """True, wenn das Ollama-Modell lokal vorhanden ist (exakter Tag; ohne Version
+    zaehlt jede vorhandene Version)."""
+    if not installed:
+        return False
+    names = set(installed)
+    if tag in names or f"{tag}:latest" in names:
+        return True
+    if ":" not in tag:
+        return any(n.split(":")[0] == tag for n in names)
+    return False
+
+
+def pull_model_stream(tag: str, base_url: "str | None" = None):
+    """Generator: laedt ein Ollama-Modell herunter und liefert den Fortschritt als
+    Tupel (status_text, fraction|None, done_bytes|None, total_bytes|None). Blockiert
+    bis zum Ende bzw. bis eine Exception fliegt (z. B. Modell/Netz nicht verfuegbar)."""
+    import ollama
+    from ragapp.config import settings
+
+    client = ollama.Client(host=base_url or settings.OLLAMA_BASE_URL, timeout=None)
+    for ev in client.pull(tag, stream=True):
+        if isinstance(ev, dict):
+            status, total, done = ev.get("status"), ev.get("total"), ev.get("completed")
+        else:
+            status = getattr(ev, "status", None)
+            total = getattr(ev, "total", None)
+            done = getattr(ev, "completed", None)
+        frac = (done / total) if (total and done) else None
+        yield str(status or ""), frac, done, total
 
 
 def speed_verdict(tps: float) -> str:
