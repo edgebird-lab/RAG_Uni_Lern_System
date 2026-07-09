@@ -472,6 +472,127 @@ st.caption(
 st.divider()
 
 # --------------------------------------------------------------------------- #
+# Lern-Algorithmus (Spaced Repetition)
+# --------------------------------------------------------------------------- #
+st.header("🎓 Lern-Algorithmus (Karteikarten)")
+st.caption("Legt die Wiederholungs-Abstände fest. Standard folgt der Lernforschung "
+           "(SM-2 / Anki): kurze Lernschritte, danach automatisch wachsende Abstände – "
+           "so wird gegen die Vergessenskurve wiederholt. Die Leichtigkeit (Ease) "
+           "sinkt nie unter 1,3 (führt sonst zu nervig häufigem Wiedervorlegen).")
+
+
+def _fmt_steps(mins) -> str:
+    out = []
+    for m in mins:
+        m = float(m)
+        if m < 60:
+            out.append(f"{int(round(m))}min")
+        elif m < 1440:
+            out.append(f"{m / 60:g}h")
+        else:
+            out.append(f"{m / 1440:g}d")
+    return ", ".join(out)
+
+
+def _parse_steps(s: str) -> list:
+    res = []
+    for tok in str(s).replace(";", ",").split(","):
+        tok = tok.strip().lower().replace(" ", "")
+        if not tok:
+            continue
+        try:
+            if tok.endswith("min"):
+                res.append(float(tok[:-3]))
+            elif tok.endswith("h"):
+                res.append(float(tok[:-1]) * 60)
+            elif tok.endswith(("d", "t")):
+                res.append(float(tok[:-1]) * 1440)
+            elif tok.endswith("m"):             # "5m" = 5 Minuten (nach "min"/"h"/"d" geprüft)
+                res.append(float(tok[:-1]))
+            else:
+                res.append(float(tok))          # nackte Zahl = Minuten
+        except ValueError:
+            pass
+    return [int(round(x)) for x in res if x > 0]
+
+
+_srs_keys = ("SRS_AGAIN_MINUTES", "SRS_HALF_MINUTES", "SRS_GOOD_STEPS_MIN",
+             "SRS_EASE_START", "SRS_EASE_MIN", "SRS_EASE_MAX", "SRS_EASE_GOOD",
+             "SRS_EASE_HALF", "SRS_EASE_AGAIN", "SRS_INTERVAL_FACTOR",
+             "SRS_NEW_PER_DAY", "SRS_MAX_PER_SESSION")
+
+with st.form("srs_form"):
+    _sa, _sb = st.columns(2)
+    _v_again = _sa.number_input(
+        "Nicht gewusst → erneut nach (Minuten)", min_value=0.5, max_value=1440.0,
+        value=float(settings.SRS_AGAIN_MINUTES), step=0.5, key="cfg_SRS_AGAIN_MINUTES")
+    _v_half = _sb.number_input(
+        "Halb gewusst → erneut nach (Minuten)", min_value=0.5, max_value=1440.0,
+        value=float(settings.SRS_HALF_MINUTES), step=0.5, key="cfg_SRS_HALF_MINUTES")
+    _v_ladder = st.text_input(
+        "Gewusst-Leiter (Abstände nacheinander)", value=_fmt_steps(settings.SRS_GOOD_STEPS_MIN),
+        help="Komma-getrennt, z. B. 2h, 8h, 1d, 3d, 8d, 21d. Einheiten: min / h / d. "
+             "Nach der letzten Stufe wächst der Abstand automatisch (× Ease).")
+    _e1, _e2, _e3 = st.columns(3)
+    _v_ease = _e1.number_input("Wachstum (Ease-Start)", min_value=1.3, max_value=4.0,
+                               value=float(settings.SRS_EASE_START), step=0.05,
+                               key="cfg_SRS_EASE_START",
+                               help="Multiplikator für lange Abstände (2,5 = +150 %).")
+    _v_emin = _e2.number_input("Ease-Untergrenze", min_value=1.1, max_value=2.0,
+                               value=float(settings.SRS_EASE_MIN), step=0.05,
+                               key="cfg_SRS_EASE_MIN")
+    _v_ifac = _e3.number_input("Intervall-Faktor (%)", min_value=50, max_value=300,
+                               value=int(round(settings.SRS_INTERVAL_FACTOR * 100)), step=5,
+                               key="cfg_SRS_INTERVAL_FACTOR",
+                               help="Streckt/staucht alle langen Abstände. 100 % = normal.")
+    _d1, _d2 = st.columns(2)
+    _v_npd = _d1.number_input("Neue Karten pro Tag", min_value=0, max_value=500,
+                              value=int(settings.SRS_NEW_PER_DAY), step=5,
+                              key="cfg_SRS_NEW_PER_DAY", help="0 = unbegrenzt.")
+    _v_mps = _d2.number_input("Max. Karten pro Runde", min_value=5, max_value=1000,
+                              value=int(settings.SRS_MAX_PER_SESSION), step=5,
+                              key="cfg_SRS_MAX_PER_SESSION")
+    _sc1, _sc2 = st.columns(2)
+    _srs_save = _sc1.form_submit_button("💾 Speichern", type="primary")
+    _srs_reset = _sc2.form_submit_button("↩︎ Auf Standard zurücksetzen")
+
+if _srs_save:
+    _steps = _parse_steps(_v_ladder) or list(Settings().SRS_GOOD_STEPS_MIN)
+    settings.update(
+        SRS_AGAIN_MINUTES=float(_v_again), SRS_HALF_MINUTES=float(_v_half),
+        SRS_GOOD_STEPS_MIN=_steps, SRS_EASE_START=float(_v_ease),
+        SRS_EASE_MIN=float(_v_emin), SRS_INTERVAL_FACTOR=float(_v_ifac) / 100.0,
+        SRS_NEW_PER_DAY=int(_v_npd), SRS_MAX_PER_SESSION=int(_v_mps))
+    settings.save()
+    st.success("Lern-Einstellungen gespeichert. Gilt ab der nächsten Bewertung.")
+
+if _srs_reset:
+    _def = Settings()
+    settings.update(**{k: getattr(_def, k) for k in _srs_keys})
+    settings.save()
+    for _k in _srs_keys:
+        st.session_state.pop(f"cfg_{_k}", None)
+    st.success("Lern-Algorithmus auf Standard zurückgesetzt.")
+    st.rerun()
+
+# Live-Vorschau des resultierenden Zeitplans
+try:
+    from ragapp import study as _study_preview
+    _e, _iv, _r, _l = settings.SRS_EASE_START, 0, 0, 0
+    _seq = []
+    for _ in range(min(8, len(settings.SRS_GOOD_STEPS_MIN) + 2)):
+        _stt = _study_preview.sm2_next(_study_preview.GEWUSST, _e, _iv, _r, _l, now=0.0)
+        _e, _iv, _r, _l = _stt["ease"], _stt["interval"], _stt["reps"], _stt["lapses"]
+        _seq.append(_study_preview.humanize_due(_stt["due"], 0.0).replace("in ", ""))
+    st.caption("**Vorschau bei immer Gewusst:** " + " → ".join(_seq)
+               + f"  ·  Nicht: {settings.SRS_AGAIN_MINUTES:g} min  ·  "
+               f"Halb: {settings.SRS_HALF_MINUTES:g} min")
+except Exception:  # noqa: BLE001
+    pass
+
+st.divider()
+
+# --------------------------------------------------------------------------- #
 # Formular
 # --------------------------------------------------------------------------- #
 with st.form("einstellungen"):

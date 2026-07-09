@@ -322,10 +322,30 @@ def _filter(subject: Optional[str], deck: Optional[str]) -> tuple[str, list]:
     return sql, args
 
 
-def review_counts(subject: Optional[str] = None, deck: Optional[str] = None) -> dict:
+def _scope(subject: Optional[str], deck: Optional[str],
+           decks: Optional[list[str]]) -> tuple[str, list]:
+    """Wie _filter, unterstuetzt zusaetzlich eine LISTE von Stapeln (Mehrfachauswahl).
+    '__none__' in der Liste = auch Karten ohne Stapel. Leere Liste -> nichts."""
+    if decks is None:
+        return _filter(subject, deck)
+    sql, args = "", []
+    if subject:
+        sql += " AND subject=?"; args.append(subject)
+    named = [d for d in decks if d != "__none__"]
+    parts = []
+    if named:
+        parts.append(f"deck IN ({','.join('?' * len(named))})"); args += named
+    if "__none__" in decks:
+        parts.append("deck IS NULL")
+    sql += " AND (" + " OR ".join(parts) + ")" if parts else " AND 1=0"
+    return sql, args
+
+
+def review_counts(subject: Optional[str] = None, deck: Optional[str] = None,
+                  decks: Optional[list[str]] = None) -> dict:
     """Zaehlt Karten: gesamt / faellig / neu (nie geuebt) / gelernt (schon geuebt)."""
     now = time.time()
-    fsql, fargs = _filter(subject, deck)
+    fsql, fargs = _scope(subject, deck, decks)
     where = "WHERE suspended=0 AND use_flashcard=1" + fsql
     with _connect() as conn:
         def one(extra, a):
@@ -340,14 +360,53 @@ def review_counts(subject: Optional[str] = None, deck: Optional[str] = None) -> 
 
 
 def get_due_cards(subject: Optional[str] = None, limit: int = 20,
-                  now: Optional[float] = None, deck: Optional[str] = None) -> list[dict]:
-    """Faellige Karten (Wiederholungen zuerst, dann neue), aufsteigend nach Faelligkeit."""
+                  now: Optional[float] = None, deck: Optional[str] = None,
+                  decks: Optional[list[str]] = None,
+                  new_limit: Optional[int] = None) -> list[dict]:
+    """Faellige Karten (Wiederholungen zuerst, dann neue), aufsteigend nach Faelligkeit.
+    ``decks`` erlaubt Mehrfachauswahl von Stapeln; ``new_limit`` deckelt die Zahl NEUER
+    (nie geuebter) Karten in dieser Auswahl (Tages-/Runden-Limit)."""
     now = now if now is not None else time.time()
-    fsql, fargs = _filter(subject, deck)
-    q = ("SELECT * FROM review_items WHERE suspended=0 AND use_flashcard=1 AND due<=?" + fsql
-         + " ORDER BY CASE WHEN reps>0 THEN 0 ELSE 1 END, due ASC LIMIT ?")
+    ssql, sargs = _scope(subject, deck, decks)
+    q = ("SELECT * FROM review_items WHERE suspended=0 AND use_flashcard=1 AND due<=?" + ssql
+         + " ORDER BY CASE WHEN reps>0 THEN 0 ELSE 1 END, due ASC")
     with _connect() as conn:
-        return [dict(r) for r in conn.execute(q, [now] + fargs + [int(limit)]).fetchall()]
+        rows = [dict(r) for r in conn.execute(q, [now] + sargs).fetchall()]
+    out, new_count = [], 0
+    for r in rows:
+        if r.get("reps", 0) == 0:
+            if new_limit is not None and new_count >= int(new_limit):
+                continue
+            new_count += 1
+        out.append(r)
+        if len(out) >= int(limit):
+            break
+    return out
+
+
+def _local_day_start(now: Optional[float] = None) -> float:
+    """Lokaler Tagesbeginn (Mitternacht) als epoch-Sekunde."""
+    lt = time.localtime(now if now is not None else time.time())
+    return time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1))
+
+
+def count_new_today(subject: Optional[str] = None, deck: Optional[str] = None,
+                    decks: Optional[list[str]] = None,
+                    day_start: Optional[float] = None) -> int:
+    """Anzahl heute ERSTMALS geuebter (neuer) Karten in der Auswahl - fuer das
+    Tages-Limit neuer Karten."""
+    if day_start is None:
+        day_start = _local_day_start()
+    ssql, sargs = _scope(subject, deck, decks)
+    # 'subject' existiert in BEIDEN JOIN-Tabellen -> qualifizieren (sonst 'ambiguous
+    # column name'). deck gibt es nur in review_items, ist also eindeutig.
+    ssql = ssql.replace(" subject=?", " ri.subject=?")
+    q = ("SELECT COUNT(*) AS c FROM (SELECT rl.card_id, MIN(rl.reviewed_at) AS first "
+         "FROM review_log rl JOIN review_items ri ON ri.card_id=rl.card_id "
+         "WHERE ri.suspended=0 AND ri.use_flashcard=1" + ssql + " GROUP BY rl.card_id) t "
+         "WHERE t.first >= ?")
+    with _connect() as conn:
+        return conn.execute(q, sargs + [day_start]).fetchone()["c"]
 
 
 def record_review(card_id: str, rating: int, *, ease: float, interval: int, reps: int,
@@ -525,9 +584,13 @@ def assign_deck(deck: Optional[str], *, doc_ids: Optional[list[str]] = None,
         return cur.rowcount
 
 
-def list_decks() -> list[str]:
-    """Alle vorhandenen Stapelnamen."""
+def list_decks(subject: Optional[str] = None) -> list[str]:
+    """Alle vorhandenen Stapelnamen (optional nur eines Fachs)."""
     with _connect() as conn:
+        if subject:
+            return [r["deck"] for r in conn.execute(
+                "SELECT DISTINCT deck FROM review_items WHERE deck IS NOT NULL AND deck<>'' "
+                "AND subject=? ORDER BY deck", (subject,))]
         return [r["deck"] for r in conn.execute(
             "SELECT DISTINCT deck FROM review_items WHERE deck IS NOT NULL AND deck<>'' "
             "ORDER BY deck")]

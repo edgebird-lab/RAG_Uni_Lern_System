@@ -21,7 +21,7 @@ import streamlit as st
 import pandas as pd
 
 from ragapp import manifest, study
-from ragapp.config import SUBJECT_LABELS
+from ragapp.config import settings, SUBJECT_LABELS
 
 st.set_page_config(page_title="Lernen", page_icon="🎓", layout="wide")
 
@@ -318,29 +318,54 @@ TALLY = "_study_tally"
 ROUND = "_study_round"
 
 if not st.session_state.get(ACTIVE):
+    st.subheader("Lernrunde zusammenstellen")
+    # 1) Fach
     _faecher = manifest.study_subjects()
-    _decks = manifest.list_decks()
-    _choices = {"Alle Karten": (None, None)}
-    for _d in _decks:
-        _choices[f"🗂️ Stapel: {_d}"] = (None, _d)
-    for _f in _faecher:
-        _choices[f"📚 Fach: {_fach_label(_f)}"] = (_f, None)
-    _pick = st.selectbox("Was möchtest du lernen?", list(_choices.keys()))
-    subj, deck = _choices[_pick]
+    _subj_pick = st.selectbox(
+        "Fach", ["Alle Fächer"] + _faecher,
+        format_func=lambda s: "Alle Fächer" if s == "Alle Fächer" else _fach_label(s))
+    subj = None if _subj_pick == "Alle Fächer" else _subj_pick
 
-    _fc = manifest.review_counts(subj, deck)
+    # 2) Stapel-Mehrfachauswahl (welche der Stapel dieses Fachs)
+    _decks_here = manifest.list_decks(subj)
+    _deck_opts = list(_decks_here) + ["— ohne Stapel —"]
+    _deck_pick = st.multiselect(
+        "Stapel (leer = alle)", _deck_opts,
+        help="Wähle gezielt einzelne Stapel – z. B. 2 von 5 Themen eines Fachs. "
+             "Leer lassen = alle Karten des Fachs.")
+    decks = None
+    if _deck_pick:
+        decks = ["__none__" if d == "— ohne Stapel —" else d for d in _deck_pick]
+
+    # 3) Zahlen zur Auswahl
+    _fc = manifest.review_counts(subj, decks=decks)
+    _neu_heute = manifest.count_new_today(subj, decks=decks)
     faellig = _fc["due"]
+
+    # 4) Tages-Limit neuer Karten
+    _c1, _c2 = st.columns(2)
+    _new_per_day = _c1.number_input(
+        "Neue Karten pro Tag", min_value=0, max_value=500,
+        value=int(getattr(settings, "SRS_NEW_PER_DAY", 20)), step=5,
+        help="0 = unbegrenzt. Bereits heute gelernte neue Karten werden angerechnet.")
+    _rest_neu = None if _new_per_day == 0 else max(0, int(_new_per_day) - _neu_heute)
+    _c2.metric("Heute neu gelernt", _neu_heute,
+               help="Zählt gegen dein Tages-Limit neuer Karten.")
+
     if faellig == 0:
         st.success("✅ Für diese Auswahl ist gerade **nichts fällig** – gut gemacht! "
                    "Komm später wieder oder wähle etwas anderes.")
     else:
-        maxr = min(faellig, 50)
+        _maxr = min(faellig, int(getattr(settings, "SRS_MAX_PER_SESSION", 100)))
         anzahl = st.slider("Karten in dieser Runde", min_value=1,
-                           max_value=int(max(1, maxr)),
-                           value=int(min(20, maxr)))
-        if st.button(f"▶️ Lernrunde starten ({anzahl} von {faellig} fällig)",
+                           max_value=int(max(1, _maxr)),
+                           value=int(min(20, _maxr)))
+        _hinweis = (f"{anzahl} von {faellig} fällig"
+                    + (f" · max. {_rest_neu} neue" if _rest_neu is not None else ""))
+        if st.button(f"▶️ Lernrunde starten ({_hinweis})",
                      type="primary", use_container_width=True):
-            karten = manifest.get_due_cards(subj, limit=int(anzahl), deck=deck)
+            karten = manifest.get_due_cards(subj, limit=int(anzahl), deck=None,
+                                            decks=decks, new_limit=_rest_neu)
             st.session_state[Q] = karten
             st.session_state[ACTIVE] = True
             st.session_state[REVEAL] = False
@@ -410,6 +435,7 @@ else:
 
         def _bewerten(rating: int) -> None:
             nxt = study.rate_card(karte, rating)
+            st.toast(f"Nächste Wiederholung: {study.humanize_due(nxt['due'])}")
             t = st.session_state[TALLY]
             t["gewusst" if rating == study.GEWUSST else
               "halb" if rating == study.HALB else "nicht"] += 1

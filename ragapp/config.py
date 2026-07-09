@@ -126,6 +126,30 @@ class Settings:
     NUM_INDEX_QUESTIONS: int = 3           # generierte Fragen pro Chunk (indexiert)
 
     # ------------------------------------------------------------------ #
+    # Lern-Algorithmus (Karteikarten / Spaced Repetition)
+    # ------------------------------------------------------------------ #
+    # Wiederholungs-Abstaende, angelehnt an SM-2/Anki (Forschung: kurze Lernschritte
+    # von 1-10 min, danach multiplikatives Wachstum; Ease nie unter 1.3, da niedrigere
+    # Werte laut SuperMemo-Forschung zu haeufigem, nervigem Wiedervorlegen fuehren).
+    #   NICHT gewusst -> kurzer Relearn-Schritt (Minuten), Fortschritt zurueck auf Anfang
+    #   HALB          -> kurzer Relearn-Schritt (Minuten), Stufe bleibt
+    #   GEWUSST       -> klettert die Leiter hoch (Minuten); jenseits der Leiter x Ease
+    SRS_AGAIN_MINUTES: float = 2.0         # "Nicht gewusst" -> in 2 Minuten erneut
+    SRS_HALF_MINUTES: float = 10.0         # "Halb gewusst"  -> in 10 Minuten erneut
+    # GEWUSST-Leiter in Minuten: 2 h, 8 h, 1 Tag, 3 Tage, 8 Tage, 21 Tage (danach x Ease)
+    SRS_GOOD_STEPS_MIN: tuple = (120, 480, 1440, 4320, 11520, 30240)
+    SRS_EASE_START: float = 2.5            # Start-Leichtigkeit (250 %)
+    SRS_EASE_MIN: float = 1.3              # Untergrenze (SuperMemo-Forschung)
+    SRS_EASE_MAX: float = 2.8              # Obergrenze
+    SRS_EASE_GOOD: float = 0.05            # GEWUSST: Ease +
+    SRS_EASE_HALF: float = -0.15           # HALB:    Ease -
+    SRS_EASE_AGAIN: float = -0.20          # NICHT:   Ease -
+    SRS_INTERVAL_FACTOR: float = 1.0       # globaler Faktor auf lange Intervalle (1.0 = 100 %)
+    # Tages-/Runden-Limits
+    SRS_NEW_PER_DAY: int = 20              # neue Karten pro Tag (0 = unbegrenzt)
+    SRS_MAX_PER_SESSION: int = 100         # Obergrenze fuer eine Lernrunde
+
+    # ------------------------------------------------------------------ #
     # Retrieval-Deduplizierung (gegen doppelte Informationen in der Antwort)
     # ------------------------------------------------------------------ #
     RETRIEVAL_DEDUP: bool = True

@@ -215,28 +215,60 @@ def apply_embedding_flags(card_ids: "list[str]", progress=None) -> dict:
 
 def sm2_next(rating: int, ease: float, interval: int, reps: int,
              lapses: int, now: "float | None" = None) -> dict:
-    """Schlankes SM-2: berechnet den naechsten Zustand aus der Bewertung.
+    """Konfigurierbarer Wiederholungs-Planer (SM-2/Anki-Stil). Intervalle, Ease-Schritte
+    und die GEWUSST-Leiter kommen aus den Einstellungen (SRS_*), damit der Nutzer die
+    Abstaende frei tunen kann. ``interval`` ist die Zahl der TAGE (0 = noch in kurzen
+    Minuten-Schritten); ``due`` ist der naechste Faelligkeits-Zeitpunkt.
     rating: 0=nicht gewusst, 1=halb, 2=gewusst."""
+    from ragapp.config import settings as S
     now = now if now is not None else time.time()
-    ease = ease if ease else 2.5
+    ease = ease if ease else S.SRS_EASE_START
+    steps = [float(m) for m in (S.SRS_GOOD_STEPS_MIN or (1440,)) if float(m) > 0] or [1440.0]
+    emin, emax = S.SRS_EASE_MIN, S.SRS_EASE_MAX
+
     if rating <= NICHT:
-        # Zurueck auf Anfang; kommt in ~1 Min in derselben Sitzung erneut.
-        return {"ease": max(1.3, ease - 0.20), "interval": 0, "reps": 0,
-                "lapses": lapses + 1, "due": now + 60}
+        # Zurueck auf Anfang; kurzer Relearn-Schritt (Standard 2 min).
+        return {"ease": round(max(emin, ease + S.SRS_EASE_AGAIN), 3), "interval": 0,
+                "reps": 0, "lapses": lapses + 1, "due": now + S.SRS_AGAIN_MINUTES * 60}
     if rating == HALB:
-        ease = max(1.3, ease - 0.15)
-    else:  # GEWUSST
-        ease = min(2.8, ease + 0.05)
+        # Kurzer Relearn (Standard 10 min); Stufe und Reps bleiben erhalten.
+        return {"ease": round(max(emin, ease + S.SRS_EASE_HALF), 3), "interval": interval,
+                "reps": reps, "lapses": lapses, "due": now + S.SRS_HALF_MINUTES * 60}
+    # GEWUSST: eine Stufe hoch auf der Leiter; jenseits der Leiter x Ease.
+    ease = min(emax, ease + S.SRS_EASE_GOOD)
     reps += 1
-    if reps == 1:
-        interval = 1
-    elif reps == 2:
-        interval = 3 if rating >= GEWUSST else 2
+    if reps <= len(steps):
+        minutes = steps[reps - 1]
     else:
-        factor = ease * (0.6 if rating == HALB else 1.0)
-        interval = max(1, round(interval * factor))
-    return {"ease": round(ease, 3), "interval": int(interval), "reps": reps,
-            "lapses": lapses, "due": now + interval * 86400}
+        # Wachstum aus dem ZULETZT tatsaechlich gesetzten Abstand (in Minuten),
+        # NICHT aus dem auf ganze Tage gerundeten interval - sonst frieren kurze
+        # Leitern (letzte Stufe < ~1 Tag) fuer immer ein.
+        base = max(float(interval) * 1440.0, steps[-1])
+        minutes = base * ease * max(0.1, S.SRS_INTERVAL_FACTOR)
+    # interval als echte Tage (auch < 1) speichern -> das Wachstum jenseits der Leiter
+    # kann sich aufbauen, selbst wenn eine Stufe unter einem Tag liegt.
+    interval_days = round(minutes / 1440.0, 4)
+    return {"ease": round(ease, 3), "interval": interval_days, "reps": reps,
+            "lapses": lapses, "due": now + minutes * 60}
+
+
+def humanize_due(due: float, now: "float | None" = None) -> str:
+    """Menschliche Beschreibung des Abstands bis zur naechsten Faelligkeit."""
+    now = now if now is not None else time.time()
+    sec = max(0.0, float(due) - now)
+    if sec < 90:
+        return "in ~1 Minute"
+    if sec < 3600:
+        return f"in {round(sec / 60)} Minuten"
+    if sec < 2 * 86400:
+        h = sec / 3600
+        return "morgen" if h >= 20 else f"in {round(h)} Stunden"
+    d = sec / 86400
+    if d < 30:
+        return f"in {round(d)} Tagen"
+    if d < 365:
+        return f"in {round(d / 30)} Monaten"
+    return f"in {round(d / 365, 1)} Jahren"
 
 
 def rate_card(card: dict, rating: int) -> dict:

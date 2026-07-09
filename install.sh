@@ -287,6 +287,31 @@ if [ "$IPEX_STARTED" = "1" ] && [ -f "$ROOT/.ipex-ollama.pid" ]; then
     rm -f "$ROOT/.ipex-ollama.pid"
 fi
 
+# ---- 9) Desktop-/Menue-Starter (Linux) ------------------------------------- #
+if [ "$OS" = "Linux" ]; then
+    step "Desktop-/Menue-Starter anlegen (Icon)"
+    APP_DIR="$HOME/.local/share/applications"
+    mkdir -p "$APP_DIR"
+    DESKTOP_FILE="$APP_DIR/rag-lernsystem.desktop"
+    {
+        echo "[Desktop Entry]"
+        echo "Type=Application"
+        echo "Name=RAG-Lernsystem"
+        echo "Comment=Lokales KI-Lernsystem fuer die Klausurvorbereitung"
+        echo "Exec=bash -c 'cd \"$ROOT\" && ./start.sh'"
+        echo "Path=$ROOT"
+        echo "Icon=$ROOT/assets/icon.png"
+        echo "Terminal=true"
+        echo "Categories=Education;Science;"
+    } > "$DESKTOP_FILE"
+    chmod +x "$DESKTOP_FILE" 2>/dev/null || true
+    if [ -d "$HOME/Desktop" ]; then
+        cp -f "$DESKTOP_FILE" "$HOME/Desktop/RAG-Lernsystem.desktop" 2>/dev/null || true
+        chmod +x "$HOME/Desktop/RAG-Lernsystem.desktop" 2>/dev/null || true
+    fi
+    ok "Starter angelegt: $DESKTOP_FILE"
+fi
+
 # ---- Erfolgsmeldung -------------------------------------------------------- #
 echo ""
 echo "============================================================"
