@@ -57,10 +57,32 @@ TUNNEL_ERROR_FILE = ROOT / "data" / ".tunnel_error"    # Tunnelaufbau fehlgeschl
 TUNNEL_MODE = os.environ.get("RAG_TUNNEL") == "1"       # Cloudflare-Tunnel gewuenscht? (Start_Unterwegs.bat)
 SPLASH_FILE = ROOT / "data" / ".splash.html"           # schoener Ladebildschirm im App-Fenster
 ICON_PNG = ROOT / "assets" / "icon.png"
+LOG_FILE = ROOT / "data" / "app.log"                    # Startprotokoll (auch unter pythonw, sonst unsichtbar)
+
+_LOG_FH = None  # offener Datei-Handle fuer app.log (nur gesetzt, wenn wir selbst schreiben)
 
 
 def _no_window_flag() -> int:
     return getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+
+
+def _setup_logging() -> None:
+    """Unter dem Desktop-Icon laeuft der Launcher mit pythonw.exe - dann gibt es
+    KEINE Konsole und `sys.stdout` ist None: alle Meldungen (auch Streamlit-Fehler)
+    verschwinden spurlos. Damit ein Startproblem diagnostizierbar bleibt, leiten wir
+    in diesem Fall Ausgabe nach data/app.log um. Wird der Launcher hingegen mit einer
+    echten Konsole gestartet (Start.bat leitet selbst nach app.log), lassen wir alles
+    unveraendert, um kein zweites Schreiben auf dieselbe Datei zu erzeugen."""
+    global _LOG_FH  # noqa: PLW0603
+    if sys.stdout is not None and sys.stderr is not None:
+        return  # echte Konsole/Umleitung vorhanden -> nichts tun
+    try:
+        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _LOG_FH = open(LOG_FILE, "a", encoding="utf-8", errors="replace", buffering=1)
+        sys.stdout = _LOG_FH
+        sys.stderr = _LOG_FH
+    except Exception:  # noqa: BLE001
+        _LOG_FH = None  # Logging ist optional - niemals den Start blockieren
 
 
 def _rm(path: pathlib.Path) -> None:
@@ -381,7 +403,11 @@ def _start_streamlit(port: int, network: bool = True) -> subprocess.Popen:
         "--server.headless", "true",
         "--browser.gatherUsageStats", "false",
     ]
+    # Unter pythonw hat Streamlit sonst kein Ziel fuer stdout/stderr -> Fehler beim
+    # Start (z. B. Import-/Modellprobleme) waeren unsichtbar. Ins app.log schreiben.
+    out = _LOG_FH if _LOG_FH is not None else None
     return subprocess.Popen(cmd, cwd=str(ROOT), env=env,
+                            stdout=out, stderr=(subprocess.STDOUT if out else None),
                             creationflags=_no_window_flag())
 
 
@@ -457,14 +483,22 @@ _SPLASH_TEMPLATE = """<!doctype html>
 <script>
   var APP="%%APP_URL%%",HEALTH="%%HEALTH_URL%%";
   var msgs=["Starte lokales KI-Modell …","Lade Oberfläche …","Bereite die Suche vor …","Fast fertig …"];
-  var i=0,s=document.getElementById("s"),h=document.getElementById("h"),done=false,t0=Date.now();
+  var i=0,s=document.getElementById("s"),h=document.getElementById("h"),done=false,ok=0,t0=Date.now();
   setInterval(function(){if(!done){i=(i+1)%msgs.length;s.style.opacity=0;
     setTimeout(function(){s.textContent=msgs[i];s.style.opacity=1;},300);}},2600);
   function go(){if(done)return;done=true;window.location.replace(APP);}
+  function manual(){h.innerHTML='Dauert länger als sonst. <a href="'+APP+'" style="color:#818cf8;text-decoration:none">Jetzt öffnen ›</a>';}
   function ping(){
     if(done)return;
-    fetch(HEALTH,{mode:"no-cors",cache:"no-store"}).then(go).catch(function(){
-      if(Date.now()-t0>90000){h.innerHTML='Das dauert länger als sonst. <a href="'+APP+'" style="color:#818cf8;text-decoration:none">Jetzt öffnen ›</a>';}
+    fetch(HEALTH,{mode:"no-cors",cache:"no-store"}).then(function(){
+      // Erst nach ZWEI Treffern in Folge umleiten: der Server beantwortet die
+      // Gesundheitsprüfung schon, bevor der erste (schwere) Skript-Durchlauf fertig
+      // ist. Zu frühes Umleiten zeigte im Fenster kurz „Connection error“.
+      ok++;
+      setTimeout(ok>=2?go:ping,600);
+    }).catch(function(){
+      ok=0;
+      if(Date.now()-t0>20000){manual();}
       setTimeout(ping,700);
     });
   }
@@ -577,6 +611,9 @@ def _redirect_output_if_windowless() -> None:
 # Hauptablauf
 # --------------------------------------------------------------------------- #
 def main() -> int:
+    _setup_logging()
+    print("=" * 60)
+    print("Start RAG-Lernsystem (%s)" % time.strftime("%Y-%m-%d %H:%M:%S"))
     if not HOME.is_file():
         print(f"[Fehler] Oberflaeche nicht gefunden: {HOME}")
         return 1
