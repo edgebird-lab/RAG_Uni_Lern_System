@@ -1,0 +1,7 @@
+# Version-Manifest (winget). Platzhalter <...> vor dem Einreichen ersetzen.
+# Schema: https://aka.ms/winget-manifest.version.1.6.0.schema.json
+PackageIdentifier: edgebird-lab.RAG-Lernsystem
+PackageVersion: "<VERSION>"          # z. B. 1.0.0
+DefaultLocale: de-DE
+ManifestType: version
+ManifestVersion: 1.6.0

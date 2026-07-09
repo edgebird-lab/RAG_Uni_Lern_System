@@ -60,3 +60,8 @@ Thumbs.db
 .DS_Store
 .idea/
 .vscode/
+
+# ---------------------------------------------------------------------------
+# Tool-Artefakte (Playwright-Browser-Automatisierung)
+# ---------------------------------------------------------------------------
+.playwright-mcp/

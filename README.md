@@ -148,6 +148,26 @@ Die tägliche Bedienung ist in [docs/BEDIENUNG.md](docs/BEDIENUNG.md) beschriebe
 
 ---
 
+## 🛡️ Warnt Windows beim Start? (kein Virus)
+
+Beim ersten Ausführen der `RAG-Lernsystem-Setup.exe` zeigt Windows evtl.
+**„Windows hat Ihren PC geschützt" (Unbekannter Herausgeber)** oder ein
+Virenscanner meldet einen Fund. Das ist bei neuen, **noch nicht signierten**
+Programmen normal und **kein Hinweis auf Schadsoftware** – dieses Projekt ist
+quelloffen (MIT), lädt nichts heimlich und schickt **keine Daten in die Cloud**.
+
+- **SmartScreen:** „Weitere Informationen" → „Trotzdem ausführen".
+- **Selbst prüfen:** komplette Quellen offen auf GitHub; Prüfsumme deiner Datei
+  mit `Get-FileHash .\RAG-Lernsystem-Setup.exe -Algorithm SHA256` gegen die
+  `SHA256SUMS.txt` der Veröffentlichung vergleichen.
+- **Am sichersten:** statt des Installers direkt aus dem Quellcode einrichten
+  (`git clone` + `Installieren.bat`).
+
+Hintergründe und der Weg zu einer signierten Version:
+[docs/WINDOWS_SICHERHEIT.md](docs/WINDOWS_SICHERHEIT.md).
+
+---
+
 ## 🖥️ Plattform-/GPU-Unterstützung
 
 Ollama wählt die Beschleunigung meist automatisch. Der Installer richtet die

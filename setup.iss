@@ -20,7 +20,19 @@ AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
+AppCopyright=Copyright (C) edgebird-lab - MIT License
+; Versions-Metadaten in die Setup.exe schreiben. Auch OHNE Signatur reduziert eine
+; ausgefuellte "Details"-Registerkarte (Herausgeber/Produkt/Version) SmartScreen-
+; Misstrauen und wirkt serioeser. Die eigentliche Vertrauensstufe kommt aber erst
+; ueber die Code-Signatur (siehe SignTool-Block weiter unten).
+VersionInfoVersion=1.0.0.0
+VersionInfoProductVersion={#MyAppVersion}
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoProductName={#MyAppName}
+VersionInfoDescription={#MyAppName} - lokaler KI-Lernassistent (Installer)
+VersionInfoCopyright=Copyright (C) edgebird-lab - MIT License
 DefaultDirName={localappdata}\{#MyAppName}
+DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=installer
@@ -34,6 +46,21 @@ UninstallDisplayName={#MyAppName}
 SetupIconFile=assets\icon.ico
 UninstallDisplayIcon={app}\assets\icon.ico
 
+; ---------------------------------------------------------------------------
+;  CODE-SIGNATUR (aktivieren, sobald ein Zertifikat vorhanden ist)
+;  Ohne Signatur zeigt Windows beim Download den "Unbekannter Herausgeber"-
+;  Screen (SmartScreen). Eine gueltige Signatur behebt das (bei EV-Zertifikat
+;  sofort, bei OV-Zertifikat, sobald Reputation aufgebaut ist).
+;
+;  1) In Inno Setup unter  Tools -> Configure Sign Tools...  ein Tool anlegen,
+;     z. B. Name "signtool", Kommando:
+;       signtool sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 $f
+;     (bei Azure Trusted Signing stattdessen den dortigen Signaturbefehl.)
+;  2) Dann die folgende Zeile einkommentieren:
+; SignTool=signtool
+;  3) Optional zusaetzlich die entpackten App-Dateien signieren (falls .exe dabei).
+; ---------------------------------------------------------------------------
+
 [Languages]
 Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 
@@ -42,7 +69,9 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 ; --- App-Code (OHNE .venv, data, ipex-ollama, persoenliche Unterlagen) ---
-Source: "ragapp\*";               DestDir: "{app}\ragapp";      Flags: recursesubdirs createallsubdirs
+; __pycache__/*.pyc NICHT mitliefern - Python kompiliert beim ersten Start frisch
+; (verhindert veralteten Bytecode und haelt den Installer sauber/kleiner).
+Source: "ragapp\*";               DestDir: "{app}\ragapp";      Excludes: "*.pyc,*\__pycache__\*"; Flags: recursesubdirs createallsubdirs
 Source: "docs\*.md";              DestDir: "{app}\docs";        Excludes: "Lernkatalog_*.md"; Flags: skipifsourcedoesntexist
 Source: ".streamlit\config.toml"; DestDir: "{app}\.streamlit"
 Source: "requirements.txt";       DestDir: "{app}"
@@ -50,7 +79,6 @@ Source: "install.ps1";            DestDir: "{app}"
 Source: "install.sh";             DestDir: "{app}"
 Source: "Installieren.bat";       DestDir: "{app}"
 Source: "Start.bat";              DestDir: "{app}"
-Source: "Start.vbs";              DestDir: "{app}"
 Source: "Start_Handy-Zugriff.bat"; DestDir: "{app}"
 Source: "Start_Unterwegs.bat";    DestDir: "{app}"
 Source: "Start_GPU_Ollama.bat";   DestDir: "{app}"
@@ -67,12 +95,14 @@ Source: "assets\icon.png";        DestDir: "{app}\assets"
 Source: "Zusammenfassungen\.gitkeep"; DestDir: "{app}\Zusammenfassungen"; Flags: skipifsourcedoesntexist
 
 [Icons]
-Name: "{group}\{#MyAppName} starten";       Filename: "wscript.exe"; Parameters: """{app}\Start.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
+; Fensterloser Start ueber pythonw.exe (kein Konsolenfenster, kein VBScript).
+; pythonw.exe entsteht im venv, das die Einrichtung (Installieren.bat) anlegt.
+Name: "{group}\{#MyAppName} starten";       Filename: "{app}\.venv\Scripts\pythonw.exe"; Parameters: "-m ragapp.desktop"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\Mit Handy-Zugriff starten";  Filename: "{app}\Start_Handy-Zugriff.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\Von unterwegs starten";      Filename: "{app}\Start_Unterwegs.bat";     WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\Einrichtung ausfuehren";     Filename: "{app}\Installieren.bat";        WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\Projektordner oeffnen";    Filename: "{app}"
-Name: "{autodesktop}\{#MyAppName}";       Filename: "wscript.exe"; Parameters: """{app}\Start.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}";       Filename: "{app}\.venv\Scripts\pythonw.exe"; Parameters: "-m ragapp.desktop"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"; Tasks: desktopicon
 
 [Run]
 ; Am Ende des Assistenten: die eigentliche Einrichtung anbieten (Haekchen).

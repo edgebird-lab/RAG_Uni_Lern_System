@@ -535,6 +535,45 @@ def _open_window(browser: str, url: str) -> "subprocess.Popen | None":
 
 
 # --------------------------------------------------------------------------- #
+# Fensterloser Start (pythonw.exe): Ausgabe nach data/app.log umleiten
+# --------------------------------------------------------------------------- #
+def _redirect_output_if_windowless() -> None:
+    """Wird die App ueber ``pythonw.exe`` (Desktop-Icon, KEIN Konsolenfenster)
+    gestartet, sind ``sys.stdout``/``sys.stderr`` = ``None`` - jeder ``print()``
+    wuerde dann mit ``AttributeError`` abstuerzen. In diesem Fall die Ausgabe nach
+    ``data/app.log`` umleiten (Diagnose bleibt erhalten). Beim Start ueber
+    ``python.exe`` (Konsole, Start.bat) sind stdout/err vorhanden -> nichts tun.
+
+    Hintergrund: Der fensterlose Start ersetzt das fruehere ``Start.vbs`` (wscript
+    mit verstecktem Fenster), das von Virenscannern haeufig als Fehlalarm markiert
+    wurde. ``pythonw.exe`` erreicht dieselbe Unsichtbarkeit ohne verdaechtiges
+    Skript-Muster."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    try:
+        (ROOT / "data").mkdir(parents=True, exist_ok=True)
+        log = open(ROOT / "data" / "app.log", "a", encoding="utf-8",
+                   errors="replace", buffering=1)
+        if sys.stdout is None:
+            sys.stdout = log
+        if sys.stderr is None:
+            sys.stderr = log
+    except OSError:
+        # Zur Not stumme Ersatz-Streams, damit print() den Start niemals killt.
+        class _Null:
+            def write(self, *_a: object) -> int:
+                return 0
+
+            def flush(self) -> None:
+                pass
+
+        if sys.stdout is None:
+            sys.stdout = _Null()   # type: ignore[assignment]
+        if sys.stderr is None:
+            sys.stderr = _Null()   # type: ignore[assignment]
+
+
+# --------------------------------------------------------------------------- #
 # Hauptablauf
 # --------------------------------------------------------------------------- #
 def main() -> int:
@@ -720,4 +759,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    _redirect_output_if_windowless()
     raise SystemExit(main())
