@@ -49,12 +49,19 @@ class Reranker:
             self._failed = True
             return False
 
-    def rerank(self, query: str, candidates: list[dict], top_k: int | None = None) -> list[dict]:
-        """candidates: Liste mit 'document'. Fügt 'rerank_score' hinzu, sortiert absteigend."""
+    def rerank(self, query: str, candidates: list[dict], top_k: int | None = None,
+               use_reranker: bool | None = None) -> list[dict]:
+        """candidates: Liste mit 'document'. Fügt 'rerank_score' hinzu, sortiert absteigend.
+
+        use_reranker überschreibt pro Aufruf die globale Einstellung USE_RERANKER.
+        None = globale Einstellung verwenden; False = Reranker überspringen (z. B.
+        "Schnelle Antworten" auf der Startseite -> spürbar schneller, weil der teure
+        Cross-Encoder-Durchlauf entfällt)."""
         if not candidates:
             return []
         top_k = top_k or settings.FINAL_TOP_K
-        if not settings.USE_RERANKER or not self._ensure_loaded():
+        enabled = settings.USE_RERANKER if use_reranker is None else use_reranker
+        if not enabled or not self._ensure_loaded():
             # Fallback: bestehende Reihenfolge, Score aus Fusion übernehmen
             for c in candidates:
                 c.setdefault("rerank_score", c.get("fusion_score", c.get("score", 0.0)))

@@ -194,6 +194,15 @@ with st.sidebar:
                           help="Sucht nur in einem Fach, das ist schneller und präziser.")
     subject_filter = None if chosen == "Alle Fächer" else chosen
 
+    fast_mode = st.toggle(
+        "⚡ Schnelle Antworten", key="fast_mode",
+        help="Für maximales Tempo: überspringt die feine Nachsortierung der Treffer "
+             "(den Reranker) UND die zusätzliche Beleg-Prüfung der Antwort. Antworten "
+             "kommen deutlich schneller – dafür ist die Trefferreihenfolge gröber und "
+             "die Antwort wird weniger streng gegengeprüft. Sie stammt aber weiterhin "
+             "nur aus deinen Unterlagen. Ideal zum schnellen Nachschlagen; für heikle "
+             "Details lieber ausgeschaltet lassen.")
+
     show_sources = st.toggle("Quellen anzeigen", value=True)
     st.divider()
     if st.button("🗑️ Verlauf löschen", use_container_width=True):
@@ -333,7 +342,9 @@ if prompt:
         with st.spinner(random.choice(_LERN_SPRUECHE)):
             from ragapp.graph.rag_graph import answer_query
             try:
-                result = answer_query(prompt, subject=subject_filter)
+                result = answer_query(prompt, subject=subject_filter,
+                                      use_reranker=(False if fast_mode else None),
+                                      check_faithfulness=(False if fast_mode else None))
             except Exception as exc:
                 result = {"answer": f"⚠️ Fehler: {exc}", "mode": "fallback",
                           "sources": [], "total_time": 0}

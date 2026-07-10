@@ -41,6 +41,8 @@ from ragapp.graph.prompts import (
 class RAGState(TypedDict, total=False):
     question: str
     subject: Optional[str]
+    use_reranker: Optional[bool]        # None = Einstellung, False = "Schnelle Antworten"
+    check_faithfulness: Optional[bool]  # None = Einstellung, False = "Schnelle Antworten"
     candidates: list[dict]
     sources: list[dict]
     context: str
@@ -85,7 +87,8 @@ def _build_context(candidates: list[dict]) -> tuple[str, list[dict]]:
 # --------------------------------------------------------------------------- #
 def retrieve_node(state: RAGState) -> RAGState:
     t0 = time.time()
-    candidates = retrieve(state["question"], state.get("subject"))
+    candidates = retrieve(state["question"], state.get("subject"),
+                          use_reranker=state.get("use_reranker"))
     top_score = candidates[0].get("rerank_score", candidates[0].get("fusion_score", 0.0)) if candidates else None
     relevance_ok = bool(candidates) and (
         top_score is None or top_score >= settings.RELEVANCE_MIN_SCORE
@@ -112,7 +115,11 @@ def generate_node(state: RAGState) -> RAGState:
 
 
 def faithfulness_node(state: RAGState) -> RAGState:
-    if not settings.ENABLE_FAITHFULNESS_CHECK:
+    # Pro Anfrage abschaltbar ("Schnelle Antworten"): None = globale Einstellung.
+    enabled = (settings.ENABLE_FAITHFULNESS_CHECK
+               if state.get("check_faithfulness") is None
+               else state.get("check_faithfulness"))
+    if not enabled:
         return {"grounded": True, "mode": "answer"}
     t0 = time.time()
     # schnelles Modell für die interne Belegtheits-Prüfung (spart CPU-Zeit)
@@ -213,10 +220,18 @@ def get_graph():
     return _compiled
 
 
-def answer_query(question: str, subject: Optional[str] = None) -> dict:
-    """Öffentliche Schnittstelle für UI/CLI. Führt den Graphen aus."""
+def answer_query(question: str, subject: Optional[str] = None,
+                 use_reranker: Optional[bool] = None,
+                 check_faithfulness: Optional[bool] = None) -> dict:
+    """Öffentliche Schnittstelle für UI/CLI. Führt den Graphen aus.
+
+    use_reranker / check_faithfulness: None = globale Einstellung; False =
+    überspringen ("Schnelle Antworten" auf der Startseite -> schneller, dafür
+    gröbere Trefferreihenfolge bzw. keine zusätzliche Beleg-Prüfung)."""
     t0 = time.time()
-    state: RAGState = {"question": question, "subject": subject, "mode": "answer"}
+    state: RAGState = {"question": question, "subject": subject,
+                       "use_reranker": use_reranker,
+                       "check_faithfulness": check_faithfulness, "mode": "answer"}
     result = get_graph().invoke(state)
     result["total_time"] = round(time.time() - t0, 2)
     # Query-Log für spätere Analyse/Nachjustierung

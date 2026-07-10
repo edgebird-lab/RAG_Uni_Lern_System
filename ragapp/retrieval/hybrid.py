@@ -99,13 +99,16 @@ def _rrf(rank_lists: list[tuple[list[str], float]], k: int) -> dict[str, float]:
 
 def retrieve(query: str, subject: Optional[str] = None,
              final_top_k: Optional[int] = None,
-             dedup: Optional[bool] = None) -> list[dict]:
+             dedup: Optional[bool] = None,
+             use_reranker: Optional[bool] = None) -> list[dict]:
     """Führt die vollständige Hybrid-Retrieval-Pipeline aus.
 
     final_top_k überschreibt die Anzahl finaler Treffer (z. B. für die Evaluation,
     die Hit@k für größere k messen muss).
     dedup überschreibt den Near-Duplicate-Filter (in der Evaluation aus, um die
     reine Retrieval-Qualität auf den exakten Gold-Chunk zu messen).
+    use_reranker überschreibt pro Anfrage die globale Reranker-Einstellung
+    (None = Einstellung; False = überspringen -> "Schnelle Antworten").
     """
     embedder = get_embedder()
     store = get_vectorstore()
@@ -149,8 +152,9 @@ def retrieve(query: str, subject: Optional[str] = None,
     if use_dedup:
         candidates = _dedup_candidates(candidates, settings.RETRIEVAL_DEDUP_JACCARD)
 
-    # Finaler Rerank
+    # Finaler Rerank (pro Anfrage abschaltbar -> "Schnelle Antworten")
     reranked = get_reranker().rerank(
-        query, candidates, top_k=final_top_k or settings.FINAL_TOP_K
+        query, candidates, top_k=final_top_k or settings.FINAL_TOP_K,
+        use_reranker=use_reranker,
     )
     return reranked
