@@ -14,6 +14,10 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
+# Reiner Einzelplatz-Betrieb: Streamlit bindet unten an 127.0.0.1 (nur dieser
+# Rechner), daher ist KEIN Token/PIN nötig - die Oberfläche gibt sich direkt frei.
+# (Der Handy-/Netzwerk-Zugriff mit PIN ist Windows-spezifisch über ragapp.desktop.)
+export RAG_LOCAL_ONLY=1
 
 PY="$ROOT/.venv/bin/python"
 [ -x "$PY" ] || PY="python3"
@@ -46,4 +50,5 @@ else
 fi
 
 echo "Starte Weboberflaeche (http://localhost:8501) ..."
-exec "$PY" -m streamlit run "ragapp/ui/Home.py"
+# An 127.0.0.1 binden: nur dieser Rechner erreicht die App (passt zu RAG_LOCAL_ONLY).
+exec "$PY" -m streamlit run "ragapp/ui/Home.py" --server.address 127.0.0.1

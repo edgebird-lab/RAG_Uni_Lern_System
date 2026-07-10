@@ -54,9 +54,16 @@ def _sync_local_token() -> None:
 def _is_local_window() -> bool:
     """True für das lokale PC-Fenster (kennt das geheime Token). Das Handy kennt es
     nicht und muss den PIN eingeben."""
+    import os
+    # Reiner localhost-Betrieb (Linux/macOS start.sh bindet Streamlit an 127.0.0.1):
+    # es kann NUR der eigene Rechner zugreifen, ein Netzwerk-Zugriff ist gar nicht
+    # möglich. Dann ist kein Token/PIN nötig -> immer als lokales Fenster werten.
+    # (Auf Windows läuft der Zugriff stattdessen über das geheime Token, weil
+    # ragapp.desktop bewusst an 0.0.0.0 bindet.)
+    if os.environ.get("RAG_LOCAL_ONLY") == "1":
+        return True
     if st.session_state.get("_local_ok"):
         return True
-    import os
     token = os.environ.get("RAG_LOCAL_TOKEN", "")
     if token:
         try:
@@ -68,10 +75,48 @@ def _is_local_window() -> bool:
     return False
 
 
+def _restore_local_token_from_storage() -> None:
+    """PC-Fenster nach einem Neuladen/Seitenwechsel wieder erkennen.
+
+    Die Freischaltung des PC-Fensters haengt am geheimen Token in der Adresse
+    (``?k=…``). Verwirft ein Neuladen oder ein Seitenwechsel diesen Parameter (und
+    ist die Streamlit-Sitzung frisch, also ``_local_ok`` noch nicht gesetzt), wuerde
+    das PC-Fenster faelschlich wie ein fremdes Geraet gesperrt ("Zugriff nicht
+    aktiv" bzw. PIN-Abfrage). Das zuletzt gueltige Token liegt aber noch im
+    Browser-Speicher (``rag_local_token``, von ``_sync_local_token`` gesichert).
+
+    Fehlt es in der Adresse, haengen wir es hier EINMAL wieder an und laden neu -
+    danach greift die normale ``?k``-Pruefung. Das Handy hat dieses Token nie
+    gesetzt -> dort ist der Speicher leer und es passiert nichts (normale
+    PIN-Abfrage bleibt).
+
+    Schleifensicher: neu geladen wird nur, wenn das gespeicherte Token NICHT bereits
+    identisch in der Adresse steht. Steht es schon drin und wird trotzdem nicht
+    akzeptiert (veraltet), bleibt es bei der normalen Sperre - kein Reload-Kreis."""
+    import os
+    if not os.environ.get("RAG_LOCAL_TOKEN"):
+        return   # ohne lokales Token (z. B. reiner 'streamlit run') nichts zu tun
+    try:
+        import streamlit.components.v1 as _c
+        _c.html(
+            "<script>try{"
+            "var w=window.parent,raw=w.localStorage.getItem('rag_local_token');"
+            "if(raw){var t=JSON.parse(raw);"
+            "if(t){var u=new URL(w.location.href);"
+            "if(u.searchParams.get('k')!==t){u.searchParams.set('k',t);"
+            "w.location.replace(u.toString());}}}"
+            "}catch(e){}</script>", height=0)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _pin_gate() -> None:
     # Lokales PC-Fenster (kennt das geheime Token): immer erlaubt, kein PIN.
     if _is_local_window():
         return
+    # PC-Fenster, dem nur der ?k-Parameter fehlt (nach Neuladen/Seitenwechsel):
+    # Token aus dem Browser-Speicher zurueckholen und neu laden, bevor gesperrt wird.
+    _restore_local_token_from_storage()
     # Nicht-lokaler Zugriff (Handy). Nur wenn am PC freigeschaltet.
     mode = netinfo.current_mode()   # local / network / tunnel
     if mode == "local":
