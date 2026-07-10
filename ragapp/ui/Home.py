@@ -194,14 +194,22 @@ with st.sidebar:
                           help="Sucht nur in einem Fach, das ist schneller und präziser.")
     subject_filter = None if chosen == "Alle Fächer" else chosen
 
-    fast_mode = st.toggle(
-        "⚡ Schnelle Antworten", key="fast_mode",
-        help="Für maximales Tempo: überspringt die feine Nachsortierung der Treffer "
-             "(den Reranker) UND die zusätzliche Beleg-Prüfung der Antwort. Antworten "
-             "kommen deutlich schneller – dafür ist die Trefferreihenfolge gröber und "
-             "die Antwort wird weniger streng gegengeprüft. Sie stammt aber weiterhin "
-             "nur aus deinen Unterlagen. Ideal zum schnellen Nachschlagen; für heikle "
-             "Details lieber ausgeschaltet lassen.")
+    # Zwei getrennte Tempo-/Genauigkeits-Schalter (pro Anfrage, überschreiben die
+    # globalen Einstellungen nur für die aktuelle Sitzung). Beides AUS = schnellste
+    # Antworten. Startwert = die gespeicherte globale Einstellung.
+    st.caption("⚡ Tempo ↔ Genauigkeit")
+    use_reranker_ui = st.toggle(
+        "🎯 Feine Nachsortierung", value=bool(settings.USE_RERANKER), key="ui_reranker",
+        help="Sortiert die gefundenen Stellen mit einem genaueren Modell (Reranker) "
+             "noch einmal nach Relevanz. AUS = spürbar schneller, dafür ist die "
+             "Reihenfolge der Treffer etwas gröber. Technisch: Reranker.")
+    check_faith_ui = st.toggle(
+        "🛡️ Antwort gegenprüfen", value=bool(settings.ENABLE_FAITHFULNESS_CHECK),
+        key="ui_faithfulness",
+        help="Zusätzliche KI-Prüfung, ob die Antwort wirklich durch deine Unterlagen "
+             "belegt ist (Schutz vor erfundenen Aussagen). AUS = schneller, dafür wird "
+             "die Antwort weniger streng gegengeprüft. Sie stammt aber weiterhin nur "
+             "aus deinen Unterlagen. Technisch: Faithfulness-Check.")
 
     show_sources = st.toggle("Quellen anzeigen", value=True)
     st.divider()
@@ -343,8 +351,8 @@ if prompt:
             from ragapp.graph.rag_graph import answer_query
             try:
                 result = answer_query(prompt, subject=subject_filter,
-                                      use_reranker=(False if fast_mode else None),
-                                      check_faithfulness=(False if fast_mode else None))
+                                      use_reranker=use_reranker_ui,
+                                      check_faithfulness=check_faith_ui)
             except Exception as exc:
                 result = {"answer": f"⚠️ Fehler: {exc}", "mode": "fallback",
                           "sources": [], "total_time": 0}
