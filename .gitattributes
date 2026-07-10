@@ -1,0 +1,27 @@
+# Zeilenenden plattformkorrekt erzwingen. Verhindert, dass ein Windows-Checkout
+# (core.autocrlf=true) die Shell-Skripte auf CRLF umstellt - solche Dateien
+# scheitern auf Linux/macOS sofort mit "bad interpreter: /usr/bin/env bash^M".
+* text=auto
+
+# Linux/macOS: MUSS LF sein.
+*.sh    text eol=lf
+start.sh text eol=lf
+install.sh text eol=lf
+build_linux.sh text eol=lf
+
+# Windows-Skripte: behalten CRLF.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# Binärdateien nie anfassen (keine EOL-/Text-Konvertierung).
+*.png   binary
+*.ico   binary
+*.pdf   binary
+*.gz    binary
+*.tgz   binary
+*.zip   binary
+*.exe   binary
+*.ttf   binary
+*.woff  binary
+*.woff2 binary
