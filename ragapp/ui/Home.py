@@ -168,6 +168,7 @@ ul[role="listbox"], [data-testid="stSelectboxVirtualDropdown"] ul,
     font-size: 0.78rem; font-weight: 600;}
 .badge-answer {background:#e6f7ee; color:#137a4b;}
 .badge-fallback {background:#fdf0e3; color:#a15a13;}
+.badge-plain {background:#eef1f5; color:#5b6b85;}
 .small {color:#7a8aa0; font-size:0.8rem;}
 h1 {font-weight: 750; letter-spacing:-0.5px;}
 </style>
@@ -322,17 +323,48 @@ def render_sources(sources: list[dict], key_prefix: str = "s"):
                 _view_document(s)
 
 
+import re as _re
+# Quellen-Verweise im Antworttext, z. B. [Quelle 1], [Quelle 1, 2], (Quelle 3).
+_SOURCE_CITE_RE = _re.compile(r"[ \t]*[\[(]\s*Quellen?\s*\d[^\])]*[\])]")
+
+
+def _strip_source_labels(text: str) -> str:
+    """Entfernt die [Quelle N]-Verweise aus dem Antworttext. Wird genutzt, wenn die
+    Quellen-Anzeige AUS ist - sonst zeigen die Verweise ins Leere (inkonsistent)."""
+    if not text:
+        return text
+    cleaned = _SOURCE_CITE_RE.sub("", text)
+    # eine evtl. übrig gebliebene, jetzt leere "Quellen:"-Zeile entfernen
+    cleaned = _re.sub(r"(?im)^[ \t]*Quellen?[ \t]*:[ \t]*[,;.–\-\s]*$", "", cleaned)
+    # Reste glätten: Leerzeichen vor Satzzeichen, Doppel-Leerzeichen, Leerzeilen
+    cleaned = _re.sub(r"[ \t]+([.,;:!?])", r"\1", cleaned)
+    cleaned = _re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = _re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
+def _render_status_badge(meta: dict) -> None:
+    """Status-Badge unter der Antwort. Die Beleg-Prüfung (Faithfulness) läuft nicht
+    immer -> nur dann als 'belegte Antwort' auszeichnen, wenn wirklich geprüft
+    wurde; sonst neutral 'ungeprüft' (ehrlich)."""
+    mode = meta.get("mode")
+    if mode == "answer" and meta.get("faith_checked", True):
+        badge, label = "badge-answer", "belegte Antwort"
+    elif mode == "answer":
+        badge, label = "badge-plain", "⚡ ungeprüft"
+    else:
+        badge, label = "badge-fallback", "Fallback: passende Dokumente"
+    st.markdown(f"<span class='badge {badge}'>{label}</span> "
+                f"<span class='small'>· {meta.get('total_time','?')}s</span>",
+                unsafe_allow_html=True)
+
+
 # Verlauf rendern
 for _mi, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"], avatar="🧑‍🎓" if msg["role"] == "user" else "🤖"):
-        st.markdown(msg["content"])
+        st.markdown(msg["content"] if show_sources else _strip_source_labels(msg["content"]))
         if msg.get("meta"):
-            m = msg["meta"]
-            badge = "badge-answer" if m.get("mode") == "answer" else "badge-fallback"
-            label = "belegte Antwort" if m.get("mode") == "answer" else "Fallback: passende Dokumente"
-            st.markdown(f"<span class='badge {badge}'>{label}</span> "
-                        f"<span class='small'>· {m.get('total_time','?')}s</span>",
-                        unsafe_allow_html=True)
+            _render_status_badge(msg["meta"])
         if msg.get("sources"):
             render_sources(msg["sources"], key_prefix=f"h{_mi}")
 
@@ -356,13 +388,11 @@ if prompt:
             except Exception as exc:
                 result = {"answer": f"⚠️ Fehler: {exc}", "mode": "fallback",
                           "sources": [], "total_time": 0}
-        st.markdown(result.get("answer", ""))
-        meta = {"mode": result.get("mode"), "total_time": result.get("total_time")}
-        badge = "badge-answer" if meta["mode"] == "answer" else "badge-fallback"
-        label = "belegte Antwort" if meta["mode"] == "answer" else "Fallback: passende Dokumente"
-        st.markdown(f"<span class='badge {badge}'>{label}</span> "
-                    f"<span class='small'>· {meta.get('total_time','?')}s</span>",
-                    unsafe_allow_html=True)
+        _answer = result.get("answer", "")
+        st.markdown(_answer if show_sources else _strip_source_labels(_answer))
+        meta = {"mode": result.get("mode"), "total_time": result.get("total_time"),
+                "faith_checked": result.get("faith_checked", True)}
+        _render_status_badge(meta)
         sources = result.get("sources", []) if show_sources else []
         if sources:
             render_sources(sources, key_prefix="new")

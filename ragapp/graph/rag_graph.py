@@ -49,6 +49,7 @@ class RAGState(TypedDict, total=False):
     answer: str
     mode: str                # "answer" | "fallback"
     grounded: Optional[bool]
+    faith_checked: bool       # wurde die Beleg-Prüfung tatsächlich ausgeführt?
     faithfulness_reason: str
     relevance_ok: bool
     timings: dict
@@ -120,7 +121,8 @@ def faithfulness_node(state: RAGState) -> RAGState:
                if state.get("check_faithfulness") is None
                else state.get("check_faithfulness"))
     if not enabled:
-        return {"grounded": True, "mode": "answer"}
+        # Nicht geprüft -> die Antwort NICHT als "belegt" auszeichnen (ehrlich bleiben).
+        return {"grounded": True, "mode": "answer", "faith_checked": False}
     t0 = time.time()
     # schnelles Modell für die interne Belegtheits-Prüfung (spart CPU-Zeit)
     data = get_llm(settings.LLM_MODEL_FAST).generate_json(
@@ -141,6 +143,7 @@ def faithfulness_node(state: RAGState) -> RAGState:
     timings["faithfulness"] = round(time.time() - t0, 2)
     return {
         "grounded": grounded,
+        "faith_checked": True,
         "faithfulness_reason": reason,
         "mode": "answer" if grounded else "fallback",
         "timings": timings,
