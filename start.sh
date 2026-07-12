@@ -24,9 +24,12 @@ export PYTHONIOENCODING=utf-8
 # Rechner), daher ist KEIN Token/PIN nötig - die Oberfläche gibt sich direkt frei.
 # (Der Handy-/Netzwerk-Zugriff mit PIN ist Windows-spezifisch über ragapp.desktop.)
 export RAG_LOCAL_ONLY=1
-# Tab-Close-Waechter im Server aktivieren: schliesst du das letzte Browser-Tab,
-# schreibt die App data/.shutdown -> der Waechter unten stoppt Streamlit sauber.
-export RAG_IDLE_SHUTDOWN=1
+# Tab-Close-Waechter (Auto-Beenden, wenn keine Browser-Verbindung mehr besteht) ist
+# standardmaessig AUS: er beendete die App faelschlich schon, wenn der Browser den
+# Tab nur kurz trennte/verwarf (z. B. Memory-Saver bei parallelen Apps) -> "Server
+# antwortet nicht". Manuelles Beenden (In-App-Button "App beenden" oder stop.sh)
+# raeumt weiterhin sauber auf (Modell entladen). Bewusst aktivieren: RAG_IDLE_SHUTDOWN=1 ./start.sh
+export RAG_IDLE_SHUTDOWN="${RAG_IDLE_SHUTDOWN:-0}"
 
 PY="$ROOT/.venv/bin/python"
 if [ ! -x "$PY" ]; then

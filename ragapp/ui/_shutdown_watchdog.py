@@ -43,6 +43,13 @@ _started = False
 _start_lock = threading.Lock()
 
 
+def _env_flag(name: str) -> bool:
+    """Wahr nur bei explizit aktivierenden Werten. Wichtig: ein nicht-leerer String
+    wie "0"/"false" ist in Python truthy - deshalb hier bewusst parsen, damit
+    RAG_IDLE_SHUTDOWN=0 den Waechter TATSAECHLICH ausschaltet."""
+    return (os.environ.get(name, "") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def _ui_port() -> int:
     try:
         return int(os.environ.get("RAG_UI_PORT", "") or 8501)
@@ -117,9 +124,9 @@ def ensure_shutdown_watchdog() -> None:
     No-op, wenn RAG_IDLE_SHUTDOWN nicht gesetzt ist (nur der start.sh-Starter setzt
     es) oder RAG_NO_AUTO_SHUTDOWN=1 gesetzt wurde."""
     global _started
-    if not os.environ.get("RAG_IDLE_SHUTDOWN"):
+    if not _env_flag("RAG_IDLE_SHUTDOWN"):     # Standard AUS (auch bei "0"/leer)
         return
-    if os.environ.get("RAG_NO_AUTO_SHUTDOWN"):
+    if _env_flag("RAG_NO_AUTO_SHUTDOWN"):      # harter Aus-Schalter (Vorrang)
         return
     with _start_lock:
         if _started:
