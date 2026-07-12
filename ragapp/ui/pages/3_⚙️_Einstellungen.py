@@ -390,6 +390,68 @@ if hw:
             except Exception as exc:  # pragma: no cover - defensiv
                 st.error(f"Konnte das Autoren-Modell nicht setzen: {exc}")
 
+    # --- OCR-/Handschrift-Modell (Vision) --------------------------------- #
+    st.divider()
+    st.subheader("Handschrift-/Scan-Modell (OCR)")
+    st.caption(
+        "Modell, das text-lose PDF-Seiten (Scans, Handschrift) liest. "
+        "**Automatisch** wählt je nach VRAM das beste installierte Vision-Modell "
+        "(mehr VRAM → genauer). Technisch: OCR_VISION_MODEL (leer = automatisch).")
+
+    try:
+        from ragapp.hardware import recommend_ocr_vision_model, VISION_OCR_MODELS
+        _ocr_empf = recommend_ocr_vision_model(hw)
+    except Exception:  # pragma: no cover - defensiv
+        _ocr_empf, VISION_OCR_MODELS = "gemma3:4b", []
+
+    _kat_vision = [m["tag"] for m in VISION_OCR_MODELS]
+    # zusaetzlich installierte, vermutlich vision-faehige Modelle anbieten (Namensheuristik)
+    _vision_kw = ("gemma3", "gemma4", "llava", "minicpm-v", "qwen2.5vl",
+                  "qwen3.5", "moondream", "vision")
+    _inst_vision = [t for t in (installiert or [])
+                    if any(k in t.lower() for k in _vision_kw) and t not in _kat_vision]
+    _cur_ocr = (settings.OCR_VISION_MODEL or "").strip()
+    _ocr_opts = [""] + _kat_vision + _inst_vision + ([_cur_ocr] if _cur_ocr else [])
+    _ocr_opts = [o for o in dict.fromkeys(_ocr_opts)]          # dedup, "" bleibt vorne
+    _ocr_idx = _ocr_opts.index(_cur_ocr) if _cur_ocr in _ocr_opts else 0
+
+    def _ocr_label(tag: str) -> str:
+        if tag == "":
+            return f"Automatisch – empfohlen: {_ocr_empf}"
+        stat = "✅ installiert" if is_model_installed(tag, installiert) else "⬇️ noch laden"
+        gb = llm_size_gb(tag)
+        return f"{tag}   ({stat}{f' · ~{gb:.0f} GB' if gb else ''})"
+
+    _ocr_gewaehlt = st.selectbox(
+        "Vision-Modell für die OCR", options=_ocr_opts, index=_ocr_idx,
+        format_func=_ocr_label,
+        help="Leer = automatisch (bestes installiertes Vision-Modell, das in den "
+             "VRAM passt). Nicht installierte Katalog-Modelle lädst du oben im "
+             "Antwort-Modell-Picker herunter (gleicher Ollama-Katalog).")
+    st.caption("Aktuell aktiv: "
+               + (f"automatisch → `{_ocr_empf}`" if not _cur_ocr else f"`{_cur_ocr}`"))
+    if _ocr_gewaehlt and not is_model_installed(_ocr_gewaehlt, installiert):
+        st.warning(f"ℹ️ `{_ocr_gewaehlt}` ist noch nicht installiert – lade es zuerst oben "
+                   "im Antwort-Modell-Picker über **Herunterladen**, sonst fällt die OCR "
+                   "auf easyocr zurück.")
+
+    if st.button("✅ OCR-Modell setzen", use_container_width=True):
+        try:
+            settings.update(OCR_VISION_MODEL=_ocr_gewaehlt)
+            settings.save()
+            # Auto-Detektions-Cache im Loader invalidieren -> greift sofort
+            try:
+                import ragapp.ingestion.loaders as _ld
+                _ld._VISION_MODEL_RESOLVED = None
+            except Exception:  # noqa: BLE001
+                pass
+            st.success(
+                ("OCR-Modell auf **Automatisch** gesetzt." if not _ocr_gewaehlt
+                 else f"OCR-Modell auf `{_ocr_gewaehlt}` gesetzt.")
+                + " Neue Importe nutzen es sofort.")
+        except Exception as exc:  # pragma: no cover - defensiv
+            st.error(f"Konnte das OCR-Modell nicht setzen: {exc}")
+
 st.divider()
 
 # --------------------------------------------------------------------------- #

@@ -170,8 +170,10 @@ def _model_has_vision(model: str) -> bool:
 
 def _resolve_vision_model() -> str:
     """Ermittelt das zu nutzende Vision-Modell. Explizit gesetztes
-    OCR_VISION_MODEL gewinnt; sonst Auto-Detektion eines kleinen installierten
-    Vision-Modells (bevorzugt gemma3:4b/gemma4:e4b, sonst das kleinste)."""
+    OCR_VISION_MODEL gewinnt; sonst Auto-Detektion des BESTEN installierten,
+    vision-faehigen Modells, das noch in den VRAM passt (statt einfach des
+    kleinsten). Massstab ist dasselbe Budget wie bei der Antwort-Modell-Wahl
+    (hardware._fit_budget / recommend_ocr_vision_model)."""
     global _VISION_MODEL_RESOLVED
     explicit = (settings.OCR_VISION_MODEL or "").strip()
     if explicit:
@@ -196,15 +198,45 @@ def _resolve_vision_model() -> str:
             if name:
                 avail.append((str(name), int(size or 0)))
 
-        def _pref_rank(name: str) -> int:
-            low = name.lower()
-            for i, p in enumerate(_VISION_PREFERRED):
-                if low.startswith(p) or p in low:
-                    return i
-            return len(_VISION_PREFERRED)
+        # VRAM-Budget + Qualitaets-Reihenfolge aus der Hardware ableiten (einmalig,
+        # da _VISION_MODEL_RESOLVED gecacht wird). Robust: faellt auf die alte
+        # Heuristik (Praeferenz -> kleinste Datei) zurueck, wenn etwas fehlt.
+        fit_bytes, rec_tag, order = 0, "", []
+        try:
+            from ragapp.hardware import (detect_hardware, _fit_budget,
+                                         recommend_ocr_vision_model,
+                                         _VISION_OCR_ORDER)
+            hw = detect_hardware()
+            fit_bytes = int(_fit_budget(hw)[0] * (1024 ** 3))
+            rec_tag = (recommend_ocr_vision_model(hw) or "").lower()
+            order = list(_VISION_OCR_ORDER)
+        except Exception:  # noqa: BLE001
+            pass
 
-        # Praeferenz zuerst, dann kleinste Datei -> laptop-schonend
-        avail.sort(key=lambda t: (_pref_rank(t[0]), t[1]))
+        def _qual_rank(name: str) -> int:
+            """Kleiner = besser: empfohlenes Modell zuerst, dann Vision-Katalog
+            (beste Lesetreue), dann bekannte kleine Vision-Familien."""
+            low = name.lower()
+            if rec_tag and (low == rec_tag or low.startswith(rec_tag)):
+                return -1
+            for i, t in enumerate(order):
+                if low == t or low.startswith(t):
+                    return i
+            for j, p in enumerate(_VISION_PREFERRED):
+                if low.startswith(p) or p in low:
+                    return len(order) + j
+            return len(order) + len(_VISION_PREFERRED)
+
+        # Passt komplett in den VRAM? Datei-/Footprint-Groesse als Massstab.
+        #   passt   -> beste Qualitaet zuerst, groesseres als Tiebreak
+        #   passt nicht -> kleinste zuerst (geringstes Offload)
+        def _sort_key(t: tuple[str, int]):
+            name, size = t
+            if fit_bytes <= 0 or size <= fit_bytes:
+                return (0, _qual_rank(name), -size)
+            return (1, size, 0)
+
+        avail.sort(key=_sort_key)
         for name, _ in avail:
             if _model_has_vision(name):
                 resolved = name
@@ -216,23 +248,33 @@ def _resolve_vision_model() -> str:
 
 
 def has_vision_ocr_model(pull_if_missing: bool = False,
-                         pull_model: str = "gemma3:4b") -> str:
+                         pull_model: str = "") -> str:
     """Public (fuer den Installer): gibt ein installiertes, vision-faehiges Modell
     fuer die Handschrift-/Scan-OCR zurueck (Config ``OCR_VISION_MODEL`` oder
-    Auto-Detektion). Ist keins da und ``pull_if_missing=True``, wird ein kleines,
-    laptop-taugliches Vision-Modell (Standard: gemma3:4b, ~3.3 GB) gezogen. Gibt
-    '' zurueck, wenn keins verfuegbar/ziehbar ist (dann faellt die OCR auf easyocr
-    zurueck). Blockiert waehrend des Pulls."""
+    Auto-Detektion). Ist keins da und ``pull_if_missing=True``, wird das per
+    ``hardware.recommend_ocr_vision_model`` empfohlene Vision-Modell gezogen
+    (Laptop -> gemma3:4b, mehr VRAM -> gemma3:12b/gemma3:27b). ``pull_model``
+    ueberschreibt die Empfehlung explizit. Gibt '' zurueck, wenn keins verfuegbar/
+    ziehbar ist (dann faellt die OCR auf easyocr zurueck). Blockiert waehrend des
+    Pulls."""
     global _VISION_MODEL_RESOLVED
     m = _resolve_vision_model()
     if m or not pull_if_missing:
         return m
+    target = (pull_model or "").strip()
+    if not target:
+        try:
+            from ragapp.hardware import detect_hardware, recommend_ocr_vision_model
+            target = recommend_ocr_vision_model(detect_hardware())
+        except Exception:  # noqa: BLE001
+            target = "gemma3:4b"
+    target = target or "gemma3:4b"
     try:
         import ollama
-        ollama.Client(host=settings.OLLAMA_BASE_URL, timeout=3600).pull(pull_model)
-        _VISION_CAP_CACHE.pop(pull_model, None)
+        ollama.Client(host=settings.OLLAMA_BASE_URL, timeout=3600).pull(target)
+        _VISION_CAP_CACHE.pop(target, None)
         _VISION_MODEL_RESOLVED = None          # Cache invalidieren -> neu detektieren
-        return _resolve_vision_model() or pull_model
+        return _resolve_vision_model() or target
     except Exception:  # noqa: BLE001
         return ""
 
@@ -374,6 +416,7 @@ def _load_pdf(path: Path, progress=None) -> LoadedDoc:
     text_parts: list[str] = []
     ocr_pages: list[int] = []
     ocr_engines: set[str] = set()
+    ocr_low_pages = 0        # F2: OCR-Seiten mit < OCR_MIN_PAGE_CHARS Zeichen (unvollstaendig gelesen)
     try:
         import fitz  # PyMuPDF
 
@@ -392,6 +435,10 @@ def _load_pdf(path: Path, progress=None) -> LoadedDoc:
                             pass
                     ocr_text, ocr_engine = _ocr_page(page)
                     norm = normalize_text(ocr_text)
+                    # F2: sehr wenig OCR-Text -> Seite unvollstaendig gelesen (zaehlt
+                    # AUCH die leer gebliebene Seite, norm == "").
+                    if len(norm) < settings.OCR_MIN_PAGE_CHARS:
+                        ocr_low_pages += 1
                 if norm:
                     blk = Block(text=norm, page=i, kind="page")
                     if ocr_engine:
@@ -405,6 +452,7 @@ def _load_pdf(path: Path, progress=None) -> LoadedDoc:
         # evtl. schon teilbefüllte fitz-Ergebnisse verwerfen -> keine Seiten-Duplikate
         blocks, text_parts = [], []
         ocr_pages, ocr_engines = [], set()
+        ocr_low_pages = 0
         try:
             from pypdf import PdfReader
 
@@ -426,6 +474,7 @@ def _load_pdf(path: Path, progress=None) -> LoadedDoc:
             "ocr": bool(ocr_pages),
             "ocr_pages": ocr_pages,
             "ocr_engine": ",".join(sorted(ocr_engines)),
+            "ocr_low_pages": ocr_low_pages,   # F2: Anzahl unvollstaendig gelesener OCR-Seiten
         },
     )
 

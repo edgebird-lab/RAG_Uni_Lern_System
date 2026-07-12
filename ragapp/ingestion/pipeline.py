@@ -183,6 +183,8 @@ def ingest_file(
 
     p(f"Lade {path.name} …")
     loaded = load_document(path, progress=p)   # p meldet OCR-Seiten (done/total)
+    # F2: unvollstaendig gelesene OCR-Seiten (fuer Ingestion-Warnung sichtbar machen)
+    _ocr_partial = int((loaded.meta or {}).get("ocr_low_pages", 0) or 0)
     if not loaded.text.strip():
         # Leerer Text: bei PDFs fast immer ein Scan/Bild -> SICHTBAR machen (OCR nötig)
         # statt still zu überspringen. Andere leere Dateien: wie bisher überspringen.
@@ -385,6 +387,7 @@ def ingest_file(
         subject=subject, filetype=loaded.filetype, num_chunks=len(kept_chunks),
         num_questions=n_questions, char_count=len(loaded.text),
         status="ok" if _q_ok else "ocr_needed",
+        ocr_partial_pages=_ocr_partial,
     )
 
     if rebuild_bm25:

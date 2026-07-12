@@ -103,16 +103,26 @@ def _subject_label(code: str) -> str:
 # --------------------------------------------------------------------------- #
 _ocr = manifest.documents_needing_ocr()
 if _ocr:
+    _n_partial = sum(1 for _d in _ocr if _d.get("reason") == "partial")
+    _n_empty = len(_ocr) - _n_partial
     with st.expander(f"⚠️ {len(_ocr)} Dokument(e) evtl. unvollständig eingelesen "
                      "(Scan/Bild – OCR empfohlen)", expanded=True):
         st.caption("Bei diesen Dateien wurde wenig oder unlesbarer Text extrahiert – ihr "
                    "Inhalt ist vermutlich **nicht vollständig** in der Wissensbasis. Ersetze "
                    "sie durch eine echte Textversion (oder OCR) und lies sie neu ein.")
+        if _n_partial:
+            st.caption(f"🧩 Davon **{_n_partial}** mit einzelnen unvollständig gelesenen "
+                       "Scan-Seiten (Rest ist brauchbar) – bitte diese Seiten prüfen/ersetzen.")
         from ragapp.config import PROJECT_ROOT
         for _d in _ocr:
             _oc1, _oc2 = st.columns([4, 1])
+            if _d.get("reason") == "partial":
+                _pp = int(_d.get("ocr_partial_pages", 0) or 0)
+                _hinweis = f"🧩 {_pp} Seite(n) unvollständig gelesen – bitte prüfen/ersetzen"
+            else:
+                _hinweis = "📄 kein Text extrahierbar (Scan/Bild – OCR nötig)"
             _oc1.markdown(f"📄 **{_d['filename']}** · _{_subject_label(_d.get('subject') or '—')}_ "
-                          f"· {_d.get('char_count', 0)} Zeichen")
+                          f"· {_d.get('char_count', 0)} Zeichen · {_hinweis}")
             if _oc2.button("Neu einlesen", key=f"reocr_{_d['doc_id']}", use_container_width=True):
                 _pth = PROJECT_ROOT / (_d.get("source_path") or "")
                 if _pth.is_file():

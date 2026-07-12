@@ -65,6 +65,12 @@ def cmd_catalog(args):
         print("BM25-Index aktualisiert. Katalog:", res.get("markdown"))
 
 
+def cmd_judge_mirror(args):
+    from ragapp.eval.judge_mirror import generate_mirror_items
+    res = generate_mirror_items(args.subject, n=args.n, progress=_print_progress)
+    print("\nSpiegel-Items (Judge-Kalibrierung):", res)
+
+
 def cmd_eval(args):
     from ragapp.eval.run_eval import run_retrieval_eval
     res = run_retrieval_eval(progress=_print_progress)
@@ -237,6 +243,12 @@ def main():
     p.add_argument("subject")
     p.add_argument("--n", type=int, default=3)
     p.set_defaults(func=cmd_catalog)
+
+    p = sub.add_parser("judge-mirror",
+                       help="Altklausur-Spiegel-Items fuer die Judge-Kalibrierung erzeugen")
+    p.add_argument("--subject", required=True)
+    p.add_argument("--n", type=int, default=6)
+    p.set_defaults(func=cmd_judge_mirror)
 
     p = sub.add_parser("eval", help="Trefferquote messen")
     p.set_defaults(func=cmd_eval)

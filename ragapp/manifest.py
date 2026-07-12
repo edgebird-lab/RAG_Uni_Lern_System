@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS documents (
     num_questions  INTEGER DEFAULT 0,
     char_count     INTEGER DEFAULT 0,
     status         TEXT DEFAULT 'ok',
+    ocr_partial_pages INTEGER DEFAULT 0,   -- F2: unvollstaendig gelesene OCR-Seiten
     ingested_at    REAL,
     updated_at     REAL
 );
@@ -176,6 +177,13 @@ def init_db() -> None:
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_reviewlog_uid ON review_log(event_uid)")
         except Exception:  # noqa: BLE001
             pass
+        # Additive Migration fuer documents: Zaehler unvollstaendig gelesener OCR-Seiten (F2).
+        try:
+            dcols = {r["name"] for r in conn.execute("PRAGMA table_info(documents)")}
+            if "ocr_partial_pages" not in dcols:
+                conn.execute("ALTER TABLE documents ADD COLUMN ocr_partial_pages INTEGER DEFAULT 0")
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _pre_destructive_snapshot(reason: str) -> None:
@@ -218,6 +226,7 @@ def upsert_document(
     num_questions: int,
     char_count: int,
     status: str = "ok",
+    ocr_partial_pages: int = 0,
 ) -> None:
     now = time.time()
     with _connect() as conn:
@@ -229,8 +238,9 @@ def upsert_document(
             """
             INSERT INTO documents
                 (doc_id, content_hash, source_path, filename, subject, filetype,
-                 num_chunks, num_questions, char_count, status, ingested_at, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                 num_chunks, num_questions, char_count, status, ocr_partial_pages,
+                 ingested_at, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(doc_id) DO UPDATE SET
                 content_hash=excluded.content_hash,
                 source_path=excluded.source_path,
@@ -241,10 +251,12 @@ def upsert_document(
                 num_questions=excluded.num_questions,
                 char_count=excluded.char_count,
                 status=excluded.status,
+                ocr_partial_pages=excluded.ocr_partial_pages,
                 updated_at=excluded.updated_at
             """,
             (doc_id, content_hash, source_path, filename, subject, filetype,
-             num_chunks, num_questions, char_count, status, ingested_at, now),
+             num_chunks, num_questions, char_count, status, int(ocr_partial_pages or 0),
+             ingested_at, now),
         )
 
 
@@ -278,11 +290,24 @@ def list_documents() -> list[sqlite3.Row]:
 
 
 def documents_needing_ocr() -> list[dict]:
-    """Dokumente, deren Textextraktion vermutlich verunglueckt ist (Scan/Bild ohne
-    Text oder Zeichenbrei) - Kandidaten fuer OCR/Neu-Import (status='ocr_needed')."""
+    """Dokumente, deren Textextraktion vermutlich verunglueckt ist - Kandidaten fuer
+    OCR/Neu-Import. Je Zeile ein Feld ``reason``:
+      * 'empty'   -> status='ocr_needed' (gar kein/unbrauchbarer Text extrahiert),
+      * 'partial' -> ocr_partial_pages>0 (einzelne Scan-Seiten unvollstaendig gelesen,
+                     der Rest des Dokuments ist brauchbar)."""
     with _connect() as conn:
-        return [dict(r) for r in conn.execute(
-            "SELECT * FROM documents WHERE status='ocr_needed' ORDER BY subject, filename")]
+        rows = conn.execute(
+            "SELECT * FROM documents "
+            "WHERE status='ocr_needed' OR COALESCE(ocr_partial_pages,0) > 0 "
+            "ORDER BY subject, filename"
+        ).fetchall()
+    out: list[dict] = []
+    for r in rows:
+        d = dict(r)
+        # 'empty' (ganzes Dok betroffen) hat Vorrang vor 'partial'.
+        d["reason"] = "empty" if d.get("status") == "ocr_needed" else "partial"
+        out.append(d)
+    return out
 
 
 # --------------------------------------------------------------------------- #

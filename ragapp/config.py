@@ -113,6 +113,11 @@ class Settings:
     OCR_VISION_MAX_SIDE: int = 1400    # lange Bildkante in px (VRAM-schonend; >1500 -> mehr Wiederholungs-Loops)
     OCR_VISION_NUM_PREDICT: int = 700  # Token-Deckel je Seite (begrenzt Endlos-Loops)
     OCR_VISION_TIMEOUT: int = 180      # Sekunden je Seite
+    # F2: OCR-Seite mit weniger als so vielen Zeichen gilt als "unvollstaendig
+    # gelesen" (Vision degeneriert/verworfen oder easyocr leer). ~40 = eine kurze
+    # Textzeile; darunter wurde die Seite faktisch nicht transkribiert. Liegt
+    # bewusst ueber GIBBERISH_MIN_CHARS (25) und unter dem Dok-Gate (n<200).
+    OCR_MIN_PAGE_CHARS: int = 40
 
     # ------------------------------------------------------------------ #
     # Chunking (Slicing)

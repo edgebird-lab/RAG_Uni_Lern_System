@@ -260,6 +260,36 @@ RERANKER_MODELS = [
 ]
 
 
+def _fit_budget(hw: dict) -> "tuple[float, float, str, str]":
+    """Effektives Speicher-Budget (GB) fuer die Modellwahl, abgeleitet aus der
+    Hardware. Rueckgabe: (fit_budget, hard_budget, on, vram_note).
+      * fit_budget  = passt KOMPLETT in den Speicher (fluessig, kein Offload)
+      * hard_budget = darf knapp ueberlaufen (nur als markierte Alternative)
+    Wird von recommend_models UND recommend_ocr_vision_model genutzt, damit
+    Antwort- und OCR-Modell nach DEMSELBEN VRAM-Massstab gewaehlt werden.
+    (Intel/IPEX behandeln die Aufrufer gesondert.)"""
+    gpu = hw["gpu"]
+    vendor = gpu["vendor"]
+    vram = gpu.get("vram_gb")
+    ram = hw.get("ram_gb") or 8
+    if vendor in ("nvidia", "amd") and vram:
+        on = "GPU"
+        reserve = 1.5 if vram <= 6 else (2.0 if vram <= 9 else 3.0)
+        fit_budget = max(2.0, vram - reserve)
+        hard_budget = vram + 0.5
+        vram_note = f" (~{vram:.0f} GB VRAM erkannt)"
+    elif vendor in ("nvidia", "amd"):
+        on = "GPU"; fit_budget, hard_budget = 5.5, 8.0
+        vram_note = " (VRAM unbekannt -> vorsichtig gewaehlt)"
+    elif vendor == "apple":
+        on = "GPU (Metal)"; fit_budget = (ram or 8) * 0.5; hard_budget = (ram or 8) * 0.7
+        vram_note = ""
+    else:
+        on = "CPU"; fit_budget = max(3.0, (ram or 8) / 3); hard_budget = (ram or 8) / 2
+        vram_note = ""
+    return fit_budget, hard_budget, on, vram_note
+
+
 def recommend_models(hw: dict) -> dict:
     """Empfiehlt anhand der Hardware geeignete Antwort-Modelle (bestes zuerst).
     Gibt bis zu 5 Vorschlaege aus verschiedenen Familien zurueck."""
@@ -283,27 +313,9 @@ def recommend_models(hw: dict) -> dict:
             ],
         }
 
-    # Effektives Budget: VRAM MINUS Reserve fuer KV-Cache + Embedding/Overhead,
-    # damit der Standard KOMPLETT auf die GPU passt und fluessig laeuft (KEIN
-    # CPU-Offload -> keine zaehen Antworten). Groessere Modelle kommen nur als
-    # klar markierte, optionale Alternative in die Liste.
-    if vendor in ("nvidia", "amd") and vram:
-        on = "GPU"
-        reserve = 1.5 if vram <= 6 else (2.0 if vram <= 9 else 3.0)
-        fit_budget = max(2.0, vram - reserve)
-        hard_budget = vram + 0.5
-        vram_note = f" (~{vram:.0f} GB VRAM erkannt)"
-    elif vendor in ("nvidia", "amd"):
-        # VRAM unbekannt -> KONSERVATIV (lieber ein fluessiges ~8B-Modell als ein
-        # zu grosses, das auf die CPU auslagert). Staerkeres kann man manuell waehlen.
-        on = "GPU"; fit_budget, hard_budget = 5.5, 8.0
-        vram_note = " (VRAM unbekannt -> vorsichtig gewaehlt)"
-    elif vendor == "apple":
-        on = "GPU (Metal)"; fit_budget = (ram or 8) * 0.5; hard_budget = (ram or 8) * 0.7
-        vram_note = ""
-    else:
-        on = "CPU"; fit_budget = max(3.0, (ram or 8) / 3); hard_budget = (ram or 8) / 2
-        vram_note = ""
+    # Effektives Budget (VRAM/RAM minus Reserve) -> ausgelagert, damit die
+    # OCR-Vision-Wahl denselben Massstab nutzt.
+    fit_budget, hard_budget, on, vram_note = _fit_budget(hw)
 
     # _LLM_ORDER ist stark -> schwach. "fits" passt komplett (Standard = staerkstes
     # davon); "spills" ist etwas groesser (nur als markierte Alternative).
@@ -336,6 +348,35 @@ def recommend_models(hw: dict) -> dict:
         "budget_gb": round(fit_budget, 1),
         "models": picks,
     }
+
+
+# Vision-faehige Katalog-Modelle fuer die Handschrift-/Scan-OCR (beste Lesetreue
+# zuerst). Alle multimodal & stark in Deutsch; Groessen kommen aus _LLM.
+# Dient zugleich als Quelle fuer den OCR-Modell-Picker in den Einstellungen.
+VISION_OCR_MODELS = [
+    {"tag": "gemma3:27b", "gb": 17.0, "info": "Spitzen-Deutsch, beste Lesetreue (großer VRAM)"},
+    {"tag": "gemma4:26b", "gb": 18.0, "info": "neueste Gemma (MoE), sehr stark"},
+    {"tag": "gemma3:12b", "gb":  8.1, "info": "exzellentes Deutsch, guter Kompromiss"},
+    {"tag": "gemma4:e4b", "gb":  9.6, "info": "neueste Gemma, effizient"},
+    {"tag": "gemma3:4b",  "gb":  3.3, "info": "kompakt & laptop-tauglich (Standard)"},
+]
+_VISION_OCR_ORDER = [m["tag"] for m in VISION_OCR_MODELS]   # beste -> kleinste
+
+
+def recommend_ocr_vision_model(hw: dict) -> str:
+    """Empfiehlt das BESTE vision-faehige Katalog-Modell fuer die OCR (Handschrift/
+    Scan), das noch KOMPLETT in den Speicher passt - nach demselben VRAM-Budget wie
+    das Antwort-Modell (recommend_models/_fit_budget). Laptop/kleiner VRAM ->
+    gemma3:4b; mehr VRAM -> gemma3:12b, dann gemma4:26b / gemma3:27b. Gibt IMMER
+    einen Tag zurueck (Fallback: kleinstes Vision-Modell)."""
+    # Intel-IPEX (altes SYCL-Backend): nur das kleine, erprobte Gemma laeuft dort.
+    if hw.get("gpu", {}).get("vendor") == "intel":
+        return "gemma3:4b"
+    fit_budget, _hard, _on, _note = _fit_budget(hw)
+    for tag in _VISION_OCR_ORDER:                     # beste Lesetreue zuerst
+        if _LLM[tag]["gb"] <= fit_budget:
+            return tag
+    return min(_VISION_OCR_ORDER, key=lambda t: _LLM[t]["gb"])   # nichts passt -> kleinstes
 
 
 def llm_size_gb(tag: str) -> "float | None":

@@ -323,3 +323,31 @@ if _jl and _jl.get("status") == "ok":
     if (_g["exact_pct"] or 0) < 60:
         st.warning("Die Benotung weicht oft vom Label ab – der Notenvorschlag ist nur ein "
                    "Hinweis, überschreibe ihn im Zweifel. Ggf. ein stärkeres Benotungs-Modell wählen.")
+
+st.markdown("**Eigene Kalibrier-Beispiele aus deinen Karten erzeugen**")
+st.caption("Nimmt Karten eines Fachs (mit Musterantwort) und lässt das LLM je Karte "
+           "drei Beispielantworten (gewusst/halb/nicht) erfinden – ein *Spiegel* deiner "
+           "Altklausur-Fragen. Diese werden dedupliziert in `data/eval/judge_labels.json` "
+           "gemergt und fließen beim nächsten **Judge testen** automatisch mit ein. "
+           "Je mehr eigene Beispiele, desto belastbarer die Kalibrierung.")
+from ragapp.eval.judge_mirror import generate_mirror_items
+
+_jm_subjects = manifest.study_subjects()
+if not _jm_subjects:
+    st.info("Noch keine Karten mit Fach vorhanden – zuerst Karten anlegen/ernten.")
+else:
+    _jm1, _jm2, _jm3 = st.columns([2, 1, 2])
+    _jm_subj = _jm1.selectbox("Fach", _jm_subjects, key="jm_subject")
+    _jm_n = _jm2.number_input("Karten", min_value=1, max_value=30, value=6, step=1, key="jm_n")
+    if _jm3.button("🪞 Altklausur-Spiegel-Items erzeugen", key="jm_run",
+                   use_container_width=True):
+        with st.status(f"Erzeuge Beispielantworten für {_jm_subj} …", expanded=True) as _jms:
+            _jmr = generate_mirror_items(_jm_subj, n=int(_jm_n),
+                                         progress=lambda m: _jms.update(label=m))
+            _jms.update(label="Fertig", state="complete")
+        if _jmr.get("status") == "no_cards":
+            st.warning("Für dieses Fach gibt es keine Karten mit Musterantwort "
+                       "(nur Karten mit KI-Antwort taugen als Referenz).")
+        else:
+            st.success(f'{_jmr["generated"]} neue Beispiel(e) aus {_jmr["cards"]} Karte(n) '
+                       f'ergänzt – jetzt {_jmr["merged"]} Benotungs-Beispiele in der Datei.')
