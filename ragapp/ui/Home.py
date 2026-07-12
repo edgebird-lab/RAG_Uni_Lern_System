@@ -29,6 +29,13 @@ _PAGE_ICON = str(_icon_png) if _icon_png.is_file() else "🎓"
 
 st.set_page_config(page_title="RAG-Lernsystem", page_icon=_PAGE_ICON, layout="wide")
 
+# Schwere Importe (torch/chromadb) im Hintergrund vorwärmen -> spätere
+# Seitenwechsel öffnen sofort statt mit weißem Bildschirm. Reine Optimierung.
+from ragapp.ui._loading import prewarm
+prewarm("ragapp.retrieval.embeddings",
+        "ragapp.retrieval.vectorstore",
+        "ragapp.ingestion.pipeline")
+
 # Tab-Close-Waechter: beendet die App sauber, wenn kein Browser-Tab mehr offen ist
 # (nur aktiv im lokalen Starter-Betrieb via start.sh -> RAG_IDLE_SHUTDOWN=1).
 from ragapp.ui._shutdown_watchdog import ensure_shutdown_watchdog

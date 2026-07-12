@@ -7,6 +7,7 @@ Quellordner importieren, Fragen anreichern und Dokumente löschen.
 from __future__ import annotations
 
 import sys
+import time
 import pathlib
 
 # Projektwurzel auffindbar machen (damit 'ragapp' importierbar ist)
@@ -21,10 +22,6 @@ import streamlit as st
 
 from ragapp.config import settings, INBOX_DIR, SOURCE_DIR, SUBJECT_LABELS
 from ragapp import manifest
-from ragapp.ingestion.pipeline import (
-    ingest_file, ingest_directory, remove_document, remove_questions,
-)
-from ragapp.ingestion.enrich import enrich_questions
 
 st.set_page_config(page_title="Dokumente & Ingestion", page_icon="📥", layout="wide")
 
@@ -76,6 +73,18 @@ st.markdown(
     "den Quellordner importieren, Fragen anreichern und Dokumente löschen.</span>",
     unsafe_allow_html=True,
 )
+
+# --- Schwere Importe (torch/chromadb) erst NACH dem Kopf, mit Ladeanzeige --- #
+from ragapp.ui._loading import lazy_import
+_pipe, _enrich_mod = lazy_import(
+    "Lädt Import-Werkzeuge (einmalig) …",
+    "ragapp.ingestion.pipeline", "ragapp.ingestion.enrich",
+)
+ingest_file = _pipe.ingest_file
+ingest_directory = _pipe.ingest_directory
+remove_document = _pipe.remove_document
+remove_questions = _pipe.remove_questions
+enrich_questions = _enrich_mod.enrich_questions
 
 st.info(
     "🔎 **Automatische Deduplizierung:** Inhaltsgleiche Dateien (auch unter anderem "
@@ -146,9 +155,16 @@ else:
     upload_subject = _up_choice
 
 if uploads and st.button("📥 Hochgeladene Dateien indexieren", type="primary"):
+    from ragapp.ui._progress import ProgressReporter, fmt_dauer
+
     ergebnisse: list[dict] = []
+    n_up = len(uploads)
+    _outer = st.progress(0.0, text=f"0/{n_up} Dateien")   # Datei k/N
+    _inner = ProgressReporter()                           # OCR-Seiten / Embedding
+    _t0 = time.time()
+
     with st.status("Verarbeite hochgeladene Dateien …", expanded=True) as status:
-        for up in uploads:
+        for k, up in enumerate(uploads, 1):
             ziel = INBOX_DIR / up.name
             try:
                 ziel.write_bytes(up.getbuffer())
@@ -157,10 +173,14 @@ if uploads and st.button("📥 Hochgeladene Dateien indexieren", type="primary")
                 ergebnisse.append({"Datei": up.name, "Status": "error", "Info": str(exc)})
                 continue
 
-            status.update(label=f"Indexiere {up.name} …")
+            status.update(label=f"[{k}/{n_up}] Indexiere {up.name} …")
 
-            def _fortschritt(msg: str, _name: str = up.name) -> None:
-                status.write(f"· {_name}: {msg}")
+            def _fortschritt(msg: str, done=None, total=None, _name=up.name) -> None:
+                if total:                       # zählbare Stufe -> Feinbalken + ETA
+                    _inner(f"{_name}: {msg}", done, total)
+                else:                            # grobe Stufe -> Log + Balkentext
+                    status.write(f"· {_name}: {msg}")
+                    _inner(f"{_name}: {msg}")
 
             try:
                 r = ingest_file(ziel, subject=upload_subject, progress=_fortschritt)
@@ -182,8 +202,15 @@ if uploads and st.button("📥 Hochgeladene Dateien indexieren", type="primary")
                                "Status": r["status"], "Info": info})
             status.write(f"✔️ {r.get('file', up.name)} → **{r['status']}** {info}")
 
+            _el = time.time() - _t0                       # grobe Gesamt-ETA über Dateien
+            _eta = (_el / k) * (n_up - k)
+            _outer.progress(k / n_up,
+                            text=f"{k}/{n_up} Dateien · noch ca. {fmt_dauer(_eta)}")
+
         status.update(label="Fertig", state="complete")
 
+    _inner.clear()
+    _outer.progress(1.0, text=f"{n_up}/{n_up} Dateien · fertig")
     st.dataframe(pd.DataFrame(ergebnisse), use_container_width=True, hide_index=True)
     ok = sum(1 for e in ergebnisse if e["Status"] == "ok")
     st.success(f"{ok} von {len(ergebnisse)} Datei(en) neu indexiert.")
@@ -207,10 +234,28 @@ st.warning(
 )
 
 if st.button("📚 Kompletten Quellordner importieren"):
+    import re as _re_dir
+    from ragapp.ui._progress import ProgressReporter
+
+    _FILE_TICK = _re_dir.compile(r"^\[(\d+)\s*/\s*(\d+)\]")
+    _outer = ProgressReporter()      # Datei i/n
+    _inner_slot = st.empty()         # Seite (OCR) / Embedding-Batch der aktuellen Datei
+    _inner = ProgressReporter(_inner_slot)
+
     with st.status("Importiere Quellordner … (das kann sehr lange dauern)",
                    expanded=True) as status:
-        def _fortschritt_dir(msg: str) -> None:
-            status.update(label=msg)
+        def _fortschritt_dir(msg: str, done=None, total=None) -> None:
+            m = _FILE_TICK.match(msg)
+            if m:                                   # Datei-Ebene -> äußerer Balken
+                i, n = int(m.group(1)), int(m.group(2))
+                _outer(msg, done if done is not None else i,
+                       total if total is not None else n)
+                _inner_slot.empty()                 # Feinbalken der neuen Datei leeren
+                status.update(label=msg)
+            elif total:                             # Seite/Batch -> Feinbalken + ETA
+                _inner(msg, done, total)
+            else:                                   # grobe Stufenmeldung
+                status.write(msg)
 
         try:
             summary = ingest_directory(progress=_fortschritt_dir)
@@ -219,7 +264,9 @@ if st.button("📚 Kompletten Quellordner importieren"):
             status.update(label=f"Fehler: {exc}", state="error")
             summary = None
 
+    _inner_slot.empty()
     if summary is not None:
+        _outer.finish("Import abgeschlossen")
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Neu", summary.get("ok", 0))
         m2.metric("Duplikate", summary.get("duplicate", 0))
@@ -290,9 +337,20 @@ with _mt1:
                      "Modell (z. B. `gemma3:4b`).")
 
 if st.button("🧠 Fragen-Anreicherung starten", type="primary"):
+    import re as _re_en
+    from ragapp.ui._progress import ProgressReporter
+    _EN_TICK = _re_en.compile(r"(\d+)\s*/\s*(\d+)")
+    _en_bar = ProgressReporter()
     with st.status("Reichere Fragen an … (~20 s pro Chunk)", expanded=True) as status:
-        def _fortschritt_enrich(msg: str) -> None:
-            status.update(label=msg)
+        def _fortschritt_enrich(msg: str, done=None, total=None) -> None:
+            if total:
+                _en_bar(msg, done, total)
+            else:
+                mm = _EN_TICK.search(msg)
+                if mm:
+                    _en_bar(msg, int(mm.group(1)), int(mm.group(2)))
+                else:
+                    status.update(label=msg)
 
         try:
             r = enrich_questions(limit=int(enrich_limit), subject=enrich_subject,

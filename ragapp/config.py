@@ -97,6 +97,24 @@ class Settings:
     LLM_TIMEOUT: int = 600                 # Sekunden (CPU-Inferenz kann dauern)
 
     # ------------------------------------------------------------------ #
+    # OCR (Scan-/Bild-PDFs, inkl. Handschrift)
+    # ------------------------------------------------------------------ #
+    # Engine fuer text-lose PDF-Seiten:
+    #   "auto"    -> Vision-LLM (Ollama), falls ein vision-faehiges Modell
+    #                installiert ist; sonst easyocr. Bei Vision-Fehler/Loop ->
+    #                Fallback auf easyocr.
+    #   "vision"  -> Vision-LLM bevorzugt (easyocr nur als Fehler-Fallback)
+    #   "easyocr" -> bisheriges Verhalten (easyocr/pytesseract), kein Vision-LLM
+    OCR_ENGINE: str = "auto"
+    # Vision-Modell fuer OCR. "" = automatisch ein kleines installiertes
+    # Vision-Modell waehlen (bevorzugt gemma3:4b / gemma4:e4b, sonst das kleinste).
+    OCR_VISION_MODEL: str = ""
+    OCR_RENDER_DPI: int = 170          # Render-Aufloesung der Seite vor dem Verkleinern
+    OCR_VISION_MAX_SIDE: int = 1400    # lange Bildkante in px (VRAM-schonend; >1500 -> mehr Wiederholungs-Loops)
+    OCR_VISION_NUM_PREDICT: int = 700  # Token-Deckel je Seite (begrenzt Endlos-Loops)
+    OCR_VISION_TIMEOUT: int = 180      # Sekunden je Seite
+
+    # ------------------------------------------------------------------ #
     # Chunking (Slicing)
     # ------------------------------------------------------------------ #
     CHUNK_SIZE: int = 1100                 # Zielgröße pro Chunk (Zeichen)
@@ -120,6 +138,28 @@ class Settings:
     # Deduplizierung
     # ------------------------------------------------------------------ #
     DEDUP_NEAR_DUPLICATE_THRESHOLD: float = 0.965  # Cosine-Schwelle für Chunk-Near-Dups
+
+    # ------------------------------------------------------------------ #
+    # Kauderwelsch-Gate (kein unlesbarer Handschrift-/Scan-Text im Index)
+    # ------------------------------------------------------------------ #
+    # Garantie: Zeichenmüll (OCR über Handschrift) wird NIE als Chunk gespeichert.
+    # Das Gate filtert nur (schreibt nichts um) -> native Dokumente bleiben
+    # wortgetreu. Alle Schwellen über data/config.json / Einstellungen justierbar.
+    GIBBERISH_FILTER: bool = True                  # Gate an/aus (sicherer Default: an)
+    # Chunk gilt als Kauderwelsch, wenn die "Bedeutungshaltigkeit" (0..1) < Schwelle.
+    # Bedeutungshaltigkeit = Echtwort-Anteil laut Wörterbuch (de+en, pyspellchecker).
+    # Kalibriert: OCR-Kauderwelsch liegt bei ~10–35 %, echter (auch knapper) Text ≥ ~50 %.
+    GIBBERISH_MAX_MEANINGFULNESS: float = 0.40     # pro Chunk
+    # Ganzes Dokument früh verwerfen (vor Chunking/Embedding), wenn der GESAMTE
+    # Text schon darunter liegt. Bewusst STRENGER als pro Chunk, damit gemischte
+    # Dokumente (teils lesbar) nicht komplett verloren gehen.
+    GIBBERISH_DOC_MAX_MEANINGFULNESS: float = 0.35
+    # Anteil verworfener Chunks, ab dem das ganze Dokument als unlesbar gilt.
+    GIBBERISH_DOC_DROP_RATIO: float = 0.80
+    # Schutz-Guards: darunter wird NICHT beurteilt (im Zweifel behalten).
+    GIBBERISH_MIN_CHARS: int = 25                  # kürzerer Text -> behalten
+    GIBBERISH_MIN_ALPHA_RATIO: float = 0.30        # wenig Buchstaben -> Formel/Tabelle -> behalten
+    GIBBERISH_MIN_TOKENS: int = 4                  # zu wenige Tokens -> behalten
 
     # ------------------------------------------------------------------ #
     # Fragen-Generierung (Hypothetical Questions -> Trefferquote ↑)

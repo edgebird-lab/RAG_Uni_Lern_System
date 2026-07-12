@@ -48,3 +48,4 @@ watchdog>=4.0.0          # automatische Ordnerüberwachung (Ingestion-Pipeline)
 tqdm>=4.66.0
 psutil>=5.9.0            # Hardware-Erkennung (RAM/CPU) für den recommend-Befehl
 qrcode>=7.4              # QR-Code für den Handy-Zugriff (Pillow kommt über Streamlit)
+pyspellchecker>=0.8          # Echtwort-Abgleich (de+en) fuer das Kauderwelsch-Gate der Ingestion

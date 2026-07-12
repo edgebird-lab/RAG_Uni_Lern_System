@@ -28,15 +28,37 @@ from ragapp.ingestion.question_gen import generate_questions
 from ragapp.retrieval.embeddings import get_embedder
 from ragapp.retrieval.vectorstore import get_vectorstore
 from ragapp.retrieval.bm25_index import rebuild_bm25_from_store
+from ragapp.ingestion.textquality import is_gibberish   # NEU
 
 _INGEST_LOG = LOG_DIR / "ingestion.jsonl"
-ProgressFn = Optional[Callable[[str], None]]
+# Erweiterter Fortschritts-Contract: progress(message, done=None, total=None).
+# Rueckwaertskompatibel - alte Ein-Argument-Callbacks progress("...") bleiben gueltig.
+ProgressFn = Optional[Callable[..., None]]
 
 
 def _log(entry: dict) -> None:
     entry["ts"] = time.time()
     with open(_INGEST_LOG, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def _emit(progress: ProgressFn, message: str,
+          done: int | None = None, total: int | None = None) -> None:
+    """Ruft den Fortschritts-Callback gemaess erweitertem Contract auf
+    (message, done, total). Faellt auf die alte Ein-Argument-Form zurueck, falls
+    der Callback done/total (noch) nicht akzeptiert. Fehler im Callback duerfen
+    den Import nie abbrechen."""
+    if not progress:
+        return
+    try:
+        progress(message, done, total)
+    except TypeError:
+        try:
+            progress(message)
+        except Exception:  # noqa: BLE001
+            pass
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _pdf_stems() -> set:
@@ -98,6 +120,20 @@ def extraction_quality(text: str, filetype: str = "") -> tuple[bool, str]:
         avg = sum(len(w) for w in words) / len(words)
         if avg > 25 or avg < 2:
             return False, "unplausible Wortstruktur – Textextraktion vermutlich fehlerhaft"
+    # NEU: harter Kauderwelsch-Test auf Dokumentebene. Anders als die weichen
+    # Checks oben BLOCKT dieses Ergebnis den Import (ingest_file wertet das
+    # Präfix "gibberish:" aus). Strengere Schwelle als der Chunk-Filter, damit
+    # gemischte Dokumente NICHT komplett verworfen werden.
+    if settings.GIBBERISH_FILTER:
+        g, why = is_gibberish(
+            t,
+            min_chars=settings.GIBBERISH_MIN_CHARS,
+            min_alpha_ratio=settings.GIBBERISH_MIN_ALPHA_RATIO,
+            min_tokens=settings.GIBBERISH_MIN_TOKENS,
+            max_meaningfulness=settings.GIBBERISH_DOC_MAX_MEANINGFULNESS,
+        )
+        if g:
+            return False, "gibberish: " + why
     return True, ""
 
 
@@ -130,7 +166,9 @@ def ingest_file(
     progress: ProgressFn = None,
 ) -> dict:
     path = Path(path)
-    p = lambda m: progress(m) if progress else None  # noqa: E731
+    # Fortschritts-Contract: p(message, done=None, total=None) - done/total
+    # optional (fuer zaehlbare Stufen: OCR-Seiten, Embedding-Batches).
+    p = lambda m, done=None, total=None: _emit(progress, m, done, total)  # noqa: E731
 
     if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
         return {"status": "skipped", "reason": "unsupported", "file": path.name}
@@ -144,7 +182,7 @@ def ingest_file(
     subject = subject or _subject_for(path)
 
     p(f"Lade {path.name} …")
-    loaded = load_document(path)
+    loaded = load_document(path, progress=p)   # p meldet OCR-Seiten (done/total)
     if not loaded.text.strip():
         # Leerer Text: bei PDFs fast immer ein Scan/Bild -> SICHTBAR machen (OCR nötig)
         # statt still zu überspringen. Andere leere Dateien: wie bisher überspringen.
@@ -185,6 +223,21 @@ def ingest_file(
         get_vectorstore().delete_by_doc(doc_id)
         manifest.clear_chunk_hashes(doc_id)
 
+    # ---- Früh-Block: gesamtes Dokument ist Kauderwelsch (Handschrift/Scan) ---- #
+    # extraction_quality hat den harten Kauderwelsch-Test bereits gefahren
+    # (Reason-Präfix "gibberish:"). Dann gar nicht erst chunken/einbetten.
+    if _q_reason.startswith("gibberish:"):
+        manifest.upsert_document(
+            doc_id=doc_id, content_hash=chash, source_path=rel, filename=path.name,
+            subject=subject, filetype=loaded.filetype, num_chunks=0, num_questions=0,
+            char_count=len(loaded.text), status="unreadable")
+        if existing_doc and rebuild_bm25:
+            rebuild_bm25_from_store()  # verwaiste BM25-IDs nach Löschung vermeiden
+        _log({"event": "ingest", "file": rel, "status": "unreadable",
+              "reason": _q_reason})
+        return {"status": "unreadable", "file": path.name,
+                "reason": "Text unlesbar – Handschrift/Scan; nichts gespeichert"}
+
     # ---- Chunking ----------------------------------------------------- #
     base_meta = {
         "doc_id": doc_id,
@@ -214,6 +267,43 @@ def ingest_file(
         ch.meta["_chunk_hash"] = h
         kept_chunks.append(ch)
 
+    # ---- Kauderwelsch-Gate pro Chunk (die eigentliche Garantie) --------- #
+    # KEIN Zeichenmüll landet als Chunk im Index. Es wird NIE umgeschrieben,
+    # nur verworfen -> native Dokumente bleiben wortgetreu. Bleibt (fast) nichts
+    # übrig, wird das Dokument NICHT aufgenommen (Status "unreadable").
+    dropped_gibberish = 0
+    if settings.GIBBERISH_FILTER and kept_chunks:
+        n_before = len(kept_chunks)
+        readable = []
+        for ch in kept_chunks:
+            g, why = is_gibberish(
+                ch.text,
+                min_chars=settings.GIBBERISH_MIN_CHARS,
+                min_alpha_ratio=settings.GIBBERISH_MIN_ALPHA_RATIO,
+                min_tokens=settings.GIBBERISH_MIN_TOKENS,
+                max_meaningfulness=settings.GIBBERISH_MAX_MEANINGFULNESS,
+            )
+            if g:
+                dropped_gibberish += 1
+                _log({"event": "chunk_dropped", "file": rel, "reason": "gibberish",
+                      "detail": why, "chunk_index": ch.meta.get("chunk_index")})
+            else:
+                readable.append(ch)
+        drop_ratio = dropped_gibberish / max(1, n_before)
+        if not readable or drop_ratio >= settings.GIBBERISH_DOC_DROP_RATIO:
+            manifest.upsert_document(
+                doc_id=doc_id, content_hash=chash, source_path=rel, filename=path.name,
+                subject=subject, filetype=loaded.filetype, num_chunks=0, num_questions=0,
+                char_count=len(loaded.text), status="unreadable")
+            if rebuild_bm25:
+                rebuild_bm25_from_store()
+            _log({"event": "ingest", "file": rel, "status": "unreadable",
+                  "dropped": dropped_gibberish, "of": n_before})
+            return {"status": "unreadable", "file": path.name,
+                    "reason": "Text unlesbar – Handschrift/Scan; nichts gespeichert",
+                    "dropped_chunks": dropped_gibberish}
+        kept_chunks = readable
+
     if not kept_chunks:
         manifest.upsert_document(
             doc_id=doc_id, content_hash=chash, source_path=rel, filename=path.name,
@@ -227,10 +317,20 @@ def ingest_file(
         _log({"event": "ingest", "file": rel, "status": "all_chunks_duplicate"})
         return {"status": "duplicate_chunks", "file": path.name, "chunks": 0}
 
-    # ---- Embeddings der Chunks --------------------------------------- #
-    p(f"Berechne Embeddings ({len(kept_chunks)} Chunks) …")
+    # ---- Embeddings der Chunks (batch-weise, mit Fortschritt) -------- #
+    # Eine Fortschritts-Stufe = so viele Chunks, wie ohnehin parallel verarbeitet
+    # werden (EMBED_BATCH_SIZE * EMBED_CONCURRENCY). Dadurch bleibt das bisherige
+    # parallele Embedding-Verhalten erhalten und der UI-Balken bekommt done/total.
     embedder = get_embedder()
-    chunk_embeddings = embedder.embed_texts([c.text for c in kept_chunks])
+    _texts = [c.text for c in kept_chunks]
+    _total = len(_texts)
+    _step = max(1, settings.EMBED_BATCH_SIZE) * max(1, settings.EMBED_CONCURRENCY)
+    p(f"Berechne Embeddings ({_total} Chunks) …", 0, _total)
+    chunk_embeddings: list[list[float]] = []
+    for _bi in range(0, _total, _step):
+        chunk_embeddings.extend(embedder.embed_texts(_texts[_bi:_bi + _step]))
+        _done = min(_total, _bi + _step)
+        p(f"Berechne Embeddings ({_done}/{_total} Chunks) …", _done, _total)
 
     # ---- Near-Duplicate-Filter (innerhalb Dokument) ------------------ #
     keep_idx = dedup.filter_near_duplicates(chunk_embeddings)
@@ -296,7 +396,8 @@ def ingest_file(
           "quality_reason": _q_reason or None})
     return {"status": "ok", "file": path.name, "subject": subject,
             "chunks": len(kept_chunks), "questions": n_questions,
-            "quality_ok": _q_ok, "quality_reason": _q_reason}
+            "quality_ok": _q_ok, "quality_reason": _q_reason,
+            "dropped_chunks": dropped_gibberish}   # NEU
 
 
 def ingest_directory(
@@ -334,12 +435,10 @@ def ingest_directory(
     files.sort(key=_prio)
     results = {"ok": 0, "duplicate": 0, "unchanged": 0, "skipped": 0, "error": 0,
                "chunks": 0, "questions": 0, "details": []}
+    _n = len(files)
     for i, f in enumerate(files, 1):
-        if progress:
-            try:
-                progress(f"[{i}/{len(files)}] {f.name}")
-            except Exception:
-                pass  # z. B. Encoding-Fehler dürfen den Batch nicht abbrechen
+        # Fortschritts-Contract: done/total pro Datei (fuer UI-Balken + ETA).
+        _emit(progress, f"[{i}/{_n}] {f.name}", i, _n)
         try:
             r = ingest_file(f, force=force, rebuild_bm25=False, progress=progress)
         except Exception as exc:  # pragma: no cover
