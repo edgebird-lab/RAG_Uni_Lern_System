@@ -476,7 +476,7 @@ Entwickelt und gepflegt von **Robin Olbricht** – **Olbricht Digital** (Einzelu
 
 - 🌐 **Website:** [olbricht-digital.de](https://olbricht-digital.de)
 - 📧 **E-Mail:** [robin@olbricht-digital.de](mailto:robin@olbricht-digital.de)
-- 💼 **LinkedIn:** [Robin Olbricht](https://www.linkedin.com/in/DEIN-LINKEDIN-HANDLE) <!-- TODO: exakten LinkedIn-Profil-Link eintragen -->
+- 💼 **LinkedIn:** [Robin Olbricht](https://www.linkedin.com/in/robin-olbricht-789b5139a/)
 - 🐙 **GitHub:** [@edgebird-lab](https://github.com/edgebird-lab)
 
 ---
