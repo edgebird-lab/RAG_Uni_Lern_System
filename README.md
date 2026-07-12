@@ -474,6 +474,7 @@ Ich sichte Bug-Reports und Wünsche und arbeite Fixes/Verbesserungen ein. **Pull
 
 Entwickelt und gepflegt von **Robin Olbricht** – **Olbricht Digital** (Einzelunternehmen).
 
+- 🌐 **Website:** [olbricht-digital.de](https://olbricht-digital.de)
 - 📧 **E-Mail:** [robin@olbricht-digital.de](mailto:robin@olbricht-digital.de)
 - 💼 **LinkedIn:** [Robin Olbricht](https://www.linkedin.com/in/DEIN-LINKEDIN-HANDLE) <!-- TODO: exakten LinkedIn-Profil-Link eintragen -->
 - 🐙 **GitHub:** [@edgebird-lab](https://github.com/edgebird-lab)

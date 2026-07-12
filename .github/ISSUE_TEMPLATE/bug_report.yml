@@ -1,0 +1,58 @@
+name: 🐛 Fehler melden
+description: Etwas funktioniert nicht wie erwartet
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke fürs Melden! **Bitte keine persönlichen Dokumente oder Datenbank hochladen** –
+        das Projekt ist bewusst lokal, ein kurzer anonymisierter Ausschnitt genügt.
+  - type: textarea
+    id: what
+    attributes:
+      label: Was ist passiert?
+      description: Was hast du erwartet, was ist stattdessen passiert?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Schritte zum Reproduzieren
+      placeholder: |
+        1. …
+        2. …
+        3. Fehler erscheint
+  - type: dropdown
+    id: os
+    attributes:
+      label: Betriebssystem
+      options: ["Windows", "Linux", "macOS"]
+    validations:
+      required: true
+  - type: dropdown
+    id: gpu
+    attributes:
+      label: GPU / Beschleunigung
+      options: ["NVIDIA", "AMD", "Apple Silicon", "Intel (Arc/iGPU)", "Nur CPU", "Weiß nicht"]
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Aktives Antwort-Modell
+      placeholder: "z. B. gemma3:4b, qwen3:14b, gpt-oss:20b"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Fehlermeldung
+      description: Relevante Zeilen aus data/logs/ bzw. streamlit.log (anonymisiert).
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Vorab
+      options:
+        - label: Ich habe keine persönlichen Dokumente/Datenbank angehängt.
+          required: true
+        - label: Ich habe geprüft, dass es dazu noch kein offenes Issue gibt.

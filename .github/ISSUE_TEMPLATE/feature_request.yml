@@ -1,0 +1,22 @@
+name: 💡 Funktion vorschlagen
+description: Eine Idee oder Verbesserung
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Welches Problem löst das?
+      description: Beschreibe den Anwendungsfall / das Problem – nicht nur die Lösung.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Gewünschte Lösung
+      description: Wie könnte es aussehen?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativen / Kontext
+      description: Andere Ansätze, Screenshots, Beispiele – alles, was hilft.
