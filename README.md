@@ -160,13 +160,13 @@ automatisch die IPEX-LLM-Variante, sonst richtet er die Standard-Ollama ein).
 
 ```bash
 # Repository holen: klonen ODER auf GitHub "Code -> Download ZIP" + entpacken
-git clone https://github.com/edgebird-lab/RAG_System.git
-cd RAG_System
+git clone https://github.com/edgebird-lab/RAG_Uni_Lern_System.git
+cd RAG_Uni_Lern_System
 ```
 
 **Windows – Variante 1: fertiger Installer (am einfachsten)**
 
-1. **`RAG-Lernsystem-Setup.exe`** von der [Releases-Seite](https://github.com/edgebird-lab/RAG_System/releases) laden und starten.
+1. **`RAG-Lernsystem-Setup.exe`** von der [Releases-Seite](https://github.com/edgebird-lab/RAG_Uni_Lern_System/releases) laden und starten.
 2. Dem Assistenten folgen und am Ende **„Einrichtung ausführen"** anhaken – der Installer **erkennt automatisch deine Hardware (GPU/RAM)** und richtet die passende Ollama-Variante **plus ein passendes Modell** ein (auf schwächeren Laptops ein kleineres). Dieser einmalige Schritt dauert **~20–40 Min**.
 3. Danach über die **Startmenü-/Desktop-Verknüpfung** starten – **lautlos, ohne Konsolenfenster**.
 
@@ -189,7 +189,7 @@ tar xzf RAG-Lernsystem-Linux.tar.gz
 cd RAG-Lernsystem
 
 # Variante B – geklont:
-#   git clone https://github.com/edgebird-lab/RAG_System.git && cd RAG_System
+#   git clone https://github.com/edgebird-lab/RAG_Uni_Lern_System.git && cd RAG_Uni_Lern_System
 
 bash install.sh   # erkennt Hardware, baut die venv, installiert Ollama + ein
                   # passendes Modell; unter Linux wird zusätzlich ein Menü-/
@@ -460,7 +460,7 @@ Verantwortung dafür: [NOTICE.md](NOTICE.md).
 
 ## 🐛 Probleme melden & Feature-Requests
 
-Etwas funktioniert nicht oder dir fehlt eine Funktion? **Erstelle ein [Issue](https://github.com/edgebird-lab/RAG_System/issues)** – am hilfreichsten mit:
+Etwas funktioniert nicht oder dir fehlt eine Funktion? **Erstelle ein [Issue](https://github.com/edgebird-lab/RAG_Uni_Lern_System/issues)** – am hilfreichsten mit:
 
 - was du erwartet hast und was stattdessen passiert ist,
 - deinem System (Windows / Linux / macOS, GPU-Hersteller) und

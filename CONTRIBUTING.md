@@ -6,7 +6,7 @@ Dieses Projekt ist ein **vollständig lokaler** RAG-Lernassistent (Streamlit + O
 
 ## 🐛 Fehler melden
 
-Erstelle ein [Issue](https://github.com/edgebird-lab/RAG_System/issues/new/choose)
+Erstelle ein [Issue](https://github.com/edgebird-lab/RAG_Uni_Lern_System/issues/new/choose)
 über die Vorlage **„Fehler melden"**. Am hilfreichsten sind:
 
 - **Was erwartet** vs. **was passiert** ist (gern mit Screenshot),
@@ -27,8 +27,8 @@ Anwendungsfall**, nicht nur die Lösung – das hilft, die beste Umsetzung zu fi
 ## 🔧 Entwicklungs-Setup
 
 ```bash
-git clone https://github.com/edgebird-lab/RAG_System.git
-cd RAG_System
+git clone https://github.com/edgebird-lab/RAG_Uni_Lern_System.git
+cd RAG_Uni_Lern_System
 bash install.sh        # Linux/macOS: venv + Ollama + passendes Modell (erkennt die Hardware)
 #   Windows: Installieren.bat
 ./start.sh             # bzw. Start.bat  ->  http://localhost:8501

@@ -11,7 +11,7 @@
 #define MyAppName "RAG-Lernsystem"
 #define MyAppVersion "1.1"
 #define MyAppPublisher "edgebird-lab"
-#define MyAppURL "https://github.com/edgebird-lab/RAG_System"
+#define MyAppURL "https://github.com/edgebird-lab/RAG_Uni_Lern_System"
 
 [Setup]
 AppId={{A7F3C2E1-5B4D-4E6A-9C8B-1D2E3F4A5B6C}

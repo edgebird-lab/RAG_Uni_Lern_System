@@ -10,7 +10,7 @@ InstallModes:
   - silentWithProgress
 Installers:
   - Architecture: x64
-    InstallerUrl: <URL-ZUR-RELEASE-SETUP.EXE>   # z. B. https://github.com/edgebird-lab/RAG_System/releases/download/v<VERSION>/RAG-Lernsystem-Setup.exe
+    InstallerUrl: <URL-ZUR-RELEASE-SETUP.EXE>   # z. B. https://github.com/edgebird-lab/RAG_Uni_Lern_System/releases/download/v<VERSION>/RAG-Lernsystem-Setup.exe
     InstallerSha256: <SHA256>          # aus installer\SHA256SUMS.txt (GROSSBUCHSTABEN)
 ManifestType: installer
 ManifestVersion: 1.6.0

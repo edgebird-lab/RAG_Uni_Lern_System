@@ -6,9 +6,9 @@ PackageLocale: de-DE
 Publisher: edgebird-lab
 PublisherUrl: https://github.com/edgebird-lab
 PackageName: RAG-Lernsystem
-PackageUrl: https://github.com/edgebird-lab/RAG_System
+PackageUrl: https://github.com/edgebird-lab/RAG_Uni_Lern_System
 License: MIT
-LicenseUrl: https://github.com/edgebird-lab/RAG_System/blob/main/LICENSE
+LicenseUrl: https://github.com/edgebird-lab/RAG_Uni_Lern_System/blob/main/LICENSE
 ShortDescription: Vollstaendig lokaler, offline KI-Lernassistent (RAG) fuer eigene Dokumente.
 Description: >-
   Lokales Retrieval-Augmented-Generation-System: eigene Unterlagen (PDF, MD, TXT,
