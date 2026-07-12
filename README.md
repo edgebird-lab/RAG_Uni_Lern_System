@@ -1,9 +1,20 @@
-# RAG-Lernsystem: Frag deine Unterlagen, lern mit Karteikarten – 100 % lokal
+<div align="center">
 
-[![Python 3.13](https://img.shields.io/badge/Python-3.13-blue.svg)](https://www.python.org/)
+<img src="assets/icon.png" alt="RAG-Lernsystem" width="128" />
+
+# RAG-Lernsystem
+
+**Frag deine Unterlagen · Lern mit Karteikarten · 100 % lokal & offline**
+
+Ein lokaler KI-Lernassistent für **Studierende, Forschende und alle, die mit vertraulichen Unterlagen arbeiten** (Medizin, Jura, Firmen-Know-how). Antworten kommen **nur aus deinen eigenen Dokumenten**, dazu Karteikarten mit Spaced Repetition – **nichts verlässt deinen Rechner**.
+
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Local & Offline](https://img.shields.io/badge/100%25-local%20%26%20offline-orange.svg)](#-datenschutz-deine-unterlagen-bleiben-lokal)
+[![100% local & offline](https://img.shields.io/badge/100%25-local%20%26%20offline-orange.svg)](#-datenschutz-deine-unterlagen-bleiben-lokal)
 [![Retrieval Hit@3 82.8%](https://img.shields.io/badge/Retrieval%20Hit@3-82.8%25-brightgreen.svg)](docs/EVALUATION.md)
+[![GPU: NVIDIA · AMD · Apple · Intel · CPU](https://img.shields.io/badge/GPU-NVIDIA%20·%20AMD%20·%20Apple%20·%20Intel%20·%20CPU-informational.svg)](#-plattform-gpu-unterstützung)
+
+</div>
 
 > **English (short):** A fully local, offline Retrieval-Augmented-Generation (RAG)
 > study assistant. Drop your own lecture notes (PDF, Markdown, TXT, DOCX, PPTX)
@@ -127,22 +138,22 @@ automatisch die IPEX-LLM-Variante, sonst richtet er die Standard-Ollama ein).
 
 ```bash
 # Repository holen: klonen ODER auf GitHub "Code -> Download ZIP" + entpacken
-git clone <REPO-URL>
+git clone https://github.com/edgebird-lab/RAG_System.git
 cd RAG_System
 ```
 
-**Windows – am einfachsten per Doppelklick:**
+**Windows – Variante 1: fertiger Installer (am einfachsten)**
 
-1. Doppelklick auf **`Installieren.bat`** → richtet alles ein (venv, Abhängigkeiten,
-   passende Ollama-Variante, empfohlenes Modell). Läuft weitgehend automatisch.
-2. Doppelklick auf **`Start.bat`** → öffnet die Chat-Oberfläche unter
-   http://localhost:8501. (Nach der Installation gibt es zusätzlich eine
-   Startmenü-/Desktop-Verknüpfung, die die App **lautlos ohne Konsolenfenster**
-   startet.)
+1. **`RAG-Lernsystem-Setup.exe`** von der [Releases-Seite](https://github.com/edgebird-lab/RAG_System/releases) laden und starten.
+2. Dem Assistenten folgen und am Ende **„Einrichtung ausführen"** anhaken – der Installer **erkennt automatisch deine Hardware (GPU/RAM)** und richtet die passende Ollama-Variante **plus ein passendes Modell** ein (auf schwächeren Laptops ein kleineres). Dieser einmalige Schritt dauert **~20–40 Min**.
+3. Danach über die **Startmenü-/Desktop-Verknüpfung** starten – **lautlos, ohne Konsolenfenster**.
 
-> Beim allerersten Download kann Windows warnen (SmartScreen/Virenscanner). Das
-> ist bei neuer, noch nicht signierter Software normal und **kein Virus** – siehe
-> [Warnt Windows beim Start?](#-warnt-windows-beim-start-kein-virus).
+**Windows – Variante 2: aus dem Quellcode**
+
+1. Repo klonen (siehe oben) oder auf GitHub **„Code → Download ZIP"**.
+2. Doppelklick auf **`Installieren.bat`** (richtet venv, Abhängigkeiten, Ollama & Modell ein), dann **`Start.bat`** → http://localhost:8501.
+
+> Beim allerersten Download kann Windows warnen (SmartScreen/„Unbekannter Herausgeber"). Das ist bei neuer, **noch nicht signierter** Software normal und **kein Virus** → „Weitere Informationen" → „Trotzdem ausführen". Details: [Warnt Windows beim Start?](#-warnt-windows-beim-start-kein-virus).
 
 **Linux / macOS:**
 
@@ -156,7 +167,7 @@ tar xzf RAG-Lernsystem-Linux.tar.gz
 cd RAG-Lernsystem
 
 # Variante B – geklont:
-#   git clone <REPO-URL> && cd RAG_System
+#   git clone https://github.com/edgebird-lab/RAG_System.git && cd RAG_System
 
 bash install.sh   # erkennt Hardware, baut die venv, installiert Ollama + ein
                   # passendes Modell; unter Linux wird zusätzlich ein Menü-/
@@ -425,9 +436,31 @@ Verantwortung dafür: [NOTICE.md](NOTICE.md).
 
 ---
 
+## 🐛 Probleme melden & Feature-Requests
+
+Etwas funktioniert nicht oder dir fehlt eine Funktion? **Erstelle ein [Issue](https://github.com/edgebird-lab/RAG_System/issues)** – am hilfreichsten mit:
+
+- was du erwartet hast und was stattdessen passiert ist,
+- deinem System (Windows / Linux / macOS, GPU-Hersteller) und
+- der Fehlermeldung bzw. dem relevanten Log (`data/logs/`, `streamlit.log`).
+
+Ich sichte Bug-Reports und Wünsche und arbeite Fixes/Verbesserungen ein. **Pull Requests** sind ebenfalls willkommen.
+
+---
+
+## 👤 Autor & Kontakt
+
+Entwickelt und gepflegt von **Robin Olbricht** – **Olbricht Digital** (Einzelunternehmen).
+
+- 📧 **E-Mail:** [robin@olbricht-digital.de](mailto:robin@olbricht-digital.de)
+- 💼 **LinkedIn:** [Robin Olbricht](https://www.linkedin.com/in/DEIN-LINKEDIN-HANDLE) <!-- TODO: exakten LinkedIn-Profil-Link eintragen -->
+- 🐙 **GitHub:** [@edgebird-lab](https://github.com/edgebird-lab)
+
+---
+
 ## 📄 Lizenz
 
-Der **Code** steht unter der **MIT-Lizenz**, siehe [`LICENSE`](LICENSE).
+Der **Code** steht unter der **MIT-Lizenz** – © 2026 Robin Olbricht · Olbricht Digital, siehe [`LICENSE`](LICENSE).
 Die **Modelle** haben **eigene Lizenzen** (u. a. Gemma Terms bzw. – ab Gemma 4 –
 Apache 2.0, Qwen/Apache-2.0, bge-m3 MIT, bge-reranker Apache-2.0) und werden über
 Ollama bzw. Hugging Face geladen; für deren Einhaltung bist du selbst

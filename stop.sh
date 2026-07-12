@@ -25,7 +25,7 @@ rm -f "$ROOT/data/.shutdown" 2>/dev/null || true
 
 # In Ollama geladenes Modell entladen (RAM/VRAM freigeben). Der Ollama-Dienst
 # selbst bleibt laufen (per systemd verwaltet; Stoppen braeuchte Root) - andere
-# Nutzer wie /home/linx-rob/local-agent werden dadurch NICHT gestoert.
+# lokale Ollama-Nutzer/-Tools werden dadurch NICHT gestoert.
 PY="$ROOT/.venv/bin/python"
 if [ -x "$PY" ] && [ -f "$ROOT/ragapp/scripts/stop_ollama_standby.py" ]; then
     "$PY" "$ROOT/ragapp/scripts/stop_ollama_standby.py" 2>/dev/null || true
