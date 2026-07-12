@@ -29,6 +29,20 @@ _PAGE_ICON = str(_icon_png) if _icon_png.is_file() else "🎓"
 
 st.set_page_config(page_title="RAG-Lernsystem", page_icon=_PAGE_ICON, layout="wide")
 
+# Tab-Close-Waechter: beendet die App sauber, wenn kein Browser-Tab mehr offen ist
+# (nur aktiv im lokalen Starter-Betrieb via start.sh -> RAG_IDLE_SHUTDOWN=1).
+from ragapp.ui._shutdown_watchdog import ensure_shutdown_watchdog
+ensure_shutdown_watchdog()
+
+# Automatischer Lernstand-Snapshot beim Start (nur, wenn der letzte > 24 h alt ist).
+if not st.session_state.get("_backup_checked"):
+    st.session_state["_backup_checked"] = True
+    try:
+        from ragapp import backup
+        backup.snapshot_if_stale("autostart")
+    except Exception:  # noqa: BLE001
+        pass
+
 # Netzwerk-/Handy-Zugriff: PIN-Sperre (nur im Netzwerkmodus aktiv, sonst wirkungslos)
 from ragapp.ui._auth import require_pin
 require_pin()
@@ -271,13 +285,51 @@ def _locate(full: str, chunk: str) -> "tuple[int, int]":
     return -1, -1
 
 
+def _render_pdf_page(src: dict, page_num: int, chunk: str) -> "bytes | None":
+    """Rendert die ECHTE PDF-Seite als Bild mit gemaltem Highlight auf der gefundenen
+    Stelle (Layout, Formeln, Diagramme bleiben lesbar; aktiviert räumliches Gedächtnis
+    als Abrufhinweis). Gibt PNG-Bytes zurück oder None. CPU-only, offline (fitz)."""
+    path = PROJECT_ROOT / (src.get("source_path") or "")
+    if not path.is_file():
+        return None
+    try:
+        import fitz  # PyMuPDF (bereits Abhängigkeit der Loader)
+        doc = fitz.open(str(path))
+        if page_num < 1 or page_num > doc.page_count:
+            return None
+        page = doc.load_page(page_num - 1)
+        anchors = sorted((ln.strip() for ln in (chunk or "").split("\n")
+                          if len(ln.strip()) >= 15), key=len, reverse=True)[:6]
+        for a in anchors:
+            try:
+                for rect in page.search_for(a[:90]):
+                    page.add_highlight_annot(rect)
+            except Exception:  # noqa: BLE001
+                pass
+        return page.get_pixmap(dpi=140).tobytes("png")
+    except Exception:  # noqa: BLE001
+        return None
+
+
 @st.dialog("📄 Dokument ansehen", width="large")
 def _view_document(src: dict) -> None:
-    """Zeigt das ganze Dokument und springt zur gefundenen Textstelle (markiert)."""
+    """Zeigt das Dokument und springt zur gefundenen Stelle. Bei PDFs die echte Seite als
+    Bild mit Highlight; sonst der markierte Volltext."""
     _loc = f"  ·  {src['location']}" if src.get("location") else ""
     st.markdown(f"**{src.get('filename', '?')}**  ·  Fach: {src.get('subject', '?')}{_loc}")
-    full = _load_full_text(src)
     chunk = (src.get("document") or src.get("snippet") or "").strip()
+
+    # PDF: echte Seite als Bild mit Highlight (Seitenzahl aus 'location', z. B. "Seite 5").
+    import re as _re3
+    _m = _re3.search(r"(\d+)", src.get("location", "") or "")
+    if _m and (src.get("filename", "").lower().endswith(".pdf")):
+        _png = _render_pdf_page(src, int(_m.group(1)), chunk)
+        if _png:
+            st.image(_png, use_container_width=True)
+            st.caption(f"Seite {int(_m.group(1))} – die gefundene Stelle ist gelb markiert.")
+            return
+
+    full = _load_full_text(src)
     if not full:
         st.info("Der Volltext ist nicht verfügbar (Originaldatei nicht gefunden). "
                 "Hier die gefundene Textstelle:")
@@ -343,6 +395,32 @@ def _strip_source_labels(text: str) -> str:
     return cleaned.strip()
 
 
+_CITE_NUM_RE = _re_cite = __import__("re").compile(r"[\[(]\s*Quellen?\s*([\d,\s]+)")
+
+
+def _verify_citations(answer: str, sources: list) -> list:
+    """Prueft die [Quelle N]-Verweise im Antworttext gegen die tatsaechlich
+    vorhandenen Quellen. Gibt die Liste ERFUNDENER/ungueltiger Nummern zurueck
+    (N < 1 oder N > Anzahl Quellen) - schuetzt vor falschen Belegangaben."""
+    import re as _re2
+    n = len(sources or [])
+    nums = set()
+    for m in _CITE_NUM_RE.finditer(answer or ""):
+        for tok in _re2.split(r"[,\s]+", m.group(1).strip()):
+            if tok.isdigit():
+                nums.add(int(tok))
+    return sorted(x for x in nums if x < 1 or x > n)
+
+
+def _citation_warning(answer: str, sources: list) -> None:
+    bad = _verify_citations(answer, sources)
+    if bad:
+        st.warning("⚠️ Zitat-Prüfung: Die Antwort verweist auf "
+                   + ", ".join(f"Quelle {x}" for x in bad)
+                   + " – diese Quelle(n) gibt es hier nicht. Bitte die belegten "
+                     "Stellen unten selbst gegenprüfen.")
+
+
 def _render_status_badge(meta: dict) -> None:
     """Status-Badge unter der Antwort. Die Beleg-Prüfung (Faithfulness) läuft nicht
     immer -> nur dann als 'belegte Antwort' auszeichnen, wenn wirklich geprüft
@@ -359,12 +437,35 @@ def _render_status_badge(meta: dict) -> None:
                 unsafe_allow_html=True)
 
 
+def _save_card_button(question: str, answer: str, meta: dict,
+                      sources: "list | None", key: str) -> None:
+    """Bietet unter einer belegten Antwort an, sie als Karteikarte zu speichern.
+    Der Moment der Frage markiert die echte Wissensluecke - ideal fuer die
+    Wiederholung. Nur bei echten (belegten) Antworten, nicht beim Dokument-Fallback."""
+    if not question or (meta or {}).get("mode") != "answer":
+        return
+    if st.button("➕ Als Karteikarte speichern", key=key,
+                 help="Legt aus dieser Frage + Antwort eine Karteikarte an "
+                      "(üben auf der Seite 🎓 Lernen)."):
+        from ragapp import study
+        subj = subject_filter or ((sources or [{}])[0].get("subject") if sources else None)
+        cid = study.card_from_chat(question, answer, subject=subj, sources=sources)
+        st.toast("📇 Als Karteikarte gespeichert – üben auf 🎓 Lernen!"
+                 if cid else "Konnte keine Karte anlegen.")
+
+
 # Verlauf rendern
 for _mi, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"], avatar="🧑‍🎓" if msg["role"] == "user" else "🤖"):
         st.markdown(msg["content"] if show_sources else _strip_source_labels(msg["content"]))
         if msg.get("meta"):
             _render_status_badge(msg["meta"])
+            if show_sources:
+                _citation_warning(msg["content"], msg.get("sources") or [])
+            _prev = st.session_state.messages[_mi - 1] if _mi > 0 else {}
+            _q = _prev.get("content") if _prev.get("role") == "user" else None
+            _save_card_button(_q, msg["content"], msg.get("meta"), msg.get("sources"),
+                              key=f"card_h{_mi}")
         if msg.get("sources"):
             render_sources(msg["sources"], key_prefix=f"h{_mi}")
 
@@ -384,7 +485,8 @@ if prompt:
             try:
                 result = answer_query(prompt, subject=subject_filter,
                                       use_reranker=use_reranker_ui,
-                                      check_faithfulness=check_faith_ui)
+                                      check_faithfulness=check_faith_ui,
+                                      history=st.session_state.messages[:-1])
             except Exception as exc:
                 result = {"answer": f"⚠️ Fehler: {exc}", "mode": "fallback",
                           "sources": [], "total_time": 0}
@@ -393,6 +495,8 @@ if prompt:
         meta = {"mode": result.get("mode"), "total_time": result.get("total_time"),
                 "faith_checked": result.get("faith_checked", True)}
         _render_status_badge(meta)
+        if show_sources:
+            _citation_warning(_answer, result.get("sources", []))
         sources = result.get("sources", []) if show_sources else []
         if sources:
             render_sources(sources, key_prefix="new")

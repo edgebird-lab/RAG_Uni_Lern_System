@@ -147,29 +147,32 @@ fi
 info "pip / setuptools / wheel aktualisieren ..."
 "$VENV_PY" -m pip install --upgrade pip setuptools wheel
 
-# ---- 4) torch -------------------------------------------------------------- #
-step "PyTorch installieren (nur fuer den Reranker noetig)"
-if "$VENV_PY" -c "import torch" >/dev/null 2>&1; then
-    ok "torch ist bereits installiert - uebersprungen."
+# ---- 4) torch + torchvision ------------------------------------------------ #
+# torch = Reranker; torchvision = wird von easyocr (OCR) benoetigt. BEIDE aus dem
+# GLEICHEN Index installieren - sonst zieht easyocr ueber torchvision spaeter eine
+# unpassende (CUDA-)torch nach und ueberschreibt die GPU-Variante (z. B. ROCm).
+step "PyTorch (+ torchvision fuer OCR) installieren"
+if "$VENV_PY" -c "import torch, torchvision" >/dev/null 2>&1; then
+    ok "torch + torchvision bereits installiert - uebersprungen."
 else
     case "$GPU_VENDOR" in
         nvidia)
-            info "Installiere torch (CUDA/Default-Index) ..."
-            "$VENV_PY" -m pip install torch ;;
+            info "Installiere torch + torchvision (CUDA/Default-Index) ..."
+            "$VENV_PY" -m pip install torch torchvision ;;
         amd)
-            info "Installiere torch (ROCm 6.0-Index) ..."
-            if ! "$VENV_PY" -m pip install torch --index-url https://download.pytorch.org/whl/rocm6.0; then
+            info "Installiere torch + torchvision (ROCm 6.0-Index) ..."
+            if ! "$VENV_PY" -m pip install torch torchvision --index-url https://download.pytorch.org/whl/rocm6.0; then
                 warn "ROCm-torch fehlgeschlagen - fallback auf CPU-Build."
-                "$VENV_PY" -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+                "$VENV_PY" -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
             fi ;;
         apple)
-            info "Installiere torch (Default-Index, MPS-faehig) ..."
-            "$VENV_PY" -m pip install torch ;;
+            info "Installiere torch + torchvision (Default-Index, MPS-faehig) ..."
+            "$VENV_PY" -m pip install torch torchvision ;;
         *)
-            info "Installiere torch (CPU-Build) ..."
-            "$VENV_PY" -m pip install torch --index-url https://download.pytorch.org/whl/cpu ;;
+            info "Installiere torch + torchvision (CPU-Build) ..."
+            "$VENV_PY" -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu ;;
     esac
-    ok "torch installiert."
+    ok "torch + torchvision installiert."
 fi
 
 # ---- 5) requirements ------------------------------------------------------- #

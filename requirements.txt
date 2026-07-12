@@ -29,6 +29,12 @@ snowballstemmer>=2.2.0   # deutscher Stemmer für bessere Keyword-Treffer
 # --- Reranking (Cross-Encoder) ---
 sentence-transformers>=3.0.0
 
+# --- OCR fuer gescannte / Bild-PDFs (nutzt torch/GPU, braucht KEIN System-Tesseract) ---
+# WICHTIG: torch UND torchvision werden in install.sh vorab aus dem passenden Index
+# (z. B. ROCm) installiert - sonst zieht easyocr ueber torchvision eine unpassende
+# torch-Version nach und ueberschreibt die GPU-Variante.
+easyocr>=1.7.0
+
 # --- Weboberfläche ---
 streamlit>=1.38.0
 plotly>=5.23.0

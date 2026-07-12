@@ -326,6 +326,16 @@ if not st.session_state.get(ACTIVE):
         format_func=lambda s: "Alle Fächer" if s == "Alle Fächer" else _fach_label(s))
     subj = None if _subj_pick == "Alle Fächer" else _subj_pick
 
+    # Klausur-Countdown (falls für dieses Fach ein Termin gesetzt ist)
+    if subj:
+        from ragapp import planner, analytics
+        _ex = manifest.get_exam(subj)
+        if _ex and _ex.get("exam_date"):
+            _dte = planner.days_to_exam(_ex["exam_date"])
+            _rd = analytics.subject_readiness(subj)["readiness_pct"]
+            st.info(f"🗓️ Klausur **{_fach_label(subj)}**: {planner.humanize_days(_dte)} "
+                    f"({_ex['exam_date']}) · Bereitschaft **{_rd} %**")
+
     # 2) Stapel-Mehrfachauswahl (welche der Stapel dieses Fachs)
     _decks_here = manifest.list_decks(subj)
     _deck_opts = list(_decks_here) + ["— ohne Stapel —"]
@@ -352,26 +362,82 @@ if not st.session_state.get(ACTIVE):
     _c2.metric("Heute neu gelernt", _neu_heute,
                help="Zählt gegen dein Tages-Limit neuer Karten.")
 
-    if faellig == 0:
+    _total_avail = _fc.get("total", 0)
+    _srs_max = int(getattr(settings, "SRS_MAX_PER_SESSION", 100))
+    _ck1, _ck2 = st.columns(2)
+    _interleave = _ck1.checkbox(
+        "🔀 Themen mischen (Interleaving)", value=False,
+        help="Mischt die Karten verschränkt über Themen statt blockweise. Trainiert "
+             "das Erkennen, welcher Ansatz/welche Formel zu welcher Aufgabe gehört – "
+             "genau das prüft eine Klausur, deren Aufgaben ungeordnet kommen.")
+    _cram = _ck2.checkbox(
+        "🔥 Klausur-Modus (Cram)", value=False,
+        help="Füllt die Runde auch mit den schwächsten NOCH NICHT fälligen Karten auf – "
+             "für die heiße Phase kurz vor der Klausur (auch wenn gerade nichts fällig ist).")
+    _mode_lbl = st.radio(
+        "Übungsmodus",
+        ["👁️ Aufdecken", "✍️ Tippen & benoten", "🧩 Lückentext", "🔤 Multiple Choice"],
+        horizontal=True,
+        help="**Aufdecken**: klassisch, du bewertest dich selbst. **Tippen & benoten**: "
+             "du formulierst die Antwort frei, die KI vergibt Teilpunkte und nennt, was "
+             "fehlt (stärkster Lerneffekt). **Lückentext**: fülle den fehlenden Fachbegriff "
+             "(sofort, ohne KI). **Multiple Choice**: wähle aus plausiblen Optionen "
+             "(objektives Ergebnis, trainiert Unterscheidung).")
+    _mode_map = {"👁️ Aufdecken": "reveal", "✍️ Tippen & benoten": "type",
+                 "🧩 Lückentext": "cloze", "🔤 Multiple Choice": "mcq"}
+
+    # Fächerübergreifende Prüfungsphasen-Runde (nur sinnvoll bei ≥ 2 Fächern)
+    if len(_faecher) >= 2:
+        with st.container(border=True):
+            st.markdown("**🎓 Prüfungsphase** – alle Fächer gemischt, nach Klausurnähe & "
+                        "Wissenslücke priorisiert (fächerübergreifendes Interleaving).")
+            _pp1, _pp2, _pp3 = st.columns([1, 1, 1])
+            _pp_n = _pp1.number_input("Karten", min_value=5, max_value=_srs_max, value=20,
+                                      step=5, key="phase_n")
+            _pp_cram = _pp2.checkbox("🔥 Cram", key="phase_cram",
+                                     help="Auch noch nicht fällige, schwache Karten ziehen.")
+            if _pp3.button("▶️ Prüfungsphase", key="phase_start", use_container_width=True):
+                from ragapp import planner as _pl
+                _pk = _pl.phase_round(limit=int(_pp_n), cram=bool(_pp_cram))
+                if not _pk:
+                    st.info("Gerade fächerübergreifend nichts fällig – aktiviere 🔥 Cram.")
+                else:
+                    st.session_state[Q] = _pk
+                    st.session_state[ACTIVE] = True
+                    st.session_state[REVEAL] = False
+                    st.session_state[TALLY] = {"gewusst": 0, "halb": 0, "nicht": 0}
+                    st.session_state[ROUND] = len(_pk)
+                    st.session_state["_study_mode"] = _mode_map[_mode_lbl]
+                    st.rerun()
+
+    if faellig == 0 and not _cram:
         st.success("✅ Für diese Auswahl ist gerade **nichts fällig** – gut gemacht! "
-                   "Komm später wieder oder wähle etwas anderes.")
+                   "Komm später wieder, wähle etwas anderes, oder aktiviere den "
+                   "🔥 **Klausur-Modus**, um trotzdem die schwächsten Karten zu üben.")
     else:
-        _maxr = min(faellig, int(getattr(settings, "SRS_MAX_PER_SESSION", 100)))
-        anzahl = st.slider("Karten in dieser Runde", min_value=1,
-                           max_value=int(max(1, _maxr)),
+        _cap = _total_avail if _cram else faellig
+        _maxr = int(max(1, min(_cap, _srs_max)))
+        anzahl = st.slider("Karten in dieser Runde", min_value=1, max_value=_maxr,
                            value=int(min(20, _maxr)))
-        _hinweis = (f"{anzahl} von {faellig} fällig"
-                    + (f" · max. {_rest_neu} neue" if _rest_neu is not None else ""))
+        _hinweis = (f"{anzahl} · {faellig} fällig"
+                    + (f" · max. {_rest_neu} neue" if _rest_neu is not None else "")
+                    + (" · 🔥 Cram" if _cram else ""))
         if st.button(f"▶️ Lernrunde starten ({_hinweis})",
                      type="primary", use_container_width=True):
             karten = manifest.get_due_cards(subj, limit=int(anzahl), deck=None,
-                                            decks=decks, new_limit=_rest_neu)
-            st.session_state[Q] = karten
-            st.session_state[ACTIVE] = True
-            st.session_state[REVEAL] = False
-            st.session_state[TALLY] = {"gewusst": 0, "halb": 0, "nicht": 0}
-            st.session_state[ROUND] = len(karten)
-            st.rerun()
+                                            decks=decks, new_limit=_rest_neu,
+                                            order="interleave" if _interleave else "due",
+                                            cram=_cram)
+            if not karten:
+                st.warning("Für diese Auswahl wurden keine Karten gefunden.")
+            else:
+                st.session_state[Q] = karten
+                st.session_state[ACTIVE] = True
+                st.session_state[REVEAL] = False
+                st.session_state[TALLY] = {"gewusst": 0, "halb": 0, "nicht": 0}
+                st.session_state[ROUND] = len(karten)
+                st.session_state["_study_mode"] = _mode_map[_mode_lbl]
+                st.rerun()
 
 else:
     queue = st.session_state.get(Q) or []
@@ -419,12 +485,113 @@ else:
                 unsafe_allow_html=True)
     st.write("")
 
+    _mode = st.session_state.get("_study_mode", "reveal")
+    _ref = (karte.get("answer") or karte.get("back") or "").strip()
+
     if not st.session_state.get(REVEAL):
-        st.caption("Überlege (oder tippe für dich) die Antwort – dann aufdecken.")
-        if st.button("👁️ Antwort zeigen", type="primary", use_container_width=True):
-            st.session_state[REVEAL] = True
-            st.rerun()
+        if _mode == "type":
+            # Getippte Freie-Reproduktion -> KI-Teilbewertung
+            _typed = st.text_area("Deine Antwort (frei formulieren)", key="_typed_ans",
+                                  height=130, placeholder="Formuliere die Antwort in eigenen Worten …")
+            if st.button("✍️ Abgeben & benoten", type="primary", use_container_width=True):
+                from ragapp import grading
+                with st.spinner("Die KI bewertet deine Antwort …"):
+                    st.session_state["_grade"] = grading.grade_typed_answer(
+                        karte.get("front", ""), _ref, _typed)
+                st.session_state[REVEAL] = True
+                st.rerun()
+        elif _mode == "cloze":
+            from ragapp import grading
+            cz = st.session_state.get("_cloze")
+            if cz is None:
+                cz = grading.make_cloze(_ref) or ["", []]
+                st.session_state["_cloze"] = cz
+            if cz[1]:
+                st.markdown(f"<div class='karte'>🧩 {cz[0]}</div>", unsafe_allow_html=True)
+                st.write("")
+                st.text_input("Fehlender Begriff", key="_cloze_in",
+                              placeholder="Wort in die Lücke …")
+                if st.button("🧩 Prüfen", type="primary", use_container_width=True):
+                    st.session_state["_cloze_ok"] = grading.check_cloze(
+                        st.session_state.get("_cloze_in", ""), cz[1])
+                    st.session_state[REVEAL] = True
+                    st.rerun()
+            else:
+                st.caption("Für diese Karte ließ sich kein Lückentext bilden – decke normal auf.")
+                if st.button("👁️ Antwort zeigen", type="primary", use_container_width=True):
+                    st.session_state[REVEAL] = True
+                    st.rerun()
+        elif _mode == "mcq":
+            from ragapp import grading
+            mcq = st.session_state.get("_mcq")
+            if mcq is None:
+                with st.spinner("Erzeuge Antwortoptionen …"):
+                    mcq = grading.generate_mcq(karte.get("front", ""), _ref) or {}
+                st.session_state["_mcq"] = mcq
+            _opts = mcq.get("options") or []
+            if len(_opts) >= 2:
+                _sel = st.radio("Wähle die richtige Antwort:", _opts, index=None, key="_mcq_sel")
+                if st.button("🔤 Antwort prüfen", type="primary", use_container_width=True,
+                             disabled=_sel is None):
+                    st.session_state["_mcq_ok"] = (_sel == mcq.get("correct"))
+                    st.session_state[REVEAL] = True
+                    st.rerun()
+            else:
+                st.caption("Konnte keine Optionen erzeugen – decke normal auf.")
+                if st.button("👁️ Antwort zeigen", type="primary", use_container_width=True):
+                    st.session_state[REVEAL] = True
+                    st.rerun()
+        else:  # reveal (klassisch, mit Selbst-Konfidenz/JOL)
+            st.caption("Überlege (oder tippe für dich) die Antwort – dann aufdecken.")
+            _conf_lbl = st.radio(
+                "Wie sicher bist du dir?", ["😃 sicher", "😐 mittel", "😟 unsicher"],
+                index=None, horizontal=True, key="_jol",
+                help="Selbsteinschätzung VOR dem Aufdecken. Wer sich sicher ist und trotzdem "
+                     "danebenliegt, hat eine besonders hartnäckige Lücke – die kommt dann "
+                     "schneller wieder dran (Hypercorrection).")
+            st.session_state["_study_conf"] = {
+                "😃 sicher": "sicher", "😐 mittel": "mittel", "😟 unsicher": "unsicher"
+            }.get(_conf_lbl)
+            if st.button("👁️ Antwort zeigen", type="primary", use_container_width=True):
+                st.session_state[REVEAL] = True
+                st.rerun()
     else:
+        # Feedback der aktiven Modi (Benotung / Lückentext-Ergebnis) VOR der Musterlösung.
+        _suggest = None
+        if _mode == "type" and st.session_state.get("_grade"):
+            g = st.session_state["_grade"]
+            if g.get("ok") and g.get("score") is not None:
+                st.markdown(f"### Bewertung: {g['score']} %")
+                st.progress(min(1.0, g["score"] / 100))
+                if g.get("feedback"):
+                    st.info(g["feedback"])
+                if g.get("fehlt"):
+                    st.caption("Noch nicht genannt: " + " · ".join(g["fehlt"]))
+                _suggest = g.get("suggested_rating")
+            else:
+                st.caption("Automatische Benotung war nicht möglich – schätze selbst ein.")
+            with st.expander("Deine Antwort", expanded=False):
+                st.write(st.session_state.get("_typed_ans") or "—")
+            st.divider()
+        elif _mode == "cloze" and "_cloze_ok" in st.session_state:
+            if st.session_state["_cloze_ok"]:
+                st.success("✅ Richtig!")
+                _suggest = study.GEWUSST
+            else:
+                _cz = st.session_state.get("_cloze") or ["", []]
+                st.error("❌ Nicht ganz – Lösung: **" + ", ".join(_cz[1]) + "**")
+                _suggest = study.NICHT
+            st.divider()
+        elif _mode == "mcq" and "_mcq_ok" in st.session_state:
+            if st.session_state["_mcq_ok"]:
+                st.success("✅ Richtig gewählt!")
+                _suggest = study.GEWUSST
+            else:
+                _mc = st.session_state.get("_mcq") or {}
+                st.error("❌ Falsch – richtig war: **" + str(_mc.get("correct", "")) + "**")
+                _suggest = study.NICHT
+            st.divider()
+        st.session_state["_study_suggest"] = _suggest
         # Rueckseite: bevorzugt die echte Antwort (Musterloesung); nur wenn keine da
         # ist, der Original-Chunk als Notbehelf. LaTeX rendert via Markdown.
         _ans = (karte.get("answer") or "").strip()
@@ -440,10 +607,16 @@ else:
             st.markdown(karte.get("back") or "")
         st.write("")
         st.caption("Wie gut wusstest du es?")
+        _sg = st.session_state.get("_study_suggest")
+        if _sg is not None:
+            _sgtxt = {study.GEWUSST: "✅ Gewusst", study.HALB: "🟡 Halb",
+                      study.NICHT: "❌ Nicht gewusst"}.get(_sg, "")
+            st.caption(f"Vorschlag aus dem Ergebnis: **{_sgtxt}** – du entscheidest.")
         r1, r2, r3 = st.columns(3)
 
         def _bewerten(rating: int) -> None:
-            nxt = study.rate_card(karte, rating)
+            _conf = st.session_state.get("_study_conf")
+            nxt = study.rate_card(karte, rating, confidence=_conf)
             st.toast(f"Nächste Wiederholung: {study.humanize_due(nxt['due'])}")
             t = st.session_state[TALLY]
             t["gewusst" if rating == study.GEWUSST else
@@ -454,6 +627,11 @@ else:
                 # In derselben Runde erneut ueben (mit zurueckgesetztem Zustand).
                 q.append({**karte, **nxt})
             st.session_state[REVEAL] = False
+            # Alle Modus-Zustaende fuer die naechste Karte zuruecksetzen.
+            for _k in ("_study_conf", "_jol", "_typed_ans", "_grade", "_cloze",
+                       "_cloze_in", "_cloze_ok", "_mcq", "_mcq_sel", "_mcq_ok",
+                       "_study_suggest"):
+                st.session_state.pop(_k, None)
             st.rerun()
 
         if r1.button("❌ Nicht gewusst", use_container_width=True):

@@ -341,6 +341,55 @@ if hw:
                       help="Erste Antwort inkl. Laden ins GPU-/CPU-RAM.")
             st.info(f"**Einschätzung:** {ergebnis.get('verdict', '')}")
 
+    # --- Autoren-Modell (nur Batch-Content) ------------------------------- #
+    st.divider()
+    st.subheader("Autoren-Modell für die Stapel-Erzeugung")
+    st.caption(
+        "Ein grosses, kluges Modell NUR für die Batch-Erzeugung von Lerninhalten "
+        "(z. B. den Klausur-Lernkatalog). Der interaktive Chat bleibt auf dem "
+        "schnellen Antwort-Modell – dieses Modell wird erst beim Autoren-Lauf geladen. "
+        "Leer lassen = dasselbe wie das Antwort-Modell (kein zweites Modell laden)."
+    )
+    _KEIN_AUTOR = "— gleiches wie Antwort-Modell —"
+    _cur_author = settings.LLM_MODEL_AUTHOR or ""
+    _autor_opts = [_KEIN_AUTOR] + optionen
+    if _cur_author and _cur_author not in _autor_opts:
+        _autor_opts = [_KEIN_AUTOR, _cur_author] + optionen
+    _a_idx = _autor_opts.index(_cur_author) if _cur_author in _autor_opts else 0
+    autor_gewaehlt = st.selectbox(
+        "Modell für die Batch-Content-Erzeugung", options=_autor_opts, index=_a_idx,
+        format_func=lambda t: t if t == _KEIN_AUTOR else _opt_label(t),
+        help="Wird für Autoren-Aufgaben (Lernkatalog o. ä.) genutzt. Technisch: LLM_MODEL_AUTHOR")
+    st.caption(
+        f"Aktuell aktives Autoren-Modell: `{settings.author_model()}`"
+        + ("" if settings.LLM_MODEL_AUTHOR else "  (Fallback auf das Antwort-Modell)"))
+    if st.button("✅ Als Autoren-Modell setzen", use_container_width=True):
+        _val = "" if autor_gewaehlt == _KEIN_AUTOR else autor_gewaehlt
+        _ok = True
+        if _val:
+            if is_model_installed(_val, installiert):
+                with st.spinner(f"Prüfe, ob `{_val}` lädt …"):
+                    _pok, _pmsg = probe_model(_val)
+                if not _pok:
+                    st.error(f"❌ `{_val}` lädt auf diesem Rechner nicht: {_pmsg}  Nicht gesetzt.")
+                    _ok = False
+            else:
+                st.warning(
+                    f"ℹ️ `{_val}` ist noch nicht installiert – lade es zuerst oben im "
+                    "Antwort-Modell-Picker über **Herunterladen**, sonst schlägt der "
+                    "Autoren-Lauf fehl.")
+                _ok = False
+        if _ok:
+            try:
+                settings.update(LLM_MODEL_AUTHOR=_val)
+                settings.save()
+                st.success(
+                    (f"Autoren-Modell auf `{_val}` gesetzt." if _val
+                     else "Autoren-Modell zurückgesetzt – es wird das Antwort-Modell genutzt.")
+                    + " Neue Autoren-Läufe nutzen es sofort.")
+            except Exception as exc:  # pragma: no cover - defensiv
+                st.error(f"Konnte das Autoren-Modell nicht setzen: {exc}")
+
 st.divider()
 
 # --------------------------------------------------------------------------- #
@@ -857,7 +906,7 @@ _BEREICHE = {
                   "ENABLE_FAITHFULNESS_CHECK"],
     "🧹 Deduplizierung": ["DEDUP_NEAR_DUPLICATE_THRESHOLD", "RETRIEVAL_DEDUP_JACCARD",
                          "RETRIEVAL_DEDUP"],
-    "🧠 Modelle": ["LLM_MODEL", "LLM_MODEL_FAST", "EMBED_MODEL", "RERANKER_MODEL"],
+    "🧠 Modelle": ["LLM_MODEL", "LLM_MODEL_FAST", "LLM_MODEL_AUTHOR", "EMBED_MODEL", "RERANKER_MODEL"],
     "📊 Evaluation": ["EVAL_SAMPLE_SIZE", "EVAL_QUESTIONS_PER_CHUNK"],
 }
 

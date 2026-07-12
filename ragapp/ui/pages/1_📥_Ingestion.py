@@ -90,6 +90,32 @@ def _subject_label(code: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Qualitäts-Warnung: Dokumente, deren Textextraktion vermutlich verunglückt ist
+# --------------------------------------------------------------------------- #
+_ocr = manifest.documents_needing_ocr()
+if _ocr:
+    with st.expander(f"⚠️ {len(_ocr)} Dokument(e) evtl. unvollständig eingelesen "
+                     "(Scan/Bild – OCR empfohlen)", expanded=True):
+        st.caption("Bei diesen Dateien wurde wenig oder unlesbarer Text extrahiert – ihr "
+                   "Inhalt ist vermutlich **nicht vollständig** in der Wissensbasis. Ersetze "
+                   "sie durch eine echte Textversion (oder OCR) und lies sie neu ein.")
+        from ragapp.config import PROJECT_ROOT
+        for _d in _ocr:
+            _oc1, _oc2 = st.columns([4, 1])
+            _oc1.markdown(f"📄 **{_d['filename']}** · _{_subject_label(_d.get('subject') or '—')}_ "
+                          f"· {_d.get('char_count', 0)} Zeichen")
+            if _oc2.button("Neu einlesen", key=f"reocr_{_d['doc_id']}", use_container_width=True):
+                _pth = PROJECT_ROOT / (_d.get("source_path") or "")
+                if _pth.is_file():
+                    with st.spinner(f"Lese {_d['filename']} neu ein …"):
+                        _r = ingest_file(_pth, force=True)
+                    st.success(f"Neu eingelesen – Status: {_r.get('status')}.")
+                    st.rerun()
+                else:
+                    st.error("Originaldatei nicht gefunden.")
+
+
+# --------------------------------------------------------------------------- #
 # 1) Datei-Upload
 # --------------------------------------------------------------------------- #
 st.subheader("Dateien hochladen & indexieren")

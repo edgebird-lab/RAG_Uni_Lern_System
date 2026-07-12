@@ -169,7 +169,7 @@ def build_exam_catalog(
     sections = _split_sections(md_text)
     hints = _exam_hints(exam_files)
 
-    llm = get_llm(settings.LLM_MODEL)  # Haupt-Modell für gute Erklärqualität
+    llm = get_llm(settings.author_model())  # Autoren-Modell (gross) für gute Erklärqualität
     embedder = get_embedder()
     store = get_vectorstore()
 

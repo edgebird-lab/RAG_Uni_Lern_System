@@ -123,10 +123,12 @@ def harvest_cards(subject: "str | None" = None, max_per_chunk: "int | None" = No
 
 def generate_answers(subject: "str | None" = None, deck: "str | None" = None,
                      limit: "int | None" = None, card_ids: "list[str] | None" = None,
-                     progress=None) -> dict:
+                     progress=None, check_grounding: bool = False) -> dict:
     """Erzeugt fuer Karten aus generierten Fragen, die bisher nur den Chunk zeigen, eine
     echte KI-Musterloesung und speichert sie. Mit ``card_ids`` gezielt fuer eine Auswahl.
-    Ehrliches Ergebnis (status/filled/errors)."""
+    ``check_grounding=True``: eine zweite KI-Pruefung verwirft Antworten, die nicht durch
+    den Beleg gedeckt sind (Qualitaetsgate gegen subtil Falsches - kostet extra Zeit).
+    Ehrliches Ergebnis (status/filled/errors/ungrounded)."""
     from ragapp.config import settings
     from ragapp.hardware import probe_model
     from ragapp.ingestion.question_gen import generate_answer, QuestionGenError
@@ -147,7 +149,7 @@ def generate_answers(subject: "str | None" = None, deck: "str | None" = None,
         return {"status": "llm_error", "processed": 0, "filled": 0, "errors": 0,
                 "error_msg": f"Modell '{settings.LLM_MODEL_FAST}' laeuft nicht: {msg}"}
 
-    filled = errors = 0
+    filled = errors = ungrounded = 0
     error_msg = None
     for i, card in enumerate(todo, 1):
         if progress:
@@ -163,12 +165,17 @@ def generate_answers(subject: "str | None" = None, deck: "str | None" = None,
                         "errors": errors, "error_msg": error_msg}
             continue
         if ans:
+            if check_grounding:
+                from ragapp import grading
+                if not grading.is_grounded(card.get("front") or "", ans, card.get("back") or ""):
+                    ungrounded += 1
+                    continue   # nicht belegte Antwort NICHT speichern (Qualitaetsgate)
             manifest.set_answer(card["card_id"], ans)
             filled += 1
 
     status = "ok" if filled > 0 else ("llm_error" if errors else "empty")
     return {"status": status, "processed": len(todo), "filled": filled,
-            "errors": errors, "error_msg": error_msg}
+            "errors": errors, "ungrounded": ungrounded, "error_msg": error_msg}
 
 
 def apply_embedding_flags(card_ids: "list[str]", progress=None) -> dict:
@@ -214,26 +221,38 @@ def apply_embedding_flags(card_ids: "list[str]", progress=None) -> dict:
 
 
 def sm2_next(rating: int, ease: float, interval: int, reps: int,
-             lapses: int, now: "float | None" = None) -> dict:
+             lapses: int, now: "float | None" = None,
+             max_interval_days: "float | None" = None) -> dict:
     """Konfigurierbarer Wiederholungs-Planer (SM-2/Anki-Stil). Intervalle, Ease-Schritte
     und die GEWUSST-Leiter kommen aus den Einstellungen (SRS_*), damit der Nutzer die
     Abstaende frei tunen kann. ``interval`` ist die Zahl der TAGE (0 = noch in kurzen
     Minuten-Schritten); ``due`` ist der naechste Faelligkeits-Zeitpunkt.
-    rating: 0=nicht gewusst, 1=halb, 2=gewusst."""
+    rating: 0=nicht gewusst, 1=halb, 2=gewusst.
+    ``max_interval_days``: obere Schranke fuer die naechste Faelligkeit (Klausur-Modus)
+    - die Karte kommt dann spaetestens am Klausurtag wieder dran (nie ein laengeres
+    Intervall). Kappt nur nach oben, verkuerzt keine ohnehin kurzen Relearn-Schritte."""
     from ragapp.config import settings as S
     now = now if now is not None else time.time()
     ease = ease if ease else S.SRS_EASE_START
     steps = [float(m) for m in (S.SRS_GOOD_STEPS_MIN or (1440,)) if float(m) > 0] or [1440.0]
     emin, emax = S.SRS_EASE_MIN, S.SRS_EASE_MAX
 
+    def _cap(res: dict) -> dict:
+        # Klausur-Modus: naechste Faelligkeit nie hinter den Klausurtag legen.
+        if max_interval_days and float(max_interval_days) > 0:
+            cap_due = now + float(max_interval_days) * 86400.0
+            if res["due"] > cap_due:
+                return {**res, "due": cap_due, "interval": round(float(max_interval_days), 4)}
+        return res
+
     if rating <= NICHT:
         # Zurueck auf Anfang; kurzer Relearn-Schritt (Standard 2 min).
-        return {"ease": round(max(emin, ease + S.SRS_EASE_AGAIN), 3), "interval": 0,
-                "reps": 0, "lapses": lapses + 1, "due": now + S.SRS_AGAIN_MINUTES * 60}
+        return _cap({"ease": round(max(emin, ease + S.SRS_EASE_AGAIN), 3), "interval": 0,
+                     "reps": 0, "lapses": lapses + 1, "due": now + S.SRS_AGAIN_MINUTES * 60})
     if rating == HALB:
         # Kurzer Relearn (Standard 10 min); Stufe und Reps bleiben erhalten.
-        return {"ease": round(max(emin, ease + S.SRS_EASE_HALF), 3), "interval": interval,
-                "reps": reps, "lapses": lapses, "due": now + S.SRS_HALF_MINUTES * 60}
+        return _cap({"ease": round(max(emin, ease + S.SRS_EASE_HALF), 3), "interval": interval,
+                     "reps": reps, "lapses": lapses, "due": now + S.SRS_HALF_MINUTES * 60})
     # GEWUSST: eine Stufe hoch auf der Leiter; jenseits der Leiter x Ease.
     ease = min(emax, ease + S.SRS_EASE_GOOD)
     reps += 1
@@ -248,8 +267,8 @@ def sm2_next(rating: int, ease: float, interval: int, reps: int,
     # interval als echte Tage (auch < 1) speichern -> das Wachstum jenseits der Leiter
     # kann sich aufbauen, selbst wenn eine Stufe unter einem Tag liegt.
     interval_days = round(minutes / 1440.0, 4)
-    return {"ease": round(ease, 3), "interval": interval_days, "reps": reps,
-            "lapses": lapses, "due": now + minutes * 60}
+    return _cap({"ease": round(ease, 3), "interval": interval_days, "reps": reps,
+                 "lapses": lapses, "due": now + minutes * 60})
 
 
 def humanize_due(due: float, now: "float | None" = None) -> str:
@@ -271,17 +290,70 @@ def humanize_due(due: float, now: "float | None" = None) -> str:
     return f"in {round(d / 365, 1)} Jahren"
 
 
-def rate_card(card: dict, rating: int) -> dict:
-    """Wendet SM-2 auf eine Karte an, persistiert den neuen Zustand + Log-Eintrag.
-    Gibt den neuen Zustand zurueck (fuer evtl. Wiedervorlage in der Sitzung)."""
+def deadline_cap_days(subject: "str | None") -> "float | None":
+    """Obere Intervall-Schranke fuer ein Fach: Tage bis zur Klausur (oder None ohne
+    Termin / wenn die Klausur schon vorbei ist). So kommt jede Karte spaetestens am
+    Klausurtag noch einmal dran."""
+    if not subject:
+        return None
+    try:
+        from ragapp import planner
+        exam = manifest.get_exam(subject)
+        if not exam:
+            return None
+        dte = planner.days_to_exam(exam.get("exam_date"))
+        if dte is None or dte <= 0:
+            return None
+        return float(max(1, dte))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def rate_card(card: dict, rating: int, confidence: "str | None" = None) -> dict:
+    """Wendet SM-2 auf eine Karte an, persistiert den neuen Zustand + Log-Eintrag
+    (inkl. Konfidenz/JOL). Im Klausur-Modus (Fach hat einen Termin) wird die naechste
+    Faelligkeit auf den Klausurtag gekappt. Gibt den neuen Zustand zurueck."""
     nxt = sm2_next(rating, card.get("ease", 2.5), card.get("interval", 0),
-                   card.get("reps", 0), card.get("lapses", 0))
+                   card.get("reps", 0), card.get("lapses", 0),
+                   max_interval_days=deadline_cap_days(card.get("subject")))
+    # Hypercorrection-Effekt: War man SICHER und lag trotzdem daneben, ist die Luecke
+    # besonders hartnaeckig -> etwas staerkere Ease-Daempfung (kommt schneller wieder).
+    if confidence == "sicher" and rating <= NICHT:
+        from ragapp.config import settings as S
+        nxt["ease"] = round(max(S.SRS_EASE_MIN, nxt["ease"] - 0.10), 3)
     manifest.record_review(
         card["card_id"], rating, ease=nxt["ease"], interval=nxt["interval"],
         reps=nxt["reps"], lapses=nxt["lapses"], due=nxt["due"],
-        subject=card.get("subject"), topic=card.get("topic"),
+        subject=card.get("subject"), topic=card.get("topic"), confidence=confidence,
     )
     return nxt
+
+
+def card_from_chat(question: str, answer: str, subject: "str | None" = None,
+                   sources: "list | None" = None) -> "str | None":
+    """Legt aus einer (im Chat gestellten) Frage + geprueften Antwort eine Karteikarte
+    an: Vorderseite = Frage, Rueckseite = Antwort. Der Moment der Frage markiert die
+    echte Wissensluecke - ideal, um sie ins verteilte Wiederholen zu schicken. Gibt die
+    card_id zurueck (oder None bei leerer Frage/Antwort). Ohne LLM/Embedding."""
+    import hashlib
+    q = (question or "").strip()
+    a = (answer or "").strip()
+    if not q or not a:
+        return None
+    cid = "chat::" + hashlib.sha1(f"{q}|{a}".encode("utf-8")).hexdigest()[:16]
+    topic = None
+    if sources:
+        try:
+            first = sources[0] or {}
+            topic = first.get("filename") or first.get("location")
+        except Exception:  # noqa: BLE001
+            topic = None
+    manifest.upsert_review_items([{
+        "card_id": cid, "source": "chat", "chroma_id": None,
+        "subject": subject, "topic": topic,
+        "front": q, "back": a, "answer": a, "doc_id": None,
+    }])
+    return cid
 
 
 def humanize_interval(days: int) -> str:

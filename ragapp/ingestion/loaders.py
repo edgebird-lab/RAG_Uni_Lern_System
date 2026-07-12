@@ -61,6 +61,59 @@ def normalize_text(text: str) -> str:
 # --------------------------------------------------------------------------- #
 # Format-spezifische Loader
 # --------------------------------------------------------------------------- #
+_EASYOCR_READER = None
+_EASYOCR_TRIED = False
+
+
+def _get_easyocr():
+    """Gibt einen (gecachten) easyocr-Reader (dt.+engl.) zurueck oder None. Bevorzugt
+    die GPU (ROCm/CUDA), faellt auf CPU zurueck. Modelle werden beim ersten Mal geladen."""
+    global _EASYOCR_READER, _EASYOCR_TRIED
+    if _EASYOCR_TRIED:
+        return _EASYOCR_READER
+    _EASYOCR_TRIED = True
+    try:
+        import easyocr
+        try:
+            _EASYOCR_READER = easyocr.Reader(["de", "en"], gpu=True)
+        except Exception:  # noqa: BLE001 - GPU evtl. nicht nutzbar -> CPU
+            _EASYOCR_READER = easyocr.Reader(["de", "en"], gpu=False)
+    except Exception:  # noqa: BLE001 - easyocr nicht installiert
+        _EASYOCR_READER = None
+    return _EASYOCR_READER
+
+
+def _ocr_page(page) -> str:
+    """OCR einer text-losen PDF-Seite (Scan/Bild). Nutzt easyocr (GPU, dt.+engl.);
+    faellt auf pytesseract/Tesseract zurueck. '' wenn kein OCR verfuegbar ist."""
+    try:
+        png = page.get_pixmap(dpi=200).tobytes("png")
+    except Exception:  # noqa: BLE001
+        return ""
+    reader = _get_easyocr()
+    if reader is not None:
+        try:
+            import io
+            import numpy as np
+            from PIL import Image
+            arr = np.array(Image.open(io.BytesIO(png)).convert("RGB"))
+            lines = reader.readtext(arr, detail=0, paragraph=True)
+            return "\n".join(str(x) for x in lines)
+        except Exception:  # noqa: BLE001
+            pass
+    try:  # Fallback: pytesseract (falls jemand Tesseract installiert hat)
+        import io
+        import pytesseract
+        from PIL import Image
+        img = Image.open(io.BytesIO(png))
+        try:
+            return pytesseract.image_to_string(img, lang="deu") or ""
+        except Exception:  # noqa: BLE001
+            return pytesseract.image_to_string(img) or ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _load_pdf(path: Path) -> LoadedDoc:
     blocks: list[Block] = []
     text_parts: list[str] = []
@@ -71,6 +124,9 @@ def _load_pdf(path: Path) -> LoadedDoc:
             for i, page in enumerate(doc, start=1):
                 raw = page.get_text("text") or ""
                 norm = normalize_text(raw)
+                if not norm:
+                    # Keine Textebene -> vermutlich Scan/Bild -> OCR versuchen.
+                    norm = normalize_text(_ocr_page(page))
                 if norm:
                     blocks.append(Block(text=norm, page=i, kind="page"))
                     text_parts.append(norm)
@@ -126,21 +182,49 @@ def _load_txt(path: Path) -> LoadedDoc:
     )
 
 
+def _table_to_md(rows: list) -> str:
+    """Wandelt eine Tabelle (Liste von Zeilen mit Zellen) in eine Markdown-Tabelle -
+    so bleiben Zeilen/Spalten-Beziehungen (Pro/Contra, Klassifikationen, Kennzahlen)
+    erhalten, statt zu Zeichenbrei zu kollabieren."""
+    clean = [[str(c).replace("\n", " ").replace("|", "/").strip() for c in r]
+             for r in rows if any(str(c).strip() for c in r)]
+    if not clean:
+        return ""
+    ncol = max(len(r) for r in clean)
+    clean = [r + [""] * (ncol - len(r)) for r in clean]
+    out = ["| " + " | ".join(clean[0]) + " |",
+           "| " + " | ".join(["---"] * ncol) + " |"]
+    for r in clean[1:]:
+        out.append("| " + " | ".join(r) + " |")
+    return "\n".join(out)
+
+
 def _load_docx(path: Path) -> LoadedDoc:
     from docx import Document
 
     doc = Document(str(path))
     paras = [p.text for p in doc.paragraphs if p.text.strip()]
-    # Tabellen ebenfalls erfassen
+    # Tabellen als Markdown erfassen (Struktur bleibt erhalten)
     for table in doc.tables:
-        for row in table.rows:
-            cells = [c.text.strip() for c in row.cells if c.text.strip()]
-            if cells:
-                paras.append(" | ".join(cells))
+        md = _table_to_md([[c.text for c in row.cells] for row in table.rows])
+        if md:
+            paras.append(md)
     norm = normalize_text("\n".join(paras))
     return LoadedDoc(
         text=norm, blocks=[Block(text=norm, kind="text")], filetype="docx"
     )
+
+
+def _iter_pptx_shapes(shapes):
+    """Iteriert Folien-Shapes rekursiv - auch in Gruppen/SmartArt (die sonst
+    komplett verloren gingen)."""
+    for shape in shapes:
+        yield shape
+        if hasattr(shape, "shapes"):          # GroupShape
+            try:
+                yield from _iter_pptx_shapes(shape.shapes)
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def _load_pptx(path: Path) -> LoadedDoc:
@@ -150,13 +234,26 @@ def _load_pptx(path: Path) -> LoadedDoc:
     blocks: list[Block] = []
     parts: list[str] = []
     for i, slide in enumerate(prs.slides, start=1):
-        texts = []
-        for shape in slide.shapes:
-            if shape.has_text_frame:
+        texts: list[str] = []
+        for shape in _iter_pptx_shapes(slide.shapes):
+            if getattr(shape, "has_text_frame", False) and shape.has_text_frame:
                 for para in shape.text_frame.paragraphs:
                     line = "".join(run.text for run in para.runs)
                     if line.strip():
                         texts.append(line)
+            if getattr(shape, "has_table", False) and shape.has_table:
+                md = _table_to_md([[c.text for c in row.cells] for row in shape.table.rows])
+                if md:
+                    texts.append(md)
+        # Sprechernotizen: oft die AUSFORMULIERTE Erklaerung, die die knappe Folie
+        # nur andeutet - bisher komplett verworfen.
+        try:
+            if slide.has_notes_slide:
+                notes = (slide.notes_slide.notes_text_frame.text or "").strip()
+                if notes:
+                    texts.append("Notizen: " + notes)
+        except Exception:  # noqa: BLE001
+            pass
         norm = normalize_text("\n".join(texts))
         if norm:
             blocks.append(Block(text=norm, page=i, kind="slide"))

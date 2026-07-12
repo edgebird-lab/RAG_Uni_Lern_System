@@ -155,20 +155,44 @@ def _pin_gate() -> None:
 # Beenden-Button
 # --------------------------------------------------------------------------- #
 def _best_effort_stop_ollama() -> None:
-    """Fallback: Ollama sofort stoppen, falls kein Starter (ragapp.desktop) das
-    Beenden-Signal mitliest (z. B. bei direktem 'streamlit run')."""
+    """Fallback: das lokale KI-Modell sofort aus dem Speicher entladen, falls kein
+    Starter (start.sh-Waechter / ragapp.desktop) das Beenden-Signal mitliest
+    (z. B. bei direktem 'streamlit run'). Der Ollama-Dienst selbst wird NICHT
+    gestoppt - so bleiben andere Nutzer unberuehrt und es ist kein Root noetig."""
     import os
-    import subprocess
-    if os.name != "nt":
+    if os.name == "nt":
+        import subprocess
+        _flag = getattr(subprocess, "CREATE_NO_WINDOW", 0)  # kein aufblitzendes Terminal
+        for name in ("ollama.exe", "ollama app.exe", "ollama-lib.exe"):
+            try:
+                subprocess.run(["taskkill", "/IM", name, "/F", "/T"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               check=False, creationflags=_flag)
+            except Exception:  # noqa: BLE001
+                pass
         return
-    _flag = getattr(subprocess, "CREATE_NO_WINDOW", 0)   # kein aufblitzendes Terminal
-    for name in ("ollama.exe", "ollama app.exe", "ollama-lib.exe"):
-        try:
-            subprocess.run(["taskkill", "/IM", name, "/F", "/T"],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                           check=False, creationflags=_flag)
-        except Exception:  # noqa: BLE001
-            pass
+    # POSIX (Linux/macOS): geladene Modelle via API entladen (keep_alive=0).
+    try:
+        import json
+        import urllib.request
+        base = str(settings.OLLAMA_BASE_URL or "http://127.0.0.1:11434").rstrip("/")
+        with urllib.request.urlopen(base + "/api/ps", timeout=3.0) as r:
+            ps = json.loads(r.read().decode("utf-8") or "{}")
+        for m in ps.get("models", []):
+            name = m.get("model") or m.get("name")
+            if not name:
+                continue
+            data = json.dumps({"model": name, "keep_alive": 0}).encode("utf-8")
+            req = urllib.request.Request(
+                base + "/api/generate", data=data,
+                headers={"Content-Type": "application/json"})
+            try:
+                with urllib.request.urlopen(req, timeout=5.0) as resp:
+                    resp.read()
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _quit_button() -> None:

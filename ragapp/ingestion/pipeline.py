@@ -78,6 +78,29 @@ def should_ingest(path: Path, pdf_stems: set | None = None,
     return True, ""
 
 
+def extraction_quality(text: str, filetype: str = "") -> tuple[bool, str]:
+    """Grobe Heuristik, ob die Textextraktion plausibel gelungen ist. Faengt still
+    verunglueckte Importe ab (Scan/Bild-PDF ohne Text, kaputte Kodierung, Zeichenbrei),
+    damit der Nutzer nicht einer Vollstaendigkeit vertraut, die nicht existiert.
+    Gibt (ok, grund) zurueck - ok=False -> 'OCR/Neu-Import empfohlen'."""
+    import re
+    t = text or ""
+    n = len(t)
+    if n < 200:
+        return False, "sehr wenig Text extrahiert – vermutlich Scan/Bild (OCR nötig)"
+    letters = sum(1 for ch in t if ch.isalnum())
+    if letters / max(1, n) < 0.45:
+        return False, "viele unlesbare Zeichen – Textextraktion vermutlich fehlerhaft"
+    if t.count("�") > n * 0.005:
+        return False, "viele Ersatzzeichen (�) – Kodierung/Extraktion fehlerhaft"
+    words = re.findall(r"\S+", t)
+    if words:
+        avg = sum(len(w) for w in words) / len(words)
+        if avg > 25 or avg < 2:
+            return False, "unplausible Wortstruktur – Textextraktion vermutlich fehlerhaft"
+    return True, ""
+
+
 def _subject_for(path: Path) -> str:
     """Fach = erster Unterordner unter dem Quellordner; sonst Ordnername/Allgemein."""
     try:
@@ -123,8 +146,22 @@ def ingest_file(
     p(f"Lade {path.name} …")
     loaded = load_document(path)
     if not loaded.text.strip():
+        # Leerer Text: bei PDFs fast immer ein Scan/Bild -> SICHTBAR machen (OCR nötig)
+        # statt still zu überspringen. Andere leere Dateien: wie bisher überspringen.
+        if (loaded.filetype or path.suffix.lower().lstrip(".")) == "pdf":
+            manifest.upsert_document(
+                doc_id=doc_id, content_hash=dedup.content_hash(loaded.text),
+                source_path=rel, filename=path.name, subject=subject,
+                filetype=loaded.filetype, num_chunks=0, num_questions=0,
+                char_count=0, status="ocr_needed")
+            _log({"event": "ingest", "file": rel, "status": "ocr_needed", "reason": "empty_pdf"})
+            return {"status": "ocr_needed", "file": path.name,
+                    "reason": "kein Text extrahierbar (Scan/Bild – OCR nötig)"}
         _log({"event": "ingest", "file": rel, "status": "empty"})
         return {"status": "skipped", "reason": "empty", "file": path.name}
+
+    # Qualitaets-Gate: verunglueckte Extraktion (Zeichenbrei, kaputte Kodierung) melden.
+    _q_ok, _q_reason = extraction_quality(loaded.text, loaded.filetype)
 
     chash = dedup.content_hash(loaded.text)
 
@@ -246,17 +283,20 @@ def ingest_file(
     manifest.upsert_document(
         doc_id=doc_id, content_hash=chash, source_path=rel, filename=path.name,
         subject=subject, filetype=loaded.filetype, num_chunks=len(kept_chunks),
-        num_questions=n_questions, char_count=len(loaded.text), status="ok",
+        num_questions=n_questions, char_count=len(loaded.text),
+        status="ok" if _q_ok else "ocr_needed",
     )
 
     if rebuild_bm25:
         p("Aktualisiere BM25-Index …")
         rebuild_bm25_from_store()
 
-    _log({"event": "ingest", "file": rel, "status": "ok",
-          "chunks": len(kept_chunks), "questions": n_questions, "subject": subject})
+    _log({"event": "ingest", "file": rel, "status": "ok" if _q_ok else "low_quality",
+          "chunks": len(kept_chunks), "questions": n_questions, "subject": subject,
+          "quality_reason": _q_reason or None})
     return {"status": "ok", "file": path.name, "subject": subject,
-            "chunks": len(kept_chunks), "questions": n_questions}
+            "chunks": len(kept_chunks), "questions": n_questions,
+            "quality_ok": _q_ok, "quality_reason": _q_reason}
 
 
 def ingest_directory(

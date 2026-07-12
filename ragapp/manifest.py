@@ -21,11 +21,29 @@ from __future__ import annotations
 
 import sqlite3
 import time
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Optional
 
-from ragapp.config import MANIFEST_DB
+from ragapp.config import MANIFEST_DB, DATA_DIR
+
+
+_DEVICE_ID_FILE = DATA_DIR / ".device_id"
+
+
+def _device_id() -> str:
+    """Stabile, einmalig erzeugte Geraete-ID (fuer die Multi-Device-Sync)."""
+    try:
+        if _DEVICE_ID_FILE.exists():
+            v = _DEVICE_ID_FILE.read_text("utf-8").strip()
+            if v:
+                return v
+        v = uuid.uuid4().hex[:12]
+        _DEVICE_ID_FILE.write_text(v, "utf-8")
+        return v
+    except Exception:  # noqa: BLE001
+        return "unknown"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS documents (
@@ -91,10 +109,28 @@ CREATE TABLE IF NOT EXISTS review_log (
     rating         INTEGER,         -- 0=nicht gewusst, 1=halb, 2=gewusst
     reviewed_at    REAL,
     interval_after INTEGER,
-    ease_after     REAL
+    ease_after     REAL,
+    confidence     TEXT,            -- 'sicher'|'mittel'|'unsicher' (JOL vor dem Aufdecken)
+    device_id      TEXT,            -- Geraet, das die Wiederholung erzeugt hat (Sync)
+    event_uid      TEXT,            -- global eindeutige Ereignis-ID (idempotenter Import)
+    due_after      REAL             -- absolute Faelligkeit nach dieser Wiederholung (exakter Replay)
 );
+-- Der UNIQUE-Index auf event_uid wird in init_db() NACH der Spalten-Migration
+-- angelegt (sonst schlaegt er bei einer bestehenden DB ohne die Spalte fehl).
 CREATE INDEX IF NOT EXISTS idx_reviewlog_card ON review_log(card_id);
 CREATE INDEX IF NOT EXISTS idx_reviewlog_subject ON review_log(subject);
+
+-- Klausurtermine: pro Fach ein Termin (Datum, Gewicht/ECTS). Fundament fuer
+-- Bereitschafts-Score, Countdown, Cram-Modus und die Prioritaets-Planung.
+CREATE TABLE IF NOT EXISTS exams (
+    subject     TEXT PRIMARY KEY,   -- Fach (= review_items.subject)
+    exam_date   TEXT,               -- ISO 'YYYY-MM-DD'
+    ects        REAL,               -- Umfang (optional, fuer Gewichtung)
+    gewicht     REAL DEFAULT 1.0,   -- manuelles Gewicht (Prioritaet)
+    notiz       TEXT,
+    created_at  REAL,
+    updated_at  REAL
+);
 """
 
 
@@ -128,6 +164,28 @@ def init_db() -> None:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_review_deck ON review_items(deck)")
         except Exception:  # noqa: BLE001
             pass
+        # Additive Migration fuer review_log: Konfidenz (JOL) + Sync-Felder nachziehen.
+        try:
+            rlcols = {r["name"] for r in conn.execute("PRAGMA table_info(review_log)")}
+            for _c, _ddl in (("confidence", "ALTER TABLE review_log ADD COLUMN confidence TEXT"),
+                             ("device_id", "ALTER TABLE review_log ADD COLUMN device_id TEXT"),
+                             ("event_uid", "ALTER TABLE review_log ADD COLUMN event_uid TEXT"),
+                             ("due_after", "ALTER TABLE review_log ADD COLUMN due_after REAL")):
+                if _c not in rlcols:
+                    conn.execute(_ddl)
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_reviewlog_uid ON review_log(event_uid)")
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _pre_destructive_snapshot(reason: str) -> None:
+    """Zieht vor destruktiven Aktionen (Karten/Deck loeschen, Neu-Ernte) einen
+    Lernstand-Snapshot. Lazy-Import gegen Zyklen; darf nie den Betrieb stoeren."""
+    try:
+        from ragapp import backup
+        backup.snapshot(reason)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 # --------------------------------------------------------------------------- #
@@ -217,6 +275,14 @@ def list_documents() -> list[sqlite3.Row]:
     with _connect() as conn:
         cur = conn.execute("SELECT * FROM documents ORDER BY subject, filename")
         return cur.fetchall()
+
+
+def documents_needing_ocr() -> list[dict]:
+    """Dokumente, deren Textextraktion vermutlich verunglueckt ist (Scan/Bild ohne
+    Text oder Zeichenbrei) - Kandidaten fuer OCR/Neu-Import (status='ocr_needed')."""
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM documents WHERE status='ocr_needed' ORDER BY subject, filename")]
 
 
 # --------------------------------------------------------------------------- #
@@ -359,13 +425,37 @@ def review_counts(subject: Optional[str] = None, deck: Optional[str] = None,
         }
 
 
+def _interleave_by_topic(cards: list[dict]) -> list[dict]:
+    """Mischt Karten verschraenkt: reihum je ein Thema (Fallback: Fach), sodass
+    moeglichst nie zwei gleiche Themen aufeinanderfolgen. Innerhalb eines Themas
+    bleibt die urspruengliche Reihenfolge (Faelligkeit) erhalten."""
+    from collections import OrderedDict, deque
+    groups: "OrderedDict[str, deque]" = OrderedDict()
+    for c in cards:
+        key = str(c.get("topic") or c.get("subject") or "?")
+        groups.setdefault(key, deque()).append(c)
+    queues = list(groups.values())
+    out: list[dict] = []
+    while queues:
+        for q in list(queues):
+            if q:
+                out.append(q.popleft())
+            if not q:
+                queues.remove(q)
+    return out
+
+
 def get_due_cards(subject: Optional[str] = None, limit: int = 20,
                   now: Optional[float] = None, deck: Optional[str] = None,
                   decks: Optional[list[str]] = None,
-                  new_limit: Optional[int] = None) -> list[dict]:
+                  new_limit: Optional[int] = None, order: str = "due",
+                  cram: bool = False) -> list[dict]:
     """Faellige Karten (Wiederholungen zuerst, dann neue), aufsteigend nach Faelligkeit.
     ``decks`` erlaubt Mehrfachauswahl von Stapeln; ``new_limit`` deckelt die Zahl NEUER
-    (nie geuebter) Karten in dieser Auswahl (Tages-/Runden-Limit)."""
+    (nie geuebter) Karten in dieser Auswahl (Tages-/Runden-Limit). ``order='interleave'``
+    mischt die ausgewaehlten Karten verschraenkt nach Thema (bessere Unterscheidung).
+    ``cram=True`` (Klausur-Modus): fuellt die Runde bei zu wenig Faelligen mit den
+    SCHWAECHSTEN noch-nicht-faelligen Karten auf (wenige reps / niedrige Ease)."""
     now = now if now is not None else time.time()
     ssql, sargs = _scope(subject, deck, decks)
     q = ("SELECT * FROM review_items WHERE suspended=0 AND use_flashcard=1 AND due<=?" + ssql
@@ -381,6 +471,20 @@ def get_due_cards(subject: Optional[str] = None, limit: int = 20,
         out.append(r)
         if len(out) >= int(limit):
             break
+    if cram and len(out) < int(limit):
+        have = {c["card_id"] for c in out}
+        eq = ("SELECT * FROM review_items WHERE suspended=0 AND use_flashcard=1 AND due>?"
+              + ssql + " ORDER BY reps ASC, ease ASC, due ASC LIMIT ?")
+        with _connect() as conn:
+            extra = [dict(r) for r in conn.execute(eq, [now] + sargs + [int(limit)]).fetchall()]
+        for r in extra:
+            if r["card_id"] in have:
+                continue
+            out.append(r)
+            if len(out) >= int(limit):
+                break
+    if order == "interleave" and len(out) > 2:
+        out = _interleave_by_topic(out)
     return out
 
 
@@ -411,8 +515,9 @@ def count_new_today(subject: Optional[str] = None, deck: Optional[str] = None,
 
 def record_review(card_id: str, rating: int, *, ease: float, interval: int, reps: int,
                   lapses: int, due: float, subject: Optional[str] = None,
-                  topic: Optional[str] = None) -> None:
-    """Schreibt den neuen SM-2-Zustand einer Karte + einen Eintrag ins Lern-Log."""
+                  topic: Optional[str] = None, confidence: Optional[str] = None) -> None:
+    """Schreibt den neuen SM-2-Zustand einer Karte + einen Eintrag ins Lern-Log
+    (inkl. optionaler Konfidenz/JOL vor dem Aufdecken)."""
     now = time.time()
     with _connect() as conn:
         conn.execute(
@@ -422,8 +527,10 @@ def record_review(card_id: str, rating: int, *, ease: float, interval: int, reps
         )
         conn.execute(
             "INSERT INTO review_log (card_id, subject, topic, rating, reviewed_at, "
-            "interval_after, ease_after) VALUES (?,?,?,?,?,?,?)",
-            (card_id, subject, topic, rating, now, interval, ease),
+            "interval_after, ease_after, confidence, device_id, event_uid, due_after) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (card_id, subject, topic, rating, now, interval, ease, confidence,
+             _device_id(), uuid.uuid4().hex, due),
         )
 
 
@@ -437,6 +544,7 @@ def study_subjects() -> list[str]:
 
 def delete_cards(subject: Optional[str] = None) -> None:
     """Karten (+ deren Log) loeschen - alle oder nur ein Fach."""
+    _pre_destructive_snapshot("vor-loeschen-" + (subject or "alle"))
     with _connect() as conn:
         if subject:
             conn.execute("DELETE FROM review_items WHERE subject=?", (subject,))
@@ -491,6 +599,7 @@ def delete_card_ids(card_ids: list[str]) -> list[str]:
     damit der Aufrufer die Frage bei Bedarf auch aus dem Vektorindex entfernen kann."""
     if not card_ids:
         return []
+    _pre_destructive_snapshot("vor-karten-loeschen")
     ph = ",".join("?" * len(card_ids))
     with _connect() as conn:
         chroma = [r["chroma_id"] for r in conn.execute(
@@ -503,6 +612,7 @@ def delete_card_ids(card_ids: list[str]) -> list[str]:
 
 def delete_deck(deck: str) -> list[str]:
     """Loescht ALLE Karten eines Stapels (+ Log). Gibt deren Chroma-IDs zurueck."""
+    _pre_destructive_snapshot("vor-deck-loeschen")
     with _connect() as conn:
         rows = conn.execute(
             "SELECT card_id, chroma_id FROM review_items WHERE deck=?", (deck,)).fetchall()
@@ -613,6 +723,56 @@ def deck_overview() -> list[dict]:
             "FROM review_items WHERE suspended=0 GROUP BY COALESCE(deck,'') ORDER BY deck",
             (now,)).fetchall()
         return [{"deck": r["deck"] or None, "total": r["total"], "due": r["due"]} for r in rows]
+
+
+# --------------------------------------------------------------------------- #
+# Klausurtermine (pro Fach ein Termin)
+# --------------------------------------------------------------------------- #
+def upsert_exam(subject: str, *, exam_date: Optional[str] = None,
+                ects: Optional[float] = None, gewicht: float = 1.0,
+                notiz: Optional[str] = None) -> None:
+    """Legt einen Klausurtermin fuer ein Fach an oder aktualisiert ihn.
+    ``exam_date`` ist ISO 'YYYY-MM-DD' (oder None/'' = kein Termin gesetzt)."""
+    if not subject:
+        return
+    now = time.time()
+    exam_date = (exam_date or "").strip() or None
+    with _connect() as conn:
+        exists = conn.execute(
+            "SELECT created_at FROM exams WHERE subject=?", (subject,)).fetchone()
+        created = exists["created_at"] if exists else now
+        conn.execute(
+            "INSERT INTO exams (subject, exam_date, ects, gewicht, notiz, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?) "
+            "ON CONFLICT(subject) DO UPDATE SET exam_date=excluded.exam_date, "
+            "ects=excluded.ects, gewicht=excluded.gewicht, notiz=excluded.notiz, "
+            "updated_at=excluded.updated_at",
+            (subject, exam_date, ects, float(gewicht or 1.0), notiz, created, now),
+        )
+
+
+def get_exam(subject: str) -> Optional[dict]:
+    with _connect() as conn:
+        r = conn.execute("SELECT * FROM exams WHERE subject=?", (subject,)).fetchone()
+        return dict(r) if r else None
+
+
+def list_exams() -> list[dict]:
+    """Alle Klausurtermine (mit gesetztem Datum zuerst, dann nach Datum)."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM exams ORDER BY (exam_date IS NULL), exam_date, subject").fetchall()
+        return [dict(r) for r in rows]
+
+
+def exam_map() -> dict:
+    """Fach -> exam-Datensatz (dict), fuer schnelle Nachschlage in Planer/Analytik."""
+    return {e["subject"]: e for e in list_exams()}
+
+
+def delete_exam(subject: str) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM exams WHERE subject=?", (subject,))
 
 
 # Initialisierung beim Import

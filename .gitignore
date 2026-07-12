@@ -65,3 +65,7 @@ Thumbs.db
 # Tool-Artefakte (Playwright-Browser-Automatisierung)
 # ---------------------------------------------------------------------------
 .playwright-mcp/
+
+# Laufzeit-Logs
+streamlit.log
+*.log

@@ -40,6 +40,8 @@ from ragapp.graph.prompts import (
 
 class RAGState(TypedDict, total=False):
     question: str
+    search_query: str        # fuer die Suche genutzte (ggf. verlaufsbereinigte) Frage
+    sub_queries: list        # Teilfragen bei breiten Fragen (vergleiche/nenne alle/...)
     subject: Optional[str]
     use_reranker: Optional[bool]        # None = Einstellung, False = "Schnelle Antworten"
     check_faithfulness: Optional[bool]  # None = Einstellung, False = "Schnelle Antworten"
@@ -88,8 +90,25 @@ def _build_context(candidates: list[dict]) -> tuple[str, list[dict]]:
 # --------------------------------------------------------------------------- #
 def retrieve_node(state: RAGState) -> RAGState:
     t0 = time.time()
-    candidates = retrieve(state["question"], state.get("subject"),
-                          use_reranker=state.get("use_reranker"))
+    # Fuer die Suche die (ggf. verlaufsbereinigte) eigenstaendige Frage nutzen;
+    # die Antwort/Zitate arbeiten weiterhin mit der Originalfrage (state["question"]).
+    # Bei breiten Fragen (vergleiche/nenne alle/mehrschritt) zusaetzlich fuer jede
+    # Teilfrage suchen und die Treffer zusammenfuehren -> bessere Abdeckung.
+    queries = [state.get("search_query") or state["question"]]
+    queries += [q for q in (state.get("sub_queries") or []) if q]
+    use_rr = state.get("use_reranker")
+    subj = state.get("subject")
+    merged: dict = {}
+    for qq in queries:
+        for c in retrieve(qq, subj, use_reranker=use_rr):
+            key = (c.get("document") or "")[:120]
+            sc = c.get("rerank_score", c.get("fusion_score", 0.0))
+            prev = merged.get(key)
+            if prev is None or sc > prev.get("rerank_score", prev.get("fusion_score", -1e9)):
+                merged[key] = c
+    candidates = sorted(
+        merged.values(),
+        key=lambda c: c.get("rerank_score", c.get("fusion_score", 0.0)), reverse=True)
     top_score = candidates[0].get("rerank_score", candidates[0].get("fusion_score", 0.0)) if candidates else None
     relevance_ok = bool(candidates) and (
         top_score is None or top_score >= settings.RELEVANCE_MIN_SCORE
@@ -223,19 +242,115 @@ def get_graph():
     return _compiled
 
 
+# --------------------------------------------------------------------------- #
+# Verlaufsbewusstes Query-Rewriting (Rueckfragen eigenstaendig machen)
+# --------------------------------------------------------------------------- #
+_CONDENSE_PROMPT = (
+    "Formuliere die folgende Anschlussfrage zu EINER eigenständigen, vollständigen "
+    "Suchanfrage um, die ohne den bisherigen Gesprächsverlauf verständlich ist. Löse "
+    "Bezüge wie 'das', 'dazu', 'und warum', 'ein Beispiel' anhand des Verlaufs auf. "
+    "Antworte NUR mit der umformulierten Frage – ohne Erklärung, ohne Anführungszeichen.\n\n"
+    "Gesprächsverlauf:\n{history}\n\nAnschlussfrage: {question}\n\nEigenständige Frage:"
+)
+_FOLLOWUP_MARKERS = ("und ", "warum", "wieso", "weshalb", "wozu", "wofür", "beispiel",
+                     "genauer", "mehr", "erklär", "das ", "dies", "davon", "dazu",
+                     "daran", "unterschied", "vergleich", "welche", "was noch")
+
+
+def _looks_followup(q: str) -> bool:
+    """Grobe Heuristik: kurze/anaphorische Frage -> vermutlich Rueckfrage."""
+    ql = (q or "").strip().lower()
+    if not ql:
+        return False
+    if len(ql.split()) <= 6:
+        return True
+    return any(ql.startswith(m) or f" {m}" in f" {ql}" for m in _FOLLOWUP_MARKERS)
+
+
+def _condense_query(question: str, history: list) -> str:
+    """Formuliert eine Rueckfrage anhand der letzten Turns eigenstaendig um.
+    Faellt bei jedem Fehler auf die Originalfrage zurueck (kein Risiko)."""
+    turns = [h for h in (history or []) if h.get("content")][-4:]
+    if not turns:
+        return question
+    hist = "\n".join((("Frage" if h.get("role") == "user" else "Antwort") + ": "
+                      + (h.get("content") or "")[:400]) for h in turns)
+    try:
+        rewritten = get_llm(settings.LLM_MODEL_FAST).generate(
+            _CONDENSE_PROMPT.format(history=hist, question=question)).strip()
+        rewritten = rewritten.splitlines()[0].strip().strip('"„“') if rewritten else ""
+        if rewritten and 3 <= len(rewritten) <= 300:
+            return rewritten
+    except Exception:  # noqa: BLE001
+        pass
+    return question
+
+
+# --------------------------------------------------------------------------- #
+# Fragetyp-Router: breite Fragen (vergleiche / nenne alle / mehrschritt) zerlegen
+# --------------------------------------------------------------------------- #
+_BROAD_MARKERS = ("vergleich", "unterschied", "gegenüber", "gegenueber", "nenne alle",
+                  "alle ", "welche ", "vor- und nach", "vor und nach", "sowie",
+                  "zusammenhang zwischen", "mehrere", "aufzählen", "aufzaehlen",
+                  "liste", "schritte", "herleit")
+
+_DECOMPOSE_PROMPT = (
+    "Zerlege die folgende, breit gestellte Pruefungsfrage in 2-4 KURZE, eigenstaendige "
+    "Teilfragen, die zusammen die ganze Frage abdecken (z. B. je Vergleichsseite, je "
+    "geforderten Punkt, je Rechenschritt). Antworte NUR mit JSON: "
+    '{{"teilfragen": ["...", "..."]}}\n\nFrage: {frage}')
+
+
+def _is_broad(question: str) -> bool:
+    ql = (question or "").lower()
+    if ql.count("?") >= 2:
+        return True
+    return any(m in ql for m in _BROAD_MARKERS)
+
+
+def _decompose_query(question: str) -> list:
+    """Zerlegt eine breite Frage in Teilfragen (fuers Retrieval). Faellt bei jedem
+    Fehler auf [] zurueck (dann normale Einzel-Suche)."""
+    try:
+        data = get_llm(settings.LLM_MODEL_FAST).generate_json(
+            _DECOMPOSE_PROMPT.format(frage=question))
+    except Exception:  # noqa: BLE001
+        return []
+    subs = data.get("teilfragen") if isinstance(data, dict) else None
+    out = []
+    for s in (subs or []):
+        s = str(s).strip()
+        if s and 5 <= len(s) <= 200:
+            out.append(s)
+    return out[:4]
+
+
 def answer_query(question: str, subject: Optional[str] = None,
                  use_reranker: Optional[bool] = None,
-                 check_faithfulness: Optional[bool] = None) -> dict:
+                 check_faithfulness: Optional[bool] = None,
+                 history: Optional[list] = None,
+                 decompose: bool = True) -> dict:
     """Öffentliche Schnittstelle für UI/CLI. Führt den Graphen aus.
 
     use_reranker / check_faithfulness: None = globale Einstellung; False =
     überspringen ("Schnelle Antworten" auf der Startseite -> schneller, dafür
-    gröbere Trefferreihenfolge bzw. keine zusätzliche Beleg-Prüfung)."""
+    gröbere Trefferreihenfolge bzw. keine zusätzliche Beleg-Prüfung).
+    history: bisherige Chat-Nachrichten -> kurze Rückfragen werden für die Suche zu
+    eigenständigen Fragen umformuliert (die Antwort nutzt die Originalfrage)."""
     t0 = time.time()
-    state: RAGState = {"question": question, "subject": subject,
+    search_query = question
+    if history and _looks_followup(question):
+        search_query = _condense_query(question, history)
+    sub_queries = _decompose_query(search_query) if (decompose and _is_broad(question)) else []
+    state: RAGState = {"question": question, "search_query": search_query,
+                       "sub_queries": sub_queries, "subject": subject,
                        "use_reranker": use_reranker,
                        "check_faithfulness": check_faithfulness, "mode": "answer"}
     result = get_graph().invoke(state)
+    if search_query != question:
+        result["search_query"] = search_query
+    if sub_queries:
+        result["sub_queries"] = sub_queries
     result["total_time"] = round(time.time() - t0, 2)
     # Query-Log für spätere Analyse/Nachjustierung
     _log_query(question, subject, result)

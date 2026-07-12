@@ -76,6 +76,11 @@ class Settings:
     # auf dem alten IPEX-Backend NICHT - daher nicht als globaler Default.
     LLM_MODEL: str = "gemma3:4b"           # Haupt-LLM (Antwortgenerierung)
     LLM_MODEL_FAST: str = "gemma3:4b"      # Modell fuer Hilfsaufgaben (Fragen, Checks)
+    # Grosses, kluges Modell NUR fuer Batch-Content-Erzeugung (z. B. Klausur-
+    # Lernkatalog). Leer = Fallback auf LLM_MODEL (kein zweites Modell laden).
+    # Bewusst NICHT im interaktiven Chat-Pfad verwendet, damit dort kein
+    # Ollama-Swap entsteht. Aufloesung ueber settings.author_model().
+    LLM_MODEL_AUTHOR: str = ""             # "" -> author_model() faellt auf LLM_MODEL zurueck
     EMBED_MODEL: str = "bge-m3"            # multilinguales Embedding (1024-dim)
     EMBED_DIM: int = 1024
     # Parallele Embedding-Anfragen an Ollama. HINWEIS (empirisch gemessen):
@@ -149,6 +154,16 @@ class Settings:
     # Tages-/Runden-Limits
     SRS_NEW_PER_DAY: int = 20              # neue Karten pro Tag (0 = unbegrenzt)
     SRS_MAX_PER_SESSION: int = 100         # Obergrenze fuer eine Lernrunde
+
+    # ------------------------------------------------------------------ #
+    # Lernplanung, Analytik & Datensicherung (Fortschritt / Klausurtermin)
+    # ------------------------------------------------------------------ #
+    MASTERY_TARGET_REPS: int = 4          # Wiederholungen in Folge, ab denen eine Karte als "sitzt" gilt
+    PLANNER_URGENCY_DAYS: int = 30        # Horizont fuer die Termin-Dringlichkeit (Tage bis Klausur)
+    DAILY_REVIEW_GOAL: int = 40           # Tagesziel Wiederholungen (fuer Streak/Fortschritt)
+    LEECH_LAPSES_THRESHOLD: int = 4       # ab so vielen Patzern gilt eine Karte als "Dauerpatzer" (Leech)
+    BACKUP_KEEP: int = 12                 # Anzahl aufbewahrter Lernstand-Snapshots
+    BACKUP_MIN_HOURS: float = 24.0        # automatischer Start-Snapshot nur, wenn letzter aelter als dies
 
     # ------------------------------------------------------------------ #
     # Retrieval-Deduplizierung (gegen doppelte Informationen in der Antwort)
@@ -255,6 +270,12 @@ class Settings:
         for k, v in kwargs.items():
             if k in valid:
                 setattr(self, k, v)
+
+    def author_model(self) -> str:
+        """Modell fuer die Batch-Content-Erzeugung (Autoren-Aufgaben). Faellt auf
+        LLM_MODEL zurueck, wenn LLM_MODEL_AUTHOR leer ist (dann kein zweites Modell
+        noetig)."""
+        return (self.LLM_MODEL_AUTHOR or "").strip() or self.LLM_MODEL
 
 
 # Globale Instanz, überall importierbar.

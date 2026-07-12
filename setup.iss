@@ -9,7 +9,7 @@
 ; ============================================================================
 
 #define MyAppName "RAG-Lernsystem"
-#define MyAppVersion "1.1"
+#define MyAppVersion "1.0"
 #define MyAppPublisher "edgebird-lab"
 #define MyAppURL "https://github.com/edgebird-lab/RAG_System"
 
@@ -25,7 +25,7 @@ AppCopyright=Copyright (C) edgebird-lab - MIT License
 ; ausgefuellte "Details"-Registerkarte (Herausgeber/Produkt/Version) SmartScreen-
 ; Misstrauen und wirkt serioeser. Die eigentliche Vertrauensstufe kommt aber erst
 ; ueber die Code-Signatur (siehe SignTool-Block weiter unten).
-VersionInfoVersion=1.1.0.0
+VersionInfoVersion=1.0.0.0
 VersionInfoProductVersion={#MyAppVersion}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoProductName={#MyAppName}

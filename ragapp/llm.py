@@ -14,6 +14,7 @@ Design-Entscheidungen für **wenig Halluzination**:
 from __future__ import annotations
 
 import json
+import re
 import time
 from typing import Any
 
@@ -36,14 +37,16 @@ class LLM:
         *,
         temperature: float | None = None,
         num_ctx: int | None = None,
+        num_predict: int | None = None,     # pro Aufruf ueberschreibbares Token-Budget
         json_mode: bool = False,
-        think: bool = False,
+        think: bool | str = False,          # gpt-oss & Co.: "low"/"medium"/"high" moeglich
         retries: int = 2,
+        _thinking_fallback: bool = False,   # nur JSON-Pfad: leeren content aus dem Denk-Kanal retten
     ) -> str:
         options = {
             "temperature": settings.LLM_TEMPERATURE if temperature is None else temperature,
             "num_ctx": num_ctx or settings.LLM_NUM_CTX,
-            "num_predict": settings.LLM_NUM_PREDICT,
+            "num_predict": num_predict or settings.LLM_NUM_PREDICT,
         }
         kwargs: dict[str, Any] = {
             "model": self.model,
@@ -58,9 +61,21 @@ class LLM:
         for attempt in range(retries + 1):
             try:
                 resp = self._client.chat(**kwargs)
-                return (resp.get("message", {}) or {}).get("content", "") or ""
+                msg = resp.get("message", {}) or {}
+                content = msg.get("content", "") or ""
+                # Reasoning-Modelle: bei knappem num_predict kann der Antwort-Channel
+                # leer bleiben (done_reason='length'). Den Denk-Kanal NUR im JSON-Pfad
+                # als Fallback nehmen (dort wird das JSON heraus-geparst) - fuer Freitext
+                # (Antwort/Zusammenfassung) NICHT, sonst leakt die Gedankenkette.
+                if _thinking_fallback and not content.strip():
+                    content = msg.get("thinking", "") or ""
+                return content
             except Exception as exc:  # pragma: no cover
                 last_err = exc
+                # Backend/Modell akzeptiert den Reasoning-Schalter nicht -> ohne ihn erneut
+                if kwargs.get("think") not in (False, None) and "think" in str(exc).lower():
+                    kwargs["think"] = False
+                    continue
                 if attempt < retries:            # nach dem letzten Versuch nicht mehr warten
                     time.sleep(1.0 * (attempt + 1))
         raise RuntimeError(f"LLM-Aufruf fehlgeschlagen ({self.model}): {last_err}")
@@ -80,30 +95,68 @@ class LLM:
         WICHTIG: KEIN Ollama-``format="json"`` (Grammar-constrained decoding),
         das crasht das IPEX-LLM/SYCL-Backend der Intel-iGPU ("model runner
         unexpectedly stopped"). Freie Generierung + robustes Parsen (_safe_json)
-        funktioniert auf CPU wie GPU."""
+        funktioniert auf CPU wie GPU.
+
+        Zusaetzlich Reasoning knapp halten (``think="low"``), damit bei
+        Reasoning-Modellen (gpt-oss) das num_predict-Budget nicht komplett von
+        der Gedankenkette verbraucht wird und der Antwort-Channel leer/trunkiert
+        bleibt (done_reason='length')."""
+        kwargs.setdefault("think", "low")
+        kwargs.setdefault("_thinking_fallback", True)   # JSON darf aus dem Denk-Kanal kommen
         raw = self.generate(prompt, system=system, **kwargs)
         return _safe_json(raw)
 
 
 def _safe_json(raw: str) -> Any:
+    if not raw or not raw.strip():
+        return None
     raw = raw.strip()
-    # ggf. Codefences entfernen
-    if raw.startswith("```"):
-        raw = raw.strip("`")
-        raw = raw.split("\n", 1)[-1] if "\n" in raw else raw
+    # Codefences irgendwo im Text entfernen (```json ... ```)
+    if "```" in raw:
+        m = re.search(r"```(?:json)?\s*(.*?)```", raw, re.DOTALL)
+        if m:
+            raw = m.group(1).strip()
     try:
         return json.loads(raw)
     except Exception:
-        # ersten {...} oder [...] Block herausfischen
-        for opener, closer in (("{", "}"), ("[", "]")):
-            start = raw.find(opener)
-            end = raw.rfind(closer)
-            if start != -1 and end != -1 and end > start:
-                try:
-                    return json.loads(raw[start:end + 1])
-                except Exception:
-                    continue
-        return None
+        pass
+    # Erstes BALANCIERTES {..} bzw. [..]-Objekt scannen (Strings/Escapes beachten),
+    # damit Reasoning-Text mit einzelnen '{'/'}' die Extraktion nicht sprengt.
+    for opener, closer in (("{", "}"), ("[", "]")):
+        depth = 0
+        start = -1
+        instr = False
+        esc = False
+        for i, ch in enumerate(raw):
+            if instr:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == '"':
+                    instr = False
+                continue
+            if ch == '"':
+                instr = True
+            elif ch == opener:
+                if depth == 0:
+                    start = i
+                depth += 1
+            elif ch == closer and depth:
+                depth -= 1
+                if depth == 0 and start != -1:
+                    try:
+                        return json.loads(raw[start:i + 1])
+                    except Exception:
+                        start = -1
+        # Greedy-Fallback wie bisher
+        s, e = raw.find(opener), raw.rfind(closer)
+        if s != -1 and e > s:
+            try:
+                return json.loads(raw[s:e + 1])
+            except Exception:
+                continue
+    return None
 
 
 _default_llm: LLM | None = None

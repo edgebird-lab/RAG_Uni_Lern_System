@@ -245,3 +245,81 @@ else:
         st.line_chart(df_hist.set_index("Zeit")[chart_cols])
 
     st.dataframe(df_hist, use_container_width=True, hide_index=True)
+
+
+st.divider()
+
+# --------------------------------------------------------------------------- #
+# 4. Antwort-Qualität (RAGAS-lite): misst die ANTWORT, nicht nur das Retrieval
+# --------------------------------------------------------------------------- #
+st.subheader("4. Antwort-Qualität")
+st.caption("Misst, ob die generierten **Antworten** korrekt, vollständig und belegt sind "
+           "(nicht nur, ob der richtige Chunk gefunden wird). Ein LLM-Judge bewertet eine "
+           "Stichprobe der Gold-Fragen gegen den Quelltext – dauert etwas (LLM pro Frage). "
+           "Ehrlich: der Judge ist selbst KI, die Werte sind ein gutes, aber nicht perfektes Signal.")
+from ragapp.eval.answer_eval import run_answer_eval, load_answer_history
+
+_ae1, _ae2 = st.columns([1, 2])
+_ae_n = _ae1.number_input("Stichprobe", min_value=3, max_value=50, value=8, step=1, key="ae_n")
+if _ae2.button("▶️ Antwort-Qualität messen", use_container_width=True):
+    with st.status("Beantworte & bewerte …", expanded=True) as _s:
+        _r = run_answer_eval(sample_size=int(_ae_n), progress=lambda m: _s.update(label=m))
+        _s.update(label="Fertig", state="complete")
+    if _r.get("status") == "no_gold":
+        st.warning("Kein Gold-Set vorhanden – erzeuge es oben unter **1.** zuerst.")
+    else:
+        st.session_state["_ae_last"] = _r
+
+_last = st.session_state.get("_ae_last")
+if _last and _last.get("status") == "ok":
+    _q1, _q2, _q3, _q4 = st.columns(4)
+    _q1.metric("Korrektheit", f'{_last["korrektheit"]} %' if _last["korrektheit"] is not None else "–")
+    _q2.metric("Vollständigkeit", f'{_last["vollstaendigkeit"]} %' if _last["vollstaendigkeit"] is not None else "–")
+    _q3.metric("Treue", f'{_last["treue"]} %' if _last["treue"] is not None else "–")
+    _q4.metric("Fallback", f'{_last["fallback_pct"]} %')
+    if _last.get("invalid_citation_pct"):
+        st.caption(f'⚠️ {_last["invalid_citation_pct"]} % der Antworten mit erfundener Quellenangabe.')
+
+_ahist = load_answer_history()
+if len(_ahist) > 1:
+    _dfa = pd.DataFrame([{
+        "Zeit": time.strftime("%d.%m.%Y %H:%M", time.localtime(h.get("ts", 0))),
+        "Korrektheit": h.get("korrektheit"), "Vollständigkeit": h.get("vollstaendigkeit"),
+        "Treue": h.get("treue"),
+    } for h in _ahist])
+    _ccols = [c for c in ("Korrektheit", "Vollständigkeit", "Treue") if c in _dfa.columns]
+    if _ccols:
+        st.line_chart(_dfa.set_index("Zeit")[_ccols])
+
+
+st.divider()
+
+# --------------------------------------------------------------------------- #
+# 5. Judge-Zuverlässigkeit: ist die KI-Benotung / das Grounding-Gate kalibriert?
+# --------------------------------------------------------------------------- #
+st.subheader("5. Judge-Zuverlässigkeit")
+st.caption("Prüft gegen einen kleinen, von Hand gelabelten Satz, ob die KI-Benotung "
+           "(getippte Antworten, Probeklausur) und das Grounding-Gate kalibriert sind. "
+           "Wichtig, weil KI-Noten in die Wiederholungs-Planung einfließen. Erweiterbar über "
+           "`data/eval/judge_labels.json`.")
+from ragapp.eval.judge_harness import run_judge_harness
+
+if st.button("▶️ Judge testen", key="jh_run"):
+    with st.status("Teste Benotung & Grounding-Gate …", expanded=True) as _js:
+        _jr = run_judge_harness(progress=lambda m: _js.update(label=m))
+        _js.update(label="Fertig", state="complete")
+    st.session_state["_jh_last"] = _jr
+
+_jl = st.session_state.get("_jh_last")
+if _jl and _jl.get("status") == "ok":
+    _g, _gr = _jl["grading"], _jl["grounding"]
+    _j1, _j2, _j3, _j4 = st.columns(4)
+    _j1.metric("Benotung exakt", f'{_g["exact_pct"]} %', help=f'{_g["n"]} Beispiele')
+    _j2.metric("Benotung ±1 Stufe", f'{_g["adjacent_pct"]} %')
+    _j3.metric("Gate-Genauigkeit", f'{_gr["accuracy_pct"]} %', help=f'{_gr["n"]} Beispiele')
+    _j4.metric("Erfundenes erkannt",
+               f'{_gr["reject_recall_pct"]} %' if _gr["reject_recall_pct"] is not None else "–",
+               help="Anteil nicht-belegter Antworten, die das Gate korrekt ablehnt.")
+    if (_g["exact_pct"] or 0) < 60:
+        st.warning("Die Benotung weicht oft vom Label ab – der Notenvorschlag ist nur ein "
+                   "Hinweis, überschreibe ihn im Zweifel. Ggf. ein stärkeres Benotungs-Modell wählen.")
