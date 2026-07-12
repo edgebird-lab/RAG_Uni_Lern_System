@@ -84,6 +84,16 @@ eigenen Kurs- und Klausurunterlagen bleiben ausschließlich auf deinem Rechner:
   werden Lernkarten geerntet und mit verteiltem Wiederholen (wie bei Anki) geplant.
   Aktives Abfragen (*Gewusst / Halb / Nicht gewusst*) – **komplett offline, ohne
   LLM zur Laufzeit**. Der wirksamste Klausur-Hebel.
+- **📈 Lernstand & Klausur-Planung:** Die Seite **Fortschritt** zeigt aus deinen echten
+  Wiederholungen Mastery, Vergessenskurve, Streak, Dauerpatzer (*Leeches*) und eine
+  geschätzte **Klausur-Bereitschaft**; mit Klausurterminen priorisiert das System nach
+  *Nähe × Wissenslücke × Gewicht* (inkl. `.ics`-Export).
+- **📝 Probeklausur:** getimte Prüfungssimulation aus deinen Karten (Tippen & Benoten,
+  Multiple Choice, Lückentext).
+- **📄 Zusammenfassung schreiben:** erzeugt aus einem Dokument/Fach eine strukturierte,
+  **gegroundete** Markdown-Zusammenfassung – mit einem separat wählbaren, großen
+  **Autoren-Modell** (`LLM_MODEL_AUTHOR`), während der interaktive Chat auf einem
+  schnellen Modell bleibt (kein Modell-Wechsel mitten in der Antwort).
 - **Hybrid-Retrieval für hohe Trefferquote:** Semantische Suche (dense, `bge-m3`)
   **plus** deutsche Keyword-Suche (BM25 mit Snowball-Stemming & Stoppwörtern),
   vereint per **Reciprocal Rank Fusion (RRF)** und final durch einen
@@ -115,17 +125,29 @@ eigenen Kurs- und Klausurunterlagen bleiben ausschließlich auf deinem Rechner:
 
 ## 📸 Screenshots
 
-**Chat: Fragen stellen, belegte Antworten mit Quellenangaben**
+**Chat – Fragen an deine Unterlagen, belegte Antworten mit Quellenangaben**
 
-![Chat-Oberfläche](docs/img/chat.png)
+![Chat / Home](docs/img/home.png)
 
-**Hardware-Erkennung & Modell-Auswahl: automatische Empfehlung + Benchmark**
+**🎓 Lernen – Karteikarten mit Spaced Repetition (SM-2) und vier Übungsmodi: Aufdecken, Tippen & Benoten, Lückentext, Multiple Choice**
+
+![Karteikarten & Spaced Repetition](docs/img/lernen.png)
+
+**📈 Fortschritt – objektiver Lernstand aus echten Wiederholungen: Mastery, Streak, Klausur-Bereitschaft, Leech-Erkennung und Klausurtermin-Priorisierung**
+
+![Fortschritt & Analytics](docs/img/fortschritt.png)
+
+**📄 Zusammenfassung schreiben – gegroundete Markdown-Zusammenfassung je Dokument/Fach (großes „Autoren"-Modell, nur aus deinen Inhalten)**
+
+![Zusammenfassung schreiben](docs/img/zusammenfassung.png)
+
+**⚙️ Einstellungen – automatische Hardware-Erkennung & Modellwahl, tok/s-Benchmark und alle Tuning-Parameter**
 
 ![Einstellungen & Modellwahl](docs/img/settings.png)
 
-**Evaluation: Trefferquote messen und nachjustieren**
+**📝 Probeklausur – getimte Prüfungssimulation aus deinen Karten**
 
-![Evaluation](docs/img/evaluation.png)
+![Probeklausur](docs/img/pruefung.png)
 
 ---
 
