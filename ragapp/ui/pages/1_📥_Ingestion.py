@@ -196,11 +196,14 @@ st.divider()
 st.subheader("Kompletten Quellordner importieren")
 st.caption(f"Quellordner: `{SOURCE_DIR}`")
 st.warning(
-    "⏳ **Achtung, sehr lange Laufzeit.** Der Erstimport eines großen Korpus läuft "
-    "auf CPU in der Größenordnung von **1 bis 2 Stunden** (Embeddings pro Chunk). Der "
-    "Streamlit-Prozess ist währenddessen blockiert. Für den **Erstimport** ist der "
-    "Ordnerwächter bzw. das CLI (`python -m ragapp.scripts.cli ingest`) empfehlenswert, "
-    "es läuft im Hintergrund und ist unterbrechbar/fortsetzbar."
+    "⏳ **Achtung, langer Erstimport.** Ein **großer** Korpus (viele tausend Chunks) "
+    "dauert beim ersten Import **in Summe** eine Weile – es wird pro Chunk ein Embedding "
+    "erzeugt (ein einzelnes Chunk-Embedding dauert nur Millisekunden bis Sekundenbruchteile). "
+    "**Ohne GPU (nur CPU)** grob **1–2 Stunden gesamt** für viele tausend Chunks; **mit GPU "
+    "meist nur Minuten**. Der Streamlit-Prozess ist währenddessen blockiert – für den "
+    "**Erstimport** daher lieber der Ordnerwächter bzw. das CLI "
+    "(`python -m ragapp.scripts.cli ingest`), das im Hintergrund läuft und "
+    "unterbrechbar/fortsetzbar ist."
 )
 
 if st.button("📚 Kompletten Quellordner importieren"):
@@ -234,10 +237,11 @@ st.divider()
 # --------------------------------------------------------------------------- #
 st.subheader("🧠 Fragen-Anreicherung")
 st.caption(
-    "Erzeugt hypothetische Fragen zu vorhandenen Chunks und indexiert sie. Das "
+    "Erzeugt mit dem LLM hypothetische Fragen je Chunk und indexiert sie. Das "
     "**erhöht die Trefferquote** und liefert **Karteikarten** für die 🎓 Lernen-Seite. "
-    "Kostet auf CPU **~20 s pro Chunk** – deshalb gedeckelt (Limit) und resumierbar "
-    "(bereits angereicherte Chunks werden übersprungen)."
+    "Weil dafür **pro Chunk ein LLM-Aufruf** nötig ist (nicht nur ein Embedding), kostet "
+    "es **ohne GPU ~20 s pro Chunk** (mit GPU schneller) – deshalb gedeckelt (Limit) und "
+    "resumierbar (bereits angereicherte Chunks werden übersprungen)."
 )
 
 _docs_all = manifest.list_documents()
