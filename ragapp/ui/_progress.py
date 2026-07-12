@@ -36,13 +36,23 @@ class ProgressReporter:
     """Ein wiederverwendbarer Fortschritts-Callback für EINEN Balken.
     Aufruf wie der Backend-Callback:  reporter(message, done, total)"""
 
+    # ETA aus dem AKTUELLEN Tempo (gleitendes Zeitfenster) statt aus dem
+    # Gesamtdurchschnitt seit Stufenbeginn: sonst bleibt die Schätzung von den
+    # (oft schnellen) ersten Einheiten dauerhaft zu optimistisch und "hängt"
+    # (z. B. 14 min -> nach 10 min immer noch 12 min). Das Fenster misst, wie
+    # viele Einheiten in den letzten ~_WINDOW_S Sekunden wirklich geschafft
+    # wurden; eine leichte Glättung (EMA) verhindert Zappeln, ohne die
+    # Konvergenz zu bremsen.
+    _WINDOW_S: float = 15.0
+
     def __init__(self, slot=None):
         # Eigener Slot -> Balken lässt sich in-place aktualisieren.
         self._bar = slot if slot is not None else st.empty()
         self._frac = 0.0
         self._stage_total: int | None = None
-        self._stage_start: float = 0.0
         self._last_done: int = 0
+        self._samples: list[tuple[float, int]] = []   # (Zeit, done) im Fenster
+        self._eta_smooth: float | None = None         # geglättete Restsekunden
 
     def __call__(self, message: str,
                  done: int | None = None, total: int | None = None) -> None:
@@ -52,17 +62,34 @@ class ProgressReporter:
             return
 
         done = max(0, min(int(done), int(total)))
-        # Stufenwechsel (neue Skala oder neue Datei) -> ETA-Uhr neu starten.
+        now = time.time()
+        # Stufenwechsel (neue Skala oder neue Datei) -> Fenster + ETA neu starten.
         if total != self._stage_total or done < self._last_done:
             self._stage_total = total
-            self._stage_start = time.time()
+            self._samples = [(now, done)]
+            self._eta_smooth = None
         self._last_done = done
-
         self._frac = done / total
+
+        # Nur die Messpunkte der letzten _WINDOW_S Sekunden behalten (aber immer
+        # den ältesten Punkt jenseits des Fensters als Anker lassen, damit auch
+        # bei seltenen Updates eine Rate berechenbar ist).
+        self._samples.append((now, done))
+        cutoff = now - self._WINDOW_S
+        # Alles vor dem Fenster verwerfen; immer >=2 Punkte behalten, damit auch
+        # bei seltenen Updates eine Rate berechenbar bleibt. Basis = ältester Punkt
+        # IM Fenster -> Rate spiegelt das Tempo der letzten ~_WINDOW_S Sekunden.
+        while len(self._samples) > 2 and self._samples[0][0] < cutoff:
+            self._samples.pop(0)
+
         eta = ""
-        el = time.time() - self._stage_start
-        if done > 0 and el > 0.5:
-            eta = f" · noch ca. {fmt_dauer((el / done) * (total - done))}"
+        base_t, base_d = self._samples[0]
+        dt, dd = now - base_t, done - base_d
+        if dd > 0 and dt > 0.3:
+            remaining = (total - done) * (dt / dd)          # Sek. beim aktuellen Tempo
+            self._eta_smooth = (remaining if self._eta_smooth is None
+                                else 0.5 * self._eta_smooth + 0.5 * remaining)
+            eta = f" · noch ca. {fmt_dauer(self._eta_smooth)}"
         self._bar.progress(
             self._frac,
             text=f"{message} · {done}/{total} ({self._frac * 100:.0f} %){eta}",

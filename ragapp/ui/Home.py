@@ -19,9 +19,6 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp.config import settings, SUBJECT_LABELS, PROJECT_ROOT
-from ragapp import manifest
-
 # App-Icon (Fenster/Taskleiste/Favicon). Faellt auf ein Emoji zurueck,
 # falls die Icon-Datei fehlt (z. B. vor dem ersten Build).
 _icon_png = _p.parents[2] / "assets" / "icon.png"
@@ -53,6 +50,10 @@ if not st.session_state.get("_backup_checked"):
 # Netzwerk-/Handy-Zugriff: PIN-Sperre (nur im Netzwerkmodus aktiv, sonst wirkungslos)
 from ragapp.ui._auth import require_pin
 require_pin()
+
+# Einheitliches Theme (idempotent) - direkt nach der PIN-Sperre anwenden.
+from ragapp.ui._theme import apply_theme
+apply_theme()
 
 # PWA: Manifest + Apple-Meta in den echten Seitenkopf injizieren UND ein
 # Installations-Banner ("Als App aufs Handy") anbieten - nur auf dem Handy (nicht am
@@ -157,6 +158,14 @@ _components.html(
     height=0,
 )
 
+# Klickbare Einstiegs-Fragen fuer den leeren Chat (Onboarding). Bewusst allgemein
+# gehalten, damit sie zu beliebigem Lernstoff passen.
+_EXAMPLE_QUESTIONS = [
+    "Was sind die wichtigsten Themen in meinen Unterlagen?",
+    "Erkläre mir ein zentrales Konzept einfach und mit Beispiel.",
+    "Was sollte ich für die Klausur unbedingt wiederholen?",
+]
+
 # Motivierende Sprüche für den Denk-/Lademoment (rotieren zufällig)
 _LERN_SPRUECHE = [
     "Dranbleiben lohnt sich. Jede Frage bringt dich der Bestnote näher.",
@@ -190,10 +199,30 @@ ul[role="listbox"], [data-testid="stSelectboxVirtualDropdown"] ul,
 .badge-answer {background:#e6f7ee; color:#137a4b;}
 .badge-fallback {background:#fdf0e3; color:#a15a13;}
 .badge-plain {background:#eef1f5; color:#5b6b85;}
+.badge-unsure {background:#fef6e0; color:#8a6d1a;}
 .small {color:#7a8aa0; font-size:0.8rem;}
 h1 {font-weight: 750; letter-spacing:-0.5px;}
 </style>
 """, unsafe_allow_html=True)
+
+# --------------------------------------------------------------------------- #
+# Kopf - SOFORT rendern (vor den ragapp-Importen), damit der Seitenwechsel keinen
+# weissen Bildschirm zeigt: der Titel steht da, bevor irgendetwas nachgeladen wird.
+# --------------------------------------------------------------------------- #
+st.title("Frag deine Zusammenfassungen")
+st.markdown(
+    "<span class='small'>Antworten kommen <b>ausschließlich</b> aus deinen "
+    "Unterlagen. Weiß das System etwas nicht, nennt es dir ehrlich die am besten "
+    "passenden Dokumente, <b>ohne zu halluzinieren</b>.</span>",
+    unsafe_allow_html=True,
+)
+
+# Seitenspezifische ragapp-Importe erst JETZT - unter einem Ladehinweis, damit beim
+# ersten (kalten) Laden ein Spinner statt eines weissen Bereichs erscheint. Der
+# import im with-Block bindet modulweit -> alle spaeteren Verwendungen unveraendert.
+with st.spinner("Startseite wird geladen ..."):
+    from ragapp.config import settings, SUBJECT_LABELS, PROJECT_ROOT
+    from ragapp import manifest
 
 # --------------------------------------------------------------------------- #
 # Sidebar
@@ -240,17 +269,6 @@ with st.sidebar:
         st.rerun()
     st.caption("Seiten links: **Ingestion**, **Evaluation**, **Einstellungen**")
 
-
-# --------------------------------------------------------------------------- #
-# Kopf
-# --------------------------------------------------------------------------- #
-st.title("Frag deine Zusammenfassungen")
-st.markdown(
-    "<span class='small'>Antworten kommen <b>ausschließlich</b> aus deinen "
-    "Unterlagen. Weiß das System etwas nicht, nennt es dir ehrlich die am besten "
-    "passenden Dokumente, <b>ohne zu halluzinieren</b>.</span>",
-    unsafe_allow_html=True,
-)
 
 if stats["chunks"] == 0:
     st.info("Noch keine Dokumente indexiert. Gehe zu **📥 Ingestion** und starte den "
@@ -433,8 +451,20 @@ def _render_status_badge(meta: dict) -> None:
     immer -> nur dann als 'belegte Antwort' auszeichnen, wenn wirklich geprüft
     wurde; sonst neutral 'ungeprüft' (ehrlich)."""
     mode = meta.get("mode")
-    if mode == "answer" and meta.get("faith_checked", True):
+    # R5: der Graph liefert jetzt ein feineres confidence-Feld
+    # ("belegt" | "unsicher" | "ungeprueft" | "fallback"). Eine belegte, aber vom
+    # Faithfulness-Check als unsicher eingestufte Antwort wird behalten und ehrlich
+    # als "nicht sicher belegt" markiert statt fälschlich grün ausgezeichnet.
+    confidence = meta.get("confidence")
+    if confidence is None:  # Rückwärtskompat für ältere Nachrichten ohne Feld
+        if mode == "answer":
+            confidence = "belegt" if meta.get("faith_checked", True) else "ungeprueft"
+        else:
+            confidence = "fallback"
+    if mode == "answer" and confidence == "belegt":
         badge, label = "badge-answer", "belegte Antwort"
+    elif mode == "answer" and confidence == "unsicher":
+        badge, label = "badge-unsure", "⚠️ nicht sicher belegt"
     elif mode == "answer":
         badge, label = "badge-plain", "⚡ ungeprüft"
     else:
@@ -477,30 +507,112 @@ for _mi, msg in enumerate(st.session_state.messages):
             render_sources(msg["sources"], key_prefix=f"h{_mi}")
 
 
+def _render_onboarding() -> None:
+    """Leerer Chat: ein paar klickbare Beispiel-Fragen als sanfter Einstieg.
+    Ein Klick legt die Frage als 'ausstehend' ab und startet sie via Rerun -
+    so wirkt der Button wie eine vorab ausgefüllte Eingabe."""
+    st.markdown("<span class='small'>Neu hier? Starte mit einer dieser Fragen "
+                "– oder tippe unten einfach deine eigene:</span>",
+                unsafe_allow_html=True)
+    cols = st.columns(len(_EXAMPLE_QUESTIONS))
+    for _i, (_col, _q) in enumerate(zip(cols, _EXAMPLE_QUESTIONS)):
+        if _col.button(_q, key=f"example_{_i}", use_container_width=True):
+            st.session_state["_pending_prompt"] = _q
+            st.rerun()
+
+
+def _friendly_error(exc: Exception) -> str:
+    """Übersetzt eine rohe Exception in eine verständliche Meldung. Nutzt die
+    Diagnose-Funktion aus llm.py, falls vorhanden; sonst eine generische,
+    freundliche Meldung (nie der nackte Traceback-Text)."""
+    try:
+        from ragapp.llm import diagnose_error  # type: ignore[attr-defined]
+        msg = diagnose_error(exc)
+        if msg:
+            return str(msg)
+    except Exception:  # noqa: BLE001 - Diagnose optional; nie hart abstürzen
+        pass
+    return ("⚠️ Da ist gerade etwas schiefgelaufen. Bitte versuche es in einem "
+            "Moment noch einmal. Falls es bestehen bleibt: Läuft Ollama, und ist "
+            "unter ⚙️ Einstellungen das richtige Modell geladen?")
+
+
+# Leerer Chat + vorhandene Dokumente -> Einstiegs-Fragen anbieten.
+if not st.session_state.messages and stats["chunks"] > 0:
+    _render_onboarding()
+
+
 # --------------------------------------------------------------------------- #
 # Eingabe
 # --------------------------------------------------------------------------- #
 prompt = st.chat_input("Stelle eine Frage zu deinem Lernstoff …")
+# Klick auf eine Beispiel-Frage (Onboarding) wirkt wie eine getippte Eingabe.
+if not prompt:
+    prompt = st.session_state.pop("_pending_prompt", None)
 if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user", avatar="🧑‍🎓"):
         st.markdown(prompt)
 
     with st.chat_message("assistant", avatar="🤖"):
-        with st.spinner(random.choice(_LERN_SPRUECHE)):
-            from ragapp.graph.rag_graph import answer_query
+        # Beim allerersten Query werden die Modelle ggf. noch geladen (~einmalig,
+        # bis zu ~20 s). Ehrliches Erwartungsmanagement statt stiller Wartezeit.
+        _first_query = not st.session_state.get("_first_query_done")
+        _spinner_text = ("🧠 Modelle werden einmalig geladen, das dauert kurz … "
+                         "(nur beim ersten Mal)") if _first_query \
+            else random.choice(_LERN_SPRUECHE)
+
+        from ragapp.graph.rag_graph import answer_query, answer_query_stream
+
+        result = None
+        _streamed = False
+        # Schnell-Modus (Gegenprüfung AUS) UND Quellen-Anzeige AN -> Antwort Token für
+        # Token streamen (größter Hebel fürs gefühlte Tempo). Bei ausgeschalteter
+        # Quellen-Anzeige weiter blockierend, damit die [Quelle N]-Verweise sauber aus
+        # dem Volltext entfernt werden können (_strip_source_labels braucht ihn ganz).
+        if check_faith_ui is False and show_sources:
             try:
-                result = answer_query(prompt, subject=subject_filter,
-                                      use_reranker=use_reranker_ui,
-                                      check_faithfulness=check_faith_ui,
-                                      history=st.session_state.messages[:-1])
-            except Exception as exc:
-                result = {"answer": f"⚠️ Fehler: {exc}", "mode": "fallback",
-                          "sources": [], "total_time": 0}
+                _stream, _holder = answer_query_stream(
+                    prompt, subject=subject_filter,
+                    use_reranker=use_reranker_ui,
+                    check_faithfulness=check_faith_ui,
+                    history=st.session_state.messages[:-1])
+            except Exception:  # noqa: BLE001 - Setup-Fehler -> blockierender Fallback
+                _stream, _holder = None, {}
+            if _stream is not None:
+                try:
+                    with st.spinner(_spinner_text):
+                        st.write_stream(_stream)   # rendert Token für Token
+                    result = _holder or {}
+                    _streamed = True
+                except Exception as exc:  # noqa: BLE001 - Stream-Fehler nie roh anzeigen
+                    # Bereits gestreamter Text bleibt sichtbar; Rest als Ergebnis führen.
+                    result = _holder or {"answer": _friendly_error(exc),
+                                         "mode": "fallback", "sources": [],
+                                         "total_time": 0}
+                    _streamed = True
+
+        # Nicht-Stream-Pfad (strenger Modus, Quellen aus, oder Streaming nicht möglich).
+        if result is None:
+            with st.spinner(_spinner_text):
+                try:
+                    result = answer_query(prompt, subject=subject_filter,
+                                          use_reranker=use_reranker_ui,
+                                          check_faithfulness=check_faith_ui,
+                                          history=st.session_state.messages[:-1])
+                except Exception as exc:  # noqa: BLE001 - rohe Fehler nie roh anzeigen
+                    result = {"answer": _friendly_error(exc), "mode": "fallback",
+                              "sources": [], "total_time": 0}
+
+        st.session_state["_first_query_done"] = True
         _answer = result.get("answer", "")
-        st.markdown(_answer if show_sources else _strip_source_labels(_answer))
+        # Im Stream-Pfad ist die Antwort bereits gerendert (st.write_stream); sonst
+        # hier nachziehen (bei ausgeschalteter Quellen-Anzeige [Quelle N] entfernen).
+        if not _streamed:
+            st.markdown(_answer if show_sources else _strip_source_labels(_answer))
         meta = {"mode": result.get("mode"), "total_time": result.get("total_time"),
-                "faith_checked": result.get("faith_checked", True)}
+                "faith_checked": result.get("faith_checked", True),
+                "confidence": result.get("confidence")}
         _render_status_badge(meta)
         if show_sources:
             _citation_warning(_answer, result.get("sources", []))

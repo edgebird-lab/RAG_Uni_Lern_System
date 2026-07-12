@@ -27,9 +27,17 @@ from pathlib import Path
 from typing import Iterator, Optional
 
 from ragapp.config import MANIFEST_DB, DATA_DIR
+from ragapp.logging_setup import get_logger
 
+
+_log = get_logger(__name__)
 
 _DEVICE_ID_FILE = DATA_DIR / ".device_id"
+
+# Schema wird beim ERSTEN DB-Zugriff angelegt/migriert (nicht mehr als
+# Import-Nebenwirkung). _ensure_initialized() ist idempotent und wird von
+# _connect() aufgerufen.
+_initialized = False
 
 
 def _device_id() -> str:
@@ -137,6 +145,7 @@ CREATE TABLE IF NOT EXISTS exams (
 
 @contextmanager
 def _connect() -> Iterator[sqlite3.Connection]:
+    _ensure_initialized()
     conn = sqlite3.connect(str(MANIFEST_DB))
     conn.row_factory = sqlite3.Row
     try:
@@ -164,7 +173,9 @@ def init_db() -> None:
                     conn.execute(ddl)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_review_deck ON review_items(deck)")
         except Exception:  # noqa: BLE001
-            pass
+            # Additive, idempotente Migration -> nicht fatal, aber sichtbar loggen
+            # (nicht mehr still verschlucken).
+            _log.warning("Additive Migration review_items uebersprungen", exc_info=True)
         # Additive Migration fuer review_log: Konfidenz (JOL) + Sync-Felder nachziehen.
         try:
             rlcols = {r["name"] for r in conn.execute("PRAGMA table_info(review_log)")}
@@ -176,14 +187,35 @@ def init_db() -> None:
                     conn.execute(_ddl)
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_reviewlog_uid ON review_log(event_uid)")
         except Exception:  # noqa: BLE001
-            pass
+            _log.warning("Additive Migration review_log uebersprungen", exc_info=True)
         # Additive Migration fuer documents: Zaehler unvollstaendig gelesener OCR-Seiten (F2).
         try:
             dcols = {r["name"] for r in conn.execute("PRAGMA table_info(documents)")}
             if "ocr_partial_pages" not in dcols:
                 conn.execute("ALTER TABLE documents ADD COLUMN ocr_partial_pages INTEGER DEFAULT 0")
         except Exception:  # noqa: BLE001
-            pass
+            _log.warning("Additive Migration documents uebersprungen", exc_info=True)
+
+
+def _ensure_initialized() -> None:
+    """Legt Schema an und zieht additive Migrationen nach - genau EINMAL, beim
+    ersten DB-Zugriff (frueher lief das als Import-Nebenwirkung, siehe Ro7).
+
+    Idempotent und exception-sichtbar: schlaegt die Initialisierung fehl, wird das
+    Flag zurueckgesetzt (naechster Zugriff versucht es erneut), der Fehler geloggt
+    und weitergereicht - statt still verschluckt."""
+    global _initialized
+    if _initialized:
+        return
+    # Flag VOR init_db() setzen: init_db() nutzt _connect(), das wiederum
+    # _ensure_initialized() aufruft - so wird eine Endlos-Rekursion vermieden.
+    _initialized = True
+    try:
+        init_db()
+    except Exception:
+        _initialized = False
+        _log.exception("Manifest-Initialisierung fehlgeschlagen")
+        raise
 
 
 def _pre_destructive_snapshot(reason: str) -> None:
@@ -333,6 +365,15 @@ def register_chunk_hash(chunk_hash: str, doc_id: str, chunk_id: str) -> None:
 def clear_chunk_hashes(doc_id: str) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM chunk_hashes WHERE doc_id = ?", (doc_id,))
+
+
+def chunk_ids_for_doc(doc_id: str) -> list[str]:
+    """Alle bisher registrierten Chunk-IDs eines Dokuments (aus der Hash-Registry).
+    Wird beim Aktualisieren gebraucht, um nach dem Schreiben der NEUEN Chunks die
+    verwaisten ALTEN gezielt zu entfernen (write-new-then-delete-old, Ro3)."""
+    with _connect() as conn:
+        return [r["chunk_id"] for r in conn.execute(
+            "SELECT chunk_id FROM chunk_hashes WHERE doc_id = ?", (doc_id,))]
 
 
 def stats() -> dict:
@@ -800,5 +841,6 @@ def delete_exam(subject: str) -> None:
         conn.execute("DELETE FROM exams WHERE subject=?", (subject,))
 
 
-# Initialisierung beim Import
-init_db()
+# Ro7: KEINE Initialisierung mehr als Import-Nebenwirkung. Schema/Migrationen
+# laufen ueber _ensure_initialized() beim ersten DB-Zugriff (idempotent, mit
+# Logging). init_db() bleibt oeffentlich (z. B. fuer explizite CLI-Nutzung).

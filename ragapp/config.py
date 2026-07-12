@@ -222,7 +222,10 @@ class Settings:
     DENSE_TOP_K: int = 25                  # Kandidaten aus Vektorsuche
     BM25_TOP_K: int = 25                   # Kandidaten aus Keyword-Suche
     RRF_K: int = 60                        # Reciprocal-Rank-Fusion-Konstante
-    FUSION_TOP_K: int = 20                 # Kandidaten nach Fusion (gehen ins Rerank)
+    # Kandidaten nach Fusion (gehen ins Rerank). Auf 30 angehoben (war 20), damit der
+    # Cross-Encoder mehr als nur die Haelfte der ~50 Fusionskandidaten sieht -> bessere
+    # finale Rangfolge, ohne die Vektorsuche zu vergroessern.
+    FUSION_TOP_K: int = 30
 
     USE_RERANKER: bool = True
     RERANKER_MODEL: str = "BAAI/bge-reranker-v2-m3"  # multilingualer Cross-Encoder
@@ -245,6 +248,17 @@ class Settings:
     # klar irrelevant < -5. Wert bewusst permissiv (Faithfulness-Check fängt
     # Rest ab); über die Evaluation nachjustierbar.
     RELEVANCE_MIN_SCORE: float = -4.0
+    # Schnell-Modus (Reranker AUS): dort gibt es keinen Cross-Encoder-Logit. Der
+    # RRF-Fusionswert ist RANGBASIERT und misst KEINE Relevanz (der Top-Treffer hat
+    # praktisch immer ~denselben Wert) – ein Fusions-Schwellwert kann relevant vs.
+    # irrelevant also gar nicht trennen. Deshalb gatet der Schnell-Modus auf die
+    # DENSE-Kosinus-Ähnlichkeit (bge-m3) des Top-Treffers – ein echtes Relevanzsignal.
+    # Empirisch (Marketing-Korpus): relevante Top-Treffer >=~0.59, off-topic <=~0.43;
+    # 0.45 trennt sauber. Über die Einstellungen nachjustierbar.
+    DENSE_RELEVANCE_MIN_SCORE: float = 0.45
+    # Nur noch als Rückfall, wenn der Top-Treffer ausschließlich aus BM25 stammt
+    # (kein Dense-Score vorhanden): dann bleibt der RRF-Fusionswert die einzige Quelle.
+    RELEVANCE_MIN_FUSION_SCORE: float = 0.008
     # LLM prüft zusätzlich, ob die Antwort durch den Kontext belegt ist (3. Anti-
     # Halluzinations-Schicht neben Relevanz-Gate + striktem Prompt). Nutzt das
     # schnelle Modell. Auf CPU kostet die Prüfung spürbar Zeit -> in den

@@ -20,16 +20,10 @@ for _anc in _p.parents:
         sys.path.insert(0, str(_anc))
         break
 
-import pandas as pd
 import streamlit as st
 
-from ragapp import analytics, planner, manifest, backup
-from ragapp.config import settings, SUBJECT_LABELS
-
-st.set_page_config(page_title="Fortschritt", page_icon="📈", layout="wide")
-
-from ragapp.ui._auth import require_pin
-require_pin()
+from ragapp.ui._loading import page_boot
+page_boot("📈 Fortschritt", page_title="Fortschritt", icon="📈", layout="wide")
 
 st.markdown("""
 <style>
@@ -38,12 +32,16 @@ h1 {font-weight: 750; letter-spacing:-0.5px;}
 </style>
 """, unsafe_allow_html=True)
 
+with st.spinner("Fortschritt wird geladen ..."):
+    import pandas as pd
+    from ragapp import analytics, planner, manifest, backup, sync as _sync
+    from ragapp.config import settings, SUBJECT_LABELS
+
 
 def _fach(code: str) -> str:
     return SUBJECT_LABELS.get(code, code)
 
 
-st.title("📈 Fortschritt")
 st.caption("Dein objektiver Lernstand aus den echten Wiederholungen – damit du "
            "knappe Zeit auf die schwachen, klausurrelevanten Themen lenkst.")
 
@@ -281,7 +279,6 @@ st.caption("Exportiere deinen Lernverlauf und importiere ihn auf dem anderen Ger
            "Konflikte lösen sich automatisch – jede einzelne Wiederholung bleibt erhalten "
            "(kein Überschreiben ganzer Sitzungen). Der Import ist wiederholbar "
            "(Duplikate werden erkannt).")
-from ragapp import sync as _sync
 sc1, sc2 = st.columns(2)
 sc1.download_button("⬇️ Lernverlauf exportieren", data=_sync.export_events(),
                     file_name="lernverlauf.jsonl", mime="application/json",

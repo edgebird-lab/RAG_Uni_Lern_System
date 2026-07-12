@@ -28,8 +28,9 @@ def current_mode() -> str:
 
     Existiert die Modus-Datei, GEWINNT sie immer (leer/unlesbar -> sicher 'local',
     damit ein bewusst abgeschalteter Zugriff nicht durch einen alten Umgebungswert
-    wiederbelebt wird - der Bind ist ja immer 0.0.0.0). Nur wenn gar keine Datei da
-    ist (z. B. Erststart ueber eine .bat), greift der Umgebungs-Fallback."""
+    wiederbelebt wird). Der Starter (ragapp.desktop) haelt Modus-Datei und Bind-
+    Adresse synchron: lokal -> 127.0.0.1, network/tunnel -> 0.0.0.0. Nur wenn gar
+    keine Datei da ist (z. B. Erststart ueber eine .bat), greift der Umgebungs-Fallback."""
     if _MODE_FILE.exists():
         try:
             m = _MODE_FILE.read_text(encoding="utf-8").strip()

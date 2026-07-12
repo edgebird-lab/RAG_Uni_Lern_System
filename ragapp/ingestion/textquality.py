@@ -168,10 +168,51 @@ def _spell():
     return _SPELL or None
 
 
+# Deutsche Komposita (Deckungsbeitragsrechnung, Kostenartenrechnung,
+# Halbwertszeit) stehen NICHT im Frequenzwoerterbuch. Bevor ein Wort als
+# "unbekannt" zaehlt, versuchen wir daher, es an bekannten Fugen in >=2 bekannte
+# Teilwoerter zu zerlegen. So bleibt der Echtwort-Anteil eines Fachabsatzes hoch,
+# ohne dass 'aussprechbarer Unsinn' (der sich NICHT in echte Woerter zerlegt)
+# durchrutscht.
+_COMPOUND_MIN_PART = 4      # Mindestlaenge eines Teilworts (keine Mini-Fragmente)
+
+
+def _in_lexicon(word: str, de, en) -> bool:
+    w = word.lower()
+    return (w in de) or (w in en)
+
+
+def _splits_into_known(word: str, de, en, max_parts: int = 3) -> bool:
+    """True, wenn ``word`` sich vollstaendig in >=2 bekannte Teilwoerter zerlegen
+    laesst (optionales Fugen-s zwischen den Teilen). Rekursiv, aber durch
+    ``max_parts`` und die Mindestteillaenge streng begrenzt (kein Backtracking-
+    Blowup, wird ohnehin nur fuer bereits unbekannte Woerter aufgerufen)."""
+    w = word.lower()
+    n = len(w)
+    if n < 2 * _COMPOUND_MIN_PART or max_parts <= 1:
+        return False
+    for i in range(_COMPOUND_MIN_PART, n - _COMPOUND_MIN_PART + 1):
+        if not _in_lexicon(w[:i], de, en):
+            continue
+        rest = w[i:]
+        # Rest direkt bekannt ODER selbst wieder ein Kompositum? Fugen-s optional.
+        for cand in (rest, rest[1:] if rest[:1] == "s" else ""):
+            if len(cand) < _COMPOUND_MIN_PART:
+                continue
+            if _in_lexicon(cand, de, en) or _splits_into_known(cand, de, en, max_parts - 1):
+                return True
+    return False
+
+
+def _word_is_real(word: str, de, en) -> bool:
+    return _in_lexicon(word, de, en) or _splits_into_known(word, de, en)
+
+
 def real_word_ratio(text: str) -> "float | None":
     """Anteil der Woerter (>=2 Buchstaben), die im deutschen ODER englischen
-    Woerterbuch stehen. None, wenn kein Woerterbuch verfuegbar oder <3 Woerter
-    (zu wenig fuer ein Urteil)."""
+    Woerterbuch stehen (dt. Komposita werden vor dem Urteil an bekannten Fugen
+    zerlegt). None, wenn kein Woerterbuch verfuegbar oder <3 Woerter (zu wenig
+    fuer ein Urteil)."""
     sp = _spell()
     if sp is None:
         return None
@@ -179,25 +220,53 @@ def real_word_ratio(text: str) -> "float | None":
     toks = _WORD_RE.findall(text or "")
     if len(toks) < 3:
         return None
-    known = sum(1 for t in toks if (t.lower() in de) or (t.lower() in en))
+    known = sum(1 for t in toks if _word_is_real(t, de, en))
     return known / len(toks)
 
 
-def meaningfulness(text: str) -> float:
-    """0..1: Wie sinnvoll der Text ist. PRIMAER der Echtwort-Anteil laut
-    Woerterbuch (faengt 'aussprechbaren Unsinn'). Ohne Woerterbuch bzw. bei zu
-    wenigen Woertern -> strukturelle Ersatzheuristik (Wortartigkeit, gedaempft
-    um Ziffern-im-Wort-Muell). Ohne beurteilbare Tokens -> 1.0 (im Zweifel
+def _structural_score(st: dict) -> float:
+    """Strukturelle Wortartigkeit 0..1 (Anteil wortartiger Tokens, gedaempft um
+    Ziffern-im-Wort-Muell). Ohne beurteilbare Tokens -> 1.0 (im Zweifel
     behalten; die Guards in is_gibberish fangen 'nicht beurteilbar' ab)."""
-    rwr = real_word_ratio(text)
-    if rwr is not None:
-        return rwr
-    st = _stats(text)
     if st["judged"] == 0:
         return 1.0
     wg = st["good"] / st["judged"]
     gd = st["garble"] / max(1, st["letterish"])
     return max(0.0, min(1.0, wg * (1.0 - gd)))
+
+
+_STRUCT_RESCUE_MIN = 0.9   # nur eine PRAKTISCH PERFEKTE Struktur darf niedriges rwr retten
+
+
+def _combine(structural: float, rwr: "float | None") -> float:
+    """Meaningfulness-Score. Primaersignal ist der KOMPOSITUM-bewusste Echtwort-
+    Anteil ``rwr`` (``_splits_into_known`` zerlegt 'Deckungsbeitragsrechnung' etc.):
+    echter Fachtext liegt hoch, OCR-Kauderwelsch niedrig. Ohne Woerterbuch/zu wenige
+    Woerter (``rwr`` is None) zaehlt ersatzweise die Struktur.
+
+    Die Struktur darf ``rwr`` NICHT generell ueberstimmen (kein max()): sonst rutscht
+    'aussprechbares' Kauderwelsch wie 'EBEHSOHFTEH FTEH' (struc~0.25-0.5, rwr~0.3)
+    durch. AUSNAHME: ist der Text strukturell PRAKTISCH PERFEKT (>=_STRUCT_RESCUE_MIN,
+    keine Zeichenmuell-/Ziffern-Tokens), stammt ein niedriges rwr fast immer von
+    woerterbuch-UNbekannten, aber ECHTEN Woertern (Eigennamen, Wirkstoffe, Bibliografie,
+    Fachbegriffe) - solche Chunks wollen wir BEHALTEN. Realistisches Kauderwelsch hat
+    fast immer struktur < 0.9 (gebrochene Tokens, Ziffernmuell, Konsonantenbrei)."""
+    if rwr is None:
+        return structural
+    if structural >= _STRUCT_RESCUE_MIN:
+        return max(rwr, structural)
+    return rwr
+
+
+def meaningfulness(text: str) -> float:
+    """0..1: Wie sinnvoll der Text ist. Primaersignal ist der kompositum-bewusste
+    Echtwort-Anteil laut Woerterbuch: er faengt 'aussprechbaren Unsinn' wie
+    'EBEHSOHFTEH' UND rettet dichte Fachabsaetze mit dt. Komposita wie
+    'Deckungsbeitragsrechnung' (die werden vor dem Urteil an Fugen zerlegt). Ohne
+    Woerterbuch/zu wenige Woerter zaehlt ersatzweise die strukturelle
+    Wortartigkeit; ohne beurteilbare Tokens -> 1.0 (im Zweifel behalten)."""
+    st = _stats(text)
+    return _combine(_structural_score(st), real_word_ratio(text))
 
 
 def is_gibberish(text: str, *, min_chars: int = 25, min_alpha_ratio: float = 0.30,
@@ -216,11 +285,15 @@ def is_gibberish(text: str, *, min_chars: int = 25, min_alpha_ratio: float = 0.3
     st = _stats(text)
     if st["judged"] < min_tokens:
         return False, "zu kurz zum sicheren Beurteilen"
-    m = meaningfulness(text)
+    # Beide Signale je EINMAL berechnen (keine Doppelberechnung von _stats /
+    # real_word_ratio wie zuvor ueber den meaningfulness()-Umweg).
+    structural = _structural_score(st)
+    rwr = real_word_ratio(text)
+    m = _combine(structural, rwr)
     if m < max_meaningfulness:
-        rwr = real_word_ratio(text)
         if rwr is not None:
-            return True, f"Kauderwelsch – nur {int(rwr * 100)}% echte Wörter laut Wörterbuch"
+            return True, (f"Kauderwelsch – nur {int(rwr * 100)}% echte Wörter laut "
+                          f"Wörterbuch (Struktur {structural:.2f})")
         wg = st["good"] / st["judged"]
         gd = st["garble"] / max(1, st["letterish"])
         return True, (f"Kauderwelsch (Textqualität {m:.2f}: {int(wg * 100)}% wortartig, "

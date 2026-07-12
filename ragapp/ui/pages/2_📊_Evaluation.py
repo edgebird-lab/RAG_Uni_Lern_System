@@ -18,18 +18,11 @@ for _anc in _p.parents:
         sys.path.insert(0, str(_anc))
         break
 
-import pandas as pd
 import streamlit as st
 
-from ragapp.config import settings
-from ragapp import manifest
-from ragapp.eval.gold_set import build_gold_set, load_gold_set
-from ragapp.eval.run_eval import run_retrieval_eval, load_history
-
-st.set_page_config(page_title="Evaluation: Trefferquote", page_icon="📊", layout="wide")
-
-from ragapp.ui._auth import require_pin
-require_pin()
+from ragapp.ui._loading import page_boot
+page_boot("📊 Evaluation: Trefferquote", page_title="Evaluation: Trefferquote",
+          icon="📊", layout="wide")
 
 # --------------------------------------------------------------------------- #
 # Styling ("schick"), identisch zur Startseite
@@ -54,6 +47,16 @@ h1 {font-weight: 750; letter-spacing:-0.5px;}
 </style>
 """, unsafe_allow_html=True)
 
+with st.spinner("Evaluation wird geladen ..."):
+    import pandas as pd
+    from ragapp.config import settings
+    from ragapp import manifest
+    from ragapp.eval.gold_set import build_gold_set, load_gold_set
+    from ragapp.eval.run_eval import run_retrieval_eval, load_history
+    from ragapp.eval.answer_eval import run_answer_eval, load_answer_history
+    from ragapp.eval.judge_harness import run_judge_harness
+    from ragapp.eval.judge_mirror import generate_mirror_items
+
 # --------------------------------------------------------------------------- #
 # Sidebar (Kurzstatistik, wie auf der Startseite)
 # --------------------------------------------------------------------------- #
@@ -70,7 +73,6 @@ with st.sidebar:
 # --------------------------------------------------------------------------- #
 # Kopf
 # --------------------------------------------------------------------------- #
-st.title("📊 Evaluation: Trefferquote")
 st.markdown(
     "<span class='small'>Es wird ein <b>Gold-Set</b> aus Testfragen erzeugt "
     "(<i>Held-out</i>: die Fragen werden bewusst <b>nicht</b> indexiert, damit die "
@@ -257,7 +259,6 @@ st.caption("Misst, ob die generierten **Antworten** korrekt, vollständig und be
            "(nicht nur, ob der richtige Chunk gefunden wird). Ein LLM-Judge bewertet eine "
            "Stichprobe der Gold-Fragen gegen den Quelltext – dauert etwas (LLM pro Frage). "
            "Ehrlich: der Judge ist selbst KI, die Werte sind ein gutes, aber nicht perfektes Signal.")
-from ragapp.eval.answer_eval import run_answer_eval, load_answer_history
 
 _ae1, _ae2 = st.columns([1, 2])
 _ae_n = _ae1.number_input("Stichprobe", min_value=3, max_value=50, value=8, step=1, key="ae_n")
@@ -302,7 +303,6 @@ st.caption("Prüft gegen einen kleinen, von Hand gelabelten Satz, ob die KI-Beno
            "(getippte Antworten, Probeklausur) und das Grounding-Gate kalibriert sind. "
            "Wichtig, weil KI-Noten in die Wiederholungs-Planung einfließen. Erweiterbar über "
            "`data/eval/judge_labels.json`.")
-from ragapp.eval.judge_harness import run_judge_harness
 
 if st.button("▶️ Judge testen", key="jh_run"):
     with st.status("Teste Benotung & Grounding-Gate …", expanded=True) as _js:
@@ -330,7 +330,6 @@ st.caption("Nimmt Karten eines Fachs (mit Musterantwort) und lässt das LLM je K
            "Altklausur-Fragen. Diese werden dedupliziert in `data/eval/judge_labels.json` "
            "gemergt und fließen beim nächsten **Judge testen** automatisch mit ein. "
            "Je mehr eigene Beispiele, desto belastbarer die Kalibrierung.")
-from ragapp.eval.judge_mirror import generate_mirror_items
 
 _jm_subjects = manifest.study_subjects()
 if not _jm_subjects:

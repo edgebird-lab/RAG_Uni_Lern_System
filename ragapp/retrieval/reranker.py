@@ -23,6 +23,7 @@ class Reranker:
         self.model_name = model_name or settings.RERANKER_MODEL
         self._model = None
         self._failed = False
+        self._warmed = False
 
     def _ensure_loaded(self) -> bool:
         if self._model is not None:
@@ -48,6 +49,35 @@ class Reranker:
                   f"Fallback auf Fusions-Reihenfolge.")
             self._failed = True
             return False
+
+    def warm(self) -> None:
+        """Laedt die Cross-Encoder-Gewichte vorab und feuert genau EINEN Dummy-
+        Forward-Pass ab, damit der teure Kaltstart (~14s fuer bge-reranker-v2-m3,
+        ~568M) nicht erst beim ersten echten rerank()-Aufruf anfaellt.
+
+        Idempotent (warmt hoechstens einmal) und exception-safe: Faellt das Laden
+        oder der Forward-Pass aus, wird nur protokolliert; das System nutzt dann
+        wie gewohnt die Fusions-Reihenfolge als Fallback."""
+        if self._warmed:
+            return
+        try:
+            if not self._ensure_loaded():
+                return
+            # Genau EIN Dummy-predict: materialisiert Gewichte im Speicher und
+            # kompiliert/initialisiert den ersten Forward-Pass.
+            try:
+                import torch
+                self._model.predict(
+                    [["warmup", "warmup"]], show_progress_bar=False,
+                    activation_fn=torch.nn.Identity(),
+                )
+            except TypeError:
+                # aeltere/andere API ohne activation_fn-Parameter
+                self._model.predict([["warmup", "warmup"]], show_progress_bar=False)
+            self._warmed = True
+        except Exception as exc:  # pragma: no cover
+            print(f"[reranker] WARNUNG: Vorwaermen fehlgeschlagen ({exc}). "
+                  f"Kaltstart erfolgt beim ersten rerank().")
 
     def rerank(self, query: str, candidates: list[dict], top_k: int | None = None,
                use_reranker: bool | None = None) -> list[dict]:

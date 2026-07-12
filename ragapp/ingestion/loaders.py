@@ -53,8 +53,12 @@ def normalize_text(text: str) -> str:
         return ""
     text = unicodedata.normalize("NFC", text)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
-    # häufige PDF-Artefakte: harte Trennstriche am Zeilenende zusammenfügen
-    text = re.sub(r"(\w)-\n(\w)", r"\1\2", text)
+    # PDF-Artefakt: nur ECHTE Silbentrennung am Zeilenende zusammenfügen, d. h.
+    # Buchstabe + '-' am Zeilenende UND Kleinbuchstabe am nächsten Zeilenanfang
+    # (fortgesetztes Wort). Ziffern (Zahlen-/Jahresbereiche wie "2020-\n21") und
+    # echte Bindestrich-Komposita ("Nord-\nDeutschland", Fortsetzung großgeschrieben)
+    # bleiben so erhalten.
+    text = re.sub(r"([A-Za-zÄÖÜäöüß])-\n([a-zäöüß])", r"\1\2", text)
     # überzählige Leerzeichen
     text = re.sub(r"[ \t]+", " ", text)
     # mehr als 2 Leerzeilen -> 2
@@ -314,32 +318,40 @@ def _clean_vision_text(raw: str) -> str:
     return t
 
 
-def _looks_degenerate(text: str) -> bool:
-    """True, wenn die Vision-Ausgabe entartet ist -> als gescheitert werten
-    (Fallback easyocr / Seite als nicht sicher lesbar behandeln). Faengt drei
-    Muster ab, die kleine Modelle bei schwerer Handschrift produzieren:
-      (a) exakte Zeilen-Wiederholung (eine Zeile dominiert),
-      (b) zu viele '[unleserlich]'-Zeilen (Seite faktisch nicht gelesen),
-      (c) Template-Loop (gleiches Zeilen-Skelett mit nur wechselnden Zahlen,
-          z. B. 'Matrix 1: … / Zeile 2: Matrix 1: …')."""
+def _degeneration_kind(text: str) -> "str | None":
+    """Art der Vision-Entartung, sonst None. Faengt drei Muster ab, die kleine
+    Modelle bei schwerer Handschrift produzieren:
+      'repeat'     (a) exakte Zeilen-Wiederholung (eine Zeile dominiert)
+                       -> BEHEBBAR: die eindeutigen Zeilen sind meist echt, nur
+                          der Loop muss raus (kollabieren + behalten).
+      'unreadable' (b) '[unleserlich]'-Flut -> Seite faktisch NICHT gelesen
+                       -> UNBRAUCHBAR: nichts Sinnvolles transkribiert.
+      'template'   (c) Template-Loop (gleiches Zeilen-Skelett, nur Zahlen wechseln,
+                       z. B. 'Aufgabe 1: Lösung / Aufgabe 2: Lösung / …')
+                       -> UNBRAUCHBAR: erfundenes Muster, steht so nicht auf der
+                          Seite. Kollabieren hilft NICHT (Zeilen unterscheiden sich).
+    Nur 'repeat' ist behebbar; (b)/(c) sind Kauderwelsch und duerfen NICHT als
+    Vision-Text in den Index (sonst easyocr-Fallback bzw. Seite als unlesbar)."""
     from collections import Counter
     lines = [ln.strip().lower() for ln in text.split("\n") if ln.strip()]
     if len(lines) < 5:
-        return False
+        return None
     n = len(lines)
-    # (a) exakte Wiederholung
-    if Counter(lines).most_common(1)[0][1] / n > 0.6:
-        return True
-    # (b) [unleserlich]-Flut -> Seite nicht wirklich transkribiert
+    # (b) [unleserlich]-Flut ZUERST prüfen -> Seite faktisch nicht gelesen. (Vor der
+    # Exakt-Wiederholung, sonst würde eine Flut IDENTISCHER blanker "[unleserlich]"-
+    # Zeilen als behebbarer 'repeat' fehlklassifiziert und behalten statt verworfen.)
     if sum(1 for ln in lines if "[unleserlich]" in ln) / n > 0.45:
-        return True
+        return "unreadable"
+    # (a) exakte Wiederholung eines ECHTEN Zeileninhalts -> behebbar (kollabieren).
+    if Counter(lines).most_common(1)[0][1] / n > 0.6:
+        return "repeat"
     # (c) Zeilen-Skelett (Ziffern/Sonderzeichen entfernt) dominiert -> Template-Loop
     def _skel(ln: str) -> str:
         return re.sub(r"\d+", "#", re.sub(r"[^0-9a-zäöüß#]+", " ", ln)).strip()
     skels = Counter(s for s in (_skel(ln) for ln in lines) if s)
     if skels and skels.most_common(1)[0][1] / n > 0.5:
-        return True
-    return False
+        return "template"
+    return None
 
 
 def _collapse_repeats(text: str, max_repeat: int = 2) -> str:
@@ -388,7 +400,20 @@ def _vision_ocr_page(page, model: str) -> str:
     except Exception:  # noqa: BLE001
         return ""
     cleaned = _clean_vision_text(raw)
-    if not cleaned or _looks_degenerate(cleaned):
+    if not cleaned:
+        return ""                             # kompletter Vision-Fehlschlag -> easyocr
+    # [I6] Bei Scan/Handschrift ist Vision meist besser als easyocr - deshalb
+    # verwerfen wir einen bloßen WIEDERHOL-Loop nicht komplett, sondern kollabieren
+    # ihn und behalten die eindeutigen (echten) Zeilen. ABER: eine '[unleserlich]'-
+    # Flut oder ein Template-Loop mit wechselnden Zahlen ist KEIN gelesener Text,
+    # sondern erfundenes Muster - das darf NICHT als Vision-Text in den Index
+    # (Kollabieren hilft dort nicht, da sich die Zeilen unterscheiden). Solche
+    # Seiten geben wir leer zurück -> easyocr-Fallback bzw. Seite bleibt (fast) leer
+    # und wird von der Pipeline als 'unvollständig/unlesbar' zur Prüfung markiert.
+    kind = _degeneration_kind(cleaned)
+    if kind == "repeat":
+        return _collapse_repeats(cleaned, max_repeat=1)
+    if kind in ("unreadable", "template"):
         return ""
     return _collapse_repeats(cleaned)
 
@@ -406,7 +431,8 @@ def _ocr_page(page) -> tuple[str, str]:
             txt = _vision_ocr_page(page, model)
             if txt.strip():
                 return txt, "vision"
-            # kein/degeneriertes Ergebnis -> easyocr, damit ueberhaupt Text entsteht
+            # nur bei komplettem Vision-Fehlschlag (leer) -> easyocr, damit
+            # ueberhaupt Text entsteht (degeneriertes Vision wird oben behalten)
     txt = _easyocr_page(page)
     return (txt, "easyocr" if txt.strip() else "")
 
@@ -423,7 +449,10 @@ def _load_pdf(path: Path, progress=None) -> LoadedDoc:
         with fitz.open(str(path)) as doc:
             n_pages = doc.page_count
             for i, page in enumerate(doc, start=1):
-                raw = page.get_text("text") or ""
+                # sort=True: Lesereihenfolge nach Layout (oben->unten, links->rechts)
+                # statt Content-Stream-Reihenfolge -> korrekt bei mehrspaltigen
+                # Seiten/Folien.
+                raw = page.get_text("text", sort=True) or ""
                 norm = normalize_text(raw)
                 ocr_engine = ""
                 if not norm:
@@ -525,19 +554,59 @@ def _table_to_md(rows: list) -> str:
     return "\n".join(out)
 
 
+_DOCX_HEADING_RE = re.compile(r"^(?:heading|überschrift|ueberschrift)\s*(\d+)$")
+
+
+def _docx_heading_level(style_name: str | None) -> int | None:
+    """Ermittelt die Markdown-Überschriftenebene (1..6) aus einem DOCX-Absatzstil.
+    'Heading 1'..'Heading 9' -> 1..6 (auf 6 gedeckelt), 'Title'/'Titel' -> 1,
+    'Subtitle'/'Untertitel' -> 2. Sonst None (normaler Absatz). Reine Funktion,
+    damit sie ohne python-docx testbar ist."""
+    if not style_name:
+        return None
+    s = style_name.strip().lower()
+    m = _DOCX_HEADING_RE.match(s)
+    if m:
+        return min(max(int(m.group(1)), 1), 6)
+    if s in ("title", "titel"):
+        return 1
+    if s in ("subtitle", "untertitel"):
+        return 2
+    return None
+
+
 def _load_docx(path: Path) -> LoadedDoc:
     from docx import Document
 
     doc = Document(str(path))
-    paras = [p.text for p in doc.paragraphs if p.text.strip()]
+    # Überschriften-Stile (Heading 1/2/3 …) als Markdown-Struktur (# / ## / ###)
+    # rekonstruieren -> is_markdown=True lässt das semantische Chunking greifen und
+    # macht 'location' brauchbar (statt eines einzigen 'Dokument'-Blocks).
+    lines: list[str] = []
+    for p in doc.paragraphs:
+        text = p.text.strip()
+        if not text:
+            continue
+        try:
+            style_name = p.style.name if p.style is not None else None
+        except Exception:  # noqa: BLE001 - defekter/fehlender Stilverweis
+            style_name = None
+        level = _docx_heading_level(style_name)
+        if level:
+            lines.append("#" * level + " " + text)
+        else:
+            lines.append(text)
     # Tabellen als Markdown erfassen (Struktur bleibt erhalten)
     for table in doc.tables:
         md = _table_to_md([[c.text for c in row.cells] for row in table.rows])
         if md:
-            paras.append(md)
-    norm = normalize_text("\n".join(paras))
+            lines.append(md)
+    norm = normalize_text("\n".join(lines))
     return LoadedDoc(
-        text=norm, blocks=[Block(text=norm, kind="text")], filetype="docx"
+        text=norm,
+        blocks=[Block(text=norm, page=None, kind="markdown")],
+        filetype="docx",
+        is_markdown=True,
     )
 
 

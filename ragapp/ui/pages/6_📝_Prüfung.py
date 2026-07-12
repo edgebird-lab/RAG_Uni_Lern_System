@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import sys
 import time
+import random
 import pathlib
 
 _p = pathlib.Path(__file__).resolve()
@@ -21,23 +22,42 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp import manifest, study, planner
-from ragapp.config import settings, SUBJECT_LABELS
-
-st.set_page_config(page_title="Probeklausur", page_icon="📝", layout="wide")
-
-from ragapp.ui._auth import require_pin
-require_pin()
+from ragapp.ui._loading import page_boot
+page_boot("📝 Probeklausur", page_title="Probeklausur", icon="📝", layout="wide")
 
 st.markdown("<style>.block-container{padding-top:2rem;max-width:900px;}"
             "h1{font-weight:750;letter-spacing:-.5px;}</style>", unsafe_allow_html=True)
+
+with st.spinner("Probeklausur wird geladen ..."):
+    from ragapp import manifest, study, planner
+    from ragapp.config import settings, SUBJECT_LABELS
 
 
 def _fach(code: str) -> str:
     return SUBJECT_LABELS.get(code, code)
 
 
-st.title("📝 Probeklausur")
+def _fair_exam_selection(per_subject, n: int, seed: int = 0) -> list[dict]:
+    """Wählt bis zu ``n`` Karten fair über die gewählten Fächer aus: Round-Robin (je
+    Runde eine Karte pro Fach) bis ``n`` erreicht ist, sodass jedes Fach so gleichmäßig
+    wie möglich vertreten ist – nicht nur die zuerst geladenen. Danach wird die Auswahl
+    deterministisch gemischt (Klausur-Reihenfolge), ohne die faire Verteilung zu
+    verändern. ``per_subject`` ist eine geordnete Liste ``[(fach, [karten]), …]``.
+    Reine, testbare Hilfsfunktion."""
+    from collections import deque
+    n = max(0, int(n))
+    queues = [deque(cards) for _, cards in per_subject if cards]
+    picked: list[dict] = []
+    while len(picked) < n and any(queues):
+        for q in queues:
+            if len(picked) >= n:
+                break
+            if q:
+                picked.append(q.popleft())
+    random.Random(seed).shuffle(picked)
+    return picked
+
+
 st.caption("Getimte Simulation unter echten Bedingungen – ohne Zwischenfeedback. Am Ende "
            "benotet die KI alle Antworten und plant schwache Themen sofort neu ein.")
 
@@ -62,11 +82,12 @@ if EXAM not in st.session_state:
 
     if st.button("▶️ Probeklausur starten", type="primary", use_container_width=True):
         if _fs:
-            cards = []
-            for s in _fs:
-                cards += manifest.get_due_cards(s, limit=int(n), cram=True)
-            # gleichmäßig kürzen + mischen
-            cards = cards[:int(n)]
+            # Pro Fach die (fälligen/schwächsten) Karten holen und daraus gleichmäßig
+            # per Round-Robin bis n auswählen, dann deterministisch mischen – so ist
+            # jedes gewählte Fach fair vertreten (nicht nur die zuerst geladenen).
+            per_subject = [(s, manifest.get_due_cards(s, limit=int(n), cram=True))
+                           for s in _fs]
+            cards = _fair_exam_selection(per_subject, int(n))
         else:
             cards = planner.phase_round(limit=int(n), cram=True)
         if not cards:
@@ -112,34 +133,22 @@ if exam.get("done"):
     st.stop()
 
 # --------------------------------------------------------------------------- #
-# Laufende Klausur
+# Benotung (auch für die automatische Abgabe bei Zeitablauf)
 # --------------------------------------------------------------------------- #
-elapsed = time.time() - exam["start"]
-remaining = max(0, exam["limit"] - elapsed)
-time_up = remaining <= 0
-
-hc1, hc2 = st.columns([3, 1])
-mm, ss = divmod(int(remaining), 60)
-hc1.subheader(f"⏱️ {mm:02d}:{ss:02d} verbleibend" if not time_up else "⏱️ Zeit abgelaufen")
-hc1.caption(f"{len(exam['cards'])} Aufgaben · schreibe deine Antworten, dann unten abgeben. "
-            "Die Zeit aktualisiert sich bei jeder Eingabe.")
-if hc2.button("🔄 Zeit aktualisieren", use_container_width=True):
-    st.rerun()
-
-for i, card in enumerate(exam["cards"]):
-    st.markdown(f"**Aufgabe {i + 1}** · _{_fach(card.get('subject') or '')}_")
-    st.markdown(card.get("front") or "")
-    exam["answers"][card["card_id"]] = st.text_area(
-        f"Antwort {i + 1}", value=exam["answers"].get(card["card_id"], ""),
-        key=f"exam_ans_{i}", label_visibility="collapsed", height=110,
-        disabled=time_up)
-    st.divider()
-
-
 def _rating_from_score(score):
     if score is None:
         return study.HALB
     return study.GEWUSST if score >= 75 else (study.HALB if score >= 40 else study.NICHT)
+
+
+def _sync_answers() -> None:
+    """Übernimmt die aktuell im Browser getippten Antworten aus dem Widget-Zustand in
+    ``exam['answers']``. Nötig für die Auto-Abgabe bei Zeitablauf, weil der Countdown
+    die Seite neu lädt, bevor die Textfelder in diesem Lauf gerendert wurden."""
+    for i, card in enumerate(exam["cards"]):
+        val = st.session_state.get(f"exam_ans_{i}")
+        if val is not None:
+            exam["answers"][card["card_id"]] = val
 
 
 def _auswerten():
@@ -165,8 +174,59 @@ def _auswerten():
     exam["done"] = True
 
 
-if time_up:
-    st.warning("Die Zeit ist abgelaufen. Gib die Klausur zur Auswertung ab.")
+# --------------------------------------------------------------------------- #
+# Laufende Klausur
+# --------------------------------------------------------------------------- #
+def _remaining() -> float:
+    """Serverseitig gemessene Restzeit in Sekunden. Weil die Startzeit in
+    st.session_state liegt und die Zeit hier – nicht im Browser – gemessen wird, umgeht
+    ein simpler Reload das Zeitlimit nicht."""
+    return max(0.0, float(exam["limit"]) - (time.time() - exam["start"]))
+
+
+# Serverseitige Zeitkontrolle: ist die Zeit abgelaufen, wird die Klausur automatisch
+# abgegeben und ausgewertet – noch bevor die Eingabefelder in diesem Lauf gerendert
+# werden. Das erzwingt das Limit auch dann, wenn nur die Seite neu geladen wird.
+if _remaining() <= 0 and not exam.get("done"):
+    _sync_answers()
+    with st.spinner("Zeit abgelaufen – die Klausur wird automatisch abgegeben und "
+                    "ausgewertet …"):
+        _auswerten()
+    st.rerun()
+
+
+@st.fragment(run_every=1)
+def _countdown() -> None:
+    """Sichtbarer Live-Countdown: aktualisiert sich jede Sekunde SERVERSEITIG (per
+    Fragment-Polling, ohne die bereits getippten Antworten zu stören). Läuft die Zeit
+    ab, wird die ganze Seite neu gerendert, sodass oben die Auto-Abgabe greift."""
+    rem = _remaining()
+    if rem <= 0:
+        st.rerun()   # ganze Seite neu -> serverseitige Auto-Abgabe greift
+        return
+    knapp = rem <= 60
+    farbe = "#dc2626" if knapp else "inherit"
+    st.markdown(
+        f"<div style='font-size:1.7rem;font-weight:750;letter-spacing:-.5px;"
+        f"color:{farbe}'>⏱️ {int(rem) // 60:02d}:{int(rem) % 60:02d} verbleibend</div>",
+        unsafe_allow_html=True)
+    if knapp:
+        st.caption("Weniger als eine Minute – bei Ablauf wird automatisch abgegeben.")
+
+
+_countdown()
+st.caption(f"{len(exam['cards'])} Aufgaben · schreibe deine Antworten, dann unten abgeben. "
+           "Der Countdown läuft automatisch weiter; bei Ablauf wird die Klausur "
+           "selbsttätig abgegeben und ausgewertet.")
+
+for i, card in enumerate(exam["cards"]):
+    st.markdown(f"**Aufgabe {i + 1}** · _{_fach(card.get('subject') or '')}_")
+    st.markdown(card.get("front") or "")
+    exam["answers"][card["card_id"]] = st.text_area(
+        f"Antwort {i + 1}", value=exam["answers"].get(card["card_id"], ""),
+        key=f"exam_ans_{i}", label_visibility="collapsed", height=110)
+    st.divider()
+
 if st.button("✅ Abgeben & auswerten", type="primary", use_container_width=True):
     with st.spinner("Werte aus …"):
         _auswerten()

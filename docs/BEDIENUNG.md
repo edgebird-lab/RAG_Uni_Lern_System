@@ -27,8 +27,22 @@ Seitenleiste findest du:
 - **Fach filtern**: schränkt die Suche auf ein Fach ein (schneller & präziser).
 - **Quellen anzeigen** (Schalter): blendet die Quellenkarten ein/aus.
 - **Verlauf löschen**: leert die aktuelle Chat-Sitzung.
-- Hinweis auf die weiteren Seiten **Ingestion**, **Evaluation**, **Einstellungen**
-  (linke Navigation).
+
+Über die **linke Navigation** erreichst du alle weiteren Seiten:
+
+| Seite | Wofür |
+| ----- | ----- |
+| **🏠 Chat** (Startseite) | Fragen an deine Unterlagen stellen (siehe unten). |
+| **📥 Ingestion** | Dokumente importieren/verwalten, Fragen-Anreicherung, Scan-Seiten per OCR nachlesen. |
+| **📊 Evaluation** | Trefferquote (Hit@k / MRR) messen und über die Zeit vergleichen. |
+| **⚙️ Einstellungen** | Tuning-Parameter, **hardwaregerechte Modellwahl** und Handy-Zugriff/PIN. |
+| **🎓 Lernen** | Karteikarten aus deinen Unterlagen – aktives Abfragen mit Spaced Repetition (SM-2). |
+| **📈 Fortschritt** | Objektiver Lernstand, Klausurplanung, Themen-Mastery, Fälligkeits-Prognose. |
+| **📝 Prüfung** | Getimte Probeklausur – die KI benotet am Ende alle Antworten auf einmal. |
+| **📄 Zusammenfassung** | Aus einem Dokument oder ganzen Fach eine klausurtaugliche Zusammenfassung schreiben. |
+
+Die aktiven Lern-Seiten (Lernen/Fortschritt/Prüfung) sind ausführlich in Abschnitt
+7 beschrieben, OCR/Modellwahl/Qualitäts-Gate in Abschnitt 8.
 
 Ist noch nichts indexiert, weist die Oberfläche darauf hin, zuerst Dokumente zu
 importieren.
@@ -187,7 +201,7 @@ python -m ragapp.scripts.cli eval            # Trefferquote messen
 | Situation | Was tun |
 | --------- | ------- |
 | **Fallback, obwohl das Thema in den Unterlagen steht** | Frage konkreter/mit dem exakten Fachbegriff umformulieren. Fach-Filter setzen. Prüfen, ob das Dokument wirklich importiert ist (`stats`). Ggf. `enrich` für das Fach laufen lassen (Fragen-Indexierung erhöht die Trefferquote). |
-| **Gar keine Treffer / „keine passende Stelle"** | Dokument evtl. nicht indexiert oder Format nicht unterstützt. `stats` prüfen, ggf. neu importieren. Bei PDFs ohne Textebene (reine Scans) wird kein Text extrahiert. |
+| **Gar keine Treffer / „keine passende Stelle"** | Dokument evtl. nicht indexiert oder Format nicht unterstützt. `stats` prüfen, ggf. neu importieren. Bei PDFs ohne Textebene (reine Scans/Handschrift) liefert das normale Einlesen keinen Text – auf **📥 Ingestion** die betroffenen Seiten per **OCR** „Neu einlesen" (siehe Abschnitt 8). |
 | **Antwort wirkt unvollständig** | Der Kontext ist auf `MAX_CONTEXT_CHARS`/`FINAL_TOP_K` begrenzt. Frage enger stellen oder in Teilfragen zerlegen; die Quellenkarten zeigen weitere Fundstellen. |
 | **Antwort wirkt falsch** | Immer gegen die Quellenkarte prüfen. Ist die richtige Quelle gar nicht unter den Treffern, ist es ein **Retrieval**-Problem → siehe [TUNING.md](TUNING.md) und [EVALUATION.md](EVALUATION.md). |
 | **Alles zu langsam** | Normal auf CPU. Fach-Filter nutzen; ggf. `USE_RERANKER`/`ENABLE_FAITHFULNESS_CHECK` in den Einstellungen abwägen (weniger Genauigkeit gegen mehr Tempo). |
@@ -195,3 +209,82 @@ python -m ragapp.scripts.cli eval            # Trefferquote messen
 Alle Anfragen werden in `data/logs/queries.jsonl` protokolliert (Frage, Modus,
 Belegtheit, Top-Quellen, Zeiten), nützlich, um Muster bei schwachen Antworten zu
 erkennen und gezielt nachzujustieren.
+
+---
+
+## 7. Aktiv lernen: Karteikarten, Fortschritt, Probeklausur & Zusammenfassung
+
+Neben dem Nachschlagen im Chat kann die App dich **aktiv abfragen** – der wirksamste
+Klausur-Hebel. Die drei Lern-Seiten arbeiten offline mit dem schon indexierten
+Material und brauchen zur Laufzeit **kein** LLM (nur die Probeklausur-Benotung und
+das Zusammenfassung-Schreiben nutzen das Modell).
+
+### 🎓 Lernen (Karteikarten + Spaced Repetition)
+
+Die App erntet Karteikarten aus deinem vorhandenen Fragenmaterial (dem
+**Klausur-Lernkatalog** und den per `enrich` **generierten Fragen**) und plant die
+Wiederholung mit dem **SM-2-Verfahren** (verteiltes Wiederholen). Beim ersten Besuch
+einmal **„Karten aus meinen Unterlagen erstellen"** klicken; danach zeigt die Seite,
+wie viele Karten **fällig**, **neu** oder **schon geübt** sind, und fragt sie der
+Reihe nach ab. Gibt es noch kein Fragenmaterial, zuerst auf **📥 Ingestion** Fragen
+generieren bzw. den Lernkatalog erstellen.
+
+### 📈 Fortschritt (Lern-Analytik & Klausurplanung)
+
+Wertet deine echten Wiederholungen aus – objektiver Lernstand statt Bauchgefühl:
+Kernkennzahlen, **Klausurtermine + Priorität**, Treffer-Trend, **Themen-Mastery**,
+eine **Fälligkeits-Prognose** (Stau-Warnung) und deine **Dauerpatzer**. So lenkst du
+knappe Zeit gezielt auf schwache, klausurrelevante Themen. Enthält außerdem die
+**Datensicherung** (Backup deines Lernstands).
+
+### 📝 Prüfung (Probeklausur)
+
+Simuliert echte Klausurbedingungen: ein gemischtes Set aus deinen fälligen und –
+falls nötig – schwächsten Karten, ein **Zeitlimit** und **kein Zwischenfeedback**.
+Fächer, Aufgabenzahl (3–40) und Zeitlimit stellst du beim Start ein. Am Ende
+**benotet die KI alle Antworten auf einmal** (Teilpunkte + was fehlt) und schreibt
+das Ergebnis in die Wiederholungs-Planung zurück – schwache Karten kommen sofort
+wieder dran. Getimtes Üben unter Prüfungsbedingungen ist einer der stärksten
+Leistungsprädiktoren.
+
+### 📄 Zusammenfassung schreiben
+
+Erzeugt aus **einem indexierten Dokument** oder **einem ganzen Fach** eine
+strukturierte, klausurtaugliche **Markdown-Zusammenfassung** – **gegroundet**, es
+wird ausschließlich der Quellinhalt verwendet (keine erfundenen Fakten). Dafür kommt
+das (größere) **Autoren-Modell** zum Einsatz, daher kann es je nach Umfang etwas
+dauern. Das Ergebnis lässt sich ansehen und als `.md` herunterladen; es wird
+zusätzlich nach `docs/` gespeichert.
+
+---
+
+## 8. Scans & Handschrift (OCR), Modellwahl & Qualitäts-Gate
+
+### OCR/Vision für Scans & Handschrift
+
+PDFs **ohne Textebene** (reine Scans, abfotografierte Seiten, Handschrift) liefern
+beim normalen Einlesen keinen brauchbaren Text. Die App erkennt das und markiert
+betroffene Dokumente auf der **📥 Ingestion**-Seite (Hinweis „evtl. unvollständig
+eingelesen – OCR empfohlen", inklusive der Zahl teilweise leerer Seiten). Über
+**„Neu einlesen"** liest dann ein **vision-fähiges Modell** die Seiten per OCR und
+ersetzt den fehlenden Text. Welches OCR-Modell zum Einsatz kommt, richtet sich nach
+deiner Hardware (s. u.).
+
+### Hardwaregerechte Modellwahl (passt in den VRAM)
+
+In den **⚙️ Einstellungen** erkennt die App CPU, RAM und vor allem die **GPU (VRAM)**
+und empfiehlt das **stärkste Modell, das noch KOMPLETT in den Speicher passt** –
+flüssig, ohne Auslagern auf die CPU (das macht Antworten zäh). Stärkere Modelle
+stehen zusätzlich in der Liste, können aber langsamer sein. Nach demselben
+VRAM-Maßstab wird auch das **OCR-/Vision-Modell** gewählt. Reiner CPU-Betrieb
+funktioniert, ist aber langsamer – dort empfiehlt sich ein kleines Modell.
+
+### Qualitäts-Gate gegen Kauderwelsch
+
+Gerade OCR über Handschrift/Scans erzeugt manchmal Zeichenmüll
+(„Infs slen zu ridht8en 2at"). Ein leichtgewichtiges, rein lokales **Qualitäts-Gate**
+prüft jeden Textabschnitt (Echtwort-Anteil laut Wörterbuch + Struktur-Heuristik) und
+**verwirft** unbrauchbares Kauderwelsch, statt es zu indexieren – so verstopfen
+Müll-Chunks nicht die Suche. Das Gate **filtert nur**, schreibt nichts um: native,
+sauber extrahierte Dokumente bleiben wortgetreu erhalten, und Formeln/Tabellen/Code
+werden im Zweifel behalten.

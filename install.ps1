@@ -257,7 +257,9 @@ try {
         Write-Ok "torch ist bereits installiert - uebersprungen."
     } else {
         Write-Info "Installiere torch (schlanker CPU-Build ~200 MB) ..."
-        Invoke-Native -File $VenvPy -Arguments @('-m','pip','install','torch','--index-url','https://download.pytorch.org/whl/cpu') -What "torch (CPU)"
+        # Ro1: konservative Obergrenze (torch<3) - blockt einen kuenftigen brechenden
+        # Major-Release, aendert die Aufloesung heute aber nicht (CPU-Index liefert 2.x).
+        Invoke-Native -File $VenvPy -Arguments @('-m','pip','install','torch<3','--index-url','https://download.pytorch.org/whl/cpu') -What "torch (CPU)"
         Write-Ok "torch installiert."
     }
 

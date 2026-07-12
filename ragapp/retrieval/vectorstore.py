@@ -109,6 +109,15 @@ class VectorStore:
             })
         return out
 
+    def chunk_ids_for_doc(self, doc_id: str) -> list[str]:
+        """Alle TATSAECHLICH in Chroma vorhandenen CHUNK-IDs eines Dokuments (ohne
+        Fragen), direkt aus den Metadaten. Registry- UND index-unabhaengig -> die
+        verlaessliche Quelle fuer die Alt-Chunk-Bereinigung bei Updates (deckt auch
+        Waisen ab, die die Hash-Registry bei doc-uebergreifend gleichen Chunks verfehlt)."""
+        res = self._col.get(where={"$and": [{"doc_id": doc_id}, {"type": "chunk"}]},
+                            include=[])
+        return list(res.get("ids") or [])
+
     def delete_by_ids(self, ids: list[str]) -> None:
         """Entfernt einzelne Eintraege (z. B. eine Frage 'aus dem Katalog nehmen')."""
         if ids:

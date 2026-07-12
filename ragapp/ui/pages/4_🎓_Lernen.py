@@ -18,40 +18,38 @@ for _anc in _p.parents:
         break
 
 import streamlit as st
-import pandas as pd
 
-from ragapp import manifest, study
-from ragapp.config import settings, SUBJECT_LABELS
+from ragapp.ui._loading import page_boot
 
-st.set_page_config(page_title="Lernen", page_icon="🎓", layout="wide")
+# set_page_config -> PIN-Gate -> Theme -> und rendert SOFORT den Seitentitel,
+# damit beim Seitenwechsel kein weisser Bildschirm entsteht.
+page_boot("🎓 Lernen", page_title="Lernen", icon="🎓", layout="wide")
 
-from ragapp.ui._auth import require_pin
-require_pin()
-
+# Nur noch das seiten-spezifische Layout; die Karteikarten-Optik (hell + dunkel)
+# kommt jetzt zentral aus ragapp.ui._theme.apply_theme().
 st.markdown("""
 <style>
 .block-container {padding-top: 2rem; max-width: 900px;}
-.karte {border:1px solid #e2e8f4; border-radius:16px; padding:26px 30px;
-    background:linear-gradient(135deg,#f8fafc 0%,#eef2fb 100%); font-size:1.15rem;
-    line-height:1.55; min-height:120px;}
-.karte-frage {font-weight:650; color:#1f3a63;}
-@media (prefers-color-scheme: dark){
-  .karte{background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);border-color:#334155;}
-  .karte-frage{color:#cbd5e1;}
-}
 h1 {font-weight:750; letter-spacing:-0.5px;}
 </style>
 """, unsafe_allow_html=True)
 
 
-def _fach_label(code: str) -> str:
-    return SUBJECT_LABELS.get(code, code)
-
-
-st.title("🎓 Lernen")
 st.caption("Karteikarten aus deinen eigenen Unterlagen – aktives Abfragen mit "
            "automatischer Wiederholungs-Planung (Spaced Repetition). Das ist der "
            "wirksamste Klausur-Hebel.")
+
+# Schwere Importe/Datenabfragen unter kleinem Ladehinweis; die import-Statements
+# binden im Modulscope, daher funktionieren alle spaeteren Verwendungen unveraendert.
+with st.spinner("Lernen wird geladen ..."):
+    import pandas as pd
+    from ragapp import manifest, study
+    from ragapp.config import settings, SUBJECT_LABELS
+
+
+def _fach_label(code: str) -> str:
+    return SUBJECT_LABELS.get(code, code)
+
 
 # --------------------------------------------------------------------------- #
 # Karten-Bestand

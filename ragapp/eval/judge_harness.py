@@ -22,10 +22,18 @@ from pathlib import Path
 
 from ragapp.config import EVAL_DIR
 from ragapp import grading
+from ragapp.eval import metrics
 
 # Bewertungen
 _NICHT, _HALB, _GEWUSST = 0, 1, 2
 _LABEL2RATING = {"nicht": _NICHT, "halb": _HALB, "gewusst": _GEWUSST}
+
+# Menschenlesbare Richtung der Fehlkalibrierung (siehe metrics.grading_calibration).
+_BIAS_TEXT = {
+    "milde": "systematisch zu milde",
+    "streng": "systematisch zu streng",
+    "ausgeglichen": "ausgeglichen",
+}
 
 # --------------------------------------------------------------------------- #
 # Eingebauter, von Hand gelabelter Satz (Benotung)
@@ -89,19 +97,27 @@ def run_judge_harness(progress=None) -> dict:
 
     # ---- Benotung ---- #
     g_rows, exact, adjacent = [], 0, 0
+    g_preds: list = []          # fuer die Richtung der Fehlkalibrierung (Bias)
+    g_truths: list = []
     for i, ex in enumerate(grad, 1):
         if progress:
             progress(f"Benotung {i}/{len(grad)} …")
         res = grading.grade_typed_answer(ex["frage"], ex["referenz"], ex["antwort"])
         pred = res.get("suggested_rating")
         truth = _LABEL2RATING.get(ex["label"], _HALB)
+        g_preds.append(pred)
+        g_truths.append(truth)
         if pred == truth:
             exact += 1
         if pred is not None and abs(pred - truth) <= 1:
             adjacent += 1
+        # diff > 0 = Judge zu milde, < 0 = zu streng (None = kein Urteil)
         g_rows.append({"frage": ex["frage"][:40], "erwartet": ex["label"],
-                       "score": res.get("score"), "vorschlag": pred, "treffer": pred == truth})
+                       "score": res.get("score"), "vorschlag": pred,
+                       "diff": (pred - truth) if pred is not None else None,
+                       "treffer": pred == truth})
     n_g = len(grad)
+    calib = metrics.grading_calibration(g_preds, g_truths)
 
     # ---- Grounding-Gate ---- #
     tp = fp = tn = fn = 0
@@ -131,6 +147,10 @@ def run_judge_harness(progress=None) -> dict:
         "status": "ok",
         "grading": {"n": n_g, "exact_pct": round(100 * exact / n_g) if n_g else None,
                     "adjacent_pct": round(100 * adjacent / n_g) if n_g else None,
+                    # Richtung der Fehlkalibrierung: Bias = Mittelwert(Judge - Referenz)
+                    "bias": calib["bias"], "mae": calib["mae"],
+                    "direction": calib["direction"],
+                    "bias_text": _BIAS_TEXT.get(calib["direction"]),
                     "rows": g_rows},
         "grounding": {"n": n_gr, "accuracy_pct": round(100 * (tp + tn) / n_gr) if n_gr else None,
                       "precision_pct": round(100 * prec) if prec is not None else None,

@@ -19,26 +19,10 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp.config import settings, RUNTIME_CONFIG_FILE, Settings
-from ragapp import manifest
-from ragapp.hardware import (
-    detect_hardware,
-    format_hardware,
-    recommend_models,
-    benchmark_model,
-    pull_model_stream,
-    is_model_installed,
-    llm_size_gb,
-    all_llm_tags,
-    probe_model,
-    EMBED_MODELS,
-    RERANKER_MODELS,
-)
+from ragapp.ui._loading import page_boot
 
-st.set_page_config(page_title="Einstellungen (Tuning)", page_icon="⚙️", layout="wide")
-
-from ragapp.ui._auth import require_pin
-require_pin()
+page_boot("⚙️ Einstellungen (Tuning)", page_title="Einstellungen (Tuning)",
+          icon="⚙️", layout="wide")
 
 # --------------------------------------------------------------------------- #
 # Styling ("schick"), identisch zur Startseite
@@ -73,6 +57,30 @@ div[data-testid="stSlider"] [data-testid="stWidgetLabel"] {
 """, unsafe_allow_html=True)
 
 # --------------------------------------------------------------------------- #
+# Schwere Importe unter Ladehinweis (der Seitentitel ist bereits gerendert ->
+# kein weißer Bildschirm beim Seitenwechsel). Die Importe binden trotz des
+# with-Blocks modulweit, alle späteren Verwendungen funktionieren unverändert.
+# --------------------------------------------------------------------------- #
+with st.spinner("Einstellungen wird geladen ..."):
+    from ragapp.config import (
+        settings, RUNTIME_CONFIG_FILE, Settings, UI_RESTART_FILE, UI_MODE_FILE,
+    )
+    from ragapp import manifest, netinfo
+    from ragapp.hardware import (
+        detect_hardware,
+        format_hardware,
+        recommend_models,
+        benchmark_model,
+        pull_model_stream,
+        is_model_installed,
+        llm_size_gb,
+        all_llm_tags,
+        probe_model,
+        EMBED_MODELS,
+        RERANKER_MODELS,
+    )
+
+# --------------------------------------------------------------------------- #
 # Sidebar (Kurzstatistik, wie auf der Startseite)
 # --------------------------------------------------------------------------- #
 with st.sidebar:
@@ -88,7 +96,6 @@ with st.sidebar:
 # --------------------------------------------------------------------------- #
 # Kopf
 # --------------------------------------------------------------------------- #
-st.title("⚙️ Einstellungen (Tuning)")
 st.markdown(
     "<span class='small'>Stelle die wichtigsten Parameter ein und speichere sie "
     "dauerhaft. <b>Nach dem Ändern in der Evaluation messen</b>, ob sich die "
@@ -135,6 +142,35 @@ def _installierte_modelle() -> list[str] | None:
         return sorted(set(namen))
     except Exception:
         return None
+
+
+def _fmt_dl_label(text: str, done, tot) -> str:
+    """Baut das Fortschritts-Label fuer einen Modell-Download (rein/testbar)."""
+    lbl = text or "lädt …"
+    if done and tot:
+        lbl += f" — {done / 1e9:.1f} / {tot / 1e9:.1f} GB"
+    return lbl
+
+
+def _pull_with_progress(tag: str) -> "tuple[bool, str | None]":
+    """Laedt ein Ollama-Modell mit Fortschrittsbalken herunter (``ollama pull``).
+    KEIN GPU-/Inferenz-Aufruf – reiner Netzwerk-Download. Gibt (ok, fehler) zurueck.
+    Wird von allen Download-Bereichen (Antwort-, Autoren-, OCR-, Such-Modell) genutzt."""
+    fehler: "str | None" = None
+    with st.status(f"Lade `{tag}` herunter … (Fenster geöffnet lassen)",
+                   expanded=True) as status:
+        bar = st.progress(0.0)
+        try:
+            for text, frac, done, tot in pull_model_stream(tag):
+                if frac is not None:
+                    bar.progress(min(max(frac, 0.0), 1.0))
+                status.update(label=_fmt_dl_label(text, done, tot))
+            bar.progress(1.0)
+            status.update(label=f"✅ `{tag}` heruntergeladen", state="complete")
+        except Exception as exc:  # noqa: BLE001
+            fehler = str(exc)
+            status.update(label="Download fehlgeschlagen", state="error")
+    return (fehler is None), fehler
 
 
 # --- Hardware ermitteln (robust) ------------------------------------------- #
@@ -269,24 +305,8 @@ if hw:
 
     # --- Download (Ollama pull mit Fortschritt) --------------------------- #
     if starte_dl and gewaehlt:
-        _fehler = None
-        with st.status(f"Lade `{gewaehlt}` herunter … (Fenster geöffnet lassen)",
-                       expanded=True) as status:
-            bar = st.progress(0.0)
-            try:
-                for text, frac, done, tot in pull_model_stream(gewaehlt):
-                    if frac is not None:
-                        bar.progress(min(max(frac, 0.0), 1.0))
-                    lbl = text or "lädt …"
-                    if done and tot:
-                        lbl += f" — {done / 1e9:.1f} / {tot / 1e9:.1f} GB"
-                    status.update(label=lbl)
-                bar.progress(1.0)
-                status.update(label=f"✅ `{gewaehlt}` heruntergeladen", state="complete")
-            except Exception as exc:  # noqa: BLE001
-                _fehler = str(exc)
-                status.update(label="Download fehlgeschlagen", state="error")
-        if _fehler:
+        _ok, _fehler = _pull_with_progress(gewaehlt)
+        if not _ok:
             st.error(f"❌ Download fehlgeschlagen: {_fehler}\n\nPrüfe die Internet-"
                      "verbindung und ob der Ollama-Server läuft.")
         else:
@@ -363,6 +383,28 @@ if hw:
     st.caption(
         f"Aktuell aktives Autoren-Modell: `{settings.author_model()}`"
         + ("" if settings.LLM_MODEL_AUTHOR else "  (Fallback auf das Antwort-Modell)"))
+
+    # Eigener Download-Bereich fuer das Autoren-Modell (statt Umweg ueber den
+    # Antwort-Modell-Picker). Nur sichtbar, wenn ein konkretes Modell gewaehlt ist.
+    _autor_konkret = "" if autor_gewaehlt == _KEIN_AUTOR else autor_gewaehlt
+    if _autor_konkret:
+        _autor_da = is_model_installed(_autor_konkret, installiert)
+        _al, _ar = st.columns([2, 1])
+        _al.markdown(("✅ installiert" if _autor_da else "⬇️ noch nicht installiert")
+                     + f" · `{_autor_konkret}`")
+        if not _autor_da:
+            _agb = llm_size_gb(_autor_konkret)
+            if _ar.button(f"⬇️ Herunterladen{f' (~{_agb:.0f} GB)' if _agb else ''}",
+                          key="dl_author", type="primary", use_container_width=True):
+                _ok, _err = _pull_with_progress(_autor_konkret)
+                if _ok:
+                    st.success(f"`{_autor_konkret}` installiert. Klicke jetzt "
+                               "**Als Autoren-Modell setzen**.")
+                    st.rerun()
+                else:
+                    st.error(f"❌ Download fehlgeschlagen: {_err}  Prüfe Internet + "
+                             "Ollama-Server.")
+
     if st.button("✅ Als Autoren-Modell setzen", use_container_width=True):
         _val = "" if autor_gewaehlt == _KEIN_AUTOR else autor_gewaehlt
         _ok = True
@@ -430,10 +472,26 @@ if hw:
              "Antwort-Modell-Picker herunter (gleicher Ollama-Katalog).")
     st.caption("Aktuell aktiv: "
                + (f"automatisch → `{_ocr_empf}`" if not _cur_ocr else f"`{_cur_ocr}`"))
-    if _ocr_gewaehlt and not is_model_installed(_ocr_gewaehlt, installiert):
-        st.warning(f"ℹ️ `{_ocr_gewaehlt}` ist noch nicht installiert – lade es zuerst oben "
-                   "im Antwort-Modell-Picker über **Herunterladen**, sonst fällt die OCR "
-                   "auf easyocr zurück.")
+
+    # Eigener Download-Bereich fuers OCR-Vision-Modell (nur bei konkreter Wahl;
+    # "Automatisch" = leer -> nichts zu laden).
+    if _ocr_gewaehlt:
+        _ocr_da = is_model_installed(_ocr_gewaehlt, installiert)
+        _ol, _or = st.columns([2, 1])
+        _ol.markdown(("✅ installiert" if _ocr_da else "⬇️ noch nicht installiert")
+                     + f" · `{_ocr_gewaehlt}`")
+        if not _ocr_da:
+            _ogb = llm_size_gb(_ocr_gewaehlt)
+            if _or.button(f"⬇️ Herunterladen{f' (~{_ogb:.0f} GB)' if _ogb else ''}",
+                          key="dl_ocr", type="primary", use_container_width=True):
+                _ok, _err = _pull_with_progress(_ocr_gewaehlt)
+                if _ok:
+                    st.success(f"`{_ocr_gewaehlt}` installiert. Klicke jetzt "
+                               "**OCR-Modell setzen**.")
+                    st.rerun()
+                else:
+                    st.error(f"❌ Download fehlgeschlagen: {_err}  Ohne Vision-Modell "
+                             "fällt die OCR auf easyocr zurück.")
 
     if st.button("✅ OCR-Modell setzen", use_container_width=True):
         try:
@@ -452,15 +510,70 @@ if hw:
         except Exception as exc:  # pragma: no cover - defensiv
             st.error(f"Konnte das OCR-Modell nicht setzen: {exc}")
 
+    # --- Such-/Embedding-Modell (eigener Auswahl-/Download-Bereich) -------- #
+    st.divider()
+    st.subheader("🔎 Such-/Embedding-Modell")
+    st.caption(
+        "Das Modell, das Texte für die **Bedeutungssuche** in Vektoren umwandelt "
+        "(Ollama). Hier direkt auswählen, herunterladen und aktiv setzen. "
+        "⚠️ Ein Wechsel ändert die Vektor-Größe → danach müssen **alle Dokumente neu "
+        "importiert** werden. Technisch: EMBED_MODEL.")
+
+    _emb_info = {m["tag"]: m["info"] for m in EMBED_MODELS}
+    _emb_kat = [m["tag"] for m in EMBED_MODELS]
+    _cur_emb = (settings.EMBED_MODEL or "").strip()
+    _emb_opts = _emb_kat + ([_cur_emb] if _cur_emb and _cur_emb not in _emb_kat else [])
+    _emb_opts = [o for o in dict.fromkeys(_emb_opts) if o] or [_cur_emb or "bge-m3"]
+    _emb_idx = _emb_opts.index(_cur_emb) if _cur_emb in _emb_opts else 0
+
+    def _emb_label(tag: str) -> str:
+        stat = "✅ installiert" if is_model_installed(tag, installiert) else "⬇️ noch laden"
+        info = _emb_info.get(tag, "")
+        return f"{tag}   ({stat})" + (f" — {info}" if info else "")
+
+    _emb_gewaehlt = st.selectbox(
+        "Embedding-Modell", options=_emb_opts, index=_emb_idx, format_func=_emb_label,
+        key="emb_pick",
+        help="Nach dem Herunterladen unten als Such-Modell setzen. Der Wert wird "
+             "zusätzlich unten im Formular unter „🧠 Modelle\" geführt.")
+    st.caption(f"Aktuell aktives Such-Modell: `{settings.EMBED_MODEL}`")
+
+    _emb_da = is_model_installed(_emb_gewaehlt, installiert)
+    _eb1, _eb2 = st.columns(2)
+    if _emb_da:
+        _eb1.button("⬇️ Schon installiert", disabled=True, use_container_width=True,
+                    key="emb_dl_done")
+    else:
+        if _eb1.button("⬇️ Herunterladen", type="primary", use_container_width=True,
+                       key="dl_embed"):
+            _ok, _err = _pull_with_progress(_emb_gewaehlt)
+            if _ok:
+                st.success(f"`{_emb_gewaehlt}` installiert. Klicke jetzt "
+                           "**Als Such-Modell setzen**.")
+                st.rerun()
+            else:
+                st.error(f"❌ Download fehlgeschlagen: {_err}  Prüfe Internet + "
+                         "Ollama-Server.")
+    if _eb2.button("✅ Als Such-Modell setzen", use_container_width=True, key="emb_set"):
+        if not is_model_installed(_emb_gewaehlt, installiert):
+            st.warning(f"ℹ️ `{_emb_gewaehlt}` ist noch nicht installiert – lade es zuerst "
+                       "über **Herunterladen**, sonst schlägt die Suche fehl.")
+        else:
+            try:
+                settings.update(EMBED_MODEL=_emb_gewaehlt)
+                settings.save()
+                st.success(
+                    f"Such-Modell auf `{_emb_gewaehlt}` gesetzt. ⚠️ Bitte jetzt **alle "
+                    "Dokumente neu importieren** – der Vektorindex hat sonst die falsche "
+                    "Größe.")
+            except Exception as exc:  # pragma: no cover - defensiv
+                st.error(f"Konnte das Such-Modell nicht setzen: {exc}")
+
 st.divider()
 
 # --------------------------------------------------------------------------- #
 # Handy-/Tablet-Zugriff (Netzwerk)
 # --------------------------------------------------------------------------- #
-from ragapp import netinfo
-from ragapp.config import UI_RESTART_FILE, UI_MODE_FILE
-
-
 @st.fragment(run_every=3)
 def _tunnel_wait_box() -> None:
     """Wartet SERVERSEITIG (per st.fragment-Polling, KEIN Browser-Reload), bis die

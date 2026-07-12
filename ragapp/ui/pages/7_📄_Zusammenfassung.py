@@ -18,24 +18,23 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp import manifest
-from ragapp.config import settings, SUBJECT_LABELS
-from ragapp.ingestion import summarize
-
-st.set_page_config(page_title="Zusammenfassung", page_icon="📄", layout="wide")
-
-from ragapp.ui._auth import require_pin
-require_pin()
+from ragapp.ui._loading import page_boot
+page_boot("📄 Zusammenfassung schreiben", page_title="Zusammenfassung",
+          icon="📄", layout="wide")
 
 st.markdown("<style>.block-container{padding-top:2rem;max-width:900px;}"
             "h1{font-weight:750;letter-spacing:-.5px;}</style>", unsafe_allow_html=True)
+
+with st.spinner("Zusammenfassung wird geladen …"):
+    from ragapp import manifest
+    from ragapp.config import settings, SUBJECT_LABELS
+    from ragapp.ingestion import summarize
 
 
 def _fach(code: str) -> str:
     return SUBJECT_LABELS.get(code, code)
 
 
-st.title("📄 Zusammenfassung schreiben")
 st.caption("Erzeugt aus einem indexierten Dokument oder einem ganzen Fach eine "
            "strukturierte, klausurtaugliche Zusammenfassung – gegroundet, es wird "
            "nur der Quellinhalt verwendet.")

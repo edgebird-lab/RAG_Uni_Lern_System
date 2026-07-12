@@ -226,19 +226,53 @@ def _active_cards(subject: Optional[str] = None) -> list[dict]:
             "FROM review_items WHERE suspended=0 AND use_flashcard=1" + sc, sa)]
 
 
+# --------------------------------------------------------------------------- #
+# Vergessenskurve / Klausur-Bereitschaft
+# --------------------------------------------------------------------------- #
+# Ziel-Retention am geplanten Faelligkeitstag: wie in SM-2/FSRS ueblich soll eine
+# Karte an ihrem naechsten Wiederholungstermin noch zu ~90% abrufbar sein. Daraus
+# wird die Gedaechtnis-Stabilitaet kalibriert - so verlaeuft die Vergessenskurve
+# realistisch flach und eine gerade erst gelernte Karte zaehlt nicht sofort als
+# 'vergessen'.
+_TARGET_RETENTION = 0.9
+# Referenz-Leichtigkeit (SM-2-Default) fuer die sanfte Ease-Modulation.
+_EASE_REF = 2.5
+# Untere Schranke der Stabilitaet in Tagen: auch eine frisch gelernte Karte (noch in
+# kurzen Minuten-Schritten, interval~0) behaelt so rund einen Tag hohe Retention und
+# faellt nicht sofort auf 'vergessen'.
+_MIN_STABILITY_DAYS = 1.0
+
+
+def card_stability(interval_days: float, ease: float = _EASE_REF) -> float:
+    """Gedaechtnis-Stabilitaet S (in Tagen) fuer die Vergessenskurve R = exp(-t/S).
+
+    Kalibriert, sodass die Retention am geplanten Faelligkeitstag (t = interval)
+    etwa ``_TARGET_RETENTION`` betraegt: ``S = interval / -ln(target)``. Die
+    Leichtigkeit (ease) moduliert die Stabilitaet nur leicht (gedeckelt): leicht
+    sitzende Karten verblassen langsamer, schwere schneller. Eine untere Schranke
+    sorgt dafuer, dass frisch gelernte Karten mit sehr kleinem/keinem Intervall
+    nicht kuenstlich schnell als vergessen gelten. Reine, testbare Funktion."""
+    import math
+    interval_days = max(0.0, float(interval_days))
+    base = interval_days / (-math.log(_TARGET_RETENTION))  # -> R(interval) ~ target
+    factor = min(1.4, max(0.6, float(ease or _EASE_REF) / _EASE_REF))
+    return max(_MIN_STABILITY_DAYS, base * factor)
+
+
 def card_retrievability(card: dict, at_time: Optional[float] = None) -> float:
-    """Abrufwahrscheinlichkeit einer Karte zu einem Zeitpunkt (0..1), als
-    Vergessenskurve R = exp(-t/S). Stabilitaet S ~ interval*ease (grobe FSRS-artige
-    Naeherung). Nie geuebte Karten -> 0 (noch nicht abrufbar)."""
+    """Abrufwahrscheinlichkeit einer Karte zu einem Zeitpunkt (0..1) als
+    Vergessenskurve R = exp(-t/S). Die Stabilitaet S ist ueber die Ziel-Retention am
+    Faelligkeitstag kalibriert (siehe ``card_stability``): direkt nach dem Lernen ist
+    R nahe 1.0 und faellt danach sanft, abhaengig vom Stabilitaets-/Intervallwert der
+    Karte - eine gerade erst gelernte Karte zaehlt daher nicht kuenstlich schnell als
+    'vergessen'. Nie geuebte Karten -> 0.0 (Abdeckung noch offen)."""
     import math
     reps = int(card.get("reps") or 0)
     last = card.get("last_review")
     if reps <= 0 or not last:
         return 0.0
     now = at_time if at_time is not None else time.time()
-    interval_days = float(card.get("interval") or 0.0)
-    ease = float(card.get("ease") or 2.5)
-    S = max(0.5, interval_days * ease)
+    S = card_stability(card.get("interval") or 0.0, float(card.get("ease") or _EASE_REF))
     days = max(0.0, (now - float(last)) / 86400.0)
     return math.exp(-days / S)
 

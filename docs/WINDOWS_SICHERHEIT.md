@@ -46,6 +46,49 @@ den du sehen kannst.
 
 ---
 
+## Netzwerk- & Fernzugriff: das größte reale Risiko
+
+Der Virenscanner-Alarm oben ist meist ein **Fehlalarm**. Das **eigentliche**
+Sicherheitsthema im Alltag ist der optionale **Fernzugriff** (Handy/unterwegs) über
+den Cloudflare-Tunnel – denn der öffnet die App bewusst nach außen.
+
+> ### ⚠️ Wenn du den „Unterwegs"-Modus (Cloudflare-Tunnel) nutzt
+> Mit `Start_Unterwegs.bat` wird die App über eine öffentliche
+> `*.trycloudflare.com`-Adresse aus dem **GESAMTEN INTERNET** erreichbar. Das TLS
+> des Tunnels verschlüsselt nur den **Transport** – die **einzige Zugangssperre ist
+> der PIN**. Deshalb:
+> * **Langen, starken PIN** setzen (nicht `1234`/`0000`, kein Geburtstag). Er ist
+>   die einzige Hürde zwischen dem Internet und all deinen Unterlagen samt lokalem
+>   KI-Modell.
+> * Die zufällige Tunnel-**Adresse ist KEIN Geheimnis** (u. a. über
+>   Zertifikats-Transparenz-Logs auffindbar) – niemals als Schutz werten.
+> * Den **Tunnel nur bei Bedarf** einschalten und danach **trennen / App beenden**.
+>   Der Beenden-Button stoppt Oberfläche, KI-Modell **und** Tunnel vollständig.
+
+Der Tunnel ist ein **kostenloser, anonymer TryCloudflare-Quick-Tunnel** (kein
+Cloudflare-Konto, keine Anmeldung, pro Rechner ein eigener kurzlebiger Tunnel – ein
+Test-Dienst ohne Uptime-Garantie). Es entstehen also keine Kosten und niemand
+erhält Zugriff auf ein fremdes Konto; das Expositions-Risiko liegt allein in der
+Erreichbarkeit aus dem Netz.
+
+**Nur zuhause im WLAN** (`Start_Handy-Zugriff.bat`) ist die App lediglich im
+**lokalen Netz** erreichbar, nicht aus dem Internet – deutlich risikoärmer, aber
+auch hier bleibt der PIN Pflicht. Im **reinen Lokalbetrieb** (`Start.bat`, ohne
+Handy-Zugriff) verlässt nichts den Rechner.
+
+> **Technischer Hinweis (Windows):** Der Windows-Starter bindet den Port aus
+> praktischen Gründen immer an alle Schnittstellen (`0.0.0.0`) – so ist beim
+> Wechsel zwischen lokal/Netzwerk/Tunnel kein Neustart nötig. Der **Seiteninhalt**
+> bleibt im Lokalmodus gesperrt („Zugriff nicht aktiv"), der Port selbst ist im LAN
+> aber sichtbar. Wer das ausschließen will, lässt den Handy-Zugriff aus und/oder
+> blockt den Port in der Windows-Firewall für andere Geräte. (Unter Linux/macOS
+> bindet `start.sh` bereits fest an `127.0.0.1`.)
+
+Schritt-für-Schritt-Anleitung und weitere Hinweise:
+[HANDY_ZUGRIFF.md](HANDY_ZUGRIFF.md).
+
+---
+
 ## Für Maintainer: Vertrauen aufbauen (Reihenfolge nach Aufwand/Kosten)
 
 ### Kostenlos & sofort

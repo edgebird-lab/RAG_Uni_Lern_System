@@ -10,11 +10,20 @@ Kalibrierung.
 Dieses Modul erzeugt solche Beispiele automatisch aus den Karteikarten des
 Nutzers ("spiegelt" die Altklausur-Fragen): Es nimmt bis zu ``n`` Karten eines
 Fachs, deren Musterantwort (``answer``) als Referenz dient, und laesst das LLM
-je Karte drei realistische Studenten-Antworten erfinden - je eine der Stufen
-``gewusst`` / ``halb`` / ``nicht``. Die Beispiele werden ADDITIV und
-DEDUPLIZIERT nach ``data/eval/judge_labels.json`` gemergt (Format identisch zu
-``judge_harness._load_extra_labels``), sodass der naechste Judge-Test sie
-automatisch mitnutzt. Vorhandene ``grounding``-Beispiele bleiben unangetastet.
+je Karte
+
+  * drei realistische Studenten-Antworten (``gewusst`` / ``halb`` / ``nicht``)
+    -> Kalibrierung der BENOTUNG, sowie
+  * zwei Antworten fuers Grounding-Gate (eine durch die Musterloesung GEDECKTE
+    und eine mit erfundener Behauptung) -> Kalibrierung von GROUNDING /
+    FAITHFULNESS.
+
+So waechst nicht nur die Benotungs-, sondern auch die Grounding-Kalibrierbasis
+mit dem eigenen Stoff (statt dauerhaft nur gegen die Handbeispiele zu messen).
+Beide Sorten werden ADDITIV und DEDUPLIZIERT nach ``data/eval/judge_labels.json``
+gemergt (Format identisch zu ``judge_harness._load_extra_labels``), sodass der
+naechste Judge-Test sie automatisch mitnutzt. Bestehende Eintraege bleiben
+erhalten.
 """
 from __future__ import annotations
 
@@ -47,6 +56,15 @@ daher klar unterscheidbar sein:
 Halte jede Antwort kurz (1-2 Saetze), so wie ein Studierender sie unter Zeitdruck
 in der Klausur tippen wuerde.
 
+Erzeuge ausserdem ZWEI Antworten fuer die Pruefung, ob eine Aussage durch die
+Musterloesung GEDECKT ist (Grounding-Gate) - beide 1-2 Saetze:
+
+- "beleg_treu": inhaltlich korrekt UND ausschliesslich mit Informationen aus der
+  Musterloesung (nichts hinzuerfinden, keine neue Zahl/Name/Jahr).
+- "beleg_erfunden": klingt plausibel, enthaelt aber mindestens EINE konkrete
+  Behauptung (Zahl, Name, Jahr, Zusatzfakt), die in der Musterloesung NICHT
+  vorkommt oder ihr widerspricht.
+
 Frage:
 {frage}
 
@@ -54,7 +72,7 @@ Musterloesung:
 {referenz}
 
 Gib NUR gueltiges JSON in diesem Format zurueck:
-{{"gewusst": "...", "halb": "...", "nicht": "..."}}"""
+{{"gewusst": "...", "halb": "...", "nicht": "...", "beleg_treu": "...", "beleg_erfunden": "..."}}"""
 
 
 def _norm(s: str) -> str:
@@ -66,10 +84,31 @@ def _dedup_key(item: dict) -> tuple:
     return (_norm(item.get("frage")), _norm(item.get("antwort")), _norm(item.get("label")))
 
 
-def _merge_grading_labels(new_items: list[dict]) -> tuple[int, int]:
-    """Mergt neue Benotungs-Beispiele additiv & dedupliziert in judge_labels.json.
-    Bestehende ``grounding``-Beispiele bleiben erhalten. Gibt
-    (neu_hinzugefuegt, gesamt_grading_in_datei) zurueck."""
+def _dedup_key_grounding(item: dict) -> tuple:
+    """Identitaet eines Grounding-Beispiels (Frage + Antwort + grounded-Flag)."""
+    return (_norm(item.get("frage")), _norm(item.get("antwort")),
+            bool(item.get("grounded")))
+
+
+def _merge_additive(existing: list[dict], new_items: list[dict], key_fn) -> tuple[list, int]:
+    """Haengt ``new_items`` dedupliziert (per ``key_fn``) an ``existing`` an.
+    Gibt (zusammengefuehrte_liste, neu_hinzugefuegt) zurueck."""
+    seen = {key_fn(it) for it in existing}
+    added = 0
+    for it in new_items:
+        k = key_fn(it)
+        if k in seen:
+            continue
+        seen.add(k)
+        existing.append(it)
+        added += 1
+    return existing, added
+
+
+def _merge_labels(new_grading: list[dict], new_grounding: list[dict]) -> dict:
+    """Mergt neue Benotungs- UND Grounding-Beispiele additiv & dedupliziert in
+    judge_labels.json. Bestehende Eintraege beider Sorten bleiben erhalten. Gibt
+    ``{grading_added, grading_total, grounding_added, grounding_total}`` zurueck."""
     path = EVAL_DIR / "judge_labels.json"
     data: dict = {}
     if path.exists():
@@ -79,20 +118,19 @@ def _merge_grading_labels(new_items: list[dict]) -> tuple[int, int]:
             data = {}
     if not isinstance(data, dict):
         data = {}
+
     grading = [it for it in (data.get("grading") or []) if isinstance(it, dict)]
-    seen = {_dedup_key(it) for it in grading}
-    added = 0
-    for it in new_items:
-        k = _dedup_key(it)
-        if k in seen:
-            continue
-        seen.add(k)
-        grading.append(it)
-        added += 1
+    grading, added_g = _merge_additive(grading, new_grading, _dedup_key)
+
+    grounding = [it for it in (data.get("grounding") or []) if isinstance(it, dict)]
+    grounding, added_r = _merge_additive(grounding, new_grounding, _dedup_key_grounding)
+
     data["grading"] = grading
+    data["grounding"] = grounding
     EVAL_DIR.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False), "utf-8")
-    return added, len(grading)
+    return {"grading_added": added_g, "grading_total": len(grading),
+            "grounding_added": added_r, "grounding_total": len(grounding)}
 
 
 def generate_mirror_items(subject: str, n: int = 6, progress=None) -> dict:
@@ -112,7 +150,8 @@ def generate_mirror_items(subject: str, n: int = 6, progress=None) -> dict:
     cards = cards[:max(1, int(n))]
 
     llm = get_llm(settings.LLM_MODEL_FAST)
-    new_items: list[dict] = []
+    new_grading: list[dict] = []
+    new_grounding: list[dict] = []
     for i, c in enumerate(cards, 1):
         if progress:
             progress(f"Spiegel-Antworten {i}/{len(cards)} …")
@@ -131,12 +170,24 @@ def generate_mirror_items(subject: str, n: int = 6, progress=None) -> dict:
                 break
         if not isinstance(data, dict):
             continue
+        # Benotungs-Spiegel (gewusst/halb/nicht).
         for label in _LABELS:
             ant = str(data.get(label) or "").strip()
             if ant:
-                new_items.append({"frage": frage, "referenz": referenz,
-                                  "antwort": ant, "label": label})
+                new_grading.append({"frage": frage, "referenz": referenz,
+                                    "antwort": ant, "label": label})
+        # Grounding-Spiegel: Musterloesung als Beleg, belegte vs. erfundene Antwort.
+        treu = str(data.get("beleg_treu") or "").strip()
+        erfunden = str(data.get("beleg_erfunden") or "").strip()
+        if treu:
+            new_grounding.append({"frage": frage, "antwort": treu,
+                                  "beleg": referenz, "grounded": True})
+        if erfunden:
+            new_grounding.append({"frage": frage, "antwort": erfunden,
+                                  "beleg": referenz, "grounded": False})
 
-    added, total = _merge_grading_labels(new_items)
+    counts = _merge_labels(new_grading, new_grounding)
     return {"status": "ok", "subject": subject, "cards": len(cards),
-            "generated": added, "merged": total, "path": path}
+            "generated": counts["grading_added"], "merged": counts["grading_total"],
+            "grounding_generated": counts["grounding_added"],
+            "grounding_merged": counts["grounding_total"], "path": path}

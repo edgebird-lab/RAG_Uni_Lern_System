@@ -133,17 +133,27 @@ def make_cloze(text: str, max_blanks: int = 1) -> "tuple[str, list[str]] | None"
 
 
 def _norm(s: str) -> str:
-    return re.sub(r"[^\wäöüß]", "", (s or "").strip().lower())
+    """Vergleichs-Normalform: Kleinschreibung, Umlaut-/ß-Faltung (ä->ae, ö->oe,
+    ü->ue, ß->ss) und ohne Satzzeichen/Leerraum. So gilt 'Größe' == 'groesse',
+    ohne echte Wortunterschiede zu verwischen."""
+    s = (s or "").strip().lower()
+    for a, b in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
+        s = s.replace(a, b)
+    return re.sub(r"[^\w]", "", s)
 
 
 def check_cloze(user: str, solutions: list[str]) -> bool:
-    """Prueft eine Lueckentext-Eingabe gegen die Loesung(en) - normalisiert
-    (Gross/Klein, Satzzeichen egal). Bei mehreren Luecken zaehlt jede fuer sich."""
-    ins = [_norm(x) for x in re.split(r"[;,/]| bzw\.? ", user or "") if _norm(x)]
+    """Prueft eine Lueckentext-Eingabe STRENG gegen die Loesung(en): normalisiert
+    (Gross/Klein, Umlaute, Satzzeichen egal), aber es zaehlt nur eine EXAKTE
+    Uebereinstimmung der Normalform. Reine Teil-/Oberbegriffe (Teilstrings, z. B.
+    'Norm' fuer 'Normalisierung') gelten NICHT als voll korrekt - sonst blaeht
+    vages Raten die Mastery auf. Bei mehreren Luecken muss jede Loesung von einer
+    Eingabe getroffen werden."""
+    ins = {_norm(x) for x in re.split(r"[;,/]| bzw\.? ", user or "") if _norm(x)}
     sols = [_norm(s) for s in solutions if _norm(s)]
     if not sols:
         return False
-    return all(any(s == i or (len(i) >= 4 and (i in s or s in i)) for i in ins) for s in sols)
+    return all(s in ins for s in sols)
 
 
 # --------------------------------------------------------------------------- #
@@ -213,9 +223,12 @@ def generate_mcq(question: str, answer: str, model: Optional[str] = None) -> "di
 
 
 def is_grounded(frage: str, antwort: str, beleg: str, model: Optional[str] = None) -> bool:
-    """Qualitaetsgate fuer generierte Karten: True nur, wenn das LLM die Antwort
-    eindeutig als durch den Beleg gedeckt bestaetigt (fail-closed). Bei Fehler ->
-    True (nicht faelschlich verwerfen; der Faithfulness-Check ist ein Bonus)."""
+    """Qualitaetsgate fuer generierte Karten: True NUR, wenn das LLM die Antwort
+    eindeutig als durch den Beleg gedeckt bestaetigt (streng/fail-closed). Bei
+    LLM-Fehler, unparsebarer Antwort ODER fehlendem 'grounded'-Schluessel wird die
+    Antwort als NICHT gedeckt gewertet (False) - lieber eine unbelegte Karte
+    verwerfen als subtil Falsches lernen. Nur wenn es nichts zu pruefen gibt
+    (leere Antwort oder leerer Beleg), wird durchgelassen."""
     if not (antwort or "").strip() or not (beleg or "").strip():
         return True
     try:
@@ -223,10 +236,10 @@ def is_grounded(frage: str, antwort: str, beleg: str, model: Optional[str] = Non
             _GROUND_PROMPT.format(frage=(frage or "")[:500], antwort=antwort[:1500],
                                   beleg=beleg[:3000]), temperature=0.0)
     except Exception:  # noqa: BLE001
-        return True
+        return False   # fail-closed: bei Modellfehler NICHT durchwinken
     val = data.get("grounded") if isinstance(data, dict) else None
     if isinstance(val, bool):
         return val
     if isinstance(val, str):
         return val.strip().lower() in {"true", "ja", "yes", "1"}
-    return True
+    return False   # fail-closed: unparsebar / Schluessel fehlt -> nicht gegroundet

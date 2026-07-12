@@ -17,16 +17,11 @@ for _anc in _p.parents:
         sys.path.insert(0, str(_anc))
         break
 
-import pandas as pd
 import streamlit as st
 
-from ragapp.config import settings, INBOX_DIR, SOURCE_DIR, SUBJECT_LABELS
-from ragapp import manifest
-
-st.set_page_config(page_title="Dokumente & Ingestion", page_icon="📥", layout="wide")
-
-from ragapp.ui._auth import require_pin
-require_pin()
+from ragapp.ui._loading import page_boot
+page_boot("📥 Dokumente & Ingestion", page_title="Dokumente & Ingestion",
+          icon="📥", layout="wide")
 
 # --------------------------------------------------------------------------- #
 # Styling ("schick"), identisch zur Startseite
@@ -51,6 +46,13 @@ h1 {font-weight: 750; letter-spacing:-0.5px;}
 </style>
 """, unsafe_allow_html=True)
 
+# --- Schwere Importe (pandas / ragapp.*) unter Ladeanzeige, NACH dem Kopf --- #
+with st.spinner("Ingestion wird geladen …"):
+    import pandas as pd
+
+    from ragapp.config import settings, INBOX_DIR, SOURCE_DIR, SUBJECT_LABELS
+    from ragapp import manifest
+
 # --------------------------------------------------------------------------- #
 # Sidebar (Kurzstatistik, wie auf der Startseite)
 # --------------------------------------------------------------------------- #
@@ -67,7 +69,6 @@ with st.sidebar:
 # --------------------------------------------------------------------------- #
 # Kopf
 # --------------------------------------------------------------------------- #
-st.title("📥 Dokumente & Ingestion")
 st.markdown(
     "<span class='small'>Hier verwaltest du die Wissensbasis: Dateien hochladen, "
     "den Quellordner importieren, Fragen anreichern und Dokumente löschen.</span>",
@@ -172,6 +173,10 @@ if uploads and st.button("📥 Hochgeladene Dateien indexieren", type="primary")
     _outer = st.progress(0.0, text=f"0/{n_up} Dateien")   # Datei k/N
     _inner = ProgressReporter()                           # OCR-Seiten / Embedding
     _t0 = time.time()
+    # Grob-ETA über Dateien nach ARBEIT (Bytes) statt Dateizahl gewichten -> eine
+    # kleine + eine große Datei lässt die Schätzung nicht mehr springen.
+    _bytes_total = sum(int(getattr(u, "size", 0) or 0) for u in uploads)
+    _bytes_done = 0
 
     with st.status("Verarbeite hochgeladene Dateien …", expanded=True) as status:
         for k, up in enumerate(uploads, 1):
@@ -212,8 +217,12 @@ if uploads and st.button("📥 Hochgeladene Dateien indexieren", type="primary")
                                "Status": r["status"], "Info": info})
             status.write(f"✔️ {r.get('file', up.name)} → **{r['status']}** {info}")
 
+            _bytes_done += int(getattr(up, "size", 0) or 0)
             _el = time.time() - _t0                       # grobe Gesamt-ETA über Dateien
-            _eta = (_el / k) * (n_up - k)
+            if _bytes_total > 0 and _bytes_done > 0:      # nach Arbeit (Bytes) gewichtet
+                _eta = _el * (_bytes_total - _bytes_done) / _bytes_done
+            else:                                         # Fallback: nach Dateizahl
+                _eta = (_el / k) * (n_up - k)
             _outer.progress(k / n_up,
                             text=f"{k}/{n_up} Dateien · noch ca. {fmt_dauer(_eta)}")
 

@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import hashlib
 
+import numpy as np
+
 from ragapp.config import settings
 
 
@@ -41,19 +43,27 @@ def filter_near_duplicates(
     """
     Greedy Near-Duplicate-Filter über (L2-normalisierte) Embeddings.
     Gibt die Indizes der zu BEHALTENDEN Chunks zurück.
+
+    Vektorisiert: die Kosinus-Matrix wird EINMAL per Matmul berechnet (statt
+    O(n^2) Python-Skalarprodukte über 1024-dim Vektoren); die Greedy-Auswahl
+    liest daraus nur noch vorberechnete Werte. Ergebnis identisch, nur schneller.
     """
     threshold = settings.DEDUP_NEAR_DUPLICATE_THRESHOLD if threshold is None else threshold
+    n = len(embeddings)
+    if n == 0:
+        return []
+
+    arr = np.asarray(embeddings, dtype=np.float64)
+    # normieren (idempotent bei bereits normalisierten Embeddings) -> Kosinus = Skalarprodukt
+    norms = np.linalg.norm(arr, axis=1, keepdims=True)
+    norms[norms == 0.0] = 1.0
+    unit = arr / norms
+    sim = unit @ unit.T                     # (n, n) Kosinus-Matrix, ein Matmul
+
     kept: list[int] = []
-    kept_vecs: list[list[float]] = []
-    for i, vec in enumerate(embeddings):
-        is_dup = False
-        for kv in kept_vecs:
-            # Skalarprodukt = Kosinus, da normalisiert
-            sim = sum(a * b for a, b in zip(vec, kv))
-            if sim >= threshold:
-                is_dup = True
-                break
-        if not is_dup:
-            kept.append(i)
-            kept_vecs.append(vec)
+    for i in range(n):
+        # Duplikat, sobald ein bereits BEHALTENER Chunk >= Schwellwert ähnelt.
+        if kept and bool(np.any(sim[i, kept] >= threshold)):
+            continue
+        kept.append(i)
     return kept

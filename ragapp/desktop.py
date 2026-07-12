@@ -475,17 +475,30 @@ def _start_tunnel(port: int) -> "subprocess.Popen | None":
 # --------------------------------------------------------------------------- #
 # Streamlit + App-Fenster
 # --------------------------------------------------------------------------- #
+def _bind_host_for(network: bool) -> str:
+    """Bind-Adresse passend zum Modus (Defense-in-Depth, siehe S2):
+      * lokal          -> 127.0.0.1 (NUR dieser PC; auch die _stcore-/Static-
+                          Endpunkte sind dann nicht aus dem LAN erreichbar)
+      * network/tunnel -> 0.0.0.0   (Handy im WLAN / Cloudflare erreichen die App)."""
+    return "0.0.0.0" if network else "127.0.0.1"
+
+
 def _start_streamlit(port: int, network: bool = True) -> subprocess.Popen:
-    """Startet Streamlit - IMMER an 0.0.0.0 gebunden. Dadurch braucht ein
-    Moduswechsel (lokal/WLAN/Cloudflare) KEINEN Neustart und kein Neuladen (kein
-    Verbindungsabbruch). Der Zugriff wird stattdessen ueber den Modus (data/.mode)
-    und PIN/Token in der App geregelt - nicht ueber die Bind-Adresse."""
+    """Startet Streamlit an der zum Modus passenden Bind-Adresse (siehe
+    _bind_host_for): lokal an 127.0.0.1, im Netzwerk-/Tunnelmodus an 0.0.0.0.
+
+    Damit ist die App im lokalen Modus NICHT aus dem LAN erreichbar (auch nicht die
+    ungeschuetzten Static-/_stcore-Endpunkte). Ein Moduswechsel ueber die local-Grenze
+    (lokal <-> network/tunnel) erfordert daher einen kurzen Streamlit-Neustart
+    (_restart_streamlit); ein Wechsel network <-> tunnel bleibt an 0.0.0.0 und braucht
+    keinen Neustart. Das App-Fenster zeigt weiter dieselbe localhost-URL und verbindet
+    sich nach dem Neustart automatisch neu."""
     env = dict(os.environ)
     env.setdefault("PYTHONUTF8", "1")
     env.setdefault("PYTHONIOENCODING", "utf-8")
     cmd = [
         sys.executable, "-m", "streamlit", "run", str(HOME),
-        "--server.address", "0.0.0.0",
+        "--server.address", _bind_host_for(network),
         "--server.port", str(port),
         "--server.headless", "true",
         "--browser.gatherUsageStats", "false",
@@ -496,6 +509,18 @@ def _start_streamlit(port: int, network: bool = True) -> subprocess.Popen:
     return subprocess.Popen(cmd, cwd=str(ROOT), env=env,
                             stdout=out, stderr=(subprocess.STDOUT if out else None),
                             creationflags=_no_window_flag())
+
+
+def _restart_streamlit(st_ref: dict, port: int, network: bool) -> None:
+    """Streamlit auf die zum Modus passende Bind-Adresse umstellen: alten Server
+    beenden, Port freigeben lassen, neu starten. Nur noetig, wenn die local-Grenze
+    ueberschritten wird (lokal <-> network/tunnel). Das App-Fenster behaelt seine
+    localhost-URL und verbindet sich selbst wieder."""
+    _kill_tree(st_ref["proc"])
+    _wait_port_free(port)
+    st_ref["proc"] = _start_streamlit(port, network)
+    st_ref["network"] = network
+    _wait_until_ready(st_ref["proc"], port, timeout=60.0)
 
 
 def _wait_until_ready(proc: subprocess.Popen, port: int, timeout: float = 90.0) -> bool:
@@ -767,7 +792,9 @@ def main() -> int:
     mode = _mode_from_env()
     _write_mode(mode)
     print("Starte Oberflaeche%s ..." % ("" if mode == "local" else " (%s)" % mode))
-    st = {"proc": _start_streamlit(port, _is_net(mode))}
+    # "network" merkt sich die aktuell gebundene Adresse (True=0.0.0.0, False=127.0.0.1),
+    # damit ein Moduswechsel nur bei UEBERSCHREITEN der local-Grenze neu bindet.
+    st = {"proc": _start_streamlit(port, _is_net(mode)), "network": _is_net(mode)}
     tunnel = {"proc": None, "starting": False, "cancel": False}
     if mode == "tunnel":
         tunnel["proc"] = _start_tunnel(port)
@@ -857,8 +884,16 @@ def main() -> int:
                         print("Wechsle auf '%s' ..." % desired)
                         mode = desired
                         _write_mode(mode)
-                    # KEIN Streamlit-Neustart (Bind ist immer 0.0.0.0) -> kein Neuladen.
-                    # Nur den Cloudflare-Tunnel starten bzw. stoppen.
+                    # Bind-Adresse nur anpassen, wenn die local-Grenze ueberschritten
+                    # wird (lokal <-> network/tunnel). network <-> tunnel bleibt an
+                    # 0.0.0.0 -> kein Neustart, kein Neuladen. So ist die App im lokalen
+                    # Modus nicht mehr aus dem LAN erreichbar (Defense-in-Depth, S2).
+                    need_net = _is_net(desired)
+                    if need_net != st["network"]:
+                        print("Bind-Adresse anpassen -> %s (Oberflaeche verbindet sich "
+                              "kurz neu) ..." % _bind_host_for(need_net))
+                        _restart_streamlit(st, port, need_net)
+                    # Cloudflare-Tunnel starten bzw. stoppen.
                     if desired == "tunnel":
                         tunnel["cancel"] = False   # aktuelle Absicht: Tunnel gewuenscht
                         proc = tunnel["proc"]

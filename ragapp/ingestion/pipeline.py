@@ -219,11 +219,16 @@ def ingest_file(
         return {"status": "unchanged", "file": path.name,
                 "chunks": existing_doc["num_chunks"]}
 
-    # Update (Inhalt geändert) oder Force: alte Einträge entfernen
-    if existing_doc:
-        p("Aktualisiere, entferne alte Chunks …")
-        get_vectorstore().delete_by_doc(doc_id)
-        manifest.clear_chunk_hashes(doc_id)
+    # Update (Inhalt geändert) oder Force. Idempotenz-Fix (Ro3):
+    # 'write-new-then-delete-old'. Die alten Chunks werden hier NICHT mehr sofort
+    # gelöscht. Stattdessen werden zuerst die neuen Chunks/Embeddings geschrieben
+    # und der content_hash gesetzt (weiter unten); ERST danach werden die alten/
+    # verwaisten Einträge entfernt. So hinterlässt ein Abbruch dazwischen nie ein
+    # verwaistes Leer-Dokument (leere Chroma trotz gemeldeter num_chunks>0), das
+    # fälschlich als 'vorhanden/unverändert' gälte.
+    is_update = existing_doc is not None
+    if is_update:
+        p("Aktualisiere Dokument …")
 
     # ---- Früh-Block: gesamtes Dokument ist Kauderwelsch (Handschrift/Scan) ---- #
     # extraction_quality hat den harten Kauderwelsch-Test bereits gefahren
@@ -233,8 +238,12 @@ def ingest_file(
             doc_id=doc_id, content_hash=chash, source_path=rel, filename=path.name,
             subject=subject, filetype=loaded.filetype, num_chunks=0, num_questions=0,
             char_count=len(loaded.text), status="unreadable")
-        if existing_doc and rebuild_bm25:
-            rebuild_bm25_from_store()  # verwaiste BM25-IDs nach Löschung vermeiden
+        if is_update:
+            # content_hash steht -> jetzt erst die alten Chunks entfernen.
+            get_vectorstore().delete_by_doc(doc_id)
+            manifest.clear_chunk_hashes(doc_id)
+            if rebuild_bm25:
+                rebuild_bm25_from_store()  # verwaiste BM25-IDs nach Löschung vermeiden
         _log({"event": "ingest", "file": rel, "status": "unreadable",
               "reason": _q_reason})
         return {"status": "unreadable", "file": path.name,
@@ -297,6 +306,10 @@ def ingest_file(
                 doc_id=doc_id, content_hash=chash, source_path=rel, filename=path.name,
                 subject=subject, filetype=loaded.filetype, num_chunks=0, num_questions=0,
                 char_count=len(loaded.text), status="unreadable")
+            if is_update:
+                # content_hash steht -> alte Chunks erst danach entfernen.
+                get_vectorstore().delete_by_doc(doc_id)
+                manifest.clear_chunk_hashes(doc_id)
             if rebuild_bm25:
                 rebuild_bm25_from_store()
             _log({"event": "ingest", "file": rel, "status": "unreadable",
@@ -312,8 +325,11 @@ def ingest_file(
             subject=subject, filetype=loaded.filetype, num_chunks=0, num_questions=0,
             char_count=len(loaded.text), status="all_duplicate",
         )
-        # BM25 ggf. neu aufbauen: im Update-Pfad wurden oben alte Chunks aus
-        # Chroma gelöscht, sonst behielte der BM25-Index verwaiste IDs.
+        if is_update:
+            # content_hash steht -> alte Chunks erst danach entfernen, sonst
+            # behielte der BM25-Index verwaiste IDs.
+            get_vectorstore().delete_by_doc(doc_id)
+            manifest.clear_chunk_hashes(doc_id)
         if rebuild_bm25:
             rebuild_bm25_from_store()
         _log({"event": "ingest", "file": rel, "status": "all_chunks_duplicate"})
@@ -346,6 +362,8 @@ def ingest_file(
     metadatas: list[dict] = []
     n_questions = 0
 
+    chunk_ids: list[str] = []            # nur die Chunk-IDs (fuer die Alt-Bereinigung)
+    chunk_hash_regs: list[tuple[str, str]] = []  # (chunk_hash, chunk_id) - erst NACH dem Schreiben registrieren
     for ch, emb in zip(kept_chunks, chunk_embeddings):
         idx = ch.meta.get("chunk_index", len(ids))
         chunk_id = f"{doc_id}::c{idx}"
@@ -355,7 +373,10 @@ def ingest_file(
         embeddings.append(emb)
         documents.append(ch.text)
         metadatas.append(meta)
-        manifest.register_chunk_hash(ch.meta["_chunk_hash"], doc_id, chunk_id)
+        chunk_ids.append(chunk_id)
+        # Registrierung der Chunk-Hashes bewusst aufschieben (Ro3): erst NACH dem
+        # erfolgreichen Schreiben in Chroma, damit die Alt-/Neu-Bereinigung sauber greift.
+        chunk_hash_regs.append((ch.meta["_chunk_hash"], chunk_id))
 
     # Fragen erzeugen + einbetten (Batch für Effizienz)
     if settings.ENABLE_QUESTION_INDEXING:
@@ -378,10 +399,30 @@ def ingest_file(
                 metadatas.append(qmeta)
                 n_questions += 1
 
-    # ---- Speichern in Chroma ----------------------------------------- #
+    # ---- Speichern in Chroma (write-new-then-delete-old, Ro3) --------- #
+    # Bei einem Update zuerst die bisherigen Chunk-IDs merken und die alten
+    # (abgeleiteten) Fragen entfernen, DANN die neuen Einträge schreiben. Der
+    # content_hash wird erst NACH dem erfolgreichen Schreiben gesetzt.
+    old_chunk_ids: set[str] = set()
+    if is_update:
+        # Verlässliche Quelle der alten Chunk-IDs: die TATSÄCHLICH in Chroma liegenden
+        # Chunks dieses Dokuments (per Metadaten) – registry- UND index-unabhängig.
+        # Deckt auch Waisen ab, die die Hash-Registry (PK = Chunk-Hash) bei
+        # doc-übergreifend text-identischen Chunks verfehlt, und ist robust gegen
+        # Index-Lücken (gedroppte Chunks) im deterministischen ID-Schema. Die Registry
+        # wird zusätzlich vereinigt (Gürtel + Hosenträger).
+        old_chunk_ids = set(get_vectorstore().chunk_ids_for_doc(doc_id))
+        old_chunk_ids |= set(manifest.chunk_ids_for_doc(doc_id))
+        # Alte Fragen sind abgeleitete Daten und müssen VOR dem Schreiben weg
+        # (danach träfe delete_questions_by_doc auch die neuen Fragen).
+        get_vectorstore().delete_questions_by_doc(doc_id)
+
     p("Speichere in Vektordatenbank …")
     get_vectorstore().add(ids, embeddings, documents, metadatas)
 
+    # content_hash erst jetzt setzen: ab hier gilt das Dokument als vorhanden -
+    # und seine Chunks liegen bereits in Chroma. Ein Abbruch vor diesem Punkt
+    # lässt die ALTE (vollständige) Version stehen, nie einen Leer-Zustand.
     manifest.upsert_document(
         doc_id=doc_id, content_hash=chash, source_path=rel, filename=path.name,
         subject=subject, filetype=loaded.filetype, num_chunks=len(kept_chunks),
@@ -389,6 +430,20 @@ def ingest_file(
         status="ok" if _q_ok else "ocr_needed",
         ocr_partial_pages=_ocr_partial,
     )
+
+    # Jetzt erst die verwaisten ALTEN Chunks entfernen (die die neue Version nicht
+    # mehr enthält). Neue Chunks mit gleicher ID wurden oben bereits überschrieben.
+    if is_update:
+        new_ids = set(chunk_ids)
+        stale = [cid for cid in old_chunk_ids if cid not in new_ids]
+        if stale:
+            get_vectorstore().delete_by_ids(stale)
+
+    # Chunk-Hash-Registry auf den neuen Stand bringen (bewusst nach dem Schreiben;
+    # reine Buchführung, index-unkritisch): alte Einträge des Dokuments ersetzen.
+    manifest.clear_chunk_hashes(doc_id)
+    for _h, _cid in chunk_hash_regs:
+        manifest.register_chunk_hash(_h, doc_id, _cid)
 
     if rebuild_bm25:
         p("Aktualisiere BM25-Index …")

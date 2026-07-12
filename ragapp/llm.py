@@ -16,11 +16,84 @@ from __future__ import annotations
 import json
 import re
 import time
-from typing import Any
+from typing import Any, Iterator
 
 import ollama
 
 from ragapp.config import settings
+
+try:  # zentrales Logging (von logging_setup bereitgestellt)
+    from ragapp.logging_setup import get_logger
+    _log = get_logger(__name__)
+except Exception:  # Modul evtl. noch nicht vorhanden -> Standard-Logging als Fallback
+    import logging
+    _log = logging.getLogger(__name__)
+
+
+# --------------------------------------------------------------------------- #
+# Fehlerdiagnose (Ollama-aus / Modell-fehlt / VRAM-OOM) -> klare deutsche Meldung
+# --------------------------------------------------------------------------- #
+# Marker, an denen ein Verbindungsproblem zum Ollama-Server erkennbar ist
+# (httpx/requests/urllib3 formulieren das je nach Plattform unterschiedlich).
+_CONNECTION_MARKERS = (
+    "connection refused", "actively refused", "errno 111",
+    "all connection attempts", "failed to establish", "max retries",
+    "connectionerror", "connecterror", "newconnectionerror",
+    "connection reset", "remotedisconnected", "no connection could be made",
+    "cannot connect", "connection aborted",
+)
+
+
+def _is_connection_error(exc: Exception) -> bool:
+    """True, wenn die Exception nach einem nicht erreichbaren Ollama-Server aussieht."""
+    low = str(exc).lower()
+    return any(m in low for m in _CONNECTION_MARKERS)
+
+
+def diagnose_error(exc: Exception) -> str:
+    """Uebersetzt haeufige Ollama-/LLM-Fehler in eine verstaendliche deutsche Meldung.
+
+    Deckt die drei praktisch relevanten Faelle ab:
+        * Ollama-Dienst nicht erreichbar (Connection refused)
+        * angefragtes Modell nicht installiert (404 / "model not found")
+        * zu wenig Speicher / Backend-Absturz (VRAM/OOM/500)
+    Unbekannte Fehler werden mit ihrer Originalmeldung durchgereicht.
+    """
+    msg = (str(exc) or exc.__class__.__name__).strip()
+    low = msg.lower()
+    status = getattr(exc, "status_code", None)
+
+    # 1) Modell nicht installiert (404 bzw. "model ... not found, try pulling")
+    if status == 404 or ("not found" in low and "model" in low) \
+            or "try pulling" in low or "pull it first" in low:
+        m = re.search(r'model\s+"?([\w./:-]+)"?\s+not found', msg, re.IGNORECASE)
+        modell = m.group(1) if m else "<modell>"
+        return (f"Modell nicht installiert: '{modell}' ist in Ollama nicht vorhanden. "
+                f"Bitte zuerst laden: `ollama pull {modell}`.")
+
+    # 2) Ollama-Server nicht erreichbar
+    if _is_connection_error(exc):
+        return (f"Ollama ist nicht erreichbar ({settings.OLLAMA_BASE_URL}). "
+                "Laeuft der Ollama-Dienst? Starte ihn (z. B. `ollama serve`) "
+                "und versuche es erneut.")
+
+    # 3) Zeitueberschreitung
+    if any(k in low for k in ("timed out", "timeout", "read timeout", "readtimeout")):
+        return (f"Zeitueberschreitung nach {settings.LLM_TIMEOUT}s. Die Inferenz dauert "
+                "auf CPU lange - kuerzere Anfrage/kleineres Modell waehlen oder "
+                "LLM_TIMEOUT erhoehen.")
+
+    # 4) Zu wenig Speicher / Modell-Runner abgestuerzt (VRAM/OOM/500)
+    if status == 500 or any(k in low for k in (
+            "out of memory", "oom", "insufficient memory", "not enough memory",
+            "vram", "cuda error", "cuda out of memory", "model runner",
+            "unexpectedly stopped", "failed to allocate", "cannot allocate")):
+        return ("Zu wenig Speicher oder der Modell-Runner ist abgestuerzt (VRAM/RAM). "
+                "Kleineres Modell bzw. kuerzeren Kontext waehlen oder andere "
+                "GPU-Anwendungen schliessen und Ollama neu starten.")
+
+    # Fallback: Originalmeldung durchreichen, damit nichts verschluckt wird
+    return f"LLM-Fehler: {msg}"
 
 
 class LLM:
@@ -76,9 +149,15 @@ class LLM:
                 if kwargs.get("think") not in (False, None) and "think" in str(exc).lower():
                     kwargs["think"] = False
                     continue
+                # Verbindungsfehler heilen sich nicht in 1-2 s -> nicht sinnlos wiederholen
+                if _is_connection_error(exc):
+                    _log.warning("Ollama nicht erreichbar (%s): %s", self.model, exc)
+                    break
                 if attempt < retries:            # nach dem letzten Versuch nicht mehr warten
+                    _log.debug("LLM-Versuch %d/%d fehlgeschlagen (%s): %s",
+                               attempt + 1, retries + 1, self.model, exc)
                     time.sleep(1.0 * (attempt + 1))
-        raise RuntimeError(f"LLM-Aufruf fehlgeschlagen ({self.model}): {last_err}")
+        raise RuntimeError(diagnose_error(last_err)) from last_err
 
     def generate(
         self, prompt: str, system: str | None = None, **kwargs: Any
@@ -105,6 +184,81 @@ class LLM:
         kwargs.setdefault("_thinking_fallback", True)   # JSON darf aus dem Denk-Kanal kommen
         raw = self.generate(prompt, system=system, **kwargs)
         return _safe_json(raw)
+
+    def generate_stream(
+        self,
+        prompt: str | list[dict] | None = None,
+        *,
+        messages: list[dict] | None = None,
+        system: str | None = None,
+        temperature: float | None = None,
+        num_ctx: int | None = None,
+        num_predict: int | None = None,
+        think: bool | str = False,
+    ) -> Iterator[str]:
+        """Streamt die Antwort Token fuer Token (Generator ueber ``message.content``-Deltas).
+
+        Nutzt Ollamas ``/api/chat`` mit ``stream=True``; jede Antwort-Zeile ist ein
+        JSON-Chunk, aus dem der Content-Delta geyieldet wird. Die bestehenden
+        Signaturen von ``chat()``/``generate()``/``generate_json()`` bleiben
+        unveraendert - das Wiring in Graph/Home passiert in einer spaeteren Phase.
+
+        Eingaben: entweder ``prompt`` (+ optional ``system``) oder eine fertige
+        ``messages``-Liste (auch als erstes Positionsargument erlaubt).
+
+        Fehler (Verbindung/Timeout/OOM) werden ueber :func:`diagnose_error` in eine
+        klare deutsche Meldung uebersetzt und als ``RuntimeError`` geworfen. Wird
+        der Reasoning-Schalter vom Backend nicht akzeptiert, wird - solange noch
+        nichts ausgegeben wurde - ohne ihn erneut gestartet.
+        """
+        # Eingaben normalisieren: prompt (str) ODER fertige messages-Liste
+        if isinstance(prompt, list) and messages is None:
+            messages = prompt
+            prompt = None
+        if messages is None:
+            messages = []
+            if system:
+                messages.append({"role": "system", "content": system})
+            messages.append({"role": "user", "content": prompt or ""})
+
+        options = {
+            "temperature": settings.LLM_TEMPERATURE if temperature is None else temperature,
+            "num_ctx": num_ctx or settings.LLM_NUM_CTX,
+            "num_predict": num_predict or settings.LLM_NUM_PREDICT,
+        }
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "options": options,
+            "think": think,
+            "stream": True,
+        }
+
+        def _iter_once(kw: dict) -> Iterator[str]:
+            for chunk in self._client.chat(**kw):
+                msg = chunk.get("message", {}) or {}
+                delta = msg.get("content", "") or ""
+                if delta:
+                    yield delta
+
+        try:
+            yielded = False
+            try:
+                for delta in _iter_once(kwargs):
+                    yielded = True
+                    yield delta
+            except Exception as exc:
+                # Reasoning-Schalter nicht unterstuetzt UND noch nichts ausgegeben -> ohne ihn
+                if (not yielded and kwargs.get("think") not in (False, None)
+                        and "think" in str(exc).lower()):
+                    kwargs["think"] = False
+                    for delta in _iter_once(kwargs):
+                        yield delta
+                else:
+                    raise
+        except Exception as exc:  # pragma: no cover - Netz-/Backend-Fehler
+            _log.warning("Streaming-Aufruf fehlgeschlagen (%s): %s", self.model, exc)
+            raise RuntimeError(diagnose_error(exc)) from exc
 
 
 def _safe_json(raw: str) -> Any:

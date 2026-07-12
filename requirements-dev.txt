@@ -1,0 +1,10 @@
+# Entwicklungs-/Test-Abhaengigkeiten fuer die CI.
+# BEWUSST leichtgewichtig: KEIN torch/ollama/chromadb/sentence-transformers -
+# die Tests pruefen ausschliesslich reine, offline berechenbare Logik.
+
+pytest>=7.0
+
+# Aktiviert die woerterbuchbasierte Kauderwelsch-Erkennung im Test
+# (ragapp/ingestion/textquality.py). Reines Python, klein - dieselbe Bibliothek
+# nutzt die App zur Laufzeit. Fehlt sie, ueberspringen die betroffenen Tests sauber.
+pyspellchecker>=0.7

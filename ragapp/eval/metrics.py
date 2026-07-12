@@ -50,3 +50,49 @@ def aggregate(per_query: list[dict], k_values: Iterable[int]) -> dict:
             "mrr": round(sum(reciprocal_rank(q["retrieved_ids"], q["gold_id"]) for q in items) / len(items), 4),
         }
     return summary
+
+
+# --------------------------------------------------------------------------- #
+# Kalibrierungs-Metrik der KI-Benotung (RICHTUNG der Fehlkalibrierung)
+# --------------------------------------------------------------------------- #
+# Notenstufen der Benotung: 0 = nicht, 1 = halb, 2 = gewusst. Eine reine
+# Trefferquote (exakt / ±1 Stufe) sagt NICHT, in welche RICHTUNG der Judge
+# danebenliegt. Deshalb messen wir zusaetzlich den Vorzeichen-Bias =
+# Mittelwert(Judge-Note - Referenz-Note):
+#   > 0  -> Judge vergibt im Schnitt HOEHERE Noten  -> systematisch zu MILDE
+#   < 0  -> Judge vergibt im Schnitt NIEDRIGERE Noten -> systematisch zu STRENG
+# Ein zu milde kalibrierter Korrektor ist fuers Lernen gefaehrlich (Wissensluecken
+# werden als "gewusst" abgehakt), daher wird die Richtung explizit ausgewiesen.
+
+# Ab welchem |Bias| (in Notenstufen) die Fehlkalibrierung als gerichtet gilt.
+CALIBRATION_BIAS_TOL = 0.15
+
+
+def grading_calibration(preds: Iterable, truths: Iterable,
+                        tol: float = CALIBRATION_BIAS_TOL) -> dict:
+    """Misst die RICHTUNG der Fehlkalibrierung der KI-Benotung.
+
+    ``preds`` / ``truths`` sind gleich lange Folgen von Notenstufen (0/1/2);
+    Paare mit ``None`` (LLM ohne Urteil) werden verworfen. Gibt
+    ``{n, bias, mae, direction}`` zurueck:
+
+      * ``bias``  = Mittelwert(pred - truth); positiv = zu milde, negativ = zu streng.
+      * ``mae``   = mittlerer Betrag der Abweichung (Staerke der Fehlkalibrierung).
+      * ``direction`` = ``"milde"`` / ``"streng"`` / ``"ausgeglichen"`` (``None`` ohne Daten).
+    """
+    pairs = [(p, t) for p, t in zip(preds, truths)
+             if p is not None and t is not None]
+    n = len(pairs)
+    if n == 0:
+        return {"n": 0, "bias": None, "mae": None, "direction": None}
+    diffs = [p - t for p, t in pairs]
+    bias = sum(diffs) / n
+    mae = sum(abs(d) for d in diffs) / n
+    if bias > tol:
+        direction = "milde"
+    elif bias < -tol:
+        direction = "streng"
+    else:
+        direction = "ausgeglichen"
+    return {"n": n, "bias": round(bias, 3), "mae": round(mae, 3),
+            "direction": direction}

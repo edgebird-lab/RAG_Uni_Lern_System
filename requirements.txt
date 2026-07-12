@@ -1,51 +1,63 @@
 # ============================================================================
 # RAG-Lernsystem: Python-Abhängigkeiten
-# Getestet mit Python 3.13 auf Windows 11 (CPU-only).
-# torch wird separat als CPU-Build installiert (siehe docs/SETUP.md).
+# Getestet mit Python 3.12/3.13. torch/torchvision werden separat installiert
+# (siehe install.sh / install.ps1 bzw. docs/SETUP.md).
+#
+# Versionsbereiche (Ro1 / Supply-Chain): Jede Abhaengigkeit hat jetzt eine
+# OBERGRENZE bis zur naechsten Major-Version. Das haelt bekannt-gute, getestete
+# Versionen kompatibel und verhindert, dass ein Fresh-Install ungeprueft in einen
+# brechenden/kompromittierten Major-Release springt. Die Untergrenzen bleiben
+# unveraendert, damit auf aelteren Python-Versionen weiterhin ein passendes Wheel
+# gefunden wird. Getestete Referenz (dieser Rechner, ROCm/Linux, Python 3.12):
+#   langchain 1.3.x / -core 1.4.x / -community 0.4.x / langgraph 1.2.x,
+#   chromadb 1.5.x, streamlit 1.59.x, numpy 2.5.x, pandas 3.0.x,
+#   sentence-transformers 5.6.x, easyocr 1.7.x, plotly 6.9.x.
+# Fuer volle Reproduzierbarkeit koennen diese exakt (== / Hash-Pinning) gepinnt
+# werden; die Obergrenzen sind der konservative, nicht-brechende Kompromiss.
 # ============================================================================
 
 # --- Orchestrierung (LangGraph / LangChain) ---
-langgraph>=0.2.60
-langchain>=0.3.0
-langchain-core>=0.3.0
-langchain-community>=0.3.0
-langchain-ollama>=0.2.0
-ollama>=0.4.0
+langgraph>=0.2.60,<2.0
+langchain>=0.3.0,<2.0
+langchain-core>=0.3.0,<2.0
+langchain-community>=0.3.0,<1.0
+langchain-ollama>=0.2.0,<2.0
+ollama>=0.4.0,<1.0
 
 # --- Vektordatenbank ---
-chromadb>=0.5.5
+chromadb>=0.5.5,<2.0
 
 # --- Dokument-Loader / Parsing ---
-pymupdf>=1.24.0          # schnelle, robuste PDF-Textextraktion (fitz)
-pypdf>=4.2.0             # Fallback-PDF-Parser
-python-docx>=1.1.0       # .docx
-python-pptx>=0.6.23      # .pptx
-python-frontmatter>=1.1.0
+pymupdf>=1.24.0,<2.0     # schnelle, robuste PDF-Textextraktion (fitz)
+pypdf>=4.2.0,<7.0        # Fallback-PDF-Parser
+python-docx>=1.1.0,<2.0  # .docx
+python-pptx>=0.6.23,<2.0 # .pptx
+python-frontmatter>=1.1.0,<2.0
 
 # --- Keyword-Suche (BM25) + deutsche Sprachverarbeitung ---
-rank-bm25>=0.2.2
-snowballstemmer>=2.2.0   # deutscher Stemmer für bessere Keyword-Treffer
+rank-bm25>=0.2.2,<1.0
+snowballstemmer>=2.2.0,<4.0   # deutscher Stemmer für bessere Keyword-Treffer
 
 # --- Reranking (Cross-Encoder) ---
-sentence-transformers>=3.0.0
+sentence-transformers>=3.0.0,<6.0
 
 # --- OCR fuer gescannte / Bild-PDFs (nutzt torch/GPU, braucht KEIN System-Tesseract) ---
 # WICHTIG: torch UND torchvision werden in install.sh vorab aus dem passenden Index
 # (z. B. ROCm) installiert - sonst zieht easyocr ueber torchvision eine unpassende
 # torch-Version nach und ueberschreibt die GPU-Variante.
-easyocr>=1.7.0
+easyocr>=1.7.0,<2.0
 
 # --- Weboberfläche ---
-streamlit>=1.38.0
-plotly>=5.23.0
+streamlit>=1.38.0,<2.0
+plotly>=5.23.0,<7.0
 
 # --- Datenauswertung / Evaluation ---
-pandas>=2.2.0
-numpy>=1.26.0
+pandas>=2.2.0,<4.0
+numpy>=1.26.0,<3.0
 
 # --- Hilfsmittel ---
-watchdog>=4.0.0          # automatische Ordnerüberwachung (Ingestion-Pipeline)
-tqdm>=4.66.0
-psutil>=5.9.0            # Hardware-Erkennung (RAM/CPU) für den recommend-Befehl
-qrcode>=7.4              # QR-Code für den Handy-Zugriff (Pillow kommt über Streamlit)
-pyspellchecker>=0.8          # Echtwort-Abgleich (de+en) fuer das Kauderwelsch-Gate der Ingestion
+watchdog>=4.0.0,<7.0     # automatische Ordnerüberwachung (Ingestion-Pipeline)
+tqdm>=4.66.0,<5.0
+psutil>=5.9.0,<8.0       # Hardware-Erkennung (RAM/CPU) für den recommend-Befehl
+qrcode>=7.4,<9.0         # QR-Code für den Handy-Zugriff (Pillow kommt über Streamlit)
+pyspellchecker>=0.8,<1.0     # Echtwort-Abgleich (de+en) fuer das Kauderwelsch-Gate der Ingestion

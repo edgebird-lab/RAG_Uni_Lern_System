@@ -30,6 +30,69 @@ class Chunk:
 
 
 # --------------------------------------------------------------------------- #
+# Tabellen-Erkennung – tabellenartige Blöcke NICHT mitten in der Zelle zerhacken
+# --------------------------------------------------------------------------- #
+# Markdown-Trennzeile wie ``|---|:--:|`` bzw. ``--- | ---`` (auch ohne Randpipes).
+_MD_TABLE_SEP_RE = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$")
+
+
+def _looks_like_row(line: str) -> bool:
+    """Sieht die Zeile nach einer Tabellenzeile aus (mehrere Pipes, Tab-Spalten
+    oder Markdown-Trennzeile)?"""
+    if line.count("|") >= 2:
+        return True
+    if "\t" in line:
+        return True
+    return bool(_MD_TABLE_SEP_RE.match(line))
+
+
+def _is_table_like(text: str) -> bool:
+    """Block gilt als Tabelle, wenn mind. zwei nicht-leere Zeilen wie Tabellen-
+    zeilen aussehen und diese die Mehrheit der Zeilen stellen."""
+    lines = [ln for ln in text.split("\n") if ln.strip()]
+    if len(lines) < 2:
+        return False
+    rows = sum(1 for ln in lines if _looks_like_row(ln))
+    return rows >= 2 and rows / len(lines) >= 0.5
+
+
+def _apply_line_overlap(chunks: list[str], overlap: int) -> list[str]:
+    """Überlappung für Tabellen: ganze Zeilen (nie Zell-Fragmente) vom Ende des
+    vorherigen Chunks vorne anhängen, bis ~overlap Zeichen erreicht sind."""
+    if overlap <= 0 or len(chunks) <= 1:
+        return chunks
+    out = [chunks[0]]
+    for i in range(1, len(chunks)):
+        tail: list[str] = []
+        length = 0
+        for ln in reversed(chunks[i - 1].split("\n")):
+            if tail and length + len(ln) + 1 > overlap:
+                break
+            tail.insert(0, ln)
+            length += len(ln) + 1
+        prefix = "\n".join(tail)
+        out.append(f"{prefix}\n{chunks[i]}" if prefix else chunks[i])
+    return out
+
+
+def _split_table(text: str, size: int, overlap: int) -> list[str]:
+    """Tabellenartigen Block ausschließlich an Zeilengrenzen schneiden. Eine
+    einzelne überlange Zeile bleibt als Einheit erhalten (Zellen nie zerteilen)."""
+    chunks: list[str] = []
+    current = ""
+    for ln in text.split("\n"):
+        candidate = ln if not current else current + "\n" + ln
+        if current and len(candidate) > size:
+            chunks.append(current)
+            current = ln
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    return _apply_line_overlap(chunks, overlap)
+
+
+# --------------------------------------------------------------------------- #
 # Rekursiver Zeichen-Splitter (mit Überlappung)
 # --------------------------------------------------------------------------- #
 _SEPARATORS = ["\n\n", "\n", ". ", "; ", ", ", " ", ""]
@@ -39,6 +102,10 @@ def _split_recursive(text: str, size: int, overlap: int) -> list[str]:
     text = text.strip()
     if len(text) <= size:
         return [text] if text else []
+
+    # Tabellen nur an Zeilengrenzen schneiden, nicht mitten in einer Zelle.
+    if _is_table_like(text):
+        return _split_table(text, size, overlap)
 
     # kleinste passende Trenn-Ebene finden
     for sep in _SEPARATORS:
