@@ -283,6 +283,22 @@ else
     fi
 fi
 
+# ---- 7b) OCR-Vision-Modell fuer Handschrift/Scans sicherstellen ------------- #
+# Handschrift-/Scan-PDFs werden per kleinem Vision-LLM gelesen (viel besser als
+# klassisches OCR, das dabei Kauderwelsch liefert). Ist schon ein vision-faehiges
+# Modell da (z. B. ein Gemma-Antwortmodell), wird es genutzt; sonst ziehen wir ein
+# kleines, laptop-taugliches (gemma3:4b, ~3.3 GB). Ueberspringbar: SKIP_OCR_MODEL=1.
+if [ "${SKIP_OCR_MODEL:-0}" != "1" ]; then
+    step "OCR-Vision-Modell fuer Handschrift/Scans sicherstellen"
+    info "Suche/ziehe ein kleines Vision-Modell (nur falls noch keins installiert ist) ..."
+    VMODEL="$("$VENV_PY" -c "from ragapp.ingestion.loaders import has_vision_ocr_model; print(has_vision_ocr_model(pull_if_missing=True))" 2>/dev/null || true)"
+    if [ -n "$VMODEL" ]; then
+        ok "OCR nutzt Vision-Modell: $VMODEL"
+    else
+        warn "Kein Vision-Modell verfuegbar - Handschrift-OCR faellt auf easyocr zurueck (spaeter: 'ollama pull gemma3:4b')."
+    fi
+fi
+
 # ---- 8) Temporaeren IPEX-Server beenden (fuer den Alltag startet ihn start.sh) #
 if [ "$IPEX_STARTED" = "1" ] && [ -f "$ROOT/.ipex-ollama.pid" ]; then
     info "Beende temporaeren IPEX-Server (fuer den Alltag startet ihn start.sh)."

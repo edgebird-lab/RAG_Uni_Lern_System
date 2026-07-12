@@ -108,6 +108,43 @@ def _video_controller_names() -> list[str]:
     return []
 
 
+def _detect_vram_gb() -> "float | None":
+    """Ermittelt den echten VRAM (GB) der primaeren GPU - wichtig, damit die
+    Modellwahl ein Modell nimmt, das WIRKLICH ganz auf die GPU passt (sonst
+    CPU-Auslagerung -> zaehe Antworten). Best-effort ueber sysfs/rocm-smi (Linux)
+    bzw. Registry (Windows). None, wenn nicht ermittelbar."""
+    system = platform.system()
+    _MIN = 512 * 1024 * 1024
+    try:
+        if system == "Linux":
+            # (a) amdgpu-sysfs: mem_info_vram_total in Bytes (ohne Zusatz-Tools)
+            out = _run(["bash", "-c",
+                        "cat /sys/class/drm/card*/device/mem_info_vram_total 2>/dev/null "
+                        "| sort -rn | head -1"])
+            d = "".join(ch for ch in out if ch.isdigit())
+            if d and int(d) > _MIN:
+                return round(int(d) / (1024 ** 3), 1)
+            # (b) rocm-smi (AMD)
+            out = _run(["bash", "-c", "rocm-smi --showmeminfo vram 2>/dev/null "
+                        "| grep -i 'total memory' | grep -oE '[0-9]{6,}' | head -1"])
+            d = out.strip()
+            if d.isdigit() and int(d) > _MIN:
+                return round(int(d) / (1024 ** 3), 1)
+        elif system == "Windows":
+            # Registry qwMemorySize = echter VRAM (AdapterRAM ist bei >4 GB abgeschnitten)
+            out = _run(["powershell", "-NoProfile", "-Command",
+                        "Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Class\\"
+                        "{4d36e968-e325-11ce-bfc1-08002be10318}\\*' -ErrorAction SilentlyContinue "
+                        "| ForEach-Object { $_.'HardwareInformation.qwMemorySize' } "
+                        "| Where-Object { $_ } | Sort-Object -Descending | Select-Object -First 1"])
+            d = "".join(ch for ch in out if ch.isdigit())
+            if d and int(d) > _MIN:
+                return round(int(d) / (1024 ** 3), 1)
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 def detect_gpu() -> dict:
     """Erkennt die primäre GPU. Rückgabe: {vendor, name, vram_gb, is_igpu}."""
     nv = _detect_nvidia()
@@ -125,15 +162,16 @@ def detect_gpu() -> dict:
 
     if "nvidia" in joined or "geforce" in joined or "rtx" in joined:
         return {"vendor": "nvidia", "name": names[0] if names else "NVIDIA GPU",
-                "vram_gb": None, "is_igpu": False}
+                "vram_gb": _detect_vram_gb(), "is_igpu": False}
     if "amd" in joined or "radeon" in joined:
         return {"vendor": "amd", "name": next((n for n in names if "amd" in n.lower()
                 or "radeon" in n.lower()), "AMD GPU"),
-                "vram_gb": None, "is_igpu": "vega" in joined or "graphics" in joined}
+                "vram_gb": _detect_vram_gb(),
+                "is_igpu": "vega" in joined or "graphics" in joined}
     if "intel" in joined:
         name = next((n for n in names if "intel" in n.lower()), "Intel GPU")
         is_arc = "arc" in joined
-        return {"vendor": "intel", "name": name, "vram_gb": None,
+        return {"vendor": "intel", "name": name, "vram_gb": _detect_vram_gb() if is_arc else None,
                 "is_igpu": True, "is_arc": is_arc}
     return {"vendor": "none", "name": "(keine unterstützte GPU erkannt)",
             "vram_gb": None, "is_igpu": False}
@@ -245,42 +283,57 @@ def recommend_models(hw: dict) -> dict:
             ],
         }
 
-    # "Budget" in GB: dedizierte VRAM, sonst grob RAM/2 (CPU teilt sich das RAM).
+    # Effektives Budget: VRAM MINUS Reserve fuer KV-Cache + Embedding/Overhead,
+    # damit der Standard KOMPLETT auf die GPU passt und fluessig laeuft (KEIN
+    # CPU-Offload -> keine zaehen Antworten). Groessere Modelle kommen nur als
+    # klar markierte, optionale Alternative in die Liste.
     if vendor in ("nvidia", "amd") and vram:
-        budget, on = vram, "GPU"
+        on = "GPU"
+        reserve = 1.5 if vram <= 6 else (2.0 if vram <= 9 else 3.0)
+        fit_budget = max(2.0, vram - reserve)
+        hard_budget = vram + 0.5
+        vram_note = f" (~{vram:.0f} GB VRAM erkannt)"
     elif vendor in ("nvidia", "amd"):
-        budget, on = 8.0, "GPU"   # dedizierte GPU, VRAM unbekannt -> min. 7B-Klasse
+        # VRAM unbekannt -> KONSERVATIV (lieber ein fluessiges ~8B-Modell als ein
+        # zu grosses, das auf die CPU auslagert). Staerkeres kann man manuell waehlen.
+        on = "GPU"; fit_budget, hard_budget = 5.5, 8.0
+        vram_note = " (VRAM unbekannt -> vorsichtig gewaehlt)"
     elif vendor == "apple":
-        budget, on = (ram or 8) * 0.6, "GPU (Metal)"
+        on = "GPU (Metal)"; fit_budget = (ram or 8) * 0.5; hard_budget = (ram or 8) * 0.7
+        vram_note = ""
     else:
-        budget, on = (ram or 8) / 2, "CPU"
+        on = "CPU"; fit_budget = max(3.0, (ram or 8) / 3); hard_budget = (ram or 8) / 2
+        vram_note = ""
+
+    # _LLM_ORDER ist stark -> schwach. "fits" passt komplett (Standard = staerkstes
+    # davon); "spills" ist etwas groesser (nur als markierte Alternative).
+    fits = [t for t in _LLM_ORDER if _LLM[t]["gb"] <= fit_budget]
+    spills = [t for t in _LLM_ORDER if fit_budget < _LLM[t]["gb"] <= hard_budget]
+    if fits:
+        ordered = fits[:4] + spills[:1]        # passende zuerst + 1 staerkere Option
+    else:                                       # nichts passt komplett -> kleinste (geringstes Offload)
+        ordered = sorted(_LLM_ORDER, key=lambda t: _LLM[t]["gb"])[:3]
 
     picks: list[dict] = []
-    for tag in _LLM_ORDER:
+    for tag in ordered[:5]:
         m = _LLM[tag]
-        if m["gb"] <= budget + 2.0:          # +2 GB Toleranz: leichtes Offload ins RAM ist ok
-            if on.startswith("GPU"):
-                lauf = ("läuft komplett auf der GPU" if m["gb"] <= budget
-                        else "läuft teils über RAM (etwas langsamer)")
-                why = f"{m['info']} · {lauf}"
-            else:
-                why = m["info"]
-            picks.append({"tag": tag, "params": m["params"], "gb": m["gb"],
-                          "fam": m["fam"], "denk": m.get("denk", False), "why": why})
-        if len(picks) >= 5:
-            break
+        fully = m["gb"] <= fit_budget
+        if on.startswith("GPU"):
+            lauf = ("läuft komplett auf der GPU (flüssig)" if fully
+                    else "größer als der VRAM – läuft teils über RAM (langsamer)")
+            why = f"{m['info']} · {lauf}"
+        else:
+            why = m["info"]
+        picks.append({"tag": tag, "params": m["params"], "gb": m["gb"],
+                      "fam": m["fam"], "denk": m.get("denk", False), "why": why})
 
-    if not picks:  # extrem wenig Speicher -> kleinstes Modell
-        m = _LLM["qwen3:4b"]
-        picks = [{"tag": "qwen3:4b", "params": m["params"], "gb": m["gb"],
-                  "fam": m["fam"], "denk": False, "why": m["info"]}]
-
-    note = " (Nur-CPU: Antworten dauern länger, kleineres Modell empfohlen.)" if vendor == "none" else ""
+    note = " (Nur-CPU: Antworten dauern länger, kleines Modell empfohlen.)" if vendor == "none" else ""
     return {
-        "reason": f"{on}, verfügbares Budget ~{budget:.0f} GB.{note} Gezeigt werden die "
-                  "stärksten Modelle, die dabei noch flüssig laufen (bestes zuerst).",
+        "reason": f"{on}{vram_note}: Standard ist das stärkste Modell, das noch KOMPLETT in "
+                  f"den Speicher passt (flüssig, kein Auslagern).{note} Stärkere Modelle stehen "
+                  "in der Liste – sie können aber langsamer sein.",
         "embed_model": "bge-m3",
-        "budget_gb": round(budget, 1),
+        "budget_gb": round(fit_budget, 1),
         "models": picks,
     }
 

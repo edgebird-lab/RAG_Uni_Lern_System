@@ -383,6 +383,23 @@ try {
         }
     }
 
+    # ---- 7b) OCR-Vision-Modell fuer Handschrift/Scans sicherstellen -------- #
+    # Handschrift-/Scan-PDFs werden per kleinem Vision-LLM gelesen (viel besser
+    # als klassisches OCR). Ist schon ein vision-faehiges Modell da (z. B. ein
+    # Gemma-Antwortmodell), wird es genutzt; sonst ziehen wir ein kleines,
+    # laptop-taugliches (gemma3:4b, ~3.3 GB).
+    if (-not $SkipRecommend) {
+        Write-Step "OCR-Vision-Modell fuer Handschrift/Scans sicherstellen"
+        Write-Info "Suche/ziehe ein kleines Vision-Modell (nur falls noch keins installiert ist) ..."
+        try {
+            $vmodel = (& $VenvPy -c "from ragapp.ingestion.loaders import has_vision_ocr_model; print(has_vision_ocr_model(pull_if_missing=True))" 2>$null | Select-Object -Last 1)
+            if ($vmodel) { Write-Ok "OCR nutzt Vision-Modell: $vmodel" }
+            else { Write-Warn2 "Kein Vision-Modell verfuegbar - Handschrift-OCR faellt auf easyocr zurueck (spaeter: 'ollama pull gemma3:4b')." }
+        } catch {
+            Write-Warn2 "Vision-Modell-Schritt uebersprungen: $($_.Exception.Message)"
+        }
+    }
+
     # ---- 8) IPEX-Server (falls von uns gestartet) wieder beenden ----------- #
     if ($ipexProc -and -not $ipexProc.HasExited) {
         Write-Info "Beende temporaeren IPEX-Server (fuer den Alltag startet ihn Start.bat)."

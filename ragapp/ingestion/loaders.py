@@ -215,6 +215,28 @@ def _resolve_vision_model() -> str:
     return resolved
 
 
+def has_vision_ocr_model(pull_if_missing: bool = False,
+                         pull_model: str = "gemma3:4b") -> str:
+    """Public (fuer den Installer): gibt ein installiertes, vision-faehiges Modell
+    fuer die Handschrift-/Scan-OCR zurueck (Config ``OCR_VISION_MODEL`` oder
+    Auto-Detektion). Ist keins da und ``pull_if_missing=True``, wird ein kleines,
+    laptop-taugliches Vision-Modell (Standard: gemma3:4b, ~3.3 GB) gezogen. Gibt
+    '' zurueck, wenn keins verfuegbar/ziehbar ist (dann faellt die OCR auf easyocr
+    zurueck). Blockiert waehrend des Pulls."""
+    global _VISION_MODEL_RESOLVED
+    m = _resolve_vision_model()
+    if m or not pull_if_missing:
+        return m
+    try:
+        import ollama
+        ollama.Client(host=settings.OLLAMA_BASE_URL, timeout=3600).pull(pull_model)
+        _VISION_CAP_CACHE.pop(pull_model, None)
+        _VISION_MODEL_RESOLVED = None          # Cache invalidieren -> neu detektieren
+        return _resolve_vision_model() or pull_model
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _render_page_png(page, max_side: int, dpi: int) -> bytes | None:
     """Rendert die Seite und verkleinert sie auf 'max_side' (lange Kante) ->
     weniger VRAM, weniger Wiederholungs-Loops beim Vision-Modell."""
