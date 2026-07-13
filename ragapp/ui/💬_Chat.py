@@ -562,15 +562,38 @@ if prompt:
                          "(nur beim ersten Mal)") if _first_query \
             else random.choice(_LERN_SPRUECHE)
 
-        from ragapp.graph.rag_graph import answer_query, answer_query_stream
-
         result = None
         _streamed = False
+
+        # --- Pre-Flight: genug freier Grafikspeicher (VRAM) fuer das Modell? ------
+        # Ist zu wenig frei (z. B. weil eine zweite GPU-App laeuft), wuerde Ollama das
+        # Modell zaeh auf die CPU auslagern -> Antwort dauert Minuten. Dann lieber
+        # SOFORT eine klare Meldung statt stiller Blockade. (Best-effort; bei
+        # 'unknown'/'ok' laeuft alles normal weiter, es wird NICHT blockiert.)
+        from ragapp.llm import vram_preflight
+        _pf = vram_preflight()
+        _vram_low = _pf.get("status") == "low"
+        if _vram_low:
+            _vram_msg = (
+                f"⚠️ **Zu wenig freier Grafikspeicher (VRAM).** Aktuell sind nur "
+                f"**{_pf.get('free_gb')} GB frei**, aber das Modell "
+                f"`{_pf.get('model')}` braucht ~**{_pf.get('need_gb')} GB**.\n\n"
+                f"Bitte schließe andere GPU-Programme (z. B. eine zweite KI-/Grafik-App) "
+                f"und stelle die Frage dann **erneut**.\n\n"
+                f"_(Sonst müsste die Antwort auf der CPU laufen und würde mehrere "
+                f"Minuten dauern.)_")
+            st.warning(_vram_msg)
+            result = {"answer": _vram_msg, "mode": "vram_warn", "sources": [],
+                      "total_time": 0}
+            _streamed = True
+
+        from ragapp.graph.rag_graph import answer_query, answer_query_stream
+
         # Schnell-Modus (Gegenprüfung AUS) UND Quellen-Anzeige AN -> Antwort Token für
         # Token streamen (größter Hebel fürs gefühlte Tempo). Bei ausgeschalteter
         # Quellen-Anzeige weiter blockierend, damit die [Quelle N]-Verweise sauber aus
         # dem Volltext entfernt werden können (_strip_source_labels braucht ihn ganz).
-        if check_faith_ui is False and show_sources:
+        if not _vram_low and check_faith_ui is False and show_sources:
             try:
                 _stream, _holder = answer_query_stream(
                     prompt, subject=subject_filter,
@@ -610,15 +633,21 @@ if prompt:
         # hier nachziehen (bei ausgeschalteter Quellen-Anzeige [Quelle N] entfernen).
         if not _streamed:
             st.markdown(_answer if show_sources else _strip_source_labels(_answer))
-        meta = {"mode": result.get("mode"), "total_time": result.get("total_time"),
-                "faith_checked": result.get("faith_checked", True),
-                "confidence": result.get("confidence")}
-        _render_status_badge(meta)
-        if show_sources:
-            _citation_warning(_answer, result.get("sources", []))
-        sources = result.get("sources", []) if show_sources else []
-        if sources:
-            render_sources(sources, key_prefix="new")
+        if _vram_low:
+            # VRAM-Warnung: kein Status-Badge / keine Quellen / keine Karten-Aktion
+            # (leeres meta -> der History-Renderer zeigt ebenfalls kein Badge).
+            meta = {}
+            sources = []
+        else:
+            meta = {"mode": result.get("mode"), "total_time": result.get("total_time"),
+                    "faith_checked": result.get("faith_checked", True),
+                    "confidence": result.get("confidence")}
+            _render_status_badge(meta)
+            if show_sources:
+                _citation_warning(_answer, result.get("sources", []))
+            sources = result.get("sources", []) if show_sources else []
+            if sources:
+                render_sources(sources, key_prefix="new")
 
     st.session_state.messages.append({
         "role": "assistant",

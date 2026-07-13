@@ -323,3 +323,88 @@ def get_llm(model: str | None = None) -> LLM:
     if _default_llm is None:
         _default_llm = LLM()
     return _default_llm
+
+
+# --------------------------------------------------------------------------- #
+# VRAM-Pre-Flight: passt das Modell VOR der ersten Frage in den freien VRAM?
+# --------------------------------------------------------------------------- #
+# Sinn: Laeuft parallel eine zweite GPU-App und ist zu wenig VRAM frei, lagert
+# Ollama das Modell zaeh auf die CPU aus (Antwort dauert Minuten). Statt still zu
+# blockieren, zeigt der Chat dann eine klare Meldung ("nur X GB frei, Modell
+# braucht ~Y GB - bitte andere GPU-App schliessen"). Alles best-effort: bei jedem
+# Zweifel -> 'unknown' (der Chat laeuft normal weiter, es wird NICHT blockiert).
+_GPU_INFO_CACHE: "dict | None" = None
+
+
+def _gpu_info() -> dict:
+    """GPU-Info EINMAL ermitteln und cachen (Hardware aendert sich nicht zur Laufzeit)."""
+    global _GPU_INFO_CACHE
+    if _GPU_INFO_CACHE is None:
+        try:
+            from ragapp import hardware
+            _GPU_INFO_CACHE = hardware.detect_gpu() or {}
+        except Exception:  # noqa: BLE001
+            _GPU_INFO_CACHE = {}
+    return _GPU_INFO_CACHE
+
+
+def _ollama_get_json(path: str) -> "dict | None":
+    import json
+    import urllib.request
+    base = str(settings.OLLAMA_BASE_URL or "http://127.0.0.1:11434").rstrip("/")
+    try:
+        with urllib.request.urlopen(base + path, timeout=4) as r:
+            return json.load(r)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _model_resident(model: str) -> bool:
+    """Ist das Modell bereits in Ollama geladen? Dann passt es schon -> kein Risiko."""
+    data = _ollama_get_json("/api/ps") or {}
+    for m in data.get("models", []):
+        if m.get("name") == model or m.get("model") == model:
+            return True
+    return False
+
+
+def _model_size_gb(model: str) -> "float | None":
+    """Groesse der Modell-Gewichte (GB) aus Ollama (~benoetigter VRAM). None unbekannt."""
+    data = _ollama_get_json("/api/tags") or {}
+    for m in data.get("models", []):
+        if m.get("name") == model or m.get("model") == model:
+            sz = m.get("size")
+            if sz:
+                return sz / (1024 ** 3)
+    return None
+
+
+def vram_preflight(model: "str | None" = None) -> dict:
+    """Prueft, ob genug freier VRAM fuer das Modell da ist. Rueckgabe-dict:
+        {status: 'ok'|'low'|'unknown', model, free_gb?, need_gb?, gpu_name?, resident?}
+    'low' -> zu wenig frei (UI zeigt Warnung + bricht die Frage ab). Sonst nie blocken."""
+    model = model or settings.LLM_MODEL
+    try:
+        gpu = _gpu_info()
+        # Kein dedizierter GPU-Speicher (iGPU/CPU-only): laeuft ohnehin ueber RAM -> egal.
+        if not gpu or gpu.get("is_igpu") or not gpu.get("vram_gb"):
+            return {"status": "ok", "model": model}
+        from ragapp import hardware
+        free = hardware.vram_free_gb()
+        if free is None:
+            return {"status": "unknown", "model": model}
+        # Modell schon geladen -> passt bereits, kein CPU-Auslagerungs-Risiko.
+        if _model_resident(model):
+            return {"status": "ok", "model": model, "free_gb": round(free, 1),
+                    "resident": True}
+        need = _model_size_gb(model)
+        if not need:
+            return {"status": "unknown", "model": model, "free_gb": round(free, 1)}
+        # Bedarf ~ Gewichte + kleiner Puffer (Kontext/KV-Cache); 0.5 GB Toleranz.
+        if free + 0.5 < need + 1.0:
+            return {"status": "low", "free_gb": round(free, 1), "need_gb": round(need, 1),
+                    "model": model, "gpu_name": gpu.get("name")}
+        return {"status": "ok", "free_gb": round(free, 1), "need_gb": round(need, 1),
+                "model": model}
+    except Exception:  # noqa: BLE001
+        return {"status": "unknown", "model": model}

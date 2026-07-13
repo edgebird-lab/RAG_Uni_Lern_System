@@ -19,6 +19,7 @@ abzustürzen.
 """
 from __future__ import annotations
 
+import glob
 import os
 import platform
 import shutil
@@ -140,6 +141,51 @@ def _detect_vram_gb() -> "float | None":
             d = "".join(ch for ch in out if ch.isdigit())
             if d and int(d) > _MIN:
                 return round(int(d) / (1024 ** 3), 1)
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def vram_free_gb() -> "float | None":
+    """FREIER VRAM (GB) der primaeren GPU = total - used. Best-effort ueber
+    nvidia-smi (NVIDIA) bzw. amdgpu-sysfs/rocm-smi (AMD, Linux). None, wenn nicht
+    ermittelbar (dann KEIN Pre-Flight-Block). Wichtig, um VOR der ersten Frage zu
+    erkennen, dass zu wenig frei ist (z. B. eine zweite GPU-App laeuft) - sonst
+    laedt Ollama das Modell zaeh auf die CPU."""
+    system = platform.system()
+    _MIN = 256 * 1024 * 1024
+    try:
+        # NVIDIA (Linux + Windows): direkt der freie Wert.
+        if shutil.which("nvidia-smi"):
+            out = _run(["nvidia-smi", "--query-gpu=memory.free",
+                        "--format=csv,noheader,nounits"])
+            for line in out.splitlines():
+                v = "".join(ch for ch in line if ch.isdigit())
+                if v:
+                    return round(int(v) / 1024, 1)   # MiB -> GiB
+        if system == "Linux":
+            # (a) amdgpu-sysfs: total - used aus DERSELBEN (groessten) Karte.
+            best = None  # (total, used)
+            for total_path in glob.glob("/sys/class/drm/card*/device/mem_info_vram_total"):
+                try:
+                    total = int(open(total_path, encoding="utf-8").read().strip())
+                    used = int(open(total_path.replace("mem_info_vram_total",
+                                                       "mem_info_vram_used"),
+                                    encoding="utf-8").read().strip())
+                except Exception:  # noqa: BLE001
+                    continue
+                if total > _MIN and (best is None or total > best[0]):
+                    best = (total, used)
+            if best:
+                return round((best[0] - best[1]) / (1024 ** 3), 1)
+            # (b) rocm-smi (AMD): 'Total Memory' und 'Total Used Memory'.
+            total = _run(["bash", "-c", "rocm-smi --showmeminfo vram 2>/dev/null "
+                          "| grep -i 'total memory' | grep -oE '[0-9]{6,}' | head -1"]).strip()
+            used = _run(["bash", "-c", "rocm-smi --showmeminfo vram 2>/dev/null "
+                         "| grep -i 'used memory' | grep -oE '[0-9]{6,}' | head -1"]).strip()
+            if total.isdigit() and used.isdigit() and int(total) > _MIN:
+                return round((int(total) - int(used)) / (1024 ** 3), 1)
+        # Windows/AMD ohne Zusatztools: kein einfacher freier-VRAM-Wert -> None.
     except Exception:  # noqa: BLE001
         pass
     return None
