@@ -139,7 +139,7 @@ echo "[Log] Diese Sitzung wird protokolliert in: $LOGFILE"
 # UND (falls doch ein Terminal sichtbar ist) auf dem Bildschirm. $! bleibt der
 # Python-/Streamlit-Prozess (nicht tee), damit cleanup/wait weiter korrekt greifen.
 rm -f "$ROOT/data/.shutdown" 2>/dev/null || true
-"$PY" -u -m streamlit run "ragapp/ui/Home.py" --server.address 127.0.0.1 \
+"$PY" -u -m streamlit run "ragapp/ui/💬_Chat.py" --server.address 127.0.0.1 \
     > >(tee "$LOGFILE") 2>&1 &
 STREAMLIT_PID=$!
 

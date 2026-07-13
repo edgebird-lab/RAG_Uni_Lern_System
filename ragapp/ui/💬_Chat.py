@@ -1,7 +1,7 @@
 """
 RAG-Lernsystem: Chat-Oberfläche (Streamlit)
 ============================================
-Start:  streamlit run ragapp/ui/Home.py
+Start:  streamlit run ragapp/ui/💬_Chat.py
 """
 from __future__ import annotations
 

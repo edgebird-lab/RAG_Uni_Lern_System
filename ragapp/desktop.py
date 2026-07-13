@@ -46,7 +46,7 @@ HOST = "127.0.0.1"
 PREFERRED_PORT = int(os.environ.get("RAG_UI_PORT", "8501"))
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]      # Repo-Wurzel (enthaelt 'ragapp')
-HOME = ROOT / "ragapp" / "ui" / "Home.py"
+HOME = ROOT / "ragapp" / "ui" / "💬_Chat.py"      # Streamlit-Entrypoint (Chat-Seite)
 PROFILE_DIR = ROOT / "data" / ".appwindow"              # eigenes Browser-Profil -> isolierte, wartbare Instanz
 SHUTDOWN_SENTINEL = ROOT / "data" / ".shutdown"         # "Beenden"-Button legt diese Datei an
 UI_RESTART_FILE = ROOT / "data" / ".restart_ui"         # Modus-Wechsel aus der App ("local"/"network"/"tunnel")

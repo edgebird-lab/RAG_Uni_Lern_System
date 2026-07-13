@@ -162,7 +162,7 @@ Der Reranker (`BAAI/bge-reranker-v2-m3`) läuft über `sentence-transformers`.
 | Metriken            | `ragapp/eval/metrics.py`         | Hit@k / Recall@k / MRR + Aufschlüsselung nach Fach. |
 | Evaluation          | `ragapp/eval/run_eval.py`        | Gold-Set gegen die echte Pipeline; JSON/CSV/history. |
 | CLI                 | `ragapp/scripts/cli.py`          | `ingest`, `ingest-file`, `watch`, `gold`, `enrich`, `eval`, `ask`, `stats`, `reset`. |
-| Weboberfläche       | `ragapp/ui/Home.py`              | Streamlit-Chat mit Fach-Filter, Quellenkarten, Badges. |
+| Weboberfläche       | `ragapp/ui/💬_Chat.py`           | Streamlit-Chat mit Fach-Filter, Quellenkarten, Badges. |
 
 ---
 

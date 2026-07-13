@@ -125,9 +125,21 @@ eigenen Kurs- und Klausurunterlagen bleiben ausschließlich auf deinem Rechner:
 
 ## 📸 Screenshots
 
-**Chat – Fragen an deine Unterlagen, belegte Antworten mit Quellenangaben**
+**💬 Chat – Fragen an deine Unterlagen, belegte Antworten mit Quellenangaben (und ehrlichem „weiß ich nicht", statt zu halluzinieren)**
 
-![Chat / Home](docs/img/home.png)
+![Chat](docs/img/chat.png)
+
+**📥 Ingestion – Dokumente hochladen oder ganzen Quellordner importieren; automatische Deduplizierung, OCR für Scans, Fach-Zuordnung**
+
+![Dokumente & Ingestion](docs/img/ingestion.png)
+
+**📊 Evaluation – misst die Trefferquote (Hit@k / MRR) über ein Held-out-Gold-Set gegen die echte Retrieval-Pipeline**
+
+![Evaluation der Trefferquote](docs/img/evaluation.png)
+
+**⚙️ Einstellungen – automatische Hardware-Erkennung & Modellwahl, tok/s-Benchmark und alle Tuning-Parameter**
+
+![Einstellungen & Modellwahl](docs/img/settings.png)
 
 **🎓 Lernen – Karteikarten mit Spaced Repetition (SM-2) und vier Übungsmodi: Aufdecken, Tippen & Benoten, Lückentext, Multiple Choice**
 
@@ -137,17 +149,13 @@ eigenen Kurs- und Klausurunterlagen bleiben ausschließlich auf deinem Rechner:
 
 ![Fortschritt & Analytics](docs/img/fortschritt.png)
 
-**📄 Zusammenfassung schreiben – gegroundete Markdown-Zusammenfassung je Dokument/Fach (großes „Autoren"-Modell, nur aus deinen Inhalten)**
-
-![Zusammenfassung schreiben](docs/img/zusammenfassung.png)
-
-**⚙️ Einstellungen – automatische Hardware-Erkennung & Modellwahl, tok/s-Benchmark und alle Tuning-Parameter**
-
-![Einstellungen & Modellwahl](docs/img/settings.png)
-
 **📝 Probeklausur – getimte Prüfungssimulation aus deinen Karten**
 
 ![Probeklausur](docs/img/pruefung.png)
+
+**📄 Zusammenfassung schreiben – gegroundete Markdown-Zusammenfassung je Dokument/Fach (großes „Autoren"-Modell, nur aus deinen Inhalten)**
+
+![Zusammenfassung schreiben](docs/img/zusammenfassung.png)
 
 ---
 
@@ -411,7 +419,7 @@ Ausführliche Erklärung: [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md).
 │  ├─ graph/                   #   LangGraph: retrieve→generate→faithfulness→fallback
 │  ├─ eval/                    #   Gold-Set, Hit@k / MRR, Evaluations-Runner
 │  ├─ scripts/cli.py           #   CLI: ingest, watch, gold, eval, ask, recommend, catalog …
-│  └─ ui/                      #   Streamlit: Chat (Home) + Ingestion, Evaluation,
+│  └─ ui/                      #   Streamlit: 💬 Chat + Ingestion, Evaluation,
 │                              #   Einstellungen, 🎓 Lernen
 ├─ docs/                       # Dokumentation (siehe unten)
 ├─ packaging/                  # Prüfsummen-Skript + winget-Manifest-Vorlage

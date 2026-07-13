@@ -15,9 +15,9 @@ if command -v fuser >/dev/null 2>&1; then
     fi
 fi
 
-if pgrep -f "streamlit run.*ragapp/ui/Home.py" >/dev/null 2>&1; then
+if pgrep -f "streamlit run.*ragapp/ui/" >/dev/null 2>&1; then
     echo "Beende verbleibende Streamlit-Prozesse ..."
-    pkill -f "streamlit run.*ragapp/ui/Home.py" 2>/dev/null || true
+    pkill -f "streamlit run.*ragapp/ui/" 2>/dev/null || true
     stopped=1
 fi
 

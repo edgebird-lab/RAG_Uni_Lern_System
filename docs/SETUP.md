@@ -129,7 +129,7 @@ python -m ragapp.scripts.cli ingest
 python -m ragapp.scripts.cli ask "Was ist ein Deckungsbeitrag?"
 
 # d) Weboberfläche starten
-streamlit run ragapp/ui/Home.py
+streamlit run ragapp/ui/💬_Chat.py
 ```
 
 Erscheint bei `ask` eine belegte Antwort mit Quellen (oder ein ehrlicher

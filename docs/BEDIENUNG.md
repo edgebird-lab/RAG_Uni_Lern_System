@@ -16,7 +16,7 @@ Der Browser öffnet sich unter `http://localhost:8501`.
 ```powershell
 cd d:\RAG
 .\.venv\Scripts\Activate.ps1
-streamlit run ragapp/ui/Home.py
+streamlit run ragapp/ui/💬_Chat.py
 ```
 
 Die Startseite ist der **Chat** („Frag deine Zusammenfassungen"). In der linken
