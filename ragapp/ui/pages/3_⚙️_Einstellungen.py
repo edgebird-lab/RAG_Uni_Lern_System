@@ -7,6 +7,7 @@ sich die Trefferquote verbessert hat.
 """
 from __future__ import annotations
 
+import os
 import sys
 import pathlib
 
@@ -581,6 +582,17 @@ def _tunnel_wait_box() -> None:
     localStorage-Token, Vollbild und Seiten-Navigation - dadurch bleibt die Anzeige
     nie mehr auf „wird aufgebaut" haengen. Sobald sich der Zustand aendert, wird die
     ganze Seite neu gerendert (zeigt dann QR-Code bzw. Fehlermeldung)."""
+    import os
+    # Reiner Lokal-Start (start.sh setzt RAG_LOCAL_ONLY=1): hier gibt es KEINEN Starter,
+    # der den Tunnel bauen koennte - sonst haengt die Box ewig auf „wird aufgebaut".
+    # Klar auf den sicheren „Unterwegs"-Start hinweisen statt endlos zu pollen.
+    if os.environ.get("RAG_LOCAL_ONLY") == "1":
+        st.warning("ℹ️ Diese App wurde **rein lokal** gestartet – hier lässt sich der "
+                   "Cloudflare-Tunnel nicht aufbauen. Beende die App und starte sie über "
+                   "**RAG-Lernsystem – Unterwegs** (bzw. `Start_Unterwegs.sh`). Dort "
+                   "erscheinen automatisch die Adresse und der QR-Code, und die "
+                   "PIN-Sperre schützt den Zugriff.")
+        return
     if netinfo.tunnel_url() is not None or netinfo.tunnel_error():
         st.rerun()   # ganze Seite neu -> QR-Code / Fehlermeldung
     st.info("🌍 Cloudflare-Tunnel wird aufgebaut … (beim ersten Mal inkl. Installation, "
@@ -624,6 +636,15 @@ _desired = st.radio(
     help="Alles direkt in der App – keine Extra-Datei nötig. Cloudflare wird beim "
          "ersten Mal automatisch installiert.",
 )
+
+# Reiner Lokal-Start (start.sh) kann WLAN/Tunnel nicht bedienen (bindet nur 127.0.0.1
+# und fragt keine PIN ab). Klar darauf hinweisen, statt den Nutzer in einen nicht
+# funktionierenden Moduswechsel laufen zu lassen.
+if os.environ.get("RAG_LOCAL_ONLY") == "1" and _desired != "local":
+    st.info("ℹ️ Diese App wurde **rein lokal** gestartet (Icon → `start.sh`) – WLAN- "
+            "und Cloudflare-Zugriff funktionieren hier nicht. Für Handy-Zugriff die App "
+            "beenden und über **RAG-Lernsystem – Unterwegs** (`Start_Unterwegs.sh`) "
+            "starten – dort ist alles inkl. QR-Code und PIN-Schutz aktiv.")
 
 if _desired != _cur:
     if _desired != "local" and not _pin_ok:

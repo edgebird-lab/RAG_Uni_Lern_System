@@ -317,7 +317,28 @@ if [ "$IPEX_STARTED" = "1" ] && [ -f "$ROOT/.ipex-ollama.pid" ]; then
     rm -f "$ROOT/.ipex-ollama.pid"
 fi
 
-# ---- 9) Desktop-/Menue-Starter (Linux) ------------------------------------- #
+# ---- 9) cloudflared fuer 'Von unterwegs' (Cloudflare-Tunnel, Linux) --------- #
+if [ "$OS" = "Linux" ]; then
+    if command -v cloudflared >/dev/null 2>&1 || [ -x "$HOME/.local/bin/cloudflared" ]; then
+        ok "cloudflared bereits vorhanden (fuer Zugriff von unterwegs)."
+    else
+        step "cloudflared installieren (fuer 'Von unterwegs' / Cloudflare-Tunnel)"
+        _cfarch="$(uname -m)"
+        case "$_cfarch" in
+            x86_64) _cfa=amd64;; aarch64|arm64) _cfa=arm64;; armv7l|armv6l) _cfa=arm;; *) _cfa=amd64;;
+        esac
+        mkdir -p "$HOME/.local/bin"
+        if curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${_cfa}" \
+                -o "$HOME/.local/bin/cloudflared"; then
+            chmod +x "$HOME/.local/bin/cloudflared"
+            ok "cloudflared installiert: $HOME/.local/bin/cloudflared"
+        else
+            warn "cloudflared-Download fehlgeschlagen - 'Von unterwegs' geht erst nach manueller Installation (https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)."
+        fi
+    fi
+fi
+
+# ---- 10) Desktop-/Menue-Starter (Linux) ------------------------------------ #
 if [ "$OS" = "Linux" ]; then
     step "Desktop-/Menue-Starter anlegen (Icon)"
     APP_DIR="$HOME/.local/share/applications"
@@ -343,7 +364,22 @@ if [ "$OS" = "Linux" ]; then
         cp -f "$DESKTOP_FILE" "$HOME/Desktop/RAG-Lernsystem.desktop" 2>/dev/null || true
         chmod +x "$HOME/Desktop/RAG-Lernsystem.desktop" 2>/dev/null || true
     fi
-    ok "Starter angelegt: $DESKTOP_FILE"
+    # Zweites Icon: Zugriff von UNTERWEGS (sicherer Cloudflare-Tunnel) via
+    # Start_Unterwegs.sh -> Handy-Zugriff + QR-Code (PIN noetig).
+    UNTERWEGS_FILE="$APP_DIR/rag-lernsystem-unterwegs.desktop"
+    {
+        echo "[Desktop Entry]"
+        echo "Type=Application"
+        echo "Name=RAG-Lernsystem – Unterwegs (Handy/Cloudflare)"
+        echo "Comment=Startet mit sicherem Cloudflare-Tunnel: Handy-Zugriff + QR-Code (PIN noetig)"
+        echo "Exec=bash -c 'cd \"$ROOT\" && ./Start_Unterwegs.sh'"
+        echo "Path=$ROOT"
+        echo "Icon=$ROOT/assets/icon.png"
+        echo "Terminal=false"
+        echo "Categories=Education;Science;"
+    } > "$UNTERWEGS_FILE"
+    chmod +x "$UNTERWEGS_FILE" 2>/dev/null || true
+    ok "Starter angelegt: $DESKTOP_FILE (+ Unterwegs-Icon)"
 fi
 
 # ---- Erfolgsmeldung -------------------------------------------------------- #

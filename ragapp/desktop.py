@@ -373,7 +373,12 @@ def _resolve_cloudflared() -> "str | None":
     exe = shutil.which("cloudflared")
     if exe:
         return exe
-    for c in (os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Links\cloudflared.exe"),
+    # Bekannte Ablageorte, falls cloudflared nicht auf PATH liegt (z. B. GUI-Start mit
+    # minimalem PATH). Linux: install.sh legt es nach ~/.local/bin; Windows: winget.
+    for c in (os.path.expanduser("~/.local/bin/cloudflared"),
+              "/usr/local/bin/cloudflared",
+              "/usr/bin/cloudflared",
+              os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Links\cloudflared.exe"),
               r"C:\Program Files (x86)\cloudflared\cloudflared.exe",
               r"C:\Program Files\cloudflared\cloudflared.exe"):
         if os.path.isfile(c):
