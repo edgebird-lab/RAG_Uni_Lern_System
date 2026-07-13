@@ -18,6 +18,23 @@ Nutzung:
 """
 from __future__ import annotations
 
+import os
+# --------------------------------------------------------------------------- #
+# pyarrow-Speicher-Allocator auf "system" zwingen (verhindert nativen Absturz)
+# --------------------------------------------------------------------------- #
+# pyarrow bringt standardmaessig den jemalloc-Allocator mit. Ist im selben Prozess
+# auch torch geladen (Reranker/sentence-transformers), kollidieren jemalloc und
+# torchs eigener Allocator -> Segmentation fault, sobald pyarrow arbeitet. In der
+# Weboberflaeche passiert das genau beim Rendern einer Tabelle (st.dataframe/
+# st.data_editor serialisiert ueber pyarrow): jede Seite mit Tabelle (Ingestion/
+# Lernen/Fortschritt ...) kann den GANZEN Streamlit-Server abschiessen -> im
+# Browser "Streamlit server is not responding", schon beim blossen Reiter-Wechseln
+# kurz nach dem Start (sobald der Reranker warm ist). Mit dem System-Allocator
+# entfaellt der jemalloc-Konflikt. MUSS vor dem ersten ``import pyarrow`` gesetzt
+# werden - config.py wird praktisch ueberall als Erstes importiert, daher hier.
+# ``setdefault`` respektiert eine bewusst gesetzte Umgebungsvariable.
+os.environ.setdefault("ARROW_DEFAULT_MEMORY_POOL", "system")
+
 import json
 from dataclasses import dataclass, asdict, field, fields
 from pathlib import Path

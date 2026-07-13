@@ -20,6 +20,17 @@ ROOT="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 cd "$ROOT"
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
+# Bei einem NATIVEN Absturz (Segfault in torch/chromadb o. ae.) druckt Python dank
+# faulthandler noch einen Traceback ins Log, statt still zu sterben. So ist ein
+# "Server antwortet nicht" nach dem Absturz nachvollziehbar.
+export PYTHONFAULTHANDLER=1
+# pyarrow den SYSTEM-Allocator nutzen lassen statt des gebuendelten jemalloc:
+# jemalloc kollidiert mit torch (Reranker) im selben Prozess und liess den
+# Streamlit-Server beim Rendern von Tabellen (st.dataframe -> pyarrow) nativ
+# abstuerzen ("Server antwortet nicht", schon beim Reiter-Wechseln). config.py
+# setzt das zusaetzlich per os.environ.setdefault; hier doppelt abgesichert, damit
+# es garantiert VOR dem ersten pyarrow-Import steht (auch bei anderen Startwegen).
+export ARROW_DEFAULT_MEMORY_POOL=system
 # Reiner Einzelplatz-Betrieb: Streamlit bindet unten an 127.0.0.1 (nur dieser
 # Rechner), daher ist KEIN Token/PIN nötig - die Oberfläche gibt sich direkt frei.
 # (Der Handy-/Netzwerk-Zugriff mit PIN ist Windows-spezifisch über ragapp.desktop.)
@@ -110,11 +121,26 @@ cleanup() {
 trap cleanup EXIT INT TERM HUP
 
 echo "Starte Weboberflaeche (http://localhost:8501) ..."
+# --- Dauerhafte Logmitschrift -------------------------------------------------
+# Weil das Icon die App ohne sichtbares Terminal startet (Terminal-Ausgabe geht
+# verloren), wird ALLES zusaetzlich in eine Datei geschrieben. Stuerzt die App bei
+# einer Aktion ab ("Server antwortet nicht"), steht der Grund (Traceback/Signal)
+# hier drin. Das Log vom vorigen Lauf wird als .prev gesichert (geht beim Neustart
+# also NICHT verloren).
+LOGDIR="$ROOT/data/logs"
+mkdir -p "$LOGDIR" 2>/dev/null || true
+LOGFILE="$LOGDIR/streamlit.log"
+[ -f "$LOGFILE" ] && mv -f "$LOGFILE" "$LOGFILE.prev" 2>/dev/null || true
+echo "[Log] Diese Sitzung wird protokolliert in: $LOGFILE"
 # An 127.0.0.1 binden: nur dieser Rechner erreicht die App (passt zu RAG_LOCAL_ONLY).
 # KEIN 'exec' mehr: die Shell bleibt als schlanker Aufseher bestehen, damit beim
 # Beenden (SIGTERM/HUP beim Abmelden, stop.sh, oder der In-App-Button) cleanup laeuft.
+# -u (ungepuffert) + Prozess-Substitution mit tee: Ausgabe landet SOFORT im Log
+# UND (falls doch ein Terminal sichtbar ist) auf dem Bildschirm. $! bleibt der
+# Python-/Streamlit-Prozess (nicht tee), damit cleanup/wait weiter korrekt greifen.
 rm -f "$ROOT/data/.shutdown" 2>/dev/null || true
-"$PY" -m streamlit run "ragapp/ui/Home.py" --server.address 127.0.0.1 &
+"$PY" -u -m streamlit run "ragapp/ui/Home.py" --server.address 127.0.0.1 \
+    > >(tee "$LOGFILE") 2>&1 &
 STREAMLIT_PID=$!
 
 # In-App-Button "App beenden" auf Linux wirksam machen: er schreibt data/.shutdown;
@@ -131,4 +157,12 @@ STREAMLIT_PID=$!
 WATCHER_PID=$!
 
 # Auf die Oberflaeche warten. Endet sie (Button/Absturz/Kill), laeuft cleanup().
-wait "$STREAMLIT_PID" || true
+# '|| RC=$?' faengt den Endcode ab, OHNE dass 'set -e' hier vorzeitig abbricht.
+RC=0
+wait "$STREAMLIT_PID" || RC=$?
+# Endcode ins Log schreiben - das verraet die Absturzart:
+#   0   = normal beendet (Button/stop.sh)
+#   139 = Segfault (128+11, nativer Crash z. B. in torch/chromadb)
+#   137 = hart abgeschossen (128+9, meist OOM-Killer / kill -9)
+#   134 = Abort (128+6)
+{ echo "[Ende] Streamlit-Prozess beendet mit Code $RC ($(date '+%Y-%m-%d %H:%M:%S'))."; } >>"$LOGFILE" 2>/dev/null || true
