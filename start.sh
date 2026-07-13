@@ -96,8 +96,12 @@ fi
 STREAMLIT_PID=""
 WATCHER_PID=""
 
+CLEANUP_TRIGGER=""
 cleanup() {
-    trap - EXIT INT TERM HUP
+    trap - EXIT INT TERM
+    # Ausloeser merken (wird unten in die zuverlaessige [Ende]-Zeile geschrieben):
+    # TERM = Abmelden/Session-Ende, INT = Strg+C, EXIT = Streamlit war schon weg.
+    CLEANUP_TRIGGER="${1:-EXIT}"
     # 1) Weboberflaeche (Streamlit) beenden.
     if [ -n "$STREAMLIT_PID" ] && kill -0 "$STREAMLIT_PID" 2>/dev/null; then
         kill "$STREAMLIT_PID" 2>/dev/null || true
@@ -118,7 +122,15 @@ cleanup() {
     if [ -n "$WATCHER_PID" ]; then kill "$WATCHER_PID" 2>/dev/null || true; fi
     rm -f "$ROOT/data/.shutdown" 2>/dev/null || true
 }
-trap cleanup EXIT INT TERM HUP
+# HUP wird BEWUSST ignoriert: ein geschlossenes oder verwaistes Terminal (z. B. beim
+# Start uebers Desktop-Icon, wo gnome-terminal sich sofort abkoppelt) schickte sonst
+# SIGHUP -> cleanup -> die App beendete sich "von selbst" ("Server antwortet nicht").
+# Sauberes Beenden laeuft weiterhin ueber den In-App-Button (data/.shutdown), stop.sh
+# und das echte Session-Ende (SIGTERM beim Abmelden).
+trap '' HUP
+trap 'cleanup INT'  INT
+trap 'cleanup TERM' TERM
+trap 'cleanup EXIT' EXIT
 
 echo "Starte Weboberflaeche (http://localhost:8501) ..."
 # --- Dauerhafte Logmitschrift -------------------------------------------------
@@ -165,4 +177,4 @@ wait "$STREAMLIT_PID" || RC=$?
 #   139 = Segfault (128+11, nativer Crash z. B. in torch/chromadb)
 #   137 = hart abgeschossen (128+9, meist OOM-Killer / kill -9)
 #   134 = Abort (128+6)
-{ echo "[Ende] Streamlit-Prozess beendet mit Code $RC ($(date '+%Y-%m-%d %H:%M:%S'))."; } >>"$LOGFILE" 2>/dev/null || true
+{ echo "[Ende] Streamlit-Prozess beendet mit Code $RC${CLEANUP_TRIGGER:+ (Aufraeumen ausgeloest durch $CLEANUP_TRIGGER)} ($(date '+%Y-%m-%d %H:%M:%S'))."; } >>"$LOGFILE" 2>/dev/null || true

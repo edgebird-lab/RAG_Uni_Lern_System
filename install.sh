@@ -331,7 +331,11 @@ if [ "$OS" = "Linux" ]; then
         echo "Exec=bash -c 'cd \"$ROOT\" && ./start.sh'"
         echo "Path=$ROOT"
         echo "Icon=$ROOT/assets/icon.png"
-        echo "Terminal=true"
+        # Terminal=false: KEIN gnome-terminal davor. Terminal=true koppelte start.sh
+        # an eine fluechtige Terminal-Session, deren Wegfall (SIGHUP/Scope-Abbau) die
+        # App "von selbst" beendete ("Streamlit server is not responding"). start.sh
+        # laeuft so direkt als langlebiger App-Prozess; Ausgabe steht in data/logs/.
+        echo "Terminal=false"
         echo "Categories=Education;Science;"
     } > "$DESKTOP_FILE"
     chmod +x "$DESKTOP_FILE" 2>/dev/null || true

@@ -496,6 +496,10 @@ def _start_streamlit(port: int, network: bool = True) -> subprocess.Popen:
     env = dict(os.environ)
     env.setdefault("PYTHONUTF8", "1")
     env.setdefault("PYTHONIOENCODING", "utf-8")
+    # pyarrow den System-Allocator nutzen lassen (verhindert jemalloc/torch-Segfault
+    # beim Rendern von Tabellen). Muss vor dem ersten pyarrow-Import im Streamlit-
+    # Prozess gesetzt sein; als Umgebungsvariable ist das garantiert frueh genug.
+    env.setdefault("ARROW_DEFAULT_MEMORY_POOL", "system")
     cmd = [
         sys.executable, "-m", "streamlit", "run", str(HOME),
         "--server.address", _bind_host_for(network),
