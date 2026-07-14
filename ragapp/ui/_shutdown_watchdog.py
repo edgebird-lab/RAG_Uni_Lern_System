@@ -40,6 +40,7 @@ _SELF_EXIT_DELAY = 6.0       # Absicherung ohne start.sh: danach selbst beenden.
 _TCP_ESTABLISHED = "01"      # Zustandscode fuer ESTABLISHED in /proc/net/tcp.
 
 _started = False
+_armed_on_close = False
 _start_lock = threading.Lock()
 
 
@@ -139,4 +140,28 @@ def ensure_shutdown_watchdog() -> None:
         threading.Thread(
             target=_watch_loop, args=(grace,),
             name="rag-idle-shutdown", daemon=True,
+        ).start()
+
+
+def arm_shutdown_on_tab_close(grace: float = 4.0) -> None:
+    """Nach dem In-App-Button "App beenden" aufrufen: beendet den Server erst, wenn
+    das Browser-Tab GESCHLOSSEN ist (keine Verbindung mehr zum UI-Port).
+
+    Warum: Wuerde der Button den Server SOFORT stoppen, sieht der Nutzer im noch
+    offenen Tab nur "Connection error / Streamlit server is not responding" statt der
+    Abschiedsmeldung. Stattdessen bleibt der Server am Leben (Modell ist da schon
+    entladen -> VRAM frei) und zeigt die Meldung; sobald der Tab zu ist, faellt die
+    Verbindung weg und der Server wird sauber gestoppt (start.sh raeumt auf; ohne
+    Starter beendet sich der Prozess selbst). So gibt es KEINEN Verbindungsfehler.
+
+    Unabhaengig von RAG_IDLE_SHUTDOWN (der reine Leerlauf-Waechter bleibt weiter aus)
+    und genau einmal pro Prozess aktiv."""
+    global _armed_on_close
+    with _start_lock:
+        if _armed_on_close:
+            return
+        _armed_on_close = True
+        threading.Thread(
+            target=_watch_loop, args=(grace,),
+            name="rag-quit-on-tab-close", daemon=True,
         ).start()

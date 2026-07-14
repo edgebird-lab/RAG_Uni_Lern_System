@@ -360,13 +360,16 @@ def _quit_button() -> None:
                      help="Stoppt die Oberfläche UND das lokale KI-Modell (Ollama), "
                           "damit im Hintergrund nichts weiterläuft und dein System "
                           "nicht belastet wird."):
-            # Signal fuer den Starter (ragapp.desktop): Fenster schliessen +
-            # Oberflaeche + Ollama stoppen.
+            # 1) Grosses KI-Modell SOFORT entladen -> Grafikspeicher (VRAM) frei.
+            _best_effort_stop_ollama()
+            # 2) Server NICHT sofort stoppen! Sonst sieht der Nutzer im noch offenen
+            #    Tab nur "Connection error" statt der Abschiedsmeldung. Stattdessen den
+            #    Server beenden, SOBALD der Tab geschlossen ist (kein Verbindungsfehler).
             try:
-                SHUTDOWN_SENTINEL.write_text("1", encoding="utf-8")
+                from ragapp.ui._shutdown_watchdog import arm_shutdown_on_tab_close
+                arm_shutdown_on_tab_close()
             except Exception:  # noqa: BLE001
                 pass
-            _best_effort_stop_ollama()
             st.session_state["_shutting_down"] = True
 
     if st.session_state.get("_shutting_down"):
@@ -383,10 +386,11 @@ def _quit_button() -> None:
         st.markdown("## 👋 Bis bald – und gut gemacht!")
         st.info(f"💬 _{st.session_state['_bye_spruch']}_")
         st.success(
-            "**Alles sauber beendet:**\n\n"
-            "✅ Die Oberfläche wurde gestoppt.\n\n"
+            "**Fertig für heute:**\n\n"
             "🧠 Das lokale KI-Modell (Ollama) wurde **entladen** – dein "
             "**Grafikspeicher (VRAM) ist wieder frei**.\n\n"
-            "🔋 Im Hintergrund läuft nichts mehr – dein System wird nicht belastet.")
-        st.markdown("### 🪟 Du kannst dieses Fenster jetzt schließen.")
+            "🔋 Es läuft keine KI-Berechnung mehr, dein System wird nicht belastet.")
+        st.markdown("### 🪟 Schließe jetzt dieses Fenster/Tab.")
+        st.caption("Sobald das Fenster zu ist, fährt die App automatisch komplett "
+                   "herunter (der Server stoppt von selbst) – ganz ohne Fehlermeldung.")
         st.stop()
