@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import random
 import time
 
 import streamlit as st
@@ -329,6 +330,17 @@ def _best_effort_stop_ollama() -> None:
         pass
 
 
+# Kleine Motivations-/Abschiedssprueche fuer die Erfolgsmeldung beim Beenden.
+_ABSCHIED_SPRUECHE = [
+    "Heute etwas geschafft – morgen wieder ein Stück näher an der Bestnote. 💪",
+    "Pause gehört zum Lernen dazu. Komm frisch zurück – wir sind bereit! ✨",
+    "Gut gemacht! Dein Wissen von heute wartet morgen geduldig auf dich. 📚",
+    "Jede Sitzung zählt. Kopf hoch, Klausur im Blick – bis zum nächsten Mal! 🎯",
+    "Dranbleiben lohnt sich. Wir sehen uns bald wieder! 🌟",
+    "Schön war's – ruh dich aus, das Gelernte sacken lassen. Bis bald! 🌙",
+]
+
+
 def _quit_button() -> None:
     with st.sidebar:
         # Zweites Fenster (z. B. fuer einen zweiten Bildschirm) - nur sinnvoll, wenn
@@ -358,6 +370,23 @@ def _quit_button() -> None:
             st.session_state["_shutting_down"] = True
 
     if st.session_state.get("_shutting_down"):
-        st.success("✅ App wird beendet – Oberfläche und lokales KI-Modell (Ollama) "
-                   "werden gestoppt. Du kannst dieses Fenster jetzt schließen.")
+        # Kleine, einmalige Feier-Animation zum Abschied.
+        if not st.session_state.get("_bye_done"):
+            st.session_state["_bye_done"] = True
+            try:
+                st.balloons()
+            except Exception:  # noqa: BLE001
+                pass
+        # Spruch einmal fest waehlen (nicht bei jedem Rerun neu).
+        if "_bye_spruch" not in st.session_state:
+            st.session_state["_bye_spruch"] = random.choice(_ABSCHIED_SPRUECHE)
+        st.markdown("## 👋 Bis bald – und gut gemacht!")
+        st.info(f"💬 _{st.session_state['_bye_spruch']}_")
+        st.success(
+            "**Alles sauber beendet:**\n\n"
+            "✅ Die Oberfläche wurde gestoppt.\n\n"
+            "🧠 Das lokale KI-Modell (Ollama) wurde **entladen** – dein "
+            "**Grafikspeicher (VRAM) ist wieder frei**.\n\n"
+            "🔋 Im Hintergrund läuft nichts mehr – dein System wird nicht belastet.")
+        st.markdown("### 🪟 Du kannst dieses Fenster jetzt schließen.")
         st.stop()
