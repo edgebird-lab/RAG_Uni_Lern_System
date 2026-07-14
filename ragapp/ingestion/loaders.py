@@ -24,6 +24,28 @@ from pathlib import Path
 
 from ragapp.config import settings
 
+
+def _ocr_log(msg: str) -> None:
+    """Freeze-/Crash-SICHERES OCR-Protokoll nach data/logs/ocr.log.
+
+    Jede Zeile wird SOFORT auf die Platte gezwungen (``flush`` + ``os.fsync``) und
+    IMMER VOR dem jeweils gefaehrlichen Schritt geschrieben (z. B. vor dem Laden des
+    Vision-Modells). Friert das System dabei ein und muss hart neu gestartet werden,
+    ist die zuletzt geschriebene Zeile trotzdem erhalten - sie verraet, WOBEI es
+    haengen blieb (Modell, Groesse, freier VRAM). Fehler werden verschluckt (das Log
+    darf die OCR nie stoeren)."""
+    try:
+        import time as _t
+        from ragapp.config import LOG_DIR
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        line = f"[{_t.strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n"
+        with open(LOG_DIR / "ocr.log", "a", encoding="utf-8") as f:
+            f.write(line)
+            f.flush()
+            os.fsync(f.fileno())          # <- erzwingt Schreiben auf die Platte
+    except Exception:  # noqa: BLE001
+        pass
+
 SUPPORTED_EXTENSIONS = {".pdf", ".md", ".txt", ".markdown", ".docx", ".pptx"}
 
 
@@ -443,6 +465,7 @@ def _vision_ocr_page(page, model: str) -> str:
 # Einmal-pro-Dokument-Entscheidung: darf Vision-OCR (Ollama/GPU) genutzt werden,
 # ODER ist zu wenig freier VRAM (dann CPU-easyocr statt GPU-Hang/System-Freeze)?
 _VISION_OCR_PREPARED: "bool | None" = None
+_OCR_CURRENT_FILE: str = ""              # nur fuers Log (welche Datei wird gerade ge-OCR-t)
 
 
 def _reset_vision_ocr_prepare() -> None:
@@ -469,35 +492,46 @@ def _vision_ocr_prepare(model: str) -> bool:
     if _VISION_OCR_PREPARED is not None:
         return _VISION_OCR_PREPARED
     ok = True
+    _ocr_log(f"=== OCR-Lauf fuer {_OCR_CURRENT_FILE or '?'} (OCR_ENGINE={settings.OCR_ENGINE}) ===")
     try:
         from ragapp import hardware
         gpu = hardware.detect_gpu() or {}
+        _ocr_log(f"prepare: GPU={gpu.get('name')!r} vram_total={gpu.get('vram_gb')}GB "
+                 f"is_igpu={gpu.get('is_igpu')} | OCR-Modell={model!r}")
         # Kein dedizierter GPU-Speicher (iGPU/CPU-only): Ollama nutzt RAM, kein
         # GPU-Hang-Risiko -> Vision-OCR ohne Sonderbehandlung erlauben.
         if gpu.get("is_igpu") or not gpu.get("vram_gb"):
+            _ocr_log("prepare: kein dedizierter VRAM -> Vision-OCR ohne Gate erlaubt")
             _VISION_OCR_PREPARED = True
             return True
+        _ocr_log(f"prepare: freier VRAM VOR Entladen={hardware.vram_free_gb()}GB")
         # 1) Andere eigene Modelle entladen -> nur EIN Modell fuer die OCR-Aufgabe.
         try:
             from ragapp.scripts.stop_ollama_standby import unload_resident_models
-            if unload_resident_models(settings.OLLAMA_BASE_URL):
+            _n = unload_resident_models(settings.OLLAMA_BASE_URL)
+            _ocr_log(f"prepare: {_n} eigene(s) Ollama-Modell(e) entladen")
+            if _n:
                 import time
                 time.sleep(1.0)   # kurz warten, bis der VRAM wirklich frei gemessen wird
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as _exc:  # noqa: BLE001
+            _ocr_log(f"prepare: Entladen fehlgeschlagen: {_exc!r}")
         # 2) Passt das OCR-Modell jetzt in den ECHTEN freien VRAM (inkl. Reranker /
         #    fremder GPU-App, die Ollama nicht kennt)?
         free = hardware.vram_free_gb()
-        if free is not None:
-            try:
-                from ragapp.llm import _model_size_gb
-                need = _model_size_gb(model)
-            except Exception:  # noqa: BLE001
-                need = None
-            headroom = float(getattr(settings, "OCR_VISION_VRAM_HEADROOM_GB", 2.0) or 2.0)
-            if need and free < need + headroom:
-                ok = False
-    except Exception:  # noqa: BLE001
+        need = None
+        try:
+            from ragapp.llm import _model_size_gb
+            need = _model_size_gb(model)
+        except Exception:  # noqa: BLE001
+            need = None
+        headroom = float(getattr(settings, "OCR_VISION_VRAM_HEADROOM_GB", 2.0) or 2.0)
+        if free is not None and need and free < need + headroom:
+            ok = False
+        _ocr_log(f"prepare: freier VRAM NACH Entladen={free}GB, Modell braucht~{need}GB "
+                 f"(+{headroom}GB Puffer) -> "
+                 f"{'ERLAUBT: Vision-OCR' if ok else 'ZU WENIG VRAM -> CPU-Fallback (kein Vision)'}")
+    except Exception as _exc:  # noqa: BLE001
+        _ocr_log(f"prepare: Fehler ({_exc!r}) -> best-effort erlaubt")
         ok = True
     _VISION_OCR_PREPARED = ok
     return ok
@@ -510,6 +544,8 @@ def _ocr_page(page) -> tuple[str, str]:
     Vision-Fehler/Loop Fallback auf easyocr.
     Rueckgabe: (text, engine) - engine in {'vision', 'easyocr', ''}."""
     engine = (settings.OCR_ENGINE or "auto").strip().lower()
+    _pno = getattr(page, "number", None)
+    _pno = (_pno + 1) if isinstance(_pno, int) else "?"
     if engine in ("vision", "auto"):
         model = _resolve_vision_model()
         # _vision_ocr_prepare: entlaedt andere Modelle + prueft, ob das OCR-Modell
@@ -517,18 +553,32 @@ def _ocr_page(page) -> tuple[str, str]:
         # VRAM), wird Vision-OCR uebersprungen -> KEIN GPU-Ueberlauf/Freeze, stattdessen
         # CPU-easyocr weiter unten.
         if model and _vision_ocr_prepare(model):
+            try:
+                from ragapp import hardware
+                _fv = hardware.vram_free_gb()
+            except Exception:  # noqa: BLE001
+                _fv = None
+            # DIESE Zeile wird per fsync auf die Platte gezwungen, BEVOR das Modell
+            # geladen wird -> friert es hier ein, ist sie nach dem Neustart da.
+            _ocr_log(f"Seite {_pno}: >>> Vision-OCR START (Ollama) Modell={model!r} "
+                     f"freierVRAM={_fv}GB -- laedt jetzt das Modell/liest die Seite")
             txt = _vision_ocr_page(page, model)
+            _ocr_log(f"Seite {_pno}: <<< Vision-OCR fertig (len={len(txt.strip())})")
             if txt.strip():
                 return txt, "vision"
             # nur bei komplettem Vision-Fehlschlag (leer) -> easyocr, damit
             # ueberhaupt Text entsteht (degeneriertes Vision wird oben behalten)
+    _ocr_log(f"Seite {_pno}: >>> easyocr (CPU) START")
     txt = _easyocr_page(page)
+    _ocr_log(f"Seite {_pno}: <<< easyocr fertig (len={len(txt.strip())})")
     return (txt, "easyocr" if txt.strip() else "")
 
 
 def _load_pdf(path: Path, progress=None) -> LoadedDoc:
     # Vision-OCR-Entscheidung pro Dokument neu treffen (freier VRAM kann sich
     # geaendert haben); tatsaechlich entladen/geprueft wird erst beim ERSTEN OCR-Bedarf.
+    global _OCR_CURRENT_FILE
+    _OCR_CURRENT_FILE = getattr(path, "name", str(path))
     _reset_vision_ocr_prepare()
     blocks: list[Block] = []
     text_parts: list[str] = []
