@@ -392,5 +392,5 @@ def _quit_button() -> None:
             "🔋 Es läuft keine KI-Berechnung mehr, dein System wird nicht belastet.")
         st.markdown("### 🪟 Schließe jetzt dieses Fenster/Tab.")
         st.caption("Sobald das Fenster zu ist, fährt die App automatisch komplett "
-                   "herunter (der Server stoppt von selbst) – ganz ohne Fehlermeldung.")
+                   "herunter (der Server stoppt von selbst).")
         st.stop()
