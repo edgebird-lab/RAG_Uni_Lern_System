@@ -114,6 +114,12 @@ if _ocr:
         if _n_partial:
             st.caption(f"🧩 Davon **{_n_partial}** mit einzelnen unvollständig gelesenen "
                        "Scan-Seiten (Rest ist brauchbar) – bitte diese Seiten prüfen/ersetzen.")
+        st.caption("🛡️ **VRAM-sicher:** Beim Neu-Einlesen wird für die OCR kurz das "
+                   "Chat-Modell entladen, damit **nur das OCR-Modell** den Grafikspeicher "
+                   "nutzt. Läuft parallel eine **zweite GPU-App** und passt das OCR-Modell "
+                   "nicht in den freien VRAM, weicht die OCR automatisch auf die **CPU** aus "
+                   "(langsamer) – der Rechner friert nicht mehr ein. Für GPU-Tempo die "
+                   "andere App schließen.")
         from ragapp.config import PROJECT_ROOT
         for _d in _ocr:
             _oc1, _oc2 = st.columns([4, 1])

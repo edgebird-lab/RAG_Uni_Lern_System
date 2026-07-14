@@ -130,6 +130,12 @@ class Settings:
     OCR_VISION_MAX_SIDE: int = 1400    # lange Bildkante in px (VRAM-schonend; >1500 -> mehr Wiederholungs-Loops)
     OCR_VISION_NUM_PREDICT: int = 700  # Token-Deckel je Seite (begrenzt Endlos-Loops)
     OCR_VISION_TIMEOUT: int = 180      # Sekunden je Seite
+    # Vor der OCR werden andere eigene Ollama-Modelle entladen, damit NUR das
+    # OCR-Modell im VRAM liegt (auch ein grosses, z. B. 18 GB auf 24 GB, ist so
+    # nutzbar). Ein freier-VRAM-Gate laesst Vision-OCR aber nur zu, wenn das Modell
+    # + dieser Puffer (GB) WIRKLICH in den freien VRAM passt (fremde GPU-App / der
+    # Reranker belegen ihn mit) - sonst CPU-Fallback statt GPU-Hang/System-Freeze.
+    OCR_VISION_VRAM_HEADROOM_GB: float = 2.0
     # F2: OCR-Seite mit weniger als so vielen Zeichen gilt als "unvollstaendig
     # gelesen" (Vision degeneriert/verworfen oder easyocr leer). ~40 = eine kurze
     # Textzeile; darunter wurde die Seite faktisch nicht transkribiert. Liegt

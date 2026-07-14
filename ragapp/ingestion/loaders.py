@@ -16,6 +16,7 @@ Rückgabe: ``LoadedDoc`` mit
 """
 from __future__ import annotations
 
+import os
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -74,16 +75,33 @@ _EASYOCR_TRIED = False
 
 
 def _get_easyocr():
-    """Gibt einen (gecachten) easyocr-Reader (dt.+engl.) zurueck oder None. Bevorzugt
-    die GPU (ROCm/CUDA), faellt auf CPU zurueck. Modelle werden beim ersten Mal geladen."""
+    """Gibt einen (gecachten) easyocr-Reader (dt.+engl.) zurueck oder None.
+
+    WICHTIG - laeuft standardmaessig auf der CPU (gpu=False):
+    easyocr laedt seine torch-Modelle IN DEN APP-PROZESS. Auf AMD-ROCm ist das
+    heikel - eine GPU-Allokation unter VRAM-Druck (Reranker + residentes Chat-
+    Modell + evtl. zweite GPU-App) kann den amdgpu-Treiber HART haengen lassen
+    (kompletter System-Freeze); ein GPU-Hang ist zudem KEINE Python-Exception, das
+    try/except unten faengt ihn also NICHT ab. easyocr ist ohnehin nur der
+    Fallback (der Hauptweg ist Vision-OCR ueber Ollama), daher ist CPU hier voll
+    ok. Bewusst aktivieren (nur mit reichlich freiem VRAM): RAG_EASYOCR_GPU=1."""
     global _EASYOCR_READER, _EASYOCR_TRIED
     if _EASYOCR_TRIED:
         return _EASYOCR_READER
     _EASYOCR_TRIED = True
+    _use_gpu = os.environ.get("RAG_EASYOCR_GPU") == "1"
     try:
         import easyocr
+        # CPU-Thread-Deckel: easyocr/torch wuerde sonst ALLE Kerne belegen und den
+        # Rechner zusaetzlich ausbremsen. Nur setzen, wenn nicht schon konfiguriert.
         try:
-            _EASYOCR_READER = easyocr.Reader(["de", "en"], gpu=True)
+            import torch
+            if not _use_gpu and os.environ.get("OMP_NUM_THREADS") is None:
+                torch.set_num_threads(max(1, (os.cpu_count() or 4) // 2))
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            _EASYOCR_READER = easyocr.Reader(["de", "en"], gpu=_use_gpu)
         except Exception:  # noqa: BLE001 - GPU evtl. nicht nutzbar -> CPU
             _EASYOCR_READER = easyocr.Reader(["de", "en"], gpu=False)
     except Exception:  # noqa: BLE001 - easyocr nicht installiert
@@ -216,6 +234,10 @@ def _resolve_vision_model() -> str:
             order = list(_VISION_OCR_ORDER)
         except Exception:  # noqa: BLE001
             pass
+        # Bewusst KEIN harter Groessen-Cap: das groesste Modell, das in den (Gesamt-)
+        # VRAM passt, ist gewollt (z. B. 18 GB auf 24 GB) - es wird nur SICHER
+        # nutzbar, weil vor dem OCR alle anderen eigenen Modelle entladen werden und
+        # ein freier-VRAM-Gate (_vision_ocr_prepare) prueft, dass es wirklich passt.
 
         def _qual_rank(name: str) -> int:
             """Kleiner = besser: empfohlenes Modell zuerst, dann Vision-Katalog
@@ -418,6 +440,69 @@ def _vision_ocr_page(page, model: str) -> str:
     return _collapse_repeats(cleaned)
 
 
+# Einmal-pro-Dokument-Entscheidung: darf Vision-OCR (Ollama/GPU) genutzt werden,
+# ODER ist zu wenig freier VRAM (dann CPU-easyocr statt GPU-Hang/System-Freeze)?
+_VISION_OCR_PREPARED: "bool | None" = None
+
+
+def _reset_vision_ocr_prepare() -> None:
+    """Vor jedem Dokument aufrufen: die Vision-OCR-Entscheidung neu treffen (der
+    freie VRAM kann sich zwischen Laeufen geaendert haben)."""
+    global _VISION_OCR_PREPARED
+    _VISION_OCR_PREPARED = None
+
+
+def _vision_ocr_prepare(model: str) -> bool:
+    """Bereitet Vision-OCR SICHER vor und entscheidet, ob es genutzt werden darf.
+
+    Genau EINMAL pro Dokument (Ergebnis gecacht bis _reset_vision_ocr_prepare):
+      1) Andere EIGENE Ollama-Modelle entladen (z. B. das Chat-Modell) -> nur das
+         OCR-Modell soll im VRAM liegen. Fremde Modelle (zweite GPU-App) bleiben (Ro5).
+      2) Pruefen, ob das OCR-Modell + Puffer WIRKLICH in den (dann) freien VRAM passt.
+         Ollama kennt den vom Reranker / einer zweiten App belegten VRAM NICHT und
+         wuerde sonst ueberbuchen -> ROCm/amdgpu-Hang -> kompletter System-Freeze.
+
+    True  -> Vision-OCR erlaubt (Modell passt, nur es liegt im VRAM).
+    False -> zu wenig freier VRAM -> Vision-OCR ueberspringen (CPU-easyocr-Fallback).
+    Best-effort: laesst sich der VRAM nicht messen, wird NICHT blockiert (True)."""
+    global _VISION_OCR_PREPARED
+    if _VISION_OCR_PREPARED is not None:
+        return _VISION_OCR_PREPARED
+    ok = True
+    try:
+        from ragapp import hardware
+        gpu = hardware.detect_gpu() or {}
+        # Kein dedizierter GPU-Speicher (iGPU/CPU-only): Ollama nutzt RAM, kein
+        # GPU-Hang-Risiko -> Vision-OCR ohne Sonderbehandlung erlauben.
+        if gpu.get("is_igpu") or not gpu.get("vram_gb"):
+            _VISION_OCR_PREPARED = True
+            return True
+        # 1) Andere eigene Modelle entladen -> nur EIN Modell fuer die OCR-Aufgabe.
+        try:
+            from ragapp.scripts.stop_ollama_standby import unload_resident_models
+            if unload_resident_models(settings.OLLAMA_BASE_URL):
+                import time
+                time.sleep(1.0)   # kurz warten, bis der VRAM wirklich frei gemessen wird
+        except Exception:  # noqa: BLE001
+            pass
+        # 2) Passt das OCR-Modell jetzt in den ECHTEN freien VRAM (inkl. Reranker /
+        #    fremder GPU-App, die Ollama nicht kennt)?
+        free = hardware.vram_free_gb()
+        if free is not None:
+            try:
+                from ragapp.llm import _model_size_gb
+                need = _model_size_gb(model)
+            except Exception:  # noqa: BLE001
+                need = None
+            headroom = float(getattr(settings, "OCR_VISION_VRAM_HEADROOM_GB", 2.0) or 2.0)
+            if need and free < need + headroom:
+                ok = False
+    except Exception:  # noqa: BLE001
+        ok = True
+    _VISION_OCR_PREPARED = ok
+    return ok
+
+
 def _ocr_page(page) -> tuple[str, str]:
     """OCR einer text-losen PDF-Seite. Waehlt die Engine gemaess
     settings.OCR_ENGINE ('vision' | 'easyocr' | 'auto'). 'auto' = Vision, falls
@@ -427,7 +512,11 @@ def _ocr_page(page) -> tuple[str, str]:
     engine = (settings.OCR_ENGINE or "auto").strip().lower()
     if engine in ("vision", "auto"):
         model = _resolve_vision_model()
-        if model:
+        # _vision_ocr_prepare: entlaedt andere Modelle + prueft, ob das OCR-Modell
+        # SICHER in den freien VRAM passt. Passt es nicht (z. B. zweite GPU-App belegt
+        # VRAM), wird Vision-OCR uebersprungen -> KEIN GPU-Ueberlauf/Freeze, stattdessen
+        # CPU-easyocr weiter unten.
+        if model and _vision_ocr_prepare(model):
             txt = _vision_ocr_page(page, model)
             if txt.strip():
                 return txt, "vision"
@@ -438,6 +527,9 @@ def _ocr_page(page) -> tuple[str, str]:
 
 
 def _load_pdf(path: Path, progress=None) -> LoadedDoc:
+    # Vision-OCR-Entscheidung pro Dokument neu treffen (freier VRAM kann sich
+    # geaendert haben); tatsaechlich entladen/geprueft wird erst beim ERSTEN OCR-Bedarf.
+    _reset_vision_ocr_prepare()
     blocks: list[Block] = []
     text_parts: list[str] = []
     ocr_pages: list[int] = []
