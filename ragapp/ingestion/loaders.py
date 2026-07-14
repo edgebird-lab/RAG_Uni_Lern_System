@@ -574,6 +574,30 @@ def _ocr_page(page) -> tuple[str, str]:
     return (txt, "easyocr" if txt.strip() else "")
 
 
+def _page_is_blank(page) -> bool:
+    """True, wenn die Seite praktisch LEER ist: keine (Raster-)Bilder, keine Vektor-
+    Zeichnungen und gerendert nahezu komplett weiss. Solche Seiten sind ABSICHTLICH
+    leer (Trenn-/Leerseiten am Kapitel-/Dokumentende) - KEIN fehlgeschlagener Scan.
+    Sie duerfen daher weder ge-OCR-t noch als 'unvollstaendig gelesen' gezaehlt werden
+    (sonst bleibt die OCR-Warnung fuer immer stehen und es wird sinnlos ein Vision-
+    Modell geladen). Im Zweifel (Fehler) -> False (lieber OCR versuchen)."""
+    try:
+        if page.get_images(full=True):
+            return False
+        if page.get_drawings():
+            return False
+        pix = page.get_pixmap(dpi=72)           # kleine Render-Stichprobe
+        s = pix.samples
+        if not s:
+            return True
+        step = max(1, len(s) // 4000)
+        sample = s[::step]
+        nonwhite = sum(1 for b in sample if b < 245)
+        return (nonwhite / len(sample)) < 0.005  # < 0,5 % nicht-weiss -> leere Seite
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _load_pdf(path: Path, progress=None) -> LoadedDoc:
     # Vision-OCR-Entscheidung pro Dokument neu treffen (freier VRAM kann sich
     # geaendert haben); tatsaechlich entladen/geprueft wird erst beim ERSTEN OCR-Bedarf.
@@ -598,7 +622,14 @@ def _load_pdf(path: Path, progress=None) -> LoadedDoc:
                 norm = normalize_text(raw)
                 ocr_engine = ""
                 if not norm:
-                    # Keine Textebene -> vermutlich Scan/Bild -> OCR versuchen.
+                    # Absichtlich LEERE Seite (weiss, kein Text/Bild/Zeichnung)? ->
+                    # NICHT OCR-en und NICHT als "unvollstaendig" zaehlen. Sonst bliebe
+                    # die OCR-Warnung dauerhaft stehen und ein Vision-Modell wuerde fuer
+                    # eine leere Seite geladen (VRAM!).
+                    if _page_is_blank(page):
+                        _ocr_log(f"Seite {i}: LEER (weiss, kein Text/Bild) -> uebersprungen (kein OCR)")
+                        continue
+                    # Keine Textebene, aber Inhalt (Scan/Bild/Diagramm) -> OCR versuchen.
                     if progress:
                         try:
                             progress(f"OCR Seite {i}/{n_pages} …", i, n_pages)
