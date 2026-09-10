@@ -14,11 +14,18 @@ import streamlit as st
 
 
 def page_boot(title: str, *, page_title: "str | None" = None,
-              icon: "str | None" = None, layout: str = "wide") -> None:
+              icon: "str | None" = None, layout: str = "wide",
+              accent: "str | None" = None) -> None:
     """Einheitlicher Seitenkopf, der den WEISSEN BILDSCHIRM beim Seitenwechsel
     beseitigt: set_page_config -> PIN-Gate -> Theme -> und rendert SOFORT den
     Seitentitel. Weil Streamlit die neue Seite erst weiss macht und dann Zeile
     fuer Zeile rendert, sieht der Nutzer so unmittelbar den Titel statt Leere.
+
+    ``accent``: Seiten-Key aus ``ragapp.ui._style.PAGE_THEMES`` (z. B.
+    ``"lernen"``, ``"mindmap"``) - traegt Pastell-Akzentfarbe, Doodle-
+    Hintergrund, Seitenuebergang und die Hamburger-Kurzwahl-Navigation ein.
+    ``None`` (Standard) -> neutraler Home-Ton, KEIN Bruch fuer Aufrufer, die
+    das (noch) nicht setzen.
 
     Danach sollte die Seite ihre SCHWEREN Importe/Datenabfragen in einen
     ``with st.spinner(...)``-Block legen, damit waehrend des (kalten) Ladens ein
@@ -39,6 +46,8 @@ def page_boot(title: str, *, page_title: "str | None" = None,
     require_pin()
     from ragapp.ui._theme import apply_theme
     apply_theme()
+    from ragapp.ui._style import apply_page_style
+    apply_page_style(accent or "home")
     if title:
         st.title(title)
 

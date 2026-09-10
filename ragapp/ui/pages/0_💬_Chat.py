@@ -1,7 +1,12 @@
 """
 RAG-Lernsystem: Chat-Oberfläche (Streamlit)
 ============================================
-Start:  streamlit run ragapp/ui/💬_Chat.py
+Umgezogen vom früheren Einstiegspunkt (jetzt ``🏠_Home.py``, Kachel-Übersicht)
+hierher - reine Chat-Funktion, unverändert bis auf Ort + Optik (Akzentfarbe,
+Doodles, Hamburger-Navigation kommen zentral über
+``page_boot(..., accent="chat")``). Der Prozess-Start-Kram (Prewarm/Watchdog/
+Backup-Snapshot/PWA-Banner) bleibt bewusst in ``🏠_Home.py``, weil DAS
+weiterhin die von start.sh/desktop.py gestartete Datei ist.
 """
 from __future__ import annotations
 
@@ -10,7 +15,6 @@ import html
 import random
 import pathlib
 
-# Projektwurzel auffindbar machen (damit 'ragapp' importierbar ist)
 _p = pathlib.Path(__file__).resolve()
 for _anc in _p.parents:
     if (_anc / "ragapp").is_dir():
@@ -18,149 +22,45 @@ for _anc in _p.parents:
         break
 
 import streamlit as st
-
-# App-Icon (Fenster/Taskleiste/Favicon). Faellt auf ein Emoji zurueck,
-# falls die Icon-Datei fehlt (z. B. vor dem ersten Build).
-_icon_png = _p.parents[2] / "assets" / "icon.png"
-_PAGE_ICON = str(_icon_png) if _icon_png.is_file() else "🎓"
-
-st.set_page_config(page_title="RAG-Lernsystem", page_icon=_PAGE_ICON, layout="wide")
-
-# Schwere Importe (torch/chromadb) im Hintergrund vorwärmen -> spätere
-# Seitenwechsel öffnen sofort statt mit weißem Bildschirm, UND Embedding+Reranker
-# schon einmal ins RAM/VRAM laden, damit die erste echte Frage nicht den Kaltstart
-# zahlt. Per Einstellung abschaltbar (PREWARM_ON_START) - wer die Sitzung nur zum
-# Karteikarten-Lernen oeffnet, will dafuer gar kein Modell laden.
-from ragapp.config import settings
-if settings.PREWARM_ON_START:
-    from ragapp.ui._loading import prewarm
-    prewarm("ragapp.retrieval.embeddings",
-            "ragapp.retrieval.vectorstore",
-            "ragapp.ingestion.pipeline")
-
-# Tab-Close-Waechter: beendet die App sauber, wenn kein Browser-Tab mehr offen ist
-# (nur aktiv im lokalen Starter-Betrieb via start.sh -> RAG_IDLE_SHUTDOWN=1).
-from ragapp.ui._shutdown_watchdog import ensure_shutdown_watchdog
-ensure_shutdown_watchdog()
-
-# Automatischer Lernstand-Snapshot beim Start (nur, wenn der letzte > 24 h alt ist).
-if not st.session_state.get("_backup_checked"):
-    st.session_state["_backup_checked"] = True
-    try:
-        from ragapp import backup
-        backup.snapshot_if_stale("autostart")
-    except Exception:  # noqa: BLE001
-        pass
-
-# Netzwerk-/Handy-Zugriff: PIN-Sperre (nur im Netzwerkmodus aktiv, sonst wirkungslos)
-from ragapp.ui._auth import require_pin
-require_pin()
-
-# Einheitliches Theme (idempotent) - direkt nach der PIN-Sperre anwenden.
-from ragapp.ui._theme import apply_theme
-apply_theme()
-
-# PWA: Manifest + Apple-Meta in den echten Seitenkopf injizieren UND ein
-# Installations-Banner ("Als App aufs Handy") anbieten - nur auf dem Handy (nicht am
-# PC-Fenster) und nur, wenn noch nicht installiert. Android/Chrome: echter
-# Installieren-Button ueber 'beforeinstallprompt'. iOS/Safari: Kurzanleitung.
 import streamlit.components.v1 as _components
-_components.html(
-    """
-    <script>
-    (function () {
-      try {
-        var pwin = window.parent, pdoc = pwin.document, head = pdoc.head;
-        function add(tag, attrs) {
-          var el = pdoc.createElement(tag);
-          for (var k in attrs) { el.setAttribute(k, attrs[k]); }
-          head.appendChild(el);
-        }
-        if (!head.querySelector('link[rel="manifest"]')) {
-          add('link', {rel: 'manifest', href: 'app/static/manifest.json'});
-          add('meta', {name: 'apple-mobile-web-app-capable', content: 'yes'});
-          add('meta', {name: 'mobile-web-app-capable', content: 'yes'});
-          add('meta', {name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent'});
-          add('meta', {name: 'apple-mobile-web-app-title', content: 'Lernsystem'});
-          add('meta', {name: 'theme-color', content: '#12455a'});
-          add('link', {rel: 'apple-touch-icon', href: 'app/static/icon-180.png'});
-        }
-        if ('serviceWorker' in pwin.navigator) {
-          pwin.navigator.serviceWorker.register('app/static/sw.js').catch(function () {});
-        }
 
-        // Banner NUR auf dem Handy: das PC-Fenster hat das lokale Token.
-        var isPC = false;
-        try { isPC = !!pwin.localStorage.getItem('rag_local_token'); } catch (e) {}
-        var standalone = (pwin.matchMedia && pwin.matchMedia('(display-mode: standalone)').matches)
-                         || pwin.navigator.standalone === true;
-        if (isPC || standalone) return;
-        // Installieren nur bei STABILER Adresse anbieten (WLAN/LAN, localhost) - NICHT
-        // bei der wechselnden Cloudflare-Adresse (dort waere das Icon morgen tot).
-        var host = pwin.location.hostname || '';
-        var isLan = (host === 'localhost') || (host.slice(-6) === '.local')
-          || (host.indexOf('192.168.') === 0) || (host.indexOf('10.') === 0)
-          || (host.indexOf('172.') === 0 && (function () {
-               var o = parseInt(host.split('.')[1], 10); return o >= 16 && o <= 31; })());
-        if (!isLan) return;
-        if (pwin.__ragPwaInit) return; pwin.__ragPwaInit = true;   // Listener nur einmal binden
+from ragapp.ui._loading import page_boot
+page_boot("Frag deine Zusammenfassungen", page_title="Chat", icon="💬",
+          layout="wide", accent="chat")
 
-        function banner(inner) {
-          var old = pdoc.getElementById('rag-pwa'); if (old) old.remove();
-          var b = pdoc.createElement('div'); b.id = 'rag-pwa';
-          b.style.cssText = 'position:fixed;left:12px;right:12px;bottom:14px;margin:0 auto;'
-            + 'max-width:520px;z-index:2147483647;background:#12455a;color:#fff;border-radius:14px;'
-            + 'padding:12px 14px;box-shadow:0 10px 34px rgba(0,0,0,.4);font-family:system-ui,'
-            + '-apple-system,sans-serif;font-size:14px;line-height:1.35;display:flex;'
-            + 'align-items:center;gap:10px;';
-          b.innerHTML = inner;
-          var x = pdoc.createElement('button'); x.textContent = '\\u2715';
-          x.style.cssText = 'margin-left:auto;background:transparent;border:0;color:#bcd7df;'
-            + 'font-size:17px;cursor:pointer;flex:none;';
-          x.onclick = function () { b.remove(); };
-          b.appendChild(x);
-          pdoc.body.appendChild(b); return b;
-        }
+# --------------------------------------------------------------------------- #
+# Styling - Rest kommt zentral aus apply_theme()/apply_page_style(); hier nur
+# die chat-funktionsspezifischen Klassen (Quellen-Karten, Badges, Dropdown-
+# Höhenbegrenzung), die die Rendering-Funktionen unten brauchen.
+# --------------------------------------------------------------------------- #
+st.markdown("""
+<style>
+.block-container {padding-bottom: 6rem;}
+ul[role="listbox"], [data-testid="stSelectboxVirtualDropdown"] ul,
+[data-baseweb="menu"] {max-height: 45vh !important; overflow-y: auto !important;}
+.stChatMessage {border-radius: 14px;}
+.source-card {
+    background: linear-gradient(135deg, #f6f8fc 0%, #eef2fb 100%);
+    border: 1px solid #e2e8f4; border-radius: 12px; padding: 12px 16px;
+    margin-bottom: 8px;
+}
+.source-title {font-weight: 600; color: #1f3a63;}
+.source-meta {color: #5b6b85; font-size: 0.85rem;}
+.badge {display:inline-block; padding: 2px 10px; border-radius: 999px;
+    font-size: 0.78rem; font-weight: 600;}
+.badge-answer {background:#e6f7ee; color:#137a4b;}
+.badge-fallback {background:#fdf0e3; color:#a15a13;}
+.badge-plain {background:#eef1f5; color:#5b6b85;}
+.badge-unsure {background:#fef6e0; color:#8a6d1a;}
+.small {color:#7a8aa0; font-size:0.8rem;}
+</style>
+""", unsafe_allow_html=True)
 
-        var deferred = null;
-        pwin.addEventListener('beforeinstallprompt', function (e) {
-          e.preventDefault(); deferred = e;
-          var b = banner('<span style="font-size:20px">\\uD83D\\uDCF2</span>'
-                         + '<span>Als App aufs Handy installieren?</span>');
-          var btn = pdoc.createElement('button'); btn.textContent = 'Installieren';
-          btn.style.cssText = 'background:#fff;color:#12455a;border:0;border-radius:9px;'
-            + 'padding:7px 15px;font-weight:600;cursor:pointer;flex:none;';
-          btn.onclick = function () {
-            b.remove();
-            if (deferred) { deferred.prompt(); deferred.userChoice.finally(function () { deferred = null; }); }
-          };
-          b.insertBefore(btn, b.lastChild);
-        });
-        pwin.addEventListener('appinstalled', function () {
-          var b = pdoc.getElementById('rag-pwa'); if (b) b.remove();
-        });
-
-        // Nach kurzem Warten: falls KEIN Installieren-Button kam (kein
-        // 'beforeinstallprompt' - z. B. iOS/Safari oder Android ueber http) -> Anleitung.
-        var ua = pwin.navigator.userAgent || '';
-        var isIOS = /iphone|ipad|ipod/i.test(ua);
-        pwin.setTimeout(function () {
-          if (pdoc.getElementById('rag-pwa')) return;   // Button-Banner ist schon da
-          if (isIOS) {
-            banner('<span style="font-size:20px">\\uD83D\\uDCF2</span>'
-                   + '<span>Als App installieren: unten auf das <b>Teilen</b>-Symbol '
-                   + 'tippen, dann <b>Zum Home-Bildschirm</b>.</span>');
-          } else {
-            banner('<span style="font-size:20px">\\uD83D\\uDCF2</span>'
-                   + '<span>Als App installieren: im Browser-Men&uuml; (&#8942;) auf '
-                   + '<b>Zum Startbildschirm hinzuf&uuml;gen</b> tippen.</span>');
-          }
-        }, 2200);
-      } catch (e) {}
-    })();
-    </script>
-    """,
-    height=0,
+st.markdown(
+    "<span class='small'>Antworten kommen <b>ausschließlich</b> aus deinen "
+    "Unterlagen. Weiß das System etwas nicht, nennt es dir ehrlich die am besten "
+    "passenden Dokumente, <b>ohne zu halluzinieren</b>.</span>",
+    unsafe_allow_html=True,
 )
 
 # Klickbare Einstiegs-Fragen fuer den leeren Chat (Onboarding). Bewusst allgemein
@@ -181,51 +81,10 @@ _LERN_SPRUECHE = [
     "Verstehen schlägt Auswendiglernen. Frag ruhig nach.",
 ]
 
-# --------------------------------------------------------------------------- #
-# Styling ("schick")
-# --------------------------------------------------------------------------- #
-st.markdown("""
-<style>
-.block-container {padding-top: 2rem; padding-bottom: 6rem; max-width: 1100px;}
-/* Aufklapp-Listen (z. B. Fach-Dropdown) in der Hoehe begrenzen und scrollbar
-   machen, damit sie nie unten aus dem Fenster / hinter die Taskleiste laufen. */
-ul[role="listbox"], [data-testid="stSelectboxVirtualDropdown"] ul,
-[data-baseweb="menu"] {max-height: 45vh !important; overflow-y: auto !important;}
-.stChatMessage {border-radius: 14px;}
-.source-card {
-    background: linear-gradient(135deg, #f6f8fc 0%, #eef2fb 100%);
-    border: 1px solid #e2e8f4; border-radius: 12px; padding: 12px 16px;
-    margin-bottom: 8px;
-}
-.source-title {font-weight: 600; color: #1f3a63;}
-.source-meta {color: #5b6b85; font-size: 0.85rem;}
-.badge {display:inline-block; padding: 2px 10px; border-radius: 999px;
-    font-size: 0.78rem; font-weight: 600;}
-.badge-answer {background:#e6f7ee; color:#137a4b;}
-.badge-fallback {background:#fdf0e3; color:#a15a13;}
-.badge-plain {background:#eef1f5; color:#5b6b85;}
-.badge-unsure {background:#fef6e0; color:#8a6d1a;}
-.small {color:#7a8aa0; font-size:0.8rem;}
-h1 {font-weight: 750; letter-spacing:-0.5px;}
-</style>
-""", unsafe_allow_html=True)
-
-# --------------------------------------------------------------------------- #
-# Kopf - SOFORT rendern (vor den ragapp-Importen), damit der Seitenwechsel keinen
-# weissen Bildschirm zeigt: der Titel steht da, bevor irgendetwas nachgeladen wird.
-# --------------------------------------------------------------------------- #
-st.title("Frag deine Zusammenfassungen")
-st.markdown(
-    "<span class='small'>Antworten kommen <b>ausschließlich</b> aus deinen "
-    "Unterlagen. Weiß das System etwas nicht, nennt es dir ehrlich die am besten "
-    "passenden Dokumente, <b>ohne zu halluzinieren</b>.</span>",
-    unsafe_allow_html=True,
-)
-
 # Seitenspezifische ragapp-Importe erst JETZT - unter einem Ladehinweis, damit beim
 # ersten (kalten) Laden ein Spinner statt eines weissen Bereichs erscheint. Der
 # import im with-Block bindet modulweit -> alle spaeteren Verwendungen unveraendert.
-with st.spinner("Startseite wird geladen ..."):
+with st.spinner("Chat wird geladen ..."):
     from ragapp.config import settings, SUBJECT_LABELS, PROJECT_ROOT
     from ragapp import manifest
 
