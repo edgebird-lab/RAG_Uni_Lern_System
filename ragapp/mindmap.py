@@ -201,7 +201,16 @@ def generate_mindmap(doc_ids: list[str], subject: Optional[str],
 
     ``model``: ``None`` -> grosses Autoren-Modell (gruendlicher, langsamer);
     explizit z. B. ``settings.LLM_MODEL_FAST`` fuer eine schnellere, dafuer
-    groebere Mindmap."""
+    groebere Mindmap.
+
+    Rueckgabe ``(graph, warning)``: ``warning`` ist ``None`` im Normalfall,
+    sonst ein Klartext-Hinweis, WARUM auf den 1:1-Fallback zurueckgefallen
+    wurde - insbesondere wenn das Modell am Token-Budget abgeschnitten wurde
+    (``done_reason == 'length'``), statt das stillschweigend als "Ergebnis"
+    durchgehen zu lassen (beobachtet: manche Reasoning-Modelle - z. B. gpt-oss
+    - ignorieren ``think=False`` und denken bei vielen Abschnitten trotzdem
+    ausfuehrlich weiter, teils Tausende Tokens lang und nicht-deterministisch,
+    bis der Antwort-Kanal am Budget abgeschnitten komplett leer bleibt)."""
     granular = _granular_sections(doc_ids)
     if not granular:
         raise MindmapError(
@@ -212,9 +221,10 @@ def generate_mindmap(doc_ids: list[str], subject: Optional[str],
     toc = _toc_with_excerpts(capped, settings.MINDMAP_PROMPT_BUDGET_CHARS)
     fach = subject or "unbekannt"
     used_model = model or _author_model()
+    llm_obj = get_llm(used_model)
 
     try:
-        data = get_llm(used_model).generate_json(
+        data = llm_obj.generate_json(
             _MINDMAP_PROMPT.format(
                 fach=fach, n=len(capped), toc=toc,
                 max_topics=max(1, int(settings.MINDMAP_MAX_TOPICS)),
@@ -224,21 +234,32 @@ def generate_mindmap(doc_ids: list[str], subject: Optional[str],
     except Exception as exc:  # noqa: BLE001
         raise MindmapError(f"KI-Mindmap fehlgeschlagen: {exc}") from exc
 
+    warning: Optional[str] = None
     graph = _repair_mindmap(data, len(capped))
     if graph is None:
+        if data is None and llm_obj.last_done_reason == "length":
+            warning = (
+                f"Das Modell „{used_model}“ ist bei {len(capped)} Abschnitten "
+                f"nicht fertig geworden (zu viel interne Verarbeitung, nach "
+                f"{llm_obj.last_completion_tokens} Tokens abgebrochen) - "
+                "stattdessen wird jeder Abschnitt einzeln aufgeführt. Versuche "
+                "ein anderes Modell oder wähle weniger Dokumente.")
         # Nie ganz scheitern: ein Knoten je Abschnitt, flach unter der Wurzel.
         graph = {
             "root": fach, "links": [],
             "nodes": [{"id": f"n{i}", "title": t, "parent": None, "indices": [i]}
                       for i, (_, t, _) in enumerate(capped)],
         }
-    return graph
+    return graph, warning
 
 
-def create_and_save_mindmap(doc_ids: list[str], subject: Optional[str], title: str,
-                            model: Optional[str] = None) -> str:
-    """Generiert eine Mindmap und speichert sie. Gibt die neue ``mindmap_id`` zurück."""
+def create_and_save_mindmap(
+    doc_ids: list[str], subject: Optional[str], title: str, model: Optional[str] = None,
+) -> tuple[str, Optional[str]]:
+    """Generiert eine Mindmap und speichert sie. Gibt ``(mindmap_id, warning)``
+    zurück (siehe ``generate_mindmap`` für ``warning``)."""
     used_model = model or _author_model()
-    graph = generate_mindmap(doc_ids, subject, model=model)
-    return manifest.create_mindmap(
+    graph, warning = generate_mindmap(doc_ids, subject, model=model)
+    mid = manifest.create_mindmap(
         title=title, subject=subject, doc_ids=doc_ids, graph=graph, model=used_model)
+    return mid, warning

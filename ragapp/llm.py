@@ -109,6 +109,10 @@ class LLM:
         # solange noch kein Aufruf lief oder Ollama sie nicht mitgeliefert hat.
         self.last_prompt_tokens: int | None = None
         self.last_completion_tokens: int | None = None
+        # Ollamas 'done_reason' des letzten chat()-Aufrufs ('stop'=normal beendet,
+        # 'length'=am num_predict-Budget abgeschnitten). Grundlage fuer den
+        # Trunkierungs-Schutz in generate_json() (siehe dort).
+        self.last_done_reason: str | None = None
 
     def chat(
         self,
@@ -145,6 +149,7 @@ class LLM:
                 content = msg.get("content", "") or ""
                 self.last_prompt_tokens = resp.get("prompt_eval_count")
                 self.last_completion_tokens = resp.get("eval_count")
+                self.last_done_reason = resp.get("done_reason")
                 # Reasoning-Modelle: bei knappem num_predict kann der Antwort-Channel
                 # leer bleiben (done_reason='length'). Den Denk-Kanal NUR im JSON-Pfad
                 # als Fallback nehmen (dort wird das JSON heraus-geparst) - fuer Freitext
@@ -185,14 +190,40 @@ class LLM:
         unexpectedly stopped"). Freie Generierung + robustes Parsen (_safe_json)
         funktioniert auf CPU wie GPU.
 
-        Zusaetzlich Reasoning knapp halten (``think="low"``), damit bei
-        Reasoning-Modellen (gpt-oss) das num_predict-Budget nicht komplett von
-        der Gedankenkette verbraucht wird und der Antwort-Channel leer/trunkiert
-        bleibt (done_reason='length')."""
-        kwargs.setdefault("think", "low")
+        Reasoning bleibt standardmaessig AUS (``think=False``): JSON-Extraktion
+        nach festem Schema braucht kein Nachdenken, nur Befolgen der Anweisung -
+        und manche Reasoning-Modelle interpretieren selbst ``think="low"`` als
+        "denke ausfuehrlich", was das GESAMTE num_predict-Budget in der
+        Gedankenkette verbrennt, BEVOR ueberhaupt Antwort-Text entsteht
+        (beobachtet: ein 26B-Modell verbrauchte bei einer 53-Punkte-Mindmap-
+        Liste alle 1024 Tokens fuer eine seitenweise Zusammenfassung des
+        Inputs, der Antwort-Kanal blieb komplett leer, done_reason='length').
+        Aufrufer, die trotzdem Reasoning wollen, koennen ``think=...`` weiterhin
+        explizit setzen.
+
+        Zusaetzliches Sicherheitsnetz: schlaegt das Parsen fehl UND wurde die
+        Antwort am num_predict-Budget abgeschnitten (``done_reason == 'length'``),
+        wird EINMAL mit deutlich mehr Luft erneut versucht - sowohl Kontext-
+        fenster als auch Antwortbudget verdoppelt (gedeckelt auf 32768 Tokens
+        Kontext). Ein reines Verdoppeln nur des Antwortbudgets reichte in der
+        Praxis oft NICHT: manche Reasoning-Modelle brauchen fuer denselben
+        Prompt mal ~3000, mal >8000 Tokens allein zum "Nachdenken" (nicht-
+        deterministisch je Lauf) - das passt oft erst in ein groesseres
+        Kontextfenster hinein, nicht nur in ein groesseres Antwortbudget
+        innerhalb des ALTEN Fensters."""
+        kwargs.setdefault("think", False)
         kwargs.setdefault("_thinking_fallback", True)   # JSON darf aus dem Denk-Kanal kommen
         raw = self.generate(prompt, system=system, **kwargs)
-        return _safe_json(raw)
+        data = _safe_json(raw)
+        if data is None and self.last_done_reason == "length":
+            retry_kwargs = dict(kwargs)
+            current_ctx = kwargs.get("num_ctx") or settings.LLM_NUM_CTX
+            retry_ctx = min(int(current_ctx) * 2, 32768)
+            retry_kwargs["num_ctx"] = retry_ctx
+            retry_kwargs["num_predict"] = retry_ctx // 2
+            raw = self.generate(prompt, system=system, **retry_kwargs)
+            data = _safe_json(raw)
+        return data
 
     def generate_stream(
         self,
@@ -339,6 +370,30 @@ def get_llm(model: str | None = None) -> LLM:
     if _default_llm is None:
         _default_llm = LLM()
     return _default_llm
+
+
+def list_installed_models() -> "list[str] | None":
+    """Namen der lokal in Ollama installierten Modelle - ``None`` bei Fehler
+    (z. B. Ollama-Server nicht erreichbar). Gemeinsam genutzt von der
+    Einstellungen-Seite (Modell-Verwaltung) und jeder Generierungs-Seite, die
+    dem Nutzer statt nur "Gründlich/Schnell" die freie Wahl unter allen
+    installierten Modellen anbietet (z. B. Mindmap)."""
+    try:
+        client = ollama.Client(host=settings.OLLAMA_BASE_URL)
+        data = client.list()
+        modelle = (data.get("models", []) if isinstance(data, dict)
+                  else getattr(data, "models", []) or [])
+        namen: list[str] = []
+        for m in modelle:
+            if isinstance(m, dict):
+                name = m.get("model") or m.get("name") or ""
+            else:
+                name = getattr(m, "model", "") or getattr(m, "name", "") or ""
+            if name:
+                namen.append(str(name))
+        return sorted(set(namen))
+    except Exception:
+        return None
 
 
 # --------------------------------------------------------------------------- #

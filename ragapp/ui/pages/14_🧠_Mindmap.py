@@ -39,6 +39,30 @@ with st.spinner("Mindmap wird geladen ..."):
     from ragapp import manifest, mindmap, mindmap_render
     from ragapp.config import settings, SUBJECT_LABELS
     from ragapp.ui._colors import subject_color
+    from ragapp.llm import list_installed_models
+
+
+def _model_picker(key: str) -> "str | None":
+    """Modellwahl fuer die Mindmap-Generierung: 'Gründlich'/'Schnell' als
+    Schnellwahl (wie bei Lernplan/Übungsaufgaben), PLUS alle lokal
+    installierten Modelle einzeln waehlbar - manche (Reasoning-)Modelle
+    brauchen fuer grosse Themenbaeume deutlich laenger oder brechen sogar ab
+    (siehe Warnhinweis nach der Generierung); dann hilft oft nur, ein anderes
+    Modell zu probieren. Rueckgabe passt direkt zu generate_mindmap(model=...):
+    ``None`` = Autoren-Modell, sonst der exakte Modellname."""
+    _author = settings.author_model()
+    _fast = settings.LLM_MODEL_FAST
+    _installed = list_installed_models() or []
+    _options = [f"🎯 Gründlich ({_author})", f"⚡ Schnell ({_fast})"] + sorted(
+        m for m in _installed if m not in (_author, _fast))
+    _choice = st.selectbox("Modell", _options, key=key,
+                           help="Bricht ein Modell bei vielen Abschnitten ab "
+                                "(siehe Warnhinweis), hilft oft ein anderes.")
+    if _choice.startswith("🎯 Gründlich"):
+        return None
+    if _choice.startswith("⚡ Schnell"):
+        return _fast
+    return _choice
 
 
 def _fach(code: "str | None") -> str:
@@ -112,23 +136,23 @@ if _active_id is None:
     _subj_docs = {d["filename"]: d["doc_id"] for d in _all_docs if d["subject"] == _new_subject}
     _new_doc_names = st.multiselect("Dokument(e)", list(_subj_docs.keys()), key="mm_new_docs")
 
-    _new_model_choice = st.radio(
-        "Modell", ["🎯 Gründlich (langsamer)", "⚡ Schnell (gröber)"],
-        horizontal=True, key="mm_new_model")
-    _new_model = settings.LLM_MODEL_FAST if "Schnell" in _new_model_choice else None
+    _new_model = _model_picker("mm_new_model")
 
     if st.button("🧠 Mindmap erstellen", type="primary", disabled=not _new_doc_names):
         _doc_ids = [_subj_docs[n] for n in _new_doc_names]
         with st.spinner("KI erstellt die Mindmap … das kann je nach Umfang und "
                         "Hardware einige Zeit dauern."):
             try:
-                _new_mid = mindmap.create_and_save_mindmap(
+                _new_mid, _new_warning = mindmap.create_and_save_mindmap(
                     _doc_ids, _new_subject, _new_title or f"Mindmap {_fach(_new_subject)}",
                     model=_new_model)
             except mindmap.MindmapError as exc:
                 st.error(str(exc))
                 st.stop()
-        st.success("Mindmap erstellt.")
+        if _new_warning:
+            st.session_state["_mm_gen_warning"] = _new_warning
+        else:
+            st.success("Mindmap erstellt.")
         st.session_state["_mm_pending_choice"] = _new_mid
         st.rerun()
     st.stop()
@@ -153,28 +177,32 @@ with hh2:
                f"{len(_graph.get('nodes', []))} Themen</div>", unsafe_allow_html=True)
 
 with st.expander("⚙️ Neu generieren & Löschen"):
-    _regen_model_choice = st.radio(
-        "Modell für die Neu-Generierung", ["🎯 Gründlich (langsamer)", "⚡ Schnell (gröber)"],
-        horizontal=True, key=f"mm_regen_model_{_active_id}")
-    _regen_model = settings.LLM_MODEL_FAST if "Schnell" in _regen_model_choice else None
+    _regen_model = _model_picker(f"mm_regen_model_{_active_id}")
     if st.button("🔄 Mindmap neu generieren", key=f"mm_regen_{_active_id}"):
         with st.spinner("KI erstellt die Mindmap neu … das kann je nach Umfang und "
                         "Hardware einige Zeit dauern."):
             try:
-                _new_graph = mindmap.generate_mindmap(
+                _new_graph, _regen_warning = mindmap.generate_mindmap(
                     _active["doc_ids"], _active["subject"], model=_regen_model)
             except mindmap.MindmapError as exc:
                 st.error(str(exc))
                 st.stop()
         manifest.update_mindmap(_active_id, graph=_new_graph,
                                 model=_regen_model or settings.author_model())
-        st.success("Mindmap neu erzeugt.")
+        if _regen_warning:
+            st.session_state["_mm_gen_warning"] = _regen_warning
+        else:
+            st.success("Mindmap neu erzeugt.")
         st.rerun()
     if st.button("🗑️ Mindmap löschen", key=f"mm_delete_{_active_id}"):
         manifest.delete_mindmap(_active_id)
         st.session_state["_mm_pending_choice"] = None
         st.success("Mindmap gelöscht.")
         st.rerun()
+
+_gen_warning = st.session_state.pop("_mm_gen_warning", None)
+if _gen_warning:
+    st.warning(_gen_warning)
 
 if not _graph.get("nodes"):
     st.info("Diese Mindmap hat keine Themen (leerer Graph).")

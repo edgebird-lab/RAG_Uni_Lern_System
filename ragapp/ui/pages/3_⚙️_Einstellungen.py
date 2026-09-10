@@ -67,6 +67,7 @@ with st.spinner("Einstellungen wird geladen ..."):
         settings, RUNTIME_CONFIG_FILE, Settings, UI_RESTART_FILE, UI_MODE_FILE,
     )
     from ragapp import manifest, netinfo
+    from ragapp.llm import list_installed_models
     from ragapp.hardware import (
         detect_hardware,
         format_hardware,
@@ -122,29 +123,6 @@ def _hardware_erkennen() -> dict:
     return detect_hardware()
 
 
-def _installierte_modelle() -> list[str] | None:
-    """Namen der lokal in Ollama installierten Modelle. ``None`` bei Fehler
-    (z. B. Ollama-Server nicht erreichbar)."""
-    try:
-        import ollama
-
-        client = ollama.Client(host=settings.OLLAMA_BASE_URL)
-        data = client.list()
-        modelle = (data.get("models", []) if isinstance(data, dict)
-                   else getattr(data, "models", []) or [])
-        namen: list[str] = []
-        for m in modelle:
-            if isinstance(m, dict):
-                name = m.get("model") or m.get("name") or ""
-            else:
-                name = getattr(m, "model", "") or getattr(m, "name", "") or ""
-            if name:
-                namen.append(str(name))
-        return sorted(set(namen))
-    except Exception:
-        return None
-
-
 def _fmt_dl_label(text: str, done, tot) -> str:
     """Baut das Fortschritts-Label fuer einen Modell-Download (rein/testbar)."""
     lbl = text or "lädt …"
@@ -197,7 +175,7 @@ if hw:
         st.code(format_hardware(hw), language="text")
 
     # --- installierte Modelle (fuer Markierung "schon da") ----------------- #
-    installiert = _installierte_modelle()
+    installiert = list_installed_models()
 
     # --- Empfehlung -------------------------------------------------------- #
     try:
