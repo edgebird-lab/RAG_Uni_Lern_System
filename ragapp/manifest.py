@@ -330,6 +330,24 @@ CREATE TABLE IF NOT EXISTS practice_attempts (
     notiz        TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_practice_attempts_problem ON practice_attempts(problem_id);
+
+-- Mindmaps: hierarchischer Themenbaum aus dem Inhaltsverzeichnis gewaehlter
+-- Dokumente (wie study_plans/study_plan_sections, aber als EIN JSON-Graph statt
+-- Zeilen-Tabelle - eine Mindmap-Struktur mit Eltern/Kind- UND Querverbindungen
+-- passt nicht sinnvoll in eine flache Tabelle). LLM-Generierung ist zu teuer
+-- fuer "bei jedem Aufruf neu" - mehrere parallele Mindmaps bleiben wie bei
+-- Lernplaenen wählbar.
+CREATE TABLE IF NOT EXISTS mindmaps (
+    mindmap_id  TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
+    subject     TEXT,
+    doc_ids     TEXT,             -- JSON-Liste gewaehlter Dokument-IDs
+    graph_json  TEXT NOT NULL,    -- {"root":..., "nodes":[...], "links":[...]}
+    model       TEXT,
+    created_at  REAL,
+    updated_at  REAL
+);
+CREATE INDEX IF NOT EXISTS idx_mindmaps_subject ON mindmaps(subject);
 """
 
 
@@ -1993,6 +2011,78 @@ def list_practice_attempts(problem_id: Optional[str] = None,
         sql += " LIMIT ? OFFSET ?"; args += [int(limit), int(offset)]
     with _connect() as conn:
         return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+
+# --------------------------------------------------------------------------- #
+# Mindmaps (siehe _SCHEMA-Kommentar oben)
+# --------------------------------------------------------------------------- #
+
+def create_mindmap(*, title: str, subject: Optional[str], doc_ids: list[str],
+                   graph: dict, model: Optional[str] = None) -> str:
+    now = time.time()
+    mid = uuid.uuid4().hex[:16]
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO mindmaps (mindmap_id, title, subject, doc_ids, graph_json, "
+            "model, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+            (mid, title.strip(), subject, json.dumps(doc_ids), json.dumps(graph),
+             model, now, now),
+        )
+    return mid
+
+
+def _decode_mindmap(row: dict) -> dict:
+    d = dict(row)
+    try:
+        d["doc_ids"] = json.loads(d.get("doc_ids") or "[]")
+    except Exception:  # noqa: BLE001
+        d["doc_ids"] = []
+    try:
+        d["graph"] = json.loads(d.get("graph_json") or "{}")
+    except Exception:  # noqa: BLE001
+        d["graph"] = {}
+    return d
+
+
+def get_mindmap(mindmap_id: str) -> Optional[dict]:
+    with _connect() as conn:
+        r = conn.execute(
+            "SELECT * FROM mindmaps WHERE mindmap_id=?", (mindmap_id,)).fetchone()
+    return _decode_mindmap(r) if r else None
+
+
+def list_mindmaps(subject: Optional[str] = None) -> list[dict]:
+    sql = "SELECT * FROM mindmaps WHERE 1=1"
+    args: list = []
+    if subject:
+        sql += " AND subject=?"; args.append(subject)
+    sql += " ORDER BY created_at DESC"
+    with _connect() as conn:
+        rows = conn.execute(sql, args).fetchall()
+    return [_decode_mindmap(r) for r in rows]
+
+
+def update_mindmap(mindmap_id: str, **fields: Any) -> None:
+    """Aktualisiert einzelne Felder (z. B. ``title`` oder eine neu erzeugte
+    ``graph``/``model`` nach 'Neu generieren')."""
+    valid = {"title", "graph", "model"}
+    sets = []
+    args = []
+    for k in fields:
+        if k not in valid:
+            continue
+        sets.append(f"{'graph_json' if k == 'graph' else k}=?")
+        args.append(json.dumps(fields[k]) if k == "graph" else fields[k])
+    if not sets:
+        return
+    args += [time.time(), mindmap_id]
+    with _connect() as conn:
+        conn.execute(f"UPDATE mindmaps SET {','.join(sets)}, updated_at=? WHERE mindmap_id=?", args)
+
+
+def delete_mindmap(mindmap_id: str) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM mindmaps WHERE mindmap_id=?", (mindmap_id,))
 
 
 # Ro7: KEINE Initialisierung mehr als Import-Nebenwirkung. Schema/Migrationen

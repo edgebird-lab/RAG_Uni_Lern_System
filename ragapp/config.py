@@ -385,6 +385,17 @@ class Settings:
     PRACTICE_MAX_SOURCE_CHARS: int = 6000
 
     # ------------------------------------------------------------------ #
+    # Mindmap (Themenbaum aus dem Inhaltsverzeichnis, wie die Lernplan-
+    # Gliederung - eigenes SVG-Layout statt System-Graphviz, siehe mindmap.py)
+    # ------------------------------------------------------------------ #
+    MINDMAP_MAX_TOPICS: int = 8        # max. Hauptthemen (Uebersichtlichkeit)
+    MINDMAP_MAX_SUBTOPICS: int = 6     # max. Unterthemen je Hauptthema
+    MINDMAP_MAX_LINKS: int = 8         # max. Querverbindungen zwischen Themen
+    # Harte Obergrenze aller Knoten zusammen - schuetzt vor einer unlesbaren
+    # SVG-Flaeche UND vor einem ausufernden Prompt bei der naechsten Anfrage.
+    MINDMAP_MAX_NODES: int = 40
+
+    # ------------------------------------------------------------------ #
     # Evaluation
     # ------------------------------------------------------------------ #
     EVAL_QUESTIONS_PER_CHUNK: int = 1      # Held-out-Fragen pro gesampeltem Chunk
