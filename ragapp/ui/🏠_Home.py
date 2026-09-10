@@ -176,7 +176,7 @@ _components.html(
 # --------------------------------------------------------------------------- #
 from ragapp.ui._style import (apply_page_style, PAGE_REGISTRY, render_nav_tile,
                                render_hero_title, card, speech_bubble)
-from ragapp.ui._mascot import mascot_svg
+from ragapp.ui._mascot import render_mascot
 _theme = apply_page_style("home")
 
 _hero_l, _hero_r = st.columns([3, 1])
@@ -185,8 +185,7 @@ with _hero_l:
     speech_bubble("Wähle unten einen Bereich – oder nutze das ☰-Menü links für die Kurzwahl.",
                   icon="✨")
 with _hero_r:
-    st.markdown(f'<div class="rag-mascot">{mascot_svg(_theme["accent"])}</div>',
-                unsafe_allow_html=True)
+    render_mascot(_theme["accent"], pose="cheer", animation="wave")
 
 with st.spinner("Wird geladen ..."):
     from ragapp import manifest

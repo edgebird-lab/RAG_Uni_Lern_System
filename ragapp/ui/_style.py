@@ -275,13 +275,77 @@ div[class*="st-key-card_"] {{
 html.rag-dark .rag-bubble {{background:#0f2440; border-color:rgba(231,237,245,.16);}}
 html.rag-dark .rag-bubble::after {{background:#0f2440; border-color:rgba(231,237,245,.16);}}
 
-/* Home-Maskottchen: leichtes Schweben, damit die Figur lebendig wirkt statt
-   wie ein statisches Bild. */
-.rag-mascot {{animation:ragMascotFloat 3.6s ease-in-out infinite; margin-top:-6px;}}
-.rag-mascot svg {{display:block; margin:0 auto; filter:drop-shadow(0 10px 14px rgba(43,32,54,.16));}}
+/* Lernmaskottchen (siehe ragapp.ui._mascot) - Grundgeruest + drei
+   Bewegungs-Varianten (float/wave/run, je nach Pose der Seite) plus
+   Augen-Ausdruck (Blinzeln/Zwinkern/schlaefrig) und Pupillen-Tracking. */
+.rag-mascot svg {{display:block; margin:0 auto; filter:drop-shadow(0 10px 14px rgba(43,32,54,.16));
+  overflow:visible;}}
+.ragm-pupil-l, .ragm-pupil-r {{transition:transform .09s linear;}}
+
+/* Variante 1: sanftes Schweben (Standard-Idle). */
+.rag-mascot-float {{animation:ragMascotFloat 3.6s ease-in-out infinite;}}
 @keyframes ragMascotFloat {{
   0%,100% {{transform:translateY(0) rotate(-1.5deg);}}
   50%     {{transform:translateY(-9px) rotate(1.5deg);}}
+}}
+
+/* Variante 2: Schweben + der rechte Arm winkt (Begruessungs-Pose). */
+.rag-mascot-wave {{animation:ragMascotFloat 3.6s ease-in-out infinite;}}
+.rag-mascot-wave .ragm-arm-r {{animation:ragmArmWave 1.15s ease-in-out infinite;}}
+@keyframes ragmArmWave {{
+  0%,100% {{transform:rotate(0deg);}}
+  30%     {{transform:rotate(-26deg);}}
+  60%     {{transform:rotate(-6deg);}}
+}}
+
+/* Variante 3: huepfender "Renn"-Bounce, Beine wechseln sich ab (Lernzeit-
+   Seite - passt zum Pomodoro-Timer-Tempo). */
+.rag-mascot-run {{animation:ragmRunBounce .62s ease-in-out infinite;}}
+@keyframes ragmRunBounce {{
+  0%,100% {{transform:translateY(0) rotate(-3deg);}}
+  50%     {{transform:translateY(-13px) rotate(3deg);}}
+}}
+.rag-mascot-run .ragm-leg-l {{animation:ragmLegHop .62s ease-in-out infinite;}}
+.rag-mascot-run .ragm-leg-r {{animation:ragmLegHop .62s ease-in-out infinite .31s;}}
+@keyframes ragmLegHop {{
+  0%,100% {{transform:translateY(0);}}
+  50%     {{transform:translateY(-6px);}}
+}}
+
+/* Augen: natuerliches beidseitiges Blinzeln (selten, kurz)... */
+.ragm-blink {{animation:ragmBlink 5.4s ease-in-out infinite;}}
+@keyframes ragmBlink {{
+  0%, 92%, 100% {{transform:scaleY(1);}}
+  95%           {{transform:scaleY(.12);}}
+}}
+/* ...das linke Auge zwinkert bei verspielten Posen stattdessen SELTENER,
+   dafuer einzeln (Wink statt Blink) - laeuft bewusst NICHT synchron zum
+   rechten Auge (andere Dauer), damit es wie ein bewusster Zwinker wirkt. */
+.ragm-wink-loop {{animation:ragmWink 6.8s ease-in-out infinite;}}
+@keyframes ragmWink {{
+  0%, 90%, 100% {{transform:scaleY(1);}}
+  94%           {{transform:scaleY(.08);}}
+}}
+/* Schlaefrig (Lernzeit im "run"-Pomodoro-Kontext): Augen bleiben schlicht
+   halb geschlossen statt zu animieren. */
+.ragm-sleepy {{transform:scaleY(.45);}}
+@media (prefers-reduced-motion: reduce) {{
+  .rag-mascot-float, .rag-mascot-wave, .rag-mascot-run,
+  .rag-mascot-wave .ragm-arm-r, .rag-mascot-run .ragm-leg-l, .rag-mascot-run .ragm-leg-r,
+  .ragm-blink, .ragm-wink-loop {{animation:none !important;}}
+}}
+
+/* Kleines Ecken-Maskottchen auf allen Nicht-Home-Seiten (siehe
+   apply_page_style()) - fix unten RECHTS (unten links waere die Sidebar,
+   die optisch ueber allem liegt und die Figur verdecken wuerde),
+   klickdurchlaessig (blockiert nie Inhalte dahinter). Auf schmalen/kurzen
+   Fenstern ausgeblendet, damit es auf dem Handy keinen Platz wegnimmt. */
+.rag-mascot-corner {{
+  position:fixed; right:16px; bottom:10px; z-index:5; pointer-events:none;
+  opacity:.92;
+}}
+@media (max-height: 620px), (max-width: 700px) {{
+  .rag-mascot-corner {{display:none;}}
 }}
 
 /* Kacheln (Home-Navigation) + wiederverwendbare "weiche Karte" fuer alle
@@ -591,5 +655,12 @@ def apply_page_style(page_key: str, *, show_nav: bool = True) -> dict:
 
     if show_nav:
         render_hamburger_nav(page_key)
+
+    # Kleines Ecken-Maskottchen mit seiner Pose (siehe ragapp.ui._mascot.POSES) -
+    # NICHT auf Home, das zeigt bereits sein eigenes, grosses Hero-Maskottchen.
+    if page_key != "home":
+        from ragapp.ui._mascot import render_mascot_corner, pose_for
+        _pose, _anim, _prop = pose_for(page_key)
+        render_mascot_corner(accent, pose=_pose, animation=_anim, prop=_prop)
 
     return theme
