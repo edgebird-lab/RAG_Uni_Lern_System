@@ -263,6 +263,7 @@ class Settings:
     PLAN_BLOCK_MIN: int = 25               # Groesse eines Lernblocks (= 1 Pomodoro-Arbeitsblock)
     PLAN_MAX_OUTLINE_SECTIONS: int = 15    # Obergrenze fuer die KI-Gliederung (Uebersichtlichkeit)
     PLAN_MIN_GRANULAR_CHARS: int = 400     # kleinere Original-Abschnitte werden VOR der KI-Anfrage mit dem naechsten zusammengelegt (weniger Uebersegmentierung + kuerzerer Prompt)
+    PLAN_MAX_TOC_CHARS: int = 10000        # Obergrenze fuer das Inhaltsverzeichnis im Gliederungs-Prompt: bei SEHR grossen/vielen Dokumenten wuerde die TOC sonst das Kontextfenster sprengen - das Modell sieht dann nur einen abgeschnittenen Rest und erfindet frei (beobachtet: Marketing-PDF -> Gliederung ueber Deutsch-Grammatik). Weit unter LLM_NUM_CTX (8192 Tokens), damit auch Systemprompt+Anweisung+Antwort sicher reinpassen.
     # Grobe Wartezeit-Schaetzung fuer die UI (Sekunden) - KEINE Forschung, nur aus
     # eigenen Messwerten kalibriert; haengt stark von der Hardware ab, daher immer
     # als Richtwert kommunizieren, nie als Zusage.

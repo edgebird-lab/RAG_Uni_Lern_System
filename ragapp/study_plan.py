@@ -100,6 +100,53 @@ def _granular_sections(doc_ids: list[str]) -> list[tuple[str, str, str]]:
     return _merge_tiny_sections(out)
 
 
+def _toc_text(granular: list[tuple[str, str, str]]) -> str:
+    return "\n".join(f"{i}. {t} (~{len(b)} Zeichen)" for i, (_, t, b) in enumerate(granular))
+
+
+def _disp_title(first: str, last: str) -> str:
+    return first if first == last else f"{first} … {last}"
+
+
+def _cap_granular_for_prompt(
+    granular: list[tuple[str, str, str]], max_toc_chars: int,
+) -> list[tuple[str, str, str]]:
+    """Legt bei SEHR grossen Dokumenten (viele granulare Abschnitte) benachbarte
+    Abschnitte DERSELBEN Quelle so lange paarweise zusammen, bis das Inhalts-
+    verzeichnis sicher ins Kontextfenster passt. Ohne diese Bremse sieht das
+    Modell bei "viel Text" nur einen mitten abgeschnittenen TOC-Rest und erfindet
+    frei weiter (beobachtet: Marketing-PDF -> Gliederung ueber Deutsch-Grammatik) -
+    das widerspricht dem Grundprinzip, nur zu ordnen statt zu erfinden.
+
+    Intern (label, erster Titel, letzter Titel, Text): der ANGEZEIGTE Titel
+    einer Merge-Gruppe bleibt so ueber beliebig viele Merge-Runden beschraenkt
+    (nur "erster … letzter", wie bei ``_merge_tiny_sections``) - wuerde man bei
+    jeder Runde die vollen Titel aneinanderhaengen, wuechse die TOC trotz
+    sinkender Zeilenzahl kaum und der Zweck der Funktion waere verfehlt."""
+    groups = [(label, title, title, body) for label, title, body in granular]
+
+    def toc_len(gs: list[tuple[str, str, str, str]]) -> int:
+        return sum(len(f"{i}. {_disp_title(f, l)} (~{len(b)} Zeichen)\n")
+                   for i, (_, f, l, b) in enumerate(gs))
+
+    while len(groups) > 1 and toc_len(groups) > max_toc_chars:
+        merged: list[tuple[str, str, str, str]] = []
+        i = 0
+        while i < len(groups):
+            if i + 1 < len(groups) and groups[i][0] == groups[i + 1][0]:
+                label, first1, _, body1 = groups[i]
+                _, _, last2, body2 = groups[i + 1]
+                merged.append((label, first1, last2, body1 + "\n\n" + body2))
+                i += 2
+            else:
+                merged.append(groups[i])
+                i += 1
+        if len(merged) == len(groups):     # keine gleichquelligen Nachbarn mehr -> Abbruch
+            break
+        groups = merged
+    return [(label, _disp_title(first, last), body) for label, first, last, body in groups]
+
+
 def estimate_outline_eta_seconds(doc_ids: list[str], model: Optional[str] = None) -> int:
     """Wartezeit-Schaetzung fuer die UI (VOR dem Klick). Selbstlernend: sobald
     genug ECHTE Messungen fuer das gewaehlte Modell vorliegen (siehe
@@ -177,18 +224,25 @@ def generate_outline(doc_ids: list[str], subject: Optional[str],
             "Keine indexierten Abschnitte gefunden. Die gewaehlten Dokumente "
             "muessen im RAG sein (Seite Ingestion -> 'Im RAG'-Haekchen).")
 
+    total_chars = sum(len(b) for _, _, b in granular)
+    # Bei SEHR grossen/vielen Dokumenten benachbarte Abschnitte weiter zusammen-
+    # legen, bis das Inhaltsverzeichnis sicher ins Kontextfenster passt - sonst
+    # sieht das Modell nur einen abgeschnittenen Rest und erfindet frei (siehe
+    # Docstring von ``_cap_granular_for_prompt``). ``total_chars`` bleibt am
+    # UNGEKUERZTEN Original bemessen (echtes Zeichenvolumen fuer die ETA-Messung).
+    capped = _cap_granular_for_prompt(granular, settings.PLAN_MAX_TOC_CHARS)
+
     max_sections = max(1, int(settings.PLAN_MAX_OUTLINE_SECTIONS))
-    toc = "\n".join(f"{i}. {t} (~{len(b)} Zeichen)" for i, (_, t, b) in enumerate(granular))
+    toc = _toc_text(capped)
     fach = subject or "unbekannt"
     used_model = model or _author_model()
-    total_chars = sum(len(b) for _, _, b in granular)
 
     llm = get_llm(used_model)
     _t0 = time.monotonic()
     try:
         data = llm.generate_json(
-            _OUTLINE_PROMPT.format(fach=fach, n=len(granular), toc=toc,
-                                   max_sections=max_sections, max_idx=len(granular) - 1),
+            _OUTLINE_PROMPT.format(fach=fach, n=len(capped), toc=toc,
+                                   max_sections=max_sections, max_idx=len(capped) - 1),
             system=_OUTLINE_SYSTEM, temperature=0.2)
     except Exception as exc:  # noqa: BLE001
         raise OutlineError(f"KI-Gliederung fehlgeschlagen: {exc}") from exc
@@ -200,15 +254,15 @@ def generate_outline(doc_ids: list[str], subject: Optional[str],
     except Exception:  # noqa: BLE001
         pass
 
-    sections = _repair_outline(data, len(granular))
+    sections = _repair_outline(data, len(capped))
     if sections is None:
         # Nie ganz scheitern: granulare Abschnitte 1:1 als Gliederung uebernehmen.
         sections = [{"title": t, "summary": "", "indices": [i]}
-                    for i, (_, t, _) in enumerate(granular)]
+                    for i, (_, t, _) in enumerate(capped)]
 
     out = []
     for s in sections:
-        chars = sum(len(granular[i][2]) for i in s["indices"] if 0 <= i < len(granular))
+        chars = sum(len(capped[i][2]) for i in s["indices"] if 0 <= i < len(capped))
         out.append({"title": s["title"], "summary": s.get("summary") or "",
                     "est_chars": chars, "est_minutes": estimate_minutes(chars)})
     return out
