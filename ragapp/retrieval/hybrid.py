@@ -11,11 +11,14 @@ Pipeline für maximale Trefferquote:
        Score-Skalierungsprobleme.
     4. **Cross-Encoder-Rerank** sortiert die Top-Kandidaten final.
 
+Dense und BM25 laufen parallel (ThreadPool), Embedding vorher einmalig.
+
 Rückgabe: Liste finaler Chunk-Kandidaten mit Scores und Herkunftsangabe.
 """
 from __future__ import annotations
 
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 from ragapp.config import settings
@@ -116,8 +119,12 @@ def retrieve(query: str, subject: Optional[str] = None,
     where = {"subject": subject} if subject else None
     query_emb = embedder.embed_query(query)
 
-    dense_ids, dense_score = _dense_chunk_ranking(query_emb, where)
-    bm25_ids, bm25_score = _bm25_chunk_ranking(query, subject)
+    # Dense (Chroma) und BM25 parallel – unabhängige I/O-/CPU-Pfade.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        fut_dense = pool.submit(_dense_chunk_ranking, query_emb, where)
+        fut_bm25 = pool.submit(_bm25_chunk_ranking, query, subject)
+        dense_ids, dense_score = fut_dense.result()
+        bm25_ids, bm25_score = fut_bm25.result()
 
     fused = _rrf(
         [(dense_ids, settings.DENSE_WEIGHT), (bm25_ids, settings.BM25_WEIGHT)],

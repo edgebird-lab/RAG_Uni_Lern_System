@@ -294,6 +294,12 @@ with st.sidebar:
              "belegt ist (Schutz vor erfundenen Aussagen). AUS = schneller, dafür wird "
              "die Antwort weniger streng gegengeprüft. Sie stammt aber weiterhin nur "
              "aus deinen Unterlagen. Technisch: Faithfulness-Check.")
+    tutor_ui = st.toggle(
+        "🗣️ Tutor-Gespräch", value=False, key="ui_tutor",
+        help="Freier Dialog über deine Unterlagen: strukturieren, priorisieren, "
+             "Lernüberblick. Fakten kommen weiterhin nur aus dem RAG – nichts wird "
+             "erfunden; fehlende Stellen werden klar benannt. Gegenprüfung ist in "
+             "diesem Modus aus (sonst würde Synthese oft verworfen).")
 
     show_sources = st.toggle("Quellen anzeigen", value=True)
     st.divider()
@@ -576,17 +582,19 @@ if prompt:
 
         from ragapp.graph.rag_graph import answer_query, answer_query_stream
 
-        # Schnell-Modus (Gegenprüfung AUS) UND Quellen-Anzeige AN -> Antwort Token für
-        # Token streamen (größter Hebel fürs gefühlte Tempo). Bei ausgeschalteter
-        # Quellen-Anzeige weiter blockierend, damit die [Quelle N]-Verweise sauber aus
-        # dem Volltext entfernt werden können (_strip_source_labels braucht ihn ganz).
-        if not _vram_low and check_faith_ui is False and show_sources:
+        _chat_mode = "tutor" if tutor_ui else "strict"
+        # Tutor: Faithfulness aus (Synthese), Streaming erlaubt
+        _faith_for_call = False if tutor_ui else check_faith_ui
+
+        # Schnell-Modus (Gegenprüfung AUS) / Tutor UND Quellen-Anzeige AN -> streamen
+        if not _vram_low and _faith_for_call is False and show_sources:
             try:
                 _stream, _holder = answer_query_stream(
                     prompt, subject=subject_filter,
                     use_reranker=use_reranker_ui,
-                    check_faithfulness=check_faith_ui,
-                    history=st.session_state.messages[:-1])
+                    check_faithfulness=_faith_for_call,
+                    history=st.session_state.messages[:-1],
+                    chat_mode=_chat_mode)
             except Exception:  # noqa: BLE001 - Setup-Fehler -> blockierender Fallback
                 _stream, _holder = None, {}
             if _stream is not None:
@@ -608,8 +616,9 @@ if prompt:
                 try:
                     result = answer_query(prompt, subject=subject_filter,
                                           use_reranker=use_reranker_ui,
-                                          check_faithfulness=check_faith_ui,
-                                          history=st.session_state.messages[:-1])
+                                          check_faithfulness=_faith_for_call,
+                                          history=st.session_state.messages[:-1],
+                                          chat_mode=_chat_mode)
                 except Exception as exc:  # noqa: BLE001 - rohe Fehler nie roh anzeigen
                     result = {"answer": _friendly_error(exc), "mode": "fallback",
                               "sources": [], "total_time": 0}

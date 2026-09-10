@@ -16,7 +16,9 @@ diese Funktion schreibt nur Markdown.
 """
 from __future__ import annotations
 
+import logging
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Callable
 
@@ -25,12 +27,16 @@ from ragapp import manifest
 from ragapp.retrieval.vectorstore import get_vectorstore
 from ragapp.llm import get_llm
 
-# Zeichenbudget je LLM-Abschnitt: klein genug, dass die feste num_predict-Grenze
-# (settings.LLM_NUM_PREDICT, i. d. R. 1024) fuer eine vollstaendige Zusammen-
-# fassung reicht; gross genug fuer thematische Kohaerenz.
+_log = logging.getLogger(__name__)
+
+# Zeichenbudget je LLM-Abschnitt: klein genug fuer kohaerente Aufrufe,
+# gross genug fuer thematische Abschnitte. Token-Budget separat erhoeht.
 _SECTION_CHAR_BUDGET = 5000
 _MIN_SECTION_CHARS = 150          # zu kurze Abschnitte ueberspringen (wie exam_catalog)
+_SUMMARY_NUM_PREDICT = 2560       # Freitext braucht mehr als LLM_NUM_PREDICT (1024)
+_SUMMARY_NUM_PREDICT_RETRY = 3072
 _PREFIX_RE = re.compile(r"^\[[^\]]{0,120}\]\n")   # entfernt den [header_path]-Prefix der Chunks
+_EMPTY_MARKERS = ("(kein pruefungsrelevanter inhalt)", "(kein prüfungsrelevanter inhalt)")
 
 
 _SYSTEM = (
@@ -61,6 +67,18 @@ Markdown. Regeln:
   gib nur den Fliess-/Stichpunkt-Inhalt aus.
 Wenn der Abschnitt keine pruefungsrelevante Substanz enthaelt, gib exakt
 "(kein pruefungsrelevanter Inhalt)" aus."""
+
+
+@dataclass
+class SummaryStats:
+    """Ergebnis-Metadaten fuer UI/CLI (geschrieben / uebersprungen / fehlgeschlagen)."""
+    written: int = 0
+    skipped_short: int = 0
+    skipped_empty: int = 0
+    failed: int = 0
+    total_sections: int = 0
+    last_error: str = ""
+    errors: list[str] = field(default_factory=list)
 
 
 # --------------------------------------------------------------------------- #
@@ -145,6 +163,47 @@ def _safe_name(name: str) -> str:
     return stem or "Quelle"
 
 
+def _looks_truncated(md: str) -> bool:
+    """Heuristik: Antwort endet mitten im Satz/Listenpunkt (Token-Budget)."""
+    s = (md or "").rstrip()
+    if not s or len(s) < 40:
+        return False
+    if s.endswith(("*", "-", ":", ",", ";", "(")):
+        return True
+    # Abgeschnittenes Markdown-Listenitem ohne Inhalt nach dem Marker
+    last = s.splitlines()[-1].strip()
+    if last in ("*", "-", "•") or re.match(r"^[-*]\s*$", last):
+        return True
+    return False
+
+
+def _is_empty_section(md: str) -> bool:
+    low = (md or "").strip().lower()
+    if not low:
+        return True
+    return any(low.startswith(m) for m in _EMPTY_MARKERS)
+
+
+def _summarize_section(llm, prompt: str) -> str:
+    """Ein Abschnitt: Freitext ohne Think; bei leer/trunkiert ein Retry mit mehr Tokens."""
+    md = llm.generate(
+        prompt,
+        system=_SYSTEM,
+        temperature=0.2,
+        think=False,
+        num_predict=_SUMMARY_NUM_PREDICT,
+    ).strip()
+    if not md or _looks_truncated(md):
+        md = llm.generate(
+            prompt,
+            system=_SYSTEM,
+            temperature=0.2,
+            think=False,
+            num_predict=_SUMMARY_NUM_PREDICT_RETRY,
+        ).strip()
+    return md
+
+
 # --------------------------------------------------------------------------- #
 # Hauptfunktion
 # --------------------------------------------------------------------------- #
@@ -153,16 +212,25 @@ def write_summary(
     mode: str = "auto",                       # 'document' | 'subject' | 'auto'
     progress: Optional[Callable[[str], None]] = None,
     write_markdown: bool = True,
+    stats_out: Optional[SummaryStats] = None,
 ) -> Path:
     """Erzeugt eine gegroundete, strukturierte Markdown-Zusammenfassung und
     schreibt sie nach docs/Zusammenfassung_<name>.md. Gibt den Pfad zurueck.
 
-    Wirft ValueError, wenn zur Auswahl keine (ausreichenden) Chunks vorliegen."""
+    Wirft ValueError, wenn zur Auswahl keine (ausreichenden) Chunks vorliegen
+    oder kein Abschnitt erfolgreich zusammengefasst werden konnte.
+    Optional stats_out: wird mit Zaehlern befuellt (written/failed/…)."""
     chunks, label = _source_chunks(doc_id_oder_subject, mode)
     if not chunks:
         raise ValueError(f"Keine indexierten Chunks fuer '{doc_id_oder_subject}' gefunden.")
 
     sections = _sections_from_chunks(chunks)
+    stats = stats_out if stats_out is not None else SummaryStats()
+    stats.total_sections = len(sections)
+
+    if progress:
+        progress(f"{len(sections)} Abschnitte aus {len(chunks)} Chunks – Modell `{_author_model()}`")
+
     llm = get_llm(_author_model())            # grosses Autoren-Modell
 
     out: list[str] = [
@@ -173,27 +241,41 @@ def write_summary(
     ]
 
     total = len(sections)
-    written = 0
     for i, (title, body) in enumerate(sections, 1):
         if len(body) < _MIN_SECTION_CHARS:
+            stats.skipped_short += 1
             continue
         if progress:
             progress(f"Zusammenfassung {label}: '{title[:40]}' ({i}/{total}) …")
+        prompt = _PROMPT.format(
+            doc_label=label, title=title, section=body[:_SECTION_CHAR_BUDGET],
+        )
         try:
-            md = llm.generate(
-                _PROMPT.format(doc_label=label, title=title, section=body[:_SECTION_CHAR_BUDGET]),
-                system=_SYSTEM, temperature=0.2, think="low",   # Reasoning knapp -> Antwort statt Gedankenkette
-            ).strip()
-        except Exception:                     # einzelnen Abschnitt ueberspringen (wie exam_catalog)
+            md = _summarize_section(llm, prompt)
+        except Exception as exc:  # noqa: BLE001
+            msg = f"{title[:60]}: {exc}"
+            _log.warning("Zusammenfassung Abschnitt fehlgeschlagen: %s", msg)
+            stats.failed += 1
+            stats.last_error = str(exc)
+            if len(stats.errors) < 5:
+                stats.errors.append(msg)
+            if progress:
+                progress(f"Fehler bei '{title[:40]}': {exc}")
             continue
-        if not md or md.startswith("(kein pruefungsrelevant"):
+        if _is_empty_section(md):
+            stats.skipped_empty += 1
             continue
         out.append(f"\n## {title}\n")
         out.append(md + "\n")
-        written += 1
+        stats.written += 1
 
-    if written == 0:
-        raise ValueError("Es konnte kein Abschnitt zusammengefasst werden (leer/Fehler).")
+    if stats.written == 0:
+        detail = stats.last_error or "leer/Fehler"
+        raise ValueError(
+            f"Es konnte kein Abschnitt zusammengefasst werden ({detail}). "
+            f"Abschnitte: {total}, kurz übersprungen: {stats.skipped_short}, "
+            f"leer: {stats.skipped_empty}, Fehler: {stats.failed}."
+        )
 
     md_path = PROJECT_ROOT / "docs" / f"Zusammenfassung_{_safe_name(label)}.md"
     if write_markdown:

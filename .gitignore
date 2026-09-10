@@ -15,6 +15,7 @@ Zusammenfassungen/*
 
 # Aus persönlichen Unterlagen generierte Lernkataloge (enthalten Inhalte der Docs)
 docs/Lernkatalog_*.md
+docs/Zusammenfassung_*.md
 
 # ---------------------------------------------------------------------------
 # Lokal erzeugte Daten (Index, Datenbank, Logs), nicht versionieren

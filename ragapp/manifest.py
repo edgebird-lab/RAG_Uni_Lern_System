@@ -858,6 +858,18 @@ def set_card_usage(card_ids: list[str], *, use_flashcard: Optional[bool] = None,
         return cur.rowcount
 
 
+def set_suspended(card_ids: list[str], suspended: bool = True) -> int:
+    """Pausiert oder reaktiviert Karten (suspended=1 erscheint nicht in Lernrunden)."""
+    if not card_ids:
+        return 0
+    ph = ",".join("?" * len(card_ids))
+    with _connect() as conn:
+        cur = conn.execute(
+            f"UPDATE review_items SET suspended=? WHERE card_id IN ({ph})",
+            [1 if suspended else 0] + list(card_ids))
+        return cur.rowcount
+
+
 def update_card(card_id: str, *, front: Optional[str] = None,
                 answer: Optional[str] = None) -> None:
     """Bearbeitet Frage und/oder Antwort einer Karte und markiert sie als bearbeitet
@@ -887,24 +899,181 @@ def cards_needing_answer(subject: Optional[str] = None, deck: Optional[str] = No
 
 
 # --------------------------------------------------------------------------- #
-# Stapel (Decks): Karten frei benannten Themenstapeln zuordnen
+# Stapel (Decks): hierarchisch nach Fach, flexibel nach Doc/Thema/Karte
 # --------------------------------------------------------------------------- #
-def assign_deck(deck: Optional[str], *, doc_ids: Optional[list[str]] = None,
-                subjects: Optional[list[str]] = None, card_ids: Optional[list[str]] = None) -> int:
-    """Ordnet Karten einem Stapel zu (deck=None hebt die Zuordnung auf). Auswahl ueber
-    Dokumente, Faecher und/oder einzelne Karten. Gibt die Anzahl geaenderter Karten zurueck."""
-    conds, args = [], []
+def find_cards(
+    *,
+    subject: Optional[str] = None,
+    doc_ids: Optional[list[str]] = None,
+    topics: Optional[list[str]] = None,
+    deck: Optional[str] = None,
+    search: Optional[str] = None,
+    only_unassigned: bool = False,
+    exclude_suspended: bool = True,
+    card_ids: Optional[list[str]] = None,
+    limit: int = 500,
+    offset: int = 0,
+) -> list[dict]:
+    """Karten nach Fach / Dokument / Thema (TOC) / Stapel / Textsuche filtern.
+
+    Filter werden mit AND kombiniert (innerhalb von Listen: OR). Ideal fuer die
+    Stapel-Vorschau vor dem Zuordnen."""
+    sql = "SELECT * FROM review_items WHERE 1=1"
+    args: list = []
+    if exclude_suspended:
+        sql += " AND suspended=0"
+    if subject:
+        sql += " AND subject=?"; args.append(subject)
     if doc_ids:
-        conds.append(f"doc_id IN ({','.join('?' * len(doc_ids))})"); args += list(doc_ids)
-    if subjects:
-        conds.append(f"subject IN ({','.join('?' * len(subjects))})"); args += list(subjects)
+        sql += f" AND doc_id IN ({','.join('?' * len(doc_ids))})"; args += list(doc_ids)
+    if topics:
+        # Leeres Thema als '__none__'
+        named = [t for t in topics if t != "__none__"]
+        parts = []
+        if named:
+            parts.append(f"topic IN ({','.join('?' * len(named))})")
+            args += named
+        if "__none__" in topics:
+            parts.append("(topic IS NULL OR topic='')")
+        if parts:
+            sql += " AND (" + " OR ".join(parts) + ")"
+    if deck is not None:
+        if deck == "__none__":
+            sql += " AND (deck IS NULL OR deck='')"
+        else:
+            sql += " AND deck=?"; args.append(deck)
+    if only_unassigned:
+        sql += " AND (deck IS NULL OR deck='')"
     if card_ids:
-        conds.append(f"card_id IN ({','.join('?' * len(card_ids))})"); args += list(card_ids)
+        sql += f" AND card_id IN ({','.join('?' * len(card_ids))})"; args += list(card_ids)
+    if search and search.strip():
+        q = f"%{search.strip()}%"
+        sql += " AND (front LIKE ? OR IFNULL(answer,'') LIKE ? OR IFNULL(back,'') LIKE ?)"
+        args += [q, q, q]
+    sql += " ORDER BY subject, IFNULL(topic,''), front LIMIT ? OFFSET ?"
+    args += [int(limit), int(offset)]
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+
+def count_find_cards(**kwargs) -> int:
+    """Wie find_cards, aber nur die Anzahl (ohne LIMIT)."""
+    kw = dict(kwargs)
+    kw.pop("limit", None)
+    kw.pop("offset", None)
+    # grosse Grenze, wir zaehlen in SQL effizienter:
+    sql = "SELECT COUNT(*) AS c FROM review_items WHERE 1=1"
+    args: list = []
+    if kw.get("exclude_suspended", True):
+        sql += " AND suspended=0"
+    if kw.get("subject"):
+        sql += " AND subject=?"; args.append(kw["subject"])
+    if kw.get("doc_ids"):
+        ids = list(kw["doc_ids"])
+        sql += f" AND doc_id IN ({','.join('?' * len(ids))})"; args += ids
+    if kw.get("topics"):
+        topics = list(kw["topics"])
+        named = [t for t in topics if t != "__none__"]
+        parts = []
+        if named:
+            parts.append(f"topic IN ({','.join('?' * len(named))})")
+            args += named
+        if "__none__" in topics:
+            parts.append("(topic IS NULL OR topic='')")
+        if parts:
+            sql += " AND (" + " OR ".join(parts) + ")"
+    deck = kw.get("deck", None)
+    if "deck" in kwargs and deck is not None:
+        if deck == "__none__":
+            sql += " AND (deck IS NULL OR deck='')"
+        else:
+            sql += " AND deck=?"; args.append(deck)
+    if kw.get("only_unassigned"):
+        sql += " AND (deck IS NULL OR deck='')"
+    if kw.get("card_ids"):
+        ids = list(kw["card_ids"])
+        sql += f" AND card_id IN ({','.join('?' * len(ids))})"; args += ids
+    if kw.get("search") and str(kw["search"]).strip():
+        q = f"%{str(kw['search']).strip()}%"
+        sql += " AND (front LIKE ? OR IFNULL(answer,'') LIKE ? OR IFNULL(back,'') LIKE ?)"
+        args += [q, q, q]
+    with _connect() as conn:
+        return int(conn.execute(sql, args).fetchone()["c"])
+
+
+def list_topics(subject: Optional[str] = None,
+                doc_ids: Optional[list[str]] = None) -> list[str]:
+    """Distincte Themen/Abschnitte (TOC aus location/header_path) der Karten."""
+    sql = ("SELECT DISTINCT topic FROM review_items WHERE suspended=0 "
+           "AND topic IS NOT NULL AND topic<>''")
+    args: list = []
+    if subject:
+        sql += " AND subject=?"; args.append(subject)
+    if doc_ids:
+        sql += f" AND doc_id IN ({','.join('?' * len(doc_ids))})"; args += list(doc_ids)
+    sql += " ORDER BY topic"
+    with _connect() as conn:
+        return [r["topic"] for r in conn.execute(sql, args).fetchall()]
+
+
+def list_docs_with_cards(subject: Optional[str] = None) -> list[dict]:
+    """Dokumente, zu denen es Karteikarten gibt (doc_id, filename, n_cards, subject)."""
+    sql = (
+        "SELECT ri.doc_id AS doc_id, ri.subject AS subject, COUNT(*) AS n_cards, "
+        "COALESCE(d.filename, ri.doc_id) AS filename "
+        "FROM review_items ri "
+        "LEFT JOIN documents d ON d.doc_id = ri.doc_id "
+        "WHERE ri.suspended=0 AND ri.doc_id IS NOT NULL AND ri.doc_id<>''"
+    )
+    args: list = []
+    if subject:
+        sql += " AND ri.subject=?"; args.append(subject)
+    sql += " GROUP BY ri.doc_id ORDER BY filename"
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+
+def assign_deck(deck: Optional[str], *, doc_ids: Optional[list[str]] = None,
+                subjects: Optional[list[str]] = None, card_ids: Optional[list[str]] = None,
+                topics: Optional[list[str]] = None,
+                only_unassigned: bool = False) -> int:
+    """Ordnet Karten einem Stapel zu (deck=None hebt die Zuordnung auf).
+
+    Auswahl-Filter werden mit **AND** kombiniert (Listen intern OR). Wenn
+    ``card_ids`` gesetzt ist, werden genau diese Karten aktualisiert (andere
+    Filter dienen dann nur der Einschraenkung, falls zusaetzlich gesetzt).
+    Gibt die Anzahl geaenderter Karten zurueck."""
+    conds, args = [], []
+    # Explizite Karten-IDs: primaere Auswahl
+    if card_ids:
+        conds.append(f"card_id IN ({','.join('?' * len(card_ids))})")
+        args += list(card_ids)
+    else:
+        # Ohne card_ids: Fach/Dokument/Thema muessen AND-verknuepft sein
+        if subjects:
+            conds.append(f"subject IN ({','.join('?' * len(subjects))})")
+            args += list(subjects)
+        if doc_ids:
+            conds.append(f"doc_id IN ({','.join('?' * len(doc_ids))})")
+            args += list(doc_ids)
+        if topics:
+            named = [t for t in topics if t != "__none__"]
+            tparts = []
+            if named:
+                tparts.append(f"topic IN ({','.join('?' * len(named))})")
+                args += named
+            if "__none__" in topics:
+                tparts.append("(topic IS NULL OR topic='')")
+            if tparts:
+                conds.append("(" + " OR ".join(tparts) + ")")
     if not conds:
         return 0
+    where = " AND ".join(conds)
+    if only_unassigned:
+        where += " AND (deck IS NULL OR deck='')"
     with _connect() as conn:
         cur = conn.execute(
-            f"UPDATE review_items SET deck=? WHERE ({' OR '.join(conds)})", [deck] + args)
+            f"UPDATE review_items SET deck=? WHERE {where}", [deck] + args)
         return cur.rowcount
 
 
@@ -927,16 +1096,44 @@ def dissolve_deck(deck: str) -> int:
         return cur.rowcount
 
 
-def deck_overview() -> list[dict]:
-    """Pro Stapel: Kartenzahl + faellig (fuer die Verwaltung/Anzeige)."""
-    now = time.time()
+def rename_deck(old_name: str, new_name: str) -> int:
+    """Benennt einen Stapel um. Gibt die Anzahl umbenannter Karten zurueck."""
+    old_name = (old_name or "").strip()
+    new_name = (new_name or "").strip()
+    if not old_name or not new_name or old_name == new_name:
+        return 0
     with _connect() as conn:
-        rows = conn.execute(
-            "SELECT COALESCE(deck,'') AS deck, COUNT(*) AS total, "
-            "SUM(CASE WHEN due<=? THEN 1 ELSE 0 END) AS due "
-            "FROM review_items WHERE suspended=0 GROUP BY COALESCE(deck,'') ORDER BY deck",
-            (now,)).fetchall()
-        return [{"deck": r["deck"] or None, "total": r["total"], "due": r["due"]} for r in rows]
+        cur = conn.execute(
+            "UPDATE review_items SET deck=? WHERE deck=?", (new_name, old_name))
+        return cur.rowcount
+
+
+def deck_overview(subject: Optional[str] = None) -> list[dict]:
+    """Pro Stapel: Kartenzahl, faellig, betroffene Faecher (fuer hierarchische UI)."""
+    now = time.time()
+    sql = (
+        "SELECT COALESCE(deck,'') AS deck, "
+        "COUNT(*) AS total, "
+        "SUM(CASE WHEN due<=? THEN 1 ELSE 0 END) AS due, "
+        "GROUP_CONCAT(DISTINCT subject) AS subjects "
+        "FROM review_items WHERE suspended=0"
+    )
+    args: list = [now]
+    if subject:
+        sql += " AND subject=?"; args.append(subject)
+    sql += " GROUP BY COALESCE(deck,'') ORDER BY deck"
+    with _connect() as conn:
+        rows = conn.execute(sql, args).fetchall()
+        out = []
+        for r in rows:
+            subjs = [s for s in (r["subjects"] or "").split(",") if s]
+            out.append({
+                "deck": r["deck"] or None,
+                "total": r["total"],
+                "due": r["due"],
+                "subjects": sorted(set(subjs)),
+            })
+        return out
 
 
 # --------------------------------------------------------------------------- #

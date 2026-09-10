@@ -191,14 +191,32 @@ Gib NUR gueltiges JSON zurueck:
 {{"richtig": "...", "distraktoren": ["...", "...", "..."]}}"""
 
 
-def generate_mcq(question: str, answer: str, model: Optional[str] = None) -> "dict | None":
+# Prozess-lokaler MCQ-Cache (card_id / Inhalts-Hash -> Optionen)
+_MCQ_CACHE: dict = {}
+
+
+def generate_mcq(question: str, answer: str, model: Optional[str] = None,
+                 cache_key: Optional[str] = None) -> "dict | None":
     """Erzeugt on-the-fly eine MCQ (eine richtige + plausible falsche Optionen) aus
     Frage + Musterloesung. Gibt {options: [...gemischt...], correct: str} zurueck oder
-    None, wenn nicht genug Optionen entstehen. Distraktoren vom LLM (plausibel)."""
+    None, wenn nicht genug Optionen entstehen. Distraktoren vom LLM (plausibel).
+
+    cache_key (z. B. card_id): wiederholte Aufrufe derselben Karte nutzen den Cache
+    (Prozess-lokal), ohne erneut das LLM zu bemuehen."""
+    import hashlib
     import random
     ans = (answer or "").strip()
     if not ans:
         return None
+    key = cache_key or hashlib.sha1(
+        f"{(question or '').strip()}||{ans}".encode("utf-8")).hexdigest()
+    cached = _MCQ_CACHE.get(key)
+    if isinstance(cached, dict) and cached.get("options"):
+        # Optionen neu mischen, damit die Position der richtigen Antwort wechselt
+        opts = list(cached["options"])
+        random.shuffle(opts)
+        return {"options": opts, "correct": cached["correct"]}
+
     llm = get_llm(model or settings.LLM_MODEL_FAST)
     prompt = _MCQ_PROMPT.format(frage=(question or "")[:400], antwort=ans[:800])
     data = None
@@ -219,7 +237,12 @@ def generate_mcq(question: str, answer: str, model: Optional[str] = None) -> "di
         return None
     options = [correct] + distr
     random.shuffle(options)
-    return {"options": options, "correct": correct}
+    result = {"options": options, "correct": correct}
+    # Cache speichert die Optionen-Menge; Shuffle bei Hit (oben)
+    if len(_MCQ_CACHE) > 200:
+        _MCQ_CACHE.clear()
+    _MCQ_CACHE[key] = {"options": list(options), "correct": correct}
+    return result
 
 
 def is_grounded(frage: str, antwort: str, beleg: str, model: Optional[str] = None) -> bool:

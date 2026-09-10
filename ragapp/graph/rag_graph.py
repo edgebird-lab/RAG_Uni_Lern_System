@@ -37,7 +37,8 @@ from ragapp.llm import get_llm, diagnose_error
 from ragapp.retrieval.hybrid import retrieve
 from ragapp.retrieval.reranker import get_reranker
 from ragapp.graph.prompts import (
-    ANSWER_SYSTEM, ANSWER_PROMPT, FAITHFULNESS_PROMPT, NO_ANSWER_TOKEN,
+    ANSWER_SYSTEM, ANSWER_PROMPT, TUTOR_SYSTEM, TUTOR_PROMPT,
+    FAITHFULNESS_PROMPT, NO_ANSWER_TOKEN,
 )
 
 # Logger (zentrales Setup; faellt defensiv auf die stdlib zurueck, falls das Modul
@@ -55,6 +56,8 @@ class RAGState(TypedDict, total=False):
     search_query: str        # fuer die Suche genutzte (ggf. verlaufsbereinigte) Frage
     sub_queries: list        # Teilfragen bei breiten Fragen (vergleiche/nenne alle/...)
     subject: Optional[str]
+    chat_mode: str           # "strict" | "tutor" – Tutor = freier, weiterhin gegroundet
+    syllabus: bool           # Ueberblicks-/Lernstoff-Frage -> breiteres Retrieval
     use_reranker: Optional[bool]        # None = Einstellung, False = "Schnelle Antworten"
     check_faithfulness: Optional[bool]  # None = Einstellung, False = "Schnelle Antworten"
     candidates: list[dict]
@@ -74,6 +77,28 @@ class RAGState(TypedDict, total=False):
     relevance_ok: bool
     timings: dict
 
+
+# Tutor-/Syllabus-Budgets (nur fuer diesen Pfad; Strict bleibt bei settings.*)
+_TUTOR_SYLLABUS_TOP_K = 12
+_TUTOR_SYLLABUS_MAX_CHARS = 14000
+_PEDAGOGICAL_NAME_RE = re.compile(
+    r"zusammenfassung|kompakt|klausur|katalog|lern|ueberblick|überblick", re.I
+)
+_SYLLABUS_MARKERS = (
+    "was muss ich lernen", "was soll ich lernen", "was lernen", "lernen muss",
+    "wichtigste themen", "wichtigsten themen", "überblick", "ueberblick",
+    "zusammenfassung des fachs", "zusammenfassung vom fach", "lernplan",
+    "was wiederholen", "prüfungsstoff", "pruefungsstoff", "welche themen",
+    "stoff für", "stoff fuer", "was kommt in der klausur", "klausur relevant",
+    "was brauche ich für", "was brauche ich fuer", "was steht auf dem plan",
+    "inhalte des fachs", "themenübersicht", "themenuebersicht",
+)
+# Zusaetzlich: "was … lernen" / "was … wiederholen" mit Worten dazwischen
+_SYLLABUS_RE = re.compile(
+    r"was\s+(muss|soll|sollte|brauche)\s+ich\b.{0,40}\b(lernen|wiederholen|wissen|koennen|können)"
+    r"|welche[sn]?\s+themen\b|lern\s*stoff\b|pruefungs\s*stoff\b|prüfungs\s*stoff\b",
+    re.I | re.DOTALL,
+)
 
 def _source_entry(c: dict, rank: int) -> dict:
     meta = c["meta"]
@@ -118,18 +143,89 @@ def _sanitize_context_text(text: str) -> str:
     return text
 
 
-def _build_context(candidates: list[dict]) -> tuple[str, list[dict]]:
+def _build_context(candidates: list[dict],
+                   max_chars: Optional[int] = None,
+                   extra_prefix: str = "") -> tuple[str, list[dict]]:
     parts, sources = [], []
     used = 0
+    limit = max_chars if max_chars is not None else settings.MAX_CONTEXT_CHARS
+    if extra_prefix:
+        block = _sanitize_context_text(extra_prefix)
+        parts.append(block)
+        used += len(block)
     for i, c in enumerate(candidates, 1):
         doc = _sanitize_context_text(c["document"])
         block = f"[Quelle {i}] ({c['meta'].get('filename','?')}, {c['meta'].get('location','')})\n{doc}"
-        if used + len(block) > settings.MAX_CONTEXT_CHARS and parts:
+        if used + len(block) > limit and parts:
             break
         parts.append(block)
         used += len(block)
         sources.append(_source_entry(c, i))
     return "\n\n---\n\n".join(parts), sources
+
+
+def _is_tutor(state: RAGState) -> bool:
+    return (state.get("chat_mode") or "strict") == "tutor"
+
+
+def _is_syllabus_intent(question: str) -> bool:
+    ql = (question or "").strip().lower()
+    if not ql:
+        return False
+    if any(m in ql for m in _SYLLABUS_MARKERS):
+        return True
+    return bool(_SYLLABUS_RE.search(ql))
+
+
+def _pedagogical_boost(candidates: list[dict]) -> list[dict]:
+    """Bevorzugt Chunks aus Zusammenfassungs-/Klausur-/Katalog-Dateien."""
+    if not candidates:
+        return candidates
+    boosted = []
+    for c in candidates:
+        meta = c.get("meta") or {}
+        blob = f"{meta.get('filename', '')} {meta.get('header_path', '')} {meta.get('location', '')}"
+        sc = float(c.get("fusion_score") or 0.0)
+        if _PEDAGOGICAL_NAME_RE.search(blob):
+            sc += 0.025
+        nc = dict(c)
+        nc["fusion_score"] = sc
+        boosted.append(nc)
+    return sorted(boosted, key=lambda x: x.get("fusion_score", 0.0), reverse=True)
+
+
+def _load_existing_summary_md(subject: Optional[str], max_chars: int = 6000) -> str:
+    """Liest eine bereits erzeugte docs/Zusammenfassung_*.md zum Fach, falls vorhanden."""
+    if not subject:
+        return ""
+    try:
+        from ragapp.config import PROJECT_ROOT, SUBJECT_LABELS
+        docs_dir = PROJECT_ROOT / "docs"
+        if not docs_dir.is_dir():
+            return ""
+        label = SUBJECT_LABELS.get(subject, subject)
+        keys = {subject.lower(), label.lower(),
+                re.sub(r"[^\w]+", "_", subject, flags=re.U).lower(),
+                re.sub(r"[^\w]+", "_", label, flags=re.U).lower()}
+        # Kuerzel wie "MF" / erster Token der Label
+        for part in re.split(r"[\s_/]+", label):
+            if len(part) >= 2:
+                keys.add(part.lower())
+        best = None
+        for path in sorted(docs_dir.glob("Zusammenfassung_*.md")):
+            stem = path.stem.lower().replace("zusammenfassung_", "")
+            if any(k and k in stem for k in keys):
+                best = path
+                break
+        if best is None:
+            return ""
+        text = best.read_text("utf-8")[:max_chars].strip()
+        if not text:
+            return ""
+        return (f"[Quelle Summary] (bereits erzeugte Zusammenfassung: {best.name})\n{text}")
+    except Exception as exc:  # noqa: BLE001
+        _log.debug("Zusammenfassungs-MD nicht ladbar: %s", exc)
+        return ""
 
 
 # --------------------------------------------------------------------------- #
@@ -177,7 +273,8 @@ def _pool_fusion_candidates(queries: list[str], subject: Optional[str]) -> list[
                   key=lambda c: c.get("fusion_score", 0.0), reverse=True)
 
 
-def _relevance_ok(candidates: list[dict]) -> bool:
+def _relevance_ok(candidates: list[dict], *, tutor: bool = False,
+                  subject: Optional[str] = None) -> bool:
     """Relevanz-Gate: waehlt die zur genutzten Score-Quelle passende, WIRKSAME
     Schwelle.
       * Reranker AKTIV -> Cross-Encoder-Logit gegen RELEVANCE_MIN_SCORE (Logit-Skala).
@@ -186,8 +283,7 @@ def _relevance_ok(candidates: list[dict]) -> bool:
         Top-Treffers gaten (echtes Relevanzsignal) gegen DENSE_RELEVANCE_MIN_SCORE.
         Nur wenn der Top-Treffer keinen Dense-Score hat (rein aus BM25), bleibt der
         RRF-Mindestwert der Rueckfall.
-    Datengetrieben unterschieden: bei aktivem Rerank ist rerank_score != fusion_score;
-    im Fusions-Fall setzt reranker.rerank rerank_score = fusion_score."""
+    Tutor + Fach: etwas toleranter, damit Ueberblicksfragen nicht sofort fallen."""
     if not candidates:
         return False
     top = candidates[0]
@@ -195,53 +291,72 @@ def _relevance_ok(candidates: list[dict]) -> bool:
     fu = top.get("fusion_score")
     if rr is None:                     # kein Score vorhanden -> nicht blockieren
         return True
+    # Tutor mit Fachfilter: irgendwelche Treffer im Fach reichen oft fuer Teilanworten
+    if tutor and subject and len(candidates) >= 2:
+        dense_any = [c.get("dense_score") for c in candidates
+                     if c.get("dense_score") is not None]
+        if dense_any and max(dense_any) >= (settings.DENSE_RELEVANCE_MIN_SCORE * 0.75):
+            return True
     reranked = (fu is None) or (rr != fu)
     if reranked:
-        return rr >= settings.RELEVANCE_MIN_SCORE
-    # Schnell-Modus: "gibt es ueberhaupt EINEN semantisch relevanten Chunk?" – daher
-    # das BESTE Dense-Signal ueber ALLE Kandidaten, nicht nur candidates[0]. Sonst
-    # koennte ein rein per BM25 (Stichwort) nach oben gespuelter, semantisch schwacher
-    # Top-1-Treffer die ganze Frage faelschlich in den Fallback schicken, obwohl der
-    # eigentlich passende Treffer knapp dahinter liegt.
+        thr = settings.RELEVANCE_MIN_SCORE
+        if tutor:
+            thr = thr - 1.5          # Logit-Skala: etwas weicher
+        return rr >= thr
     dense = [c.get("dense_score") for c in candidates if c.get("dense_score") is not None]
+    dense_thr = settings.DENSE_RELEVANCE_MIN_SCORE
+    if tutor:
+        dense_thr = dense_thr * 0.85
     if dense:
-        return max(dense) >= settings.DENSE_RELEVANCE_MIN_SCORE
+        return max(dense) >= dense_thr
     return (fu or 0.0) >= settings.RELEVANCE_MIN_FUSION_SCORE
 
 
 def retrieve_node(state: RAGState) -> RAGState:
     t0 = time.time()
-    # Fuer die Suche die (ggf. verlaufsbereinigte) eigenstaendige Frage nutzen;
-    # die Antwort/Zitate arbeiten weiterhin mit der Originalfrage (state["question"]).
-    # Bei breiten Fragen (vergleiche/nenne alle/mehrschritt) zusaetzlich fuer jede
-    # Teilfrage suchen und die Treffer zusammenfuehren -> bessere Abdeckung.
     queries = [state.get("search_query") or state["question"]]
     queries += [q for q in (state.get("sub_queries") or []) if q]
     use_rr = state.get("use_reranker")
     subj = state.get("subject")
-    # R2: pro Teilfrage NUR Fusionskandidaten holen, alle poolen (dedupe) und dann
-    # EINMAL gegen die urspruengliche Originalfrage (queries[0]) reranken. So laeuft
-    # der teure Cross-Encoder genau einmal (statt N-fach) und die Rangfolge bleibt an
-    # der echten Nutzerintention konsistent (kein max()-Mix von Teilfrage-Scores).
+    syllabus = bool(state.get("syllabus"))
+    tutor = _is_tutor(state)
+    top_k = (_TUTOR_SYLLABUS_TOP_K if (syllabus and subj) else settings.FINAL_TOP_K)
     pool = _pool_fusion_candidates(queries, subj)
+    if syllabus:
+        pool = _pedagogical_boost(pool)
     candidates = get_reranker().rerank(
-        queries[0], pool, top_k=settings.FINAL_TOP_K, use_reranker=use_rr)
+        queries[0], pool, top_k=top_k, use_reranker=use_rr)
     timings = dict(state.get("timings", {}))
     timings["retrieve"] = round(time.time() - t0, 2)
     return {
         "candidates": candidates,
-        "relevance_ok": _relevance_ok(candidates),
+        "relevance_ok": _relevance_ok(candidates, tutor=tutor, subject=subj),
         "timings": timings,
     }
 
 
 def generate_node(state: RAGState) -> RAGState:
     t0 = time.time()
-    context, sources = _build_context(state["candidates"])
-    prompt = ANSWER_PROMPT.format(
-        context=context, question=state["question"], no_answer=NO_ANSWER_TOKEN
-    )
-    answer = get_llm().generate(prompt, system=ANSWER_SYSTEM).strip()
+    tutor = _is_tutor(state)
+    syllabus = bool(state.get("syllabus"))
+    max_chars = (_TUTOR_SYLLABUS_MAX_CHARS
+                 if (syllabus and state.get("subject")) else None)
+    extra = ""
+    if syllabus and state.get("subject"):
+        extra = _load_existing_summary_md(state.get("subject"))
+    context, sources = _build_context(
+        state["candidates"], max_chars=max_chars, extra_prefix=extra)
+    if tutor:
+        prompt = TUTOR_PROMPT.format(context=context, question=state["question"])
+        system = TUTOR_SYSTEM
+    else:
+        prompt = ANSWER_PROMPT.format(
+            context=context, question=state["question"], no_answer=NO_ANSWER_TOKEN
+        )
+        system = ANSWER_SYSTEM
+    answer = get_llm().generate(prompt, system=system).strip()
+    if tutor and NO_ANSWER_TOKEN in answer:
+        answer = answer.replace(NO_ANSWER_TOKEN, "").strip()
     timings = dict(state.get("timings", {}))
     timings["generate"] = round(time.time() - t0, 2)
     return {"answer": answer, "context": context, "sources": sources, "timings": timings}
@@ -249,9 +364,12 @@ def generate_node(state: RAGState) -> RAGState:
 
 def faithfulness_node(state: RAGState) -> RAGState:
     # Pro Anfrage abschaltbar ("Schnelle Antworten"): None = globale Einstellung.
-    enabled = (settings.ENABLE_FAITHFULNESS_CHECK
-               if state.get("check_faithfulness") is None
-               else state.get("check_faithfulness"))
+    # Tutor-Modus: Faithfulness standardmaessig AUS (Synthese sonst oft verworfen).
+    if state.get("check_faithfulness") is None:
+        enabled = (False if _is_tutor(state)
+                   else settings.ENABLE_FAITHFULNESS_CHECK)
+    else:
+        enabled = bool(state.get("check_faithfulness"))
     if not enabled:
         # Nicht geprüft -> die Antwort NICHT als "belegt" auszeichnen (ehrlich bleiben).
         return {"grounded": True, "mode": "answer", "faith_checked": False,
@@ -261,18 +379,10 @@ def faithfulness_node(state: RAGState) -> RAGState:
     data = get_llm(settings.LLM_MODEL_FAST).generate_json(
         FAITHFULNESS_PROMPT.format(context=state["context"], answer=state["answer"])
     )
-    # DREI Zustaende unterscheiden (nicht nur belegt/unbelegt), damit R5 nicht ins
-    # Gegenteil kippt: (bool("false") waere True -> deshalb strikte Pruefung.)
-    #   belegt     -> Modell sagt eindeutig JA
-    #   unbelegt   -> Modell sagt eindeutig NEIN (es ist sich SICHER: nicht belegt)
-    #   unsicher   -> None / Parse-Fehler / mehrdeutig (kleines 4B-Modell hat gehedged)
     val = data.get("grounded") if isinstance(data, dict) else None
     if isinstance(val, bool):
         verdict = "belegt" if val else "unbelegt"
     elif isinstance(val, str):
-        # Robust gegen mehrwortige/gehedgte Urteile ("nein, nicht gedeckt"): per
-        # Praefix/Teilstring statt Exakt-Match. NEGATIV hat Vorrang (Anti-Halluzination:
-        # ein klar unbelegtes Urteil darf nicht als 'unsicher' die Antwort behalten).
         v = val.strip().lower()
         neg = (v.startswith(("false", "nein", "no", "unbelegt"))
                or "nicht belegt" in v or "nicht gedeckt" in v
@@ -284,19 +394,14 @@ def faithfulness_node(state: RAGState) -> RAGState:
     reason = data.get("grund", "") if isinstance(data, dict) else ""
     timings = dict(state.get("timings", {}))
     timings["faithfulness"] = round(time.time() - t0, 2)
-    # R5 ausbalanciert: eine mit [Quelle N] belegte Antwort NICHT mehr komplett
-    # verwerfen, nur weil das kleine Modell unsicher ist – aber die Anti-Halluzination
-    # erhalten, wenn es sich SICHER ist, dass nichts belegt ist.
-    #   belegt   -> gruenes Badge, Antwort behalten.
-    #   unbelegt -> ehrlicher Dokument-Fallback (Modell ist sicher: nicht belegt).
-    #   unsicher -> Antwort BEHALTEN, aber Vertrauen herabstufen (Badge "nicht sicher
-    #               belegt", von der UI gelesen) statt eine evtl. gute Antwort wegzuwerfen.
-    # (Der frühere 'elif not relevance_ok'-Zweig war toter Code: faithfulness wird nur
-    #  erreicht, wenn relevance_ok bereits True ist – route_after_retrieve gated davor.)
     if verdict == "belegt":
         grounded, mode, confidence = True, "answer", "belegt"
     elif verdict == "unbelegt":
-        grounded, mode, confidence = False, "fallback", "fallback"
+        # Tutor: Soft-Fail – Antwort behalten, Badge unsicher (kein harter Fallback)
+        if _is_tutor(state):
+            grounded, mode, confidence = False, "answer", "unsicher"
+        else:
+            grounded, mode, confidence = False, "fallback", "fallback"
     else:
         grounded, mode, confidence = False, "answer", "unsicher"
     return {
@@ -307,7 +412,6 @@ def faithfulness_node(state: RAGState) -> RAGState:
         "confidence": confidence,
         "timings": timings,
     }
-
 
 def fallback_node(state: RAGState) -> RAGState:
     """Ehrlicher Fallback: keine erfundene Antwort, sondern passende Dokumente."""
@@ -338,15 +442,24 @@ def fallback_node(state: RAGState) -> RAGState:
 # Routing
 # --------------------------------------------------------------------------- #
 def route_after_retrieve(state: RAGState) -> str:
-    return "generate" if state.get("relevance_ok") else "fallback"
+    if state.get("relevance_ok"):
+        return "generate"
+    # Tutor: bei vorhandenen Kandidaten trotzdem versuchen (Teilanwort + Luecken)
+    if _is_tutor(state) and state.get("candidates"):
+        return "generate"
+    return "fallback"
 
 
 def route_after_generate(state: RAGState) -> str:
     answer = state.get("answer", "")
-    if NO_ANSWER_TOKEN in answer or not answer.strip():
+    if not answer.strip():
+        return "fallback"
+    if NO_ANSWER_TOKEN in answer:
+        # Tutor: generate_node entfernt den Sentinel bereits; Restfall -> Fallback
+        if _is_tutor(state):
+            return "faithfulness"
         return "fallback"
     return "faithfulness"
-
 
 def route_after_faithfulness(state: RAGState) -> str:
     # R5: nicht mehr strikt an grounded haengen. Der Faithfulness-Knoten entscheidet
@@ -472,30 +585,43 @@ def answer_query(question: str, subject: Optional[str] = None,
                  use_reranker: Optional[bool] = None,
                  check_faithfulness: Optional[bool] = None,
                  history: Optional[list] = None,
-                 decompose: bool = True) -> dict:
+                 decompose: bool = True,
+                 chat_mode: str = "strict") -> dict:
     """Öffentliche Schnittstelle für UI/CLI. Führt den Graphen aus.
 
     use_reranker / check_faithfulness: None = globale Einstellung; False =
     überspringen ("Schnelle Antworten" auf der Startseite -> schneller, dafür
     gröbere Trefferreihenfolge bzw. keine zusätzliche Beleg-Prüfung).
     history: bisherige Chat-Nachrichten -> kurze Rückfragen werden für die Suche zu
-    eigenständigen Fragen umformuliert (die Antwort nutzt die Originalfrage)."""
+    eigenständigen Fragen umformuliert (die Antwort nutzt die Originalfrage).
+    chat_mode: "strict" (Default, Sentinel/Faithfulness) oder "tutor" (freier
+    Dialog, Fakten weiterhin nur aus dem Kontext)."""
     t0 = time.time()
+    mode = "tutor" if chat_mode == "tutor" else "strict"
+    syllabus = _is_syllabus_intent(question)
     search_query = question
     if history and _looks_followup(question):
         search_query = _condense_query(question, history)
-    sub_queries = _decompose_query(search_query) if (decompose and _is_broad(question)) else []
+    # Syllabus/Ueberblick: kein teures Decompose (breiteres Retrieval reicht)
+    do_decompose = decompose and _is_broad(question) and not syllabus
+    sub_queries = _decompose_query(search_query) if do_decompose else []
+    # Tutor: Faithfulness default aus, sofern nicht explizit gesetzt
+    faith = check_faithfulness
+    if mode == "tutor" and faith is None:
+        faith = False
     state: RAGState = {"question": question, "search_query": search_query,
                        "sub_queries": sub_queries, "subject": subject,
+                       "chat_mode": mode, "syllabus": syllabus,
                        "use_reranker": use_reranker,
-                       "check_faithfulness": check_faithfulness, "mode": "answer"}
+                       "check_faithfulness": faith, "mode": "answer"}
     result = get_graph().invoke(state)
     if search_query != question:
         result["search_query"] = search_query
     if sub_queries:
         result["sub_queries"] = sub_queries
+    result["chat_mode"] = mode
+    result["syllabus"] = syllabus
     result["total_time"] = round(time.time() - t0, 2)
-    # Query-Log für spätere Analyse/Nachjustierung
     _log_query(question, subject, result)
     return result
 
@@ -504,8 +630,9 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
                         use_reranker: Optional[bool] = None,
                         check_faithfulness: Optional[bool] = None,
                         history: Optional[list] = None,
-                        decompose: bool = True):
-    """Streaming-Variante von :func:`answer_query` fuer den SCHNELL-Modus.
+                        decompose: bool = True,
+                        chat_mode: str = "strict"):
+    """Streaming-Variante von :func:`answer_query` fuer den SCHNELL-/Tutor-Modus.
 
     Rueckgabe ``(stream, holder)``:
         * ``stream`` - Generator ueber Antwort-Token (``str``). Erschoepft man ihn
@@ -518,52 +645,56 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
           faith_checked/timings/total_time - analog zu :func:`answer_query`). Vor dem
           Erschoepfen nicht auslesen.
 
-    Warum nur im Schnell-Modus: Bei aktiver Gegenpruefung (Faithfulness) kann die
-    Antwort nach der Generierung noch verworfen werden - dann haette man bereits
-    verworfenen Text gestreamt. Im Schnell-Modus entfaellt dieser Schritt (konsistent
-    zu R5: Badge ``ungeprueft``), Streaming ist also gefahrlos. Die oeffentliche
-    :func:`answer_query`-Signatur bleibt unveraendert - dieser Pfad ist rein additiv.
+    Warum nur im Schnell-/Tutor-Modus: Bei aktiver Gegenpruefung (Faithfulness) kann
+    die Antwort nach der Generierung noch verworfen werden - dann haette man bereits
+    verworfenen Text gestreamt.
     """
+    mode = "tutor" if chat_mode == "tutor" else "strict"
+    faith_arg = check_faithfulness
+    if mode == "tutor" and faith_arg is None:
+        faith_arg = False
     faith_enabled = (settings.ENABLE_FAITHFULNESS_CHECK
-                     if check_faithfulness is None else check_faithfulness)
+                     if faith_arg is None else faith_arg)
     if faith_enabled:
-        # Strenger Modus: nicht streamen (Aufrufer nimmt das blockierende answer_query).
         return None, {}
 
     holder: dict = {}
+    syllabus = _is_syllabus_intent(question)
 
     def _gen():
         t0 = time.time()
-        flushed = False              # wurde bereits echter Antworttext ausgegeben?
+        flushed = False
         accumulated: list[str] = []
         try:
-            # 1) Vorbereitung wie in answer_query: Rueckfrage verselbststaendigen,
-            #    breite Fragen fuers Retrieval zerlegen.
             search_query = question
             if history and _looks_followup(question):
                 search_query = _condense_query(question, history)
-            sub_queries = _decompose_query(search_query) \
-                if (decompose and _is_broad(question)) else []
+            do_decompose = decompose and _is_broad(question) and not syllabus
+            sub_queries = _decompose_query(search_query) if do_decompose else []
             queries = [search_query] + [q for q in sub_queries if q]
 
-            # 2) Retrieval + (optionaler) Rerank - identisch zu retrieve_node.
             tr = time.time()
             pool = _pool_fusion_candidates(queries, subject)
+            if syllabus:
+                pool = _pedagogical_boost(pool)
+            top_k = (_TUTOR_SYLLABUS_TOP_K if (syllabus and subject)
+                     else settings.FINAL_TOP_K)
             candidates = get_reranker().rerank(
-                queries[0], pool, top_k=settings.FINAL_TOP_K, use_reranker=use_reranker)
-            relevance_ok = _relevance_ok(candidates)
+                queries[0], pool, top_k=top_k, use_reranker=use_reranker)
+            relevance_ok = _relevance_ok(
+                candidates, tutor=(mode == "tutor"), subject=subject)
             timings = {"retrieve": round(time.time() - tr, 2)}
 
             base: dict = {"question": question, "subject": subject,
-                          "candidates": candidates, "relevance_ok": relevance_ok}
+                          "candidates": candidates, "relevance_ok": relevance_ok,
+                          "chat_mode": mode, "syllabus": syllabus}
             if search_query != question:
                 base["search_query"] = search_query
             if sub_queries:
                 base["sub_queries"] = sub_queries
 
-            # 3) Relevanz-Gate: kein tragfaehiger Treffer -> ehrlicher Dokument-Fallback
-            #    (kein LLM-Text; die Fallback-Meldung wird als ein Block ausgegeben).
-            if not relevance_ok:
+            allow_weak = (mode == "tutor" and bool(candidates))
+            if not relevance_ok and not allow_weak:
                 fb = fallback_node({"candidates": candidates})
                 yield fb.get("answer", "")
                 holder.update(base)
@@ -572,32 +703,40 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
                 holder["timings"] = timings
                 return
 
-            # 4) Kontext bauen und Antwort Token fuer Token streamen.
-            context, sources = _build_context(candidates)
-            prompt = ANSWER_PROMPT.format(
-                context=context, question=question, no_answer=NO_ANSWER_TOKEN)
+            max_chars = (_TUTOR_SYLLABUS_MAX_CHARS
+                         if (syllabus and subject) else None)
+            extra = (_load_existing_summary_md(subject)
+                     if (syllabus and subject) else "")
+            context, sources = _build_context(
+                candidates, max_chars=max_chars, extra_prefix=extra)
+            if mode == "tutor":
+                prompt = TUTOR_PROMPT.format(context=context, question=question)
+                system = TUTOR_SYSTEM
+                guard_sentinel = False
+            else:
+                prompt = ANSWER_PROMPT.format(
+                    context=context, question=question, no_answer=NO_ANSWER_TOKEN)
+                system = ANSWER_SYSTEM
+                guard_sentinel = True
             tg = time.time()
 
-            # "Keine-Info"-Schutz: einen kleinen Kopf puffern, BEVOR gestreamt wird -
-            # so wird der reine NO_ANSWER-Sentinel nie sichtbar (dann Dokument-Fallback),
-            # ohne das Streaming spuerbar zu verzoegern (nur die ersten ~40 Zeichen).
             head = ""
             guard = len(NO_ANSWER_TOKEN) + 12
             no_answer = False
-            for delta in get_llm().generate_stream(prompt, system=ANSWER_SYSTEM):
+            for delta in get_llm().generate_stream(prompt, system=system):
                 accumulated.append(delta)
                 if flushed:
                     yield delta
                     continue
                 head += delta
-                if NO_ANSWER_TOKEN in head:
+                if guard_sentinel and NO_ANSWER_TOKEN in head:
                     no_answer = True
                     break
                 if len(head) >= guard:
                     flushed = True
                     yield head
-            if not no_answer and not flushed:        # kurze Antwort: Puffer noch offen
-                if NO_ANSWER_TOKEN in head:
+            if not no_answer and not flushed:
+                if guard_sentinel and NO_ANSWER_TOKEN in head:
                     no_answer = True
                 else:
                     flushed = True
@@ -606,10 +745,9 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
             timings["generate"] = round(time.time() - tg, 2)
             answer = "".join(accumulated).replace(NO_ANSWER_TOKEN, "").strip()
 
-            # 5a) Modell signalisiert "keine Info" (oder leer) -> Dokument-Fallback.
             if no_answer or not answer:
                 fb = fallback_node({"candidates": candidates, "sources": sources})
-                if not flushed:                      # noch nichts ausgegeben -> Fallback zeigen
+                if not flushed:
                     yield fb.get("answer", "")
                 holder.update(base)
                 holder.update(fb)
@@ -617,9 +755,6 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
                 holder["timings"] = timings
                 return
 
-            # 5b) Erfolg: belegte, im Schnell-Modus aber NICHT gegengeprüfte Antwort
-            #     (mode="answer"/confidence="ungeprueft" - konsistent zu faithfulness_node
-            #     bei abgeschalteter Pruefung).
             holder.update(base)
             holder.update({
                 "answer": answer,
@@ -631,13 +766,13 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
                 "confidence": "ungeprueft",
                 "timings": timings,
             })
-        except Exception as exc:  # noqa: BLE001 - Netz-/Backend-Fehler nie roh anzeigen
+        except Exception as exc:  # noqa: BLE001
             _log.warning("Streaming-Antwort fehlgeschlagen: %s", exc)
             msg = diagnose_error(exc)
             partial = "".join(accumulated).strip()
-            if flushed:                              # schon Text sichtbar -> Hinweis anhaengen
+            if flushed:
                 yield "\n\n_" + msg + "_"
-            else:                                    # noch nichts sichtbar -> Fehlermeldung zeigen
+            else:
                 yield msg
             holder.setdefault("answer", (partial + ("\n\n" + msg if partial else msg)).strip())
             holder.setdefault("sources", [])
@@ -650,7 +785,7 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
             holder["total_time"] = round(time.time() - t0, 2)
             try:
                 _log_query(question, subject, holder)
-            except Exception:  # noqa: BLE001 - Logging darf den Antwortpfad nie stoeren
+            except Exception:  # noqa: BLE001
                 pass
 
     return _gen(), holder
@@ -688,6 +823,8 @@ def _log_query(question: str, subject: Optional[str], result: dict) -> None:
             "question": question,
             "subject": subject,
             "mode": result.get("mode"),
+            "chat_mode": result.get("chat_mode"),
+            "syllabus": result.get("syllabus"),
             "grounded": result.get("grounded"),
             "confidence": result.get("confidence"),
             "top_sources": [s.get("filename") for s in result.get("sources", [])[:3]],

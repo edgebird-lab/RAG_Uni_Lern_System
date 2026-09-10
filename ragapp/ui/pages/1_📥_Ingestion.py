@@ -414,6 +414,7 @@ if st.button("🧠 Fragen-Anreicherung starten", type="primary"):
             st.success(
                 f"✅ **{r['questions']} Fragen** für {r['processed']} Chunk(s) erzeugt und "
                 "indexiert. Tipp: auf **🎓 Lernen** die Karten aktualisieren, dann üben.")
+            st.session_state["_needs_card_harvest"] = True
             _rows = [{"Datei": v["filename"], "Fragen erzeugt": v["questions"]}
                      for v in r.get("per_doc", {}).values() if v["questions"]]
             if _rows:

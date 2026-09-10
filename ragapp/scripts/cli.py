@@ -65,6 +65,22 @@ def cmd_catalog(args):
         print("BM25-Index aktualisiert. Katalog:", res.get("markdown"))
 
 
+def cmd_summarize(args):
+    from ragapp.ingestion.summarize import write_summary, SummaryStats
+    mode = "document" if args.doc_id else "subject"
+    target = args.doc_id or args.subject
+    stats = SummaryStats()
+    path = write_summary(target, mode=mode, progress=_print_progress, stats_out=stats)
+    print(f"\nZusammenfassung: {path}")
+    print(f"  geschrieben={stats.written}  fehlgeschlagen={stats.failed}  "
+          f"leer={stats.skipped_empty}  kurz={stats.skipped_short}  "
+          f"abschnitte={stats.total_sections}")
+    if stats.errors:
+        print("  letzte Fehler:")
+        for e in stats.errors:
+            print(f"    - {e}")
+
+
 def cmd_judge_mirror(args):
     from ragapp.eval.judge_mirror import generate_mirror_items
     res = generate_mirror_items(args.subject, n=args.n, progress=_print_progress)
@@ -243,6 +259,12 @@ def main():
     p.add_argument("subject")
     p.add_argument("--n", type=int, default=3)
     p.set_defaults(func=cmd_catalog)
+
+    p = sub.add_parser("summarize", help="Gegroundete Markdown-Zusammenfassung erzeugen")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--doc-id", dest="doc_id", help="Dokument-ID aus dem Manifest")
+    g.add_argument("--subject", help="Fachkürzel (alle Chunks des Fachs)")
+    p.set_defaults(func=cmd_summarize)
 
     p = sub.add_parser("judge-mirror",
                        help="Altklausur-Spiegel-Items fuer die Judge-Kalibrierung erzeugen")

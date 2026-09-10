@@ -80,6 +80,28 @@ c2.metric("Jetzt fällig", _counts["due"])
 c3.metric("Neu", _counts["neu"])
 c4.metric("Schon geübt", _counts["gelernt"])
 
+# Hinweis nach Import/Fragen-Anreicherung: Karten oft noch nicht geerntet
+if st.session_state.pop("_needs_card_harvest", None):
+    st.info("Neue Fragen wurden indexiert. Tippe **🔄 Karten aktualisieren** unten, "
+            "damit sie in der Lernrunde erscheinen.")
+_offen_global = manifest.count_cards(source="question", only_unanswered=True)
+if _offen_global > 0:
+    _aw1, _aw2 = st.columns([3, 1])
+    _aw1.warning(
+        f"**{_offen_global} Karte(n) ohne Musterlösung** – beim Üben siehst du sonst nur "
+        "den Originaltext. Erzeuge Antworten unter **⚙️ Karten verwalten**.")
+    if _aw2.button("🤖 Antworten erzeugen", key="quick_ans", use_container_width=True):
+        with st.status("Erzeuge Musterlösungen …", expanded=True) as s:
+            ares = study.generate_answers(
+                limit=min(20, _offen_global),
+                progress=lambda m: s.update(label=m))
+            s.update(label="Fertig", state="complete")
+        if ares.get("filled"):
+            st.success(f"✅ {ares['filled']} Musterlösung(en) erzeugt.")
+            st.rerun()
+        elif ares.get("status") == "llm_error":
+            st.error(f"❌ Modellfehler: {ares.get('error_msg', '')}")
+
 with st.expander("⚙️ Karten verwalten"):
     st.caption("Karten kommen aus dem generierten Fragenmaterial. Wähle, aus welchem "
                "Fach und wie viele Fragen je Textabschnitt du aufnimmst.")
@@ -130,74 +152,304 @@ with st.expander("⚙️ Karten verwalten"):
             st.success(f"✅ {ares['filled']} Musterlösung(en) erzeugt.")
             st.rerun()
 
-with st.expander("🗂️ Stapel verwalten (Themen trennen)"):
-    st.caption("Ordne Karten frei benannten Stapeln zu (z. B. Integralrechnung oder "
-               "Statistik-Grundlagen), um verschiedene Themen gezielt zu lernen.")
-    _ov = [o for o in manifest.deck_overview() if o["deck"]]
-    if _ov:
-        st.dataframe(pd.DataFrame([{"Stapel": o["deck"], "Karten": o["total"],
-                                    "fällig": o["due"]} for o in _ov]),
-                     hide_index=True, use_container_width=True)
+with st.expander("🗂️ Stapel verwalten (Fach → Dokument → Thema → Karten)", expanded=False):
+    st.caption(
+        "Stapel nach **Fach** organisieren. Innerhalb eines Fachs: nach **Dokument**, "
+        "**Thema/Inhaltsverzeichnis** oder **einzelnen Karten** zusammenstellen. "
+        "Unterstapel z. B. als `Kapitel 3 / Regression` benennen."
+    )
+
     _faecher_v = manifest.study_subjects()
-    _doc_map = {f"{d['filename']} · {_fach_label(d['subject'] or '—')}": d["doc_id"]
-                for d in manifest.list_documents()}
-    _name = st.text_input("Stapelname", placeholder="z. B. Integralrechnung", key="deck_name")
-    _art = st.radio("Karten auswählen nach", ["Fach", "Dokument"], horizontal=True, key="deck_art")
-    _subj_sel, _doc_sel = None, None
-    if _art == "Fach":
-        _fs = st.multiselect("Fächer", _faecher_v, format_func=_fach_label, key="deck_fs")
-        _subj_sel = _fs or None
+    if not _faecher_v:
+        st.info("Noch keine Karten – erst Fragen/Katalog erzeugen und Karten aktualisieren.")
     else:
-        _ds = st.multiselect("Dokumente", list(_doc_map.keys()), key="deck_ds")
-        _doc_sel = [_doc_map[k] for k in _ds] or None
-    if st.button("➕ Zu Stapel hinzufügen"):
-        if not (_name or "").strip():
-            st.warning("Bitte einen Stapelnamen eingeben.")
-        elif not (_subj_sel or _doc_sel):
-            st.warning("Bitte Fächer oder Dokumente auswählen.")
+        _dk_subj = st.selectbox(
+            "1. Fach",
+            _faecher_v,
+            format_func=_fach_label,
+            key="dk_subj",
+            help="Stapel werden je Fach gepflegt. Wechsle das Fach, um andere Stapel zu sehen.",
+        )
+
+        # --- Bestehende Stapel dieses Fachs ---
+        _ov = [o for o in manifest.deck_overview(subject=_dk_subj) if o.get("deck")]
+        _ov_all_unassigned = next(
+            (o for o in manifest.deck_overview(subject=_dk_subj) if not o.get("deck")),
+            None,
+        )
+        if _ov_all_unassigned:
+            st.caption(
+                f"Ohne Stapel in {_fach_label(_dk_subj)}: "
+                f"**{_ov_all_unassigned['total']}** Karten "
+                f"({_ov_all_unassigned['due']} fällig)."
+            )
+        if _ov:
+            st.markdown(f"**Stapel in {_fach_label(_dk_subj)}:**")
+            for _o in _ov:
+                _d = _o["deck"]
+                _dc1, _dc2, _dc3, _dc4 = st.columns([3, 1, 1, 1])
+                _dc1.markdown(
+                    f"🗂️ **{_d}** · {_o['total']} Karten · {_o['due']} fällig"
+                )
+                if _dc2.button("Auflösen", key=f"dissolve_{_dk_subj}_{_d}",
+                               use_container_width=True,
+                               help="Zuordnung aufheben, Karten bleiben erhalten."):
+                    manifest.dissolve_deck(_d)
+                    st.success(f"Stapel „{_d}“ aufgelöst.")
+                    st.rerun()
+                if _dc3.button("🗑️", key=f"delete_{_dk_subj}_{_d}",
+                               use_container_width=True,
+                               help="Stapel samt Karten löschen."):
+                    manifest.delete_deck(_d)
+                    st.success(f"Stapel „{_d}“ gelöscht.")
+                    st.rerun()
+                with _dc4:
+                    with st.popover("✏️"):
+                        _rn = st.text_input("Neuer Name", value=_d,
+                                            key=f"rn_in_{_dk_subj}_{_d}")
+                        if st.button("Umbenennen", key=f"rn_btn_{_dk_subj}_{_d}"):
+                            n = manifest.rename_deck(_d, (_rn or "").strip())
+                            if n:
+                                st.success(f"{n} Karten umbenannt.")
+                                st.rerun()
+                            else:
+                                st.warning("Name unverändert oder leer.")
         else:
-            _n = manifest.assign_deck(_name.strip(), doc_ids=_doc_sel, subjects=_subj_sel)
-            if _n:
-                st.success(f"{_n} Karten dem Stapel `{_name.strip()}` zugeordnet.")
+            st.caption(f"Noch keine Stapel in {_fach_label(_dk_subj)}.")
+
+        st.divider()
+        st.markdown("**2. Stapel anlegen oder erweitern**")
+
+        _existing_decks = manifest.list_decks(_dk_subj)
+        _dk_mode = st.radio(
+            "Ziel",
+            ["Neuer Stapel", "Bestehenden Stapel erweitern"],
+            horizontal=True,
+            key="dk_mode",
+        )
+        if _dk_mode.startswith("Bestehend") and _existing_decks:
+            _name = st.selectbox("Stapel", _existing_decks, key="dk_exist_name")
+        elif _dk_mode.startswith("Bestehend"):
+            st.info("Noch kein Stapel in diesem Fach – lege zuerst einen neuen an.")
+            _name = ""
+        else:
+            _name = st.text_input(
+                "Stapelname",
+                placeholder="z. B. Klausur-Kompakt  oder  Kap. 3 / Stichproben",
+                key="deck_name",
+                help="Frei wählbar. Schrägstrich für Unterstruktur: „Kapitel / Thema“.",
+            )
+
+        # --- Filter-Hierarchie ---
+        _docs_here = manifest.list_docs_with_cards(subject=_dk_subj)
+        _doc_labels = {
+            d["doc_id"]: f"{d['filename']}  ({d['n_cards']} Karten)"
+            for d in _docs_here if d.get("doc_id")
+        }
+        _sel_docs = st.multiselect(
+            "3. Dokumente (optional – leer = alle des Fachs)",
+            list(_doc_labels.keys()),
+            format_func=lambda k: _doc_labels.get(k, k),
+            key="dk_docs",
+            help="Bei mehreren Uploads: Stapel pro Dokument. Bei einem Dokument "
+                 "weiter unten nach Themen/TOC filtern.",
+        )
+        _doc_ids_arg = _sel_docs or None
+
+        _topics_here = manifest.list_topics(subject=_dk_subj, doc_ids=_doc_ids_arg)
+        _sel_topics = st.multiselect(
+            "4. Themen / Inhaltsverzeichnis (optional)",
+            _topics_here,
+            key="dk_topics",
+            help="Abschnitte aus deinen Unterlagen (location/header). "
+                 "Ideal, wenn nur ein Dokument indexiert ist.",
+        )
+        _topics_arg = _sel_topics or None
+
+        _c_only, _c_search = st.columns([1, 2])
+        _only_free = _c_only.checkbox(
+            "Nur Karten ohne Stapel",
+            value=True,
+            key="dk_only_free",
+            help="Verhindert, dass Karten aus anderen Stapeln still überschrieben werden.",
+        )
+        _search = _c_search.text_input(
+            "Textsuche in Frage/Antwort",
+            key="dk_search",
+            placeholder="optional filtern …",
+        )
+
+        _preview = manifest.find_cards(
+            subject=_dk_subj,
+            doc_ids=_doc_ids_arg,
+            topics=_topics_arg,
+            search=_search or None,
+            only_unassigned=bool(_only_free),
+            limit=400,
+        )
+        _n_match = manifest.count_find_cards(
+            subject=_dk_subj,
+            doc_ids=_doc_ids_arg,
+            topics=_topics_arg,
+            search=_search or None,
+            only_unassigned=bool(_only_free),
+        )
+        st.caption(
+            f"**{_n_match}** Karte(n) passen zur Filterung"
+            + (f" · Vorschau {_n_match - len(_preview)}+ ausgeblendet" if _n_match > len(_preview) else "")
+            + "."
+        )
+
+        if not _preview:
+            st.info("Keine Karten für diese Filter – Auswahl lockern oder Karten ernten.")
+        else:
+            _pdf = pd.DataFrame([{
+                "✓": True,
+                "Frage": (r.get("front") or "")[:120],
+                "Thema": (r.get("topic") or "")[:60],
+                "Stapel": r.get("deck") or "—",
+                "Dokument": next(
+                    (d["filename"] for d in _docs_here if d["doc_id"] == r.get("doc_id")),
+                    r.get("doc_id") or "—",
+                ),
+                "_id": r["card_id"],
+            } for r in _preview])
+            _pa1, _pa2, _pa3 = st.columns(3)
+            if _pa1.button("Alle anwählen", key="dk_sel_all"):
+                st.session_state["dk_force_sel"] = True
+                st.session_state["dk_picker_ver"] = st.session_state.get("dk_picker_ver", 0) + 1
                 st.rerun()
-            else:
-                st.warning("0 Karten zugeordnet – zu dieser Auswahl gibt es noch keine "
-                           "Karten (erst Fragen/Katalog erzeugen).")
-    _ov3 = [o for o in manifest.deck_overview() if o["deck"]]
-    if _ov3:
-        st.markdown("**Stapel verwalten:**")
-        st.caption("**Auflösen** hebt nur die Zuordnung auf (Karten bleiben). "
-                   "**Löschen** entfernt den Stapel samt seinen Karten.")
-        for _o in _ov3:
-            _d = _o["deck"]
-            _dc1, _dc2, _dc3 = st.columns([3, 1, 1])
-            _dc1.markdown(f"🗂️ **{_d}** · {_o['total']} Karten")
-            if _dc2.button("Auflösen", key=f"dissolve_{_d}", use_container_width=True):
-                manifest.dissolve_deck(_d)
-                st.success(f"Stapel „{_d}“ aufgelöst (Karten bleiben erhalten).")
+            if _pa2.button("Alle abwählen", key="dk_sel_none"):
+                st.session_state["dk_force_sel"] = False
+                st.session_state["dk_picker_ver"] = st.session_state.get("dk_picker_ver", 0) + 1
                 st.rerun()
-            if _dc3.button("🗑️ Löschen", key=f"delete_{_d}", use_container_width=True):
-                manifest.delete_deck(_d)
-                st.success(f"Stapel „{_d}“ samt {_o['total']} Karten gelöscht.")
-                st.rerun()
+            _force = st.session_state.get("dk_force_sel")
+            if _force is not None:
+                _pdf["✓"] = bool(_force)
+            _picker_key = f"dk_picker_{st.session_state.get('dk_picker_ver', 0)}"
+
+            _pedited = st.data_editor(
+                _pdf,
+                hide_index=True,
+                use_container_width=True,
+                key=_picker_key,
+                column_config={
+                    "✓": st.column_config.CheckboxColumn("Mitnehmen", width="small"),
+                    "Frage": st.column_config.TextColumn(width="large"),
+                    "Thema": st.column_config.TextColumn(width="medium"),
+                    "Stapel": st.column_config.TextColumn(width="small"),
+                    "Dokument": st.column_config.TextColumn(width="medium"),
+                    "_id": None,
+                },
+                disabled=["Frage", "Thema", "Stapel", "Dokument"],
+            )
+            _pick_ids = [row["_id"] for _, row in _pedited.iterrows() if row["✓"]]
+            st.caption(f"**{len(_pick_ids)}** ausgewählt zum Hinzufügen.")
+
+            _add_disabled = not (_name or "").strip() or not _pick_ids
+            if st.button(
+                f"➕ {len(_pick_ids)} Karte(n) zu „{(_name or '').strip() or '…'}“",
+                type="primary",
+                use_container_width=True,
+                disabled=_add_disabled,
+                key="dk_add",
+            ):
+                _n = manifest.assign_deck(
+                    (_name or "").strip(),
+                    card_ids=_pick_ids,
+                )
+                if _n:
+                    st.success(
+                        f"{_n} Karten dem Stapel „{(_name or '').strip()}“ "
+                        f"({_fach_label(_dk_subj)}) zugeordnet."
+                    )
+                    st.rerun()
+                else:
+                    st.warning("0 Karten zugeordnet.")
+
+            # Schnellaktion: Filter komplett ohne Einzelauswahl (alle Treffer)
+            if st.button(
+                f"⚡ Alle {_n_match} Filter-Treffer zuordnen (ohne Abwahl)",
+                disabled=not (_name or "").strip() or _n_match == 0,
+                key="dk_add_all_filt",
+                help="Setzt den Stapel für alle Karten, die den Filtern entsprechen "
+                     "(auch über die Vorschau-Grenze hinaus).",
+            ):
+                _deck_nm = (_name or "").strip()
+                if (_search or "").strip():
+                    _all = manifest.find_cards(
+                        subject=_dk_subj,
+                        doc_ids=_doc_ids_arg,
+                        topics=_topics_arg,
+                        search=_search,
+                        only_unassigned=bool(_only_free),
+                        limit=5000,
+                    )
+                    _n = manifest.assign_deck(
+                        _deck_nm, card_ids=[c["card_id"] for c in _all],
+                    )
+                else:
+                    _n = manifest.assign_deck(
+                        _deck_nm,
+                        subjects=[_dk_subj],
+                        doc_ids=_doc_ids_arg,
+                        topics=_topics_arg,
+                        only_unassigned=bool(_only_free),
+                    )
+                if _n:
+                    st.success(f"{_n} Karten zugeordnet.")
+                    st.rerun()
+                else:
+                    st.warning("0 Karten zugeordnet.")
+
+st.divider()
 
 with st.expander("📋 Karten & Fragen verwalten (auswählen, bearbeiten, löschen)"):
     st.caption("Frage/Antwort direkt in der Tabelle bearbeiten. Häkchen setzen, um Karten "
                "zu löschen, einem Stapel zuzuordnen oder Antworten zu erzeugen. "
                "**Abfrage** = in der Lernrunde zeigen · **Embedding** = Frage im Suchindex halten.")
-    _mf1, _mf2, _mf3 = st.columns(3)
+    _mf1, _mf2, _mf3, _mf4 = st.columns(4)
     _mv_subj = _mf1.selectbox("Fach", ["Alle"] + manifest.study_subjects(),
                               format_func=lambda s: "Alle" if s == "Alle" else _fach_label(s),
                               key="mv_subj")
-    _mv_decks = manifest.list_decks()
-    _mv_deck = _mf2.selectbox("Stapel", ["Alle", "— ohne Stapel —"] + _mv_decks, key="mv_deck")
-    _mv_limit = _mf3.number_input("Max. Zeilen", min_value=10, max_value=2000, value=200,
-                                  step=10, key="mv_limit")
     _mv_subj_arg = None if _mv_subj == "Alle" else _mv_subj
+    _mv_decks = manifest.list_decks(_mv_subj_arg)
+    _mv_deck = _mf2.selectbox("Stapel", ["Alle", "— ohne Stapel —"] + _mv_decks, key="mv_deck")
+    _mv_docs = manifest.list_docs_with_cards(subject=_mv_subj_arg)
+    _mv_doc_map = {d["doc_id"]: d["filename"] for d in _mv_docs if d.get("doc_id")}
+    _mv_doc = _mf3.selectbox(
+        "Dokument",
+        ["Alle"] + list(_mv_doc_map.keys()),
+        format_func=lambda k: "Alle" if k == "Alle" else _mv_doc_map.get(k, k),
+        key="mv_doc",
+    )
+    _mv_limit = _mf4.number_input("Max. Zeilen", min_value=10, max_value=2000, value=200,
+                                  step=10, key="mv_limit")
     _mv_deck_arg = (None if _mv_deck == "Alle"
                     else "__none__" if _mv_deck.startswith("—") else _mv_deck)
-    _mv_rows = manifest.list_cards(subject=_mv_subj_arg, deck=_mv_deck_arg, limit=int(_mv_limit))
-    _mv_total = manifest.count_cards(subject=_mv_subj_arg, deck=_mv_deck_arg)
+    _mv_topics = manifest.list_topics(
+        subject=_mv_subj_arg,
+        doc_ids=None if _mv_doc == "Alle" else [_mv_doc],
+    )
+    _mv_topic = st.multiselect("Thema filtern", _mv_topics, key="mv_topics")
+    if _mv_doc != "Alle" or _mv_topic:
+        _mv_rows = manifest.find_cards(
+            subject=_mv_subj_arg,
+            doc_ids=None if _mv_doc == "Alle" else [_mv_doc],
+            topics=_mv_topic or None,
+            deck=_mv_deck_arg,
+            limit=int(_mv_limit),
+        )
+        _mv_total = manifest.count_find_cards(
+            subject=_mv_subj_arg,
+            doc_ids=None if _mv_doc == "Alle" else [_mv_doc],
+            topics=_mv_topic or None,
+            deck=_mv_deck_arg,
+        )
+    else:
+        _mv_rows = manifest.list_cards(subject=_mv_subj_arg, deck=_mv_deck_arg,
+                                       limit=int(_mv_limit))
+        _mv_total = manifest.count_cards(subject=_mv_subj_arg, deck=_mv_deck_arg)
 
     if not _mv_rows:
         st.info("Keine Karten für diese Auswahl.")
@@ -207,6 +459,7 @@ with st.expander("📋 Karten & Fragen verwalten (auswählen, bearbeiten, lösch
             "✓": False,
             "Frage": r["front"],
             "Antwort": r.get("answer") or "",
+            "Thema": r.get("topic") or "",
             "Fach": _fach_label(r.get("subject") or ""),
             "Stapel": r.get("deck") or "",
             "Abfrage": bool(r.get("use_flashcard", 1)),
@@ -219,6 +472,7 @@ with st.expander("📋 Karten & Fragen verwalten (auswählen, bearbeiten, lösch
                 "✓": st.column_config.CheckboxColumn(width="small"),
                 "Frage": st.column_config.TextColumn(width="large"),
                 "Antwort": st.column_config.TextColumn(width="large"),
+                "Thema": st.column_config.TextColumn(disabled=True, width="medium"),
                 "Fach": st.column_config.TextColumn(disabled=True),
                 "Stapel": st.column_config.TextColumn(help="Stapelname (leer = kein Stapel)"),
                 "Abfrage": st.column_config.CheckboxColumn(),
@@ -230,7 +484,7 @@ with st.expander("📋 Karten & Fragen verwalten (auswählen, bearbeiten, lösch
         st.caption(f"{len(_sel)} ausgewählt · {len(_mv_rows)} angezeigt · {_mv_total} gesamt "
                    "(mit dieser Filterung)")
 
-        _b1, _b2, _b3 = st.columns(3)
+        _b1, _b2, _b3, _b4 = st.columns(4)
         if _b1.button("💾 Änderungen speichern", use_container_width=True):
             from ragapp.retrieval.vectorstore import get_vectorstore
             _n_edit = _emb_changed = 0
@@ -294,6 +548,18 @@ with st.expander("📋 Karten & Fragen verwalten (auswählen, bearbeiten, lösch
             else:
                 st.success(f"✅ {_ar['filled']} Antwort(en) erzeugt.")
                 st.rerun()
+
+        if _b4.button("⏸️ Auswahl pausieren", use_container_width=True, disabled=not _sel,
+                      help="Pausierte Karten erscheinen nicht in Lernrunden (können später "
+                           "wieder aktiviert werden)."):
+            n = manifest.set_suspended(_sel, True)
+            st.success(f"{n} Karte(n) pausiert.")
+            st.rerun()
+        if st.button("▶️ Auswahl wieder aktivieren", disabled=not _sel,
+                     help="Hebt die Pause für die ausgewählten Karten auf."):
+            n = manifest.set_suspended(_sel, False)
+            st.success(f"{n} Karte(n) wieder aktiv.")
+            st.rerun()
 
         _asg1, _asg2 = st.columns([2, 1])
         _asg_name = _asg1.text_input("Ausgewählte einem Stapel zuordnen", key="mv_assign_name",
@@ -524,7 +790,9 @@ else:
             mcq = st.session_state.get("_mcq")
             if mcq is None:
                 with st.spinner("Erzeuge Antwortoptionen …"):
-                    mcq = grading.generate_mcq(karte.get("front", ""), _ref) or {}
+                    mcq = grading.generate_mcq(
+                        karte.get("front", ""), _ref,
+                        cache_key=karte.get("card_id")) or {}
                 st.session_state["_mcq"] = mcq
             _opts = mcq.get("options") or []
             if len(_opts) >= 2:
@@ -540,7 +808,8 @@ else:
                     st.session_state[REVEAL] = True
                     st.rerun()
         else:  # reveal (klassisch, mit Selbst-Konfidenz/JOL)
-            st.caption("Überlege (oder tippe für dich) die Antwort – dann aufdecken.")
+            st.caption("Überlege (oder tippe für dich) die Antwort – dann aufdecken "
+                       "(oder Enter im Feld unten).")
             _conf_lbl = st.radio(
                 "Wie sicher bist du dir?", ["😃 sicher", "😐 mittel", "😟 unsicher"],
                 index=None, horizontal=True, key="_jol",
@@ -550,9 +819,15 @@ else:
             st.session_state["_study_conf"] = {
                 "😃 sicher": "sicher", "😐 mittel": "mittel", "😟 unsicher": "unsicher"
             }.get(_conf_lbl)
-            if st.button("👁️ Antwort zeigen", type="primary", use_container_width=True):
-                st.session_state[REVEAL] = True
-                st.rerun()
+            # Enter im Textfeld = Aufdecken (Streamlit-natives Tastatur-Shortcut)
+            with st.form("reveal_form", clear_on_submit=False):
+                st.text_input("Kurznotiz (optional) – Enter oder Button zum Aufdecken",
+                              key="_reveal_note", label_visibility="collapsed",
+                              placeholder="Enter = Antwort zeigen …")
+                if st.form_submit_button("👁️ Antwort zeigen", type="primary",
+                                         use_container_width=True):
+                    st.session_state[REVEAL] = True
+                    st.rerun()
     else:
         # Feedback der aktiven Modi (Benotung / Lückentext-Ergebnis) VOR der Musterlösung.
         _suggest = None
@@ -604,7 +879,7 @@ else:
                        "Antworten erzeugen** die KI-Antworten nachziehen.")
             st.markdown(karte.get("back") or "")
         st.write("")
-        st.caption("Wie gut wusstest du es?")
+        st.caption("Wie gut wusstest du es? (**1** Nicht · **2** Halb · **3** Gewusst)")
         _sg = st.session_state.get("_study_suggest")
         if _sg is not None:
             _sgtxt = {study.GEWUSST: "✅ Gewusst", study.HALB: "🟡 Halb",
@@ -628,13 +903,13 @@ else:
             # Alle Modus-Zustaende fuer die naechste Karte zuruecksetzen.
             for _k in ("_study_conf", "_jol", "_typed_ans", "_grade", "_cloze",
                        "_cloze_in", "_cloze_ok", "_mcq", "_mcq_sel", "_mcq_ok",
-                       "_study_suggest"):
+                       "_study_suggest", "_reveal_note"):
                 st.session_state.pop(_k, None)
             st.rerun()
 
-        if r1.button("❌ Nicht gewusst", use_container_width=True):
+        if r1.button("1️⃣ Nicht gewusst", use_container_width=True):
             _bewerten(study.NICHT)
-        if r2.button("🟡 Halb", use_container_width=True):
+        if r2.button("2️⃣ Halb", use_container_width=True):
             _bewerten(study.HALB)
-        if r3.button("✅ Gewusst", use_container_width=True):
+        if r3.button("3️⃣ Gewusst", use_container_width=True):
             _bewerten(study.GEWUSST)
