@@ -363,6 +363,12 @@ class Settings:
     # Sicherheitsabschlag auf das errechnete Zeichen-Budget der Historie (Puffer
     # gegen Tokenizer-Abweichungen vom geschaetzten/kalibrierten Verhaeltnis).
     CHAT_HISTORY_BUDGET_SAFETY: float = 0.75
+    # Sokratischer Dialog: nach so vielen eigenen Rueckfragen IN FOLGE (ohne
+    # Aufloesung) wird die naechste Antwort erzwungen aufgeloest, statt sich
+    # allein auf die Selbsteinschaetzung des (oft kleinen, lokalen) LLM zu
+    # verlassen - das hat sich als unzuverlaessig gezeigt (beobachtet: eine
+    # fast identische Rueckfrage 4x in Folge, sogar nach "Ich weiß es nicht").
+    SOKRATISCH_RESOLVE_AFTER_QUESTIONS: int = 3
 
     # ------------------------------------------------------------------ #
     # Evaluation

@@ -258,3 +258,120 @@ def test_log_token_sample_schluckt_fehler_beim_speichern(history_funcs):
     llm_obj = types.SimpleNamespace(last_prompt_tokens=42, model="m1")
     # darf NICHT werfen - best effort, darf den Antwortpfad nie stoeren.
     funcs["_log_token_sample"](llm_obj, [{"role": "user", "content": "abc"}])
+
+
+# ---------------------------------------------------------------------------
+# Sokratischer Dialog: erzwungene Aufloesung statt endlosem Rueckfragen-Loop
+# (_looks_like_giving_up / _is_open_question / _consecutive_open_questions /
+# _sokratisch_force_resolve). Regressionstest fuer einen real beobachteten
+# Dialog, in dem eine fast identische Rueckfrage 4x in Folge gestellt wurde,
+# sogar nach explizitem "Ich weiß es nicht".
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def sokratisch_funcs(load_functions, ragapp_dir):
+    def _make(resolve_after_questions=3):
+        settings_obj = types.SimpleNamespace(
+            SOKRATISCH_RESOLVE_AFTER_QUESTIONS=resolve_after_questions)
+        return load_functions(
+            ragapp_dir / "graph" / "rag_graph.py",
+            ["_looks_like_giving_up", "_is_open_question",
+             "_consecutive_open_questions", "_sokratisch_force_resolve"],
+            {"settings": settings_obj, "Optional": Optional,
+             "re": __import__("re")},
+            const_names=["_GIVE_UP_MARKERS", "_TRAILING_SOURCE_TAGS_RE"],
+        )
+    return _make
+
+
+def test_looks_like_giving_up_erkennt_typische_aufgeben_phrasen(sokratisch_funcs):
+    f = sokratisch_funcs()["_looks_like_giving_up"]
+    assert f("Ich weiß es nicht")
+    assert f("ich weiss es nicht")
+    assert f("Sag mir einfach die Antwort")
+    assert f("Ich komme nicht weiter")
+    assert not f("Ressourcen, Prozesse, Daten und Nutzer")
+    assert not f("Kannst du mir noch andere Fragen stellen?")
+    assert not f("")
+
+
+def test_is_open_question_erkennt_fragezeichen_auch_vor_quellenangaben(sokratisch_funcs):
+    f = sokratisch_funcs()["_is_open_question"]
+    assert f("Welche Schutzziele werden genannt? [Quelle 6]")
+    assert f("Welche Punkte ergänzen das? [Quelle 1, 2, 4]")
+    assert f("Was denkst du dazu?")
+    assert not f("Die Antwort ist X, Y und Z laut [Quelle 1].")
+    assert not f("")
+    assert not f(None)
+
+
+def _turn(role, content):
+    return {"role": role, "content": content}
+
+
+def test_consecutive_open_questions_zaehlt_regressionsdialog_korrekt(sokratisch_funcs):
+    f = sokratisch_funcs()["_consecutive_open_questions"]
+    # Nachgestellter, real gemeldeter Dialog: 4 fast identische Rueckfragen in
+    # Folge zum selben Thema (Schutzziele/Bezugsobjekte), ohne Aufloesung.
+    history = [
+        _turn("user", "Wie funktioniert IT Sicherheit"),
+        _turn("assistant", "Welche Schutzziele der IT-Sicherheit werden in der "
+              "Zusammenfassung genannt? [Quelle 6]"),
+        _turn("user", "Ich denke mal Ressourcen, Prozesse, Daten und Nutzer"),
+        _turn("assistant", "Welche vier Elemente nennt deine Zusammenfassung als "
+              "Bezugsobjekte? [Quelle 1]"),
+        _turn("user", "Ressourcen, Prozesse, Daten und Nutzer"),
+        _turn("assistant", "Welche Schutzziele gelten für diese vier "
+              "Bezugsobjekte? [Quelle 1]"),
+        _turn("user", "Ressourcen, Prozesse, Daten und Nutzer"),
+        _turn("assistant", "Welche Schutzziele gelten für die vier Bezugsobjekte "
+              "Ressourcen, Prozesse, Daten und Nutzer? [Quelle 1]"),
+    ]
+    assert f(history) == 4
+    assert f(history[:4]) == 2
+    assert f(None) == 0
+    assert f([]) == 0
+
+
+def test_consecutive_open_questions_bricht_kette_bei_aufloesung(sokratisch_funcs):
+    f = sokratisch_funcs()["_consecutive_open_questions"]
+    history = [
+        _turn("user", "x"),
+        _turn("assistant", "Frage 1?"),
+        _turn("user", "y"),
+        _turn("assistant", "Die Antwort ist X laut [Quelle 1]."),
+        _turn("user", "z"),
+        _turn("assistant", "Frage 2?"),
+    ]
+    assert f(history) == 1  # nur die juengste Frage zaehlt, Aufloesung bricht die Kette
+
+
+def test_force_resolve_bei_expliziter_aufgeben_phrase(sokratisch_funcs):
+    f = sokratisch_funcs()["_sokratisch_force_resolve"]
+    history = [_turn("user", "x"), _turn("assistant", "Frage 1?")]
+    assert f("Ich weiß es nicht", history) is True
+
+
+def test_force_resolve_unterhalb_der_schwelle_bleibt_aus(sokratisch_funcs):
+    f = sokratisch_funcs(resolve_after_questions=3)["_sokratisch_force_resolve"]
+    history = [
+        _turn("user", "x"), _turn("assistant", "Frage 1?"),
+        _turn("user", "y"), _turn("assistant", "Frage 2?"),
+    ]
+    assert f("Verfügbarkeit", history) is False
+
+
+def test_force_resolve_bei_erreichen_der_schwelle_auch_ohne_aufgeben_phrase(sokratisch_funcs):
+    f = sokratisch_funcs(resolve_after_questions=3)["_sokratisch_force_resolve"]
+    history = [
+        _turn("user", "x"), _turn("assistant", "Frage 1?"),
+        _turn("user", "y"), _turn("assistant", "Frage 2?"),
+        _turn("user", "z"), _turn("assistant", "Frage 3?"),
+    ]
+    assert f("Verfügbarkeit", history) is True
+
+
+def test_force_resolve_schwelle_ist_konfigurierbar(sokratisch_funcs):
+    f = sokratisch_funcs(resolve_after_questions=1)["_sokratisch_force_resolve"]
+    history = [_turn("user", "x"), _turn("assistant", "Frage 1?")]
+    assert f("Verfügbarkeit", history) is True

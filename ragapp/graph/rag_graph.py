@@ -38,8 +38,8 @@ from ragapp.retrieval.hybrid import retrieve
 from ragapp.retrieval.reranker import get_reranker
 from ragapp.graph.prompts import (
     ANSWER_SYSTEM, ANSWER_PROMPT, TUTOR_SYSTEM, TUTOR_PROMPT,
-    SOKRATISCH_SYSTEM, SOKRATISCH_PROMPT, COMPACT_SYSTEM, COMPACT_PROMPT,
-    FAITHFULNESS_PROMPT, NO_ANSWER_TOKEN,
+    SOKRATISCH_SYSTEM, SOKRATISCH_PROMPT, SOKRATISCH_RESOLVE_HINWEIS,
+    COMPACT_SYSTEM, COMPACT_PROMPT, FAITHFULNESS_PROMPT, NO_ANSWER_TOKEN,
 )
 from ragapp import manifest
 
@@ -478,6 +478,11 @@ def generate_node(state: RAGState) -> RAGState:
         system, prompt_template = ((SOKRATISCH_SYSTEM, SOKRATISCH_PROMPT) if mode == "sokratisch"
                                    else (TUTOR_SYSTEM, TUTOR_PROMPT))
         prompt = prompt_template.format(context=context, question=state["question"])
+        if mode == "sokratisch" and _sokratisch_force_resolve(
+                state["question"], state.get("history")):
+            # Code-seitig erzwungene Aufloesung statt einer weiteren
+            # Rueckfrage - siehe _sokratisch_force_resolve.
+            prompt += SOKRATISCH_RESOLVE_HINWEIS
         llm_obj = get_llm()
         messages = ([{"role": "system", "content": system}]
                     + _history_for_chat(state.get("history"))
@@ -694,6 +699,69 @@ def _is_broad(question: str) -> bool:
     return any(m in ql for m in _BROAD_MARKERS)
 
 
+# --------------------------------------------------------------------------- #
+# Sokratischer Dialog: erzwungene Aufloesung statt endlosem Rueckfragen-Loop.
+# Verlaesst sich NICHT allein auf die Selbsteinschaetzung des (oft kleinen,
+# lokalen) LLM, ob schon "genug" Rueckfragen kamen oder ob die/der Studierende
+# aufgegeben hat - in der Praxis unzuverlaessig (beobachtet: eine fast
+# identische Rueckfrage 4x in Folge, sogar nach explizitem "Ich weiß es
+# nicht"). Der Code zaehlt stattdessen deterministisch mit, siehe
+# SOKRATISCH_RESOLVE_HINWEIS in prompts.py.
+# --------------------------------------------------------------------------- #
+_GIVE_UP_MARKERS = ("weiß es nicht", "weiss es nicht", "weiß ich nicht",
+                    "weiss ich nicht", "keine ahnung", "komme nicht weiter",
+                    "komm nicht weiter", "sag mir die antwort",
+                    "sag einfach die antwort", "sag mir einfach die antwort",
+                    "verrat mir die antwort", "verrate mir die antwort",
+                    "löse es auf", "loese es auf", "ich gebe auf",
+                    "gib mir die antwort", "erklär es mir einfach",
+                    "erklaer es mir einfach")
+
+
+def _looks_like_giving_up(question: str) -> bool:
+    """Erkennt explizite Aufgeben-/Aufloese-Wuensche ('ich weiß es nicht', 'sag
+    mir die Antwort' ...) - deterministischer Trigger fuer die sokratische
+    Aufloesung statt einer Interpretation durch das LLM."""
+    ql = (question or "").strip().lower()
+    return any(m in ql for m in _GIVE_UP_MARKERS)
+
+
+_TRAILING_SOURCE_TAGS_RE = re.compile(r"(\[Quelle[^\]]*\]\s*)+$")
+
+
+def _is_open_question(text: Optional[str]) -> bool:
+    """Endet eine Tutor-Antwort auf ein Fragezeichen (auch wenn danach noch
+    [Quelle N]-Markierungen folgen)? Grundlage der Rueckfragen-Zaehlung."""
+    stripped = _TRAILING_SOURCE_TAGS_RE.sub("", (text or "").strip()).strip()
+    return stripped.endswith("?")
+
+
+def _consecutive_open_questions(history: Optional[list]) -> int:
+    """Zaehlt vom Ende der Historie rueckwaerts, wie viele eigene Rueckfragen der
+    Tutor IN FOLGE gestellt hat, ohne aufzuloesen - die erste Antwort, die NICHT
+    auf ein Fragezeichen endet (= eine Aufloesung/Erklaerung), bricht die Kette."""
+    count = 0
+    for turn in reversed(history or []):
+        if turn.get("role") != "assistant":
+            continue
+        if _is_open_question(turn.get("content")):
+            count += 1
+            continue
+        break
+    return count
+
+
+def _sokratisch_force_resolve(question: str, history: Optional[list]) -> bool:
+    """True, wenn die naechste Sokratisch-Antwort JETZT vollstaendig aufloesen
+    soll statt erneut nachzufragen: entweder weil die/der Studierende explizit
+    aufgegeben hat, oder weil bereits SOKRATISCH_RESOLVE_AFTER_QUESTIONS eigene
+    Rueckfragen in Folge kamen (siehe SOKRATISCH_RESOLVE_HINWEIS)."""
+    if _looks_like_giving_up(question):
+        return True
+    threshold = max(1, int(settings.SOKRATISCH_RESOLVE_AFTER_QUESTIONS))
+    return _consecutive_open_questions(history) >= threshold
+
+
 def _decompose_query(question: str) -> list:
     """Zerlegt eine breite Frage in Teilfragen (fuers Retrieval). Faellt bei jedem
     Fehler auf [] zurueck (dann normale Einzel-Suche)."""
@@ -852,6 +920,10 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
                                             if mode == "sokratisch"
                                             else (TUTOR_SYSTEM, TUTOR_PROMPT))
                 prompt = prompt_template.format(context=context, question=question)
+                if mode == "sokratisch" and _sokratisch_force_resolve(question, history):
+                    # Code-seitig erzwungene Aufloesung statt einer weiteren
+                    # Rueckfrage - siehe _sokratisch_force_resolve.
+                    prompt += SOKRATISCH_RESOLVE_HINWEIS
                 history_messages = ([{"role": "system", "content": system}]
                                      + _history_for_chat(history)
                                      + [{"role": "user", "content": prompt}])
