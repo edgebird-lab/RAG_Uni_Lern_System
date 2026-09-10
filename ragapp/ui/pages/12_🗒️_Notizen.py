@@ -98,16 +98,19 @@ with col_list:
     if st.button("➕ Neue Notiz", use_container_width=True, type="primary"):
         st.session_state["_notiz_pending_choice"] = None
         for _k in ("notiz_new_subject", "notiz_new_title", "notiz_new_body",
-                  "notiz_new_doc_id", "notiz_new_topic", "notiz_new_collection"):
+                  "notiz_new_body_draft", "notiz_new_doc_id", "notiz_new_topic",
+                  "notiz_new_collection", "notiz_new_preview"):
             st.session_state.pop(_k, None)
         st.rerun()
 
     if "_notiz_pending_choice" in st.session_state:
         st.session_state["notiz_choice"] = st.session_state.pop("_notiz_pending_choice")
-    elif st.session_state.get("notiz_choice") not in (
-        [None] + [n["note_id"] for n in _notes]
-    ):
-        st.session_state["notiz_choice"] = None
+    # KEIN Reset mehr, wenn die aktive Notiz nur aus der GEFILTERTEN Liste faellt
+    # (z. B. Fach-Filter auf ein anderes Fach umgestellt, waehrend man gerade
+    # editiert) - das hat faelschlich mitten im Bearbeiten in den "Neue Notiz"-
+    # Editor geworfen, nur weil ein reiner Anzeigefilter geaendert wurde. Die
+    # Editor-Sektion unten faellt ohnehin sauber auf "Neue Notiz" zurueck, falls
+    # die Notiz tatsaechlich geloescht wurde (manifest.get_note liefert dann None).
 
     if not _notes:
         st.caption("Noch keine Notizen für diese Filterung." if (_subj_arg or _f_search)
@@ -136,7 +139,8 @@ _active_note = manifest.get_note(_active_id) if _active_id else None
 _prev_shown = st.session_state.get("_notiz_last_shown_id")
 if _prev_shown != _active_id:
     if _prev_shown:
-        for _suffix in ("subject", "collection", "title", "body", "pinned", "preview"):
+        for _suffix in ("subject", "collection", "title", "body", "body_draft",
+                        "pinned", "preview"):
             st.session_state.pop(f"notiz_edit_{_suffix}_{_prev_shown}", None)
     st.session_state["_notiz_last_shown_id"] = _active_id
 
@@ -154,19 +158,29 @@ with col_editor:
                 help="Freier Name, z. B. 'Klausurvorbereitung' – wie ein Karteikarten-Stapel.")
         _e_title = st.text_input("Titel (optional)", key="notiz_new_title")
 
+        # Streamlit verwirft den internen Zustand eines Widgets, das in einem
+        # Durchlauf NICHT instanziiert wird (hier: waehrend die Vorschau steht) -
+        # beim Zurueckschalten entsteht ein KOMPLETT NEUES text_area mit dem
+        # Ausgangswert, der eingetippte Text waere weg. Deshalb wird der Text
+        # zusaetzlich in einem eigenen, IMMER erhaltenen Schluessel gespiegelt
+        # (bei jedem Rendern des text_area aktualisiert) und beim Zurueckschalten
+        # als expliziter Startwert zurueckgegeben.
+        _draft_key = "notiz_new_body_draft"
         _preview = st.toggle("👁️ Vorschau", key="notiz_new_preview")
         if _preview:
-            st.markdown(st.session_state.get("notiz_new_body") or "*(leer)*")
+            st.markdown(st.session_state.get(_draft_key) or "*(leer)*")
         else:
-            st.text_area("Text (Markdown)", height=280, key="notiz_new_body")
+            st.session_state[_draft_key] = st.text_area(
+                "Text (Markdown)", value=st.session_state.get(_draft_key, ""),
+                height=280, key="notiz_new_body")
 
         if st.button("💾 Notiz anlegen", type="primary", disabled=not
-                     (st.session_state.get("notiz_new_body") or "").strip()):
+                     (st.session_state.get(_draft_key) or "").strip()):
             nid = manifest.create_note(
                 subject=_e_subject, doc_id=st.session_state.get("notiz_new_doc_id"),
                 topic=st.session_state.get("notiz_new_topic"),
                 collection=(_e_collection or "").strip() or None,
-                title=_e_title, body=st.session_state["notiz_new_body"])
+                title=_e_title, body=st.session_state[_draft_key])
             st.success("Notiz angelegt.")
             st.session_state["_notiz_pending_choice"] = nid
             st.rerun()
@@ -193,12 +207,19 @@ with col_editor:
 
         _prev_key = f"notiz_edit_preview_{_nid}"
         _body_key = f"notiz_edit_body_{_nid}"
+        # Wie beim "Neue Notiz"-Editor: das text_area wird beim Umschalten auf
+        # Vorschau NICHT gerendert -> Streamlit verwirft seinen internen Zustand.
+        # Eigener, immer erhaltener Spiegel-Schluessel verhindert den Textverlust
+        # beim Zurueckschalten.
+        _draft_key = f"notiz_edit_body_draft_{_nid}"
         _m_preview = st.toggle("👁️ Vorschau", key=_prev_key)
         if _m_preview:
-            st.markdown(st.session_state.get(_body_key, _active_note.get("body") or ""))
+            st.markdown(st.session_state.get(_draft_key, _active_note.get("body") or ""))
         else:
-            st.text_area("Text (Markdown)", value=_active_note.get("body") or "",
-                        height=280, key=_body_key)
+            st.session_state[_draft_key] = st.text_area(
+                "Text (Markdown)",
+                value=st.session_state.get(_draft_key, _active_note.get("body") or ""),
+                height=280, key=_body_key)
 
         _m_pinned = st.checkbox("📌 Angeheftet (immer oben in der Liste)",
                                 value=bool(_active_note.get("pinned")),
@@ -208,7 +229,7 @@ with col_editor:
         if bc1.button("💾 Speichern", type="primary", use_container_width=True):
             manifest.update_note(
                 _nid, subject=_m_subject, collection=(_m_collection or "").strip() or None,
-                title=_m_title, body=st.session_state.get(_body_key, _active_note.get("body")),
+                title=_m_title, body=st.session_state.get(_draft_key, _active_note.get("body")),
                 pinned=_m_pinned)
             st.success("Gespeichert.")
             st.rerun()
