@@ -23,7 +23,8 @@ for _anc in _p.parents:
 import streamlit as st
 
 from ragapp.ui._loading import page_boot
-page_boot("📝 Probeklausur", page_title="Probeklausur", icon="📝", layout="wide")
+page_boot("📝 Probeklausur", page_title="Probeklausur", icon="📝", layout="wide",
+         accent="pruefung")
 
 st.markdown("<style>.block-container{padding-top:2rem;max-width:900px;}"
             "h1{font-weight:750;letter-spacing:-.5px;}</style>", unsafe_allow_html=True)

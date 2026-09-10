@@ -22,7 +22,7 @@ import streamlit as st
 
 from ragapp.ui._loading import page_boot
 page_boot("📊 Evaluation: Trefferquote", page_title="Evaluation: Trefferquote",
-          icon="📊", layout="wide")
+          icon="📊", layout="wide", accent="evaluation")
 
 # --------------------------------------------------------------------------- #
 # Styling ("schick"), identisch zur Startseite

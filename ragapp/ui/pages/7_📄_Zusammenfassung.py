@@ -20,7 +20,7 @@ import streamlit as st
 
 from ragapp.ui._loading import page_boot
 page_boot("📄 Zusammenfassung schreiben", page_title="Zusammenfassung",
-          icon="📄", layout="wide")
+          icon="📄", layout="wide", accent="zusammenfassung")
 
 st.markdown("<style>.block-container{padding-top:2rem;max-width:900px;}"
             "h1{font-weight:750;letter-spacing:-.5px;}</style>", unsafe_allow_html=True)

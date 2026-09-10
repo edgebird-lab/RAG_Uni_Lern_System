@@ -20,7 +20,8 @@ for _anc in _p.parents:
 import streamlit as st
 
 from ragapp.ui._loading import page_boot
-page_boot("🧮 Übungsaufgaben", page_title="Übungsaufgaben", icon="🧮", layout="wide")
+page_boot("🧮 Übungsaufgaben", page_title="Übungsaufgaben", icon="🧮", layout="wide",
+         accent="uebungsaufgaben")
 
 st.markdown("""
 <style>

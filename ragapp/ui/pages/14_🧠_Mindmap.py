@@ -20,7 +20,7 @@ for _anc in _p.parents:
 import streamlit as st
 
 from ragapp.ui._loading import page_boot
-page_boot("🧠 Mindmap", page_title="Mindmap", icon="🧠", layout="wide")
+page_boot("🧠 Mindmap", page_title="Mindmap", icon="🧠", layout="wide", accent="mindmap")
 
 st.markdown("""
 <style>

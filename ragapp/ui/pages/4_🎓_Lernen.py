@@ -23,7 +23,7 @@ from ragapp.ui._loading import page_boot
 
 # set_page_config -> PIN-Gate -> Theme -> und rendert SOFORT den Seitentitel,
 # damit beim Seitenwechsel kein weisser Bildschirm entsteht.
-page_boot("🎓 Lernen", page_title="Lernen", icon="🎓", layout="wide")
+page_boot("🎓 Lernen", page_title="Lernen", icon="🎓", layout="wide", accent="lernen")
 
 # Nur noch das seiten-spezifische Layout; die Karteikarten-Optik (hell + dunkel)
 # kommt jetzt zentral aus ragapp.ui._theme.apply_theme().

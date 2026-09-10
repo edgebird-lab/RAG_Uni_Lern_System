@@ -21,7 +21,7 @@ import streamlit as st
 
 from ragapp.ui._loading import page_boot
 page_boot("📥 Dokumente & Ingestion", page_title="Dokumente & Ingestion",
-          icon="📥", layout="wide")
+          icon="📥", layout="wide", accent="ingestion")
 
 # --------------------------------------------------------------------------- #
 # Styling ("schick"), identisch zur Startseite
