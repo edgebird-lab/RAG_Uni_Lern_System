@@ -20,7 +20,7 @@ Ein lokaler KI-Lernassistent für **Studierende, Forschende und alle, die mit ve
 > study assistant. Drop your own lecture notes (PDF, Markdown, TXT, DOCX, PPTX)
 > into a folder, ask questions, and get answers grounded **only in your own
 > documents** – nothing is sent to the cloud. It also turns your material into
-> **flashcards with spaced repetition (SM-2)** for active recall. All models run
+> **flashcards with spaced repetition (FSRS-6)** for active recall. All models run
 > locally via [Ollama](https://ollama.com): hybrid search (dense `bge-m3` + BM25 +
 > cross-encoder reranker), anti-hallucination via LangGraph, a Streamlit UI, and
 > built-in hit-rate evaluation. Runs on NVIDIA / AMD / Apple / Intel GPUs or plain
@@ -80,8 +80,9 @@ eigenen Kurs- und Klausurunterlagen bleiben ausschließlich auf deinem Rechner:
   (`bge-m3`) laufen über Ollama; Vektor-DB ist ein lokales ChromaDB. Kein Cloud-Zugriff.
 - **Fragen an deine Unterlagen:** Antworten **nur aus deinen Dokumenten**, mit
   Quellenangabe – als Chat-Oberfläche oder per CLI.
-- **🎓 Karteikarten & Spaced Repetition (SM-2):** aus dem indexierten Fragenmaterial
-  werden Lernkarten geerntet und mit verteiltem Wiederholen (wie bei Anki) geplant.
+- **🎓 Karteikarten & Spaced Repetition (FSRS-6):** aus dem indexierten Fragenmaterial
+  werden Lernkarten geerntet und mit verteiltem Wiederholen geplant (derselbe
+  Algorithmus, auf den Anki inzwischen standardmäßig umgestiegen ist).
   Aktives Abfragen (*Gewusst / Halb / Nicht gewusst*) – **komplett offline, ohne
   LLM zur Laufzeit**. Der wirksamste Klausur-Hebel.
 - **📈 Lernstand & Klausur-Planung:** Die Seite **Fortschritt** zeigt aus deinen echten
@@ -141,7 +142,7 @@ eigenen Kurs- und Klausurunterlagen bleiben ausschließlich auf deinem Rechner:
 
 ![Einstellungen & Modellwahl](docs/img/settings.png)
 
-**🎓 Lernen – Karteikarten mit Spaced Repetition (SM-2) und vier Übungsmodi: Aufdecken, Tippen & Benoten, Lückentext, Multiple Choice**
+**🎓 Lernen – Karteikarten mit Spaced Repetition (FSRS-6) und vier Übungsmodi: Aufdecken, Tippen & Benoten, Lückentext, Multiple Choice**
 
 ![Karteikarten & Spaced Repetition](docs/img/lernen.png)
 
@@ -272,7 +273,8 @@ Hintergründe und der Weg zu einer signierten Version:
 Fragen beantworten ist Nachschlagen – **aktives Abrufen** ist der eigentliche
 Lern-Hebel. Die Seite **🎓 Lernen** in der Oberfläche erzeugt aus deinem bereits
 indexierten Fragenmaterial (generierte Prüfungsfragen + Klausur-Lernkatalog)
-**Karteikarten** und plant sie mit **SM-2** (verteiltes Wiederholen, wie bei Anki).
+**Karteikarten** und plant sie mit **FSRS-6** (verteiltes Wiederholen, derselbe
+Algorithmus wie bei Anki seit dessen Umstieg von SM-2).
 
 - **So funktioniert's:** Karten aus deinen Unterlagen erstellen → Lernrunde starten
   → Frage überlegen → Antwort aufdecken → ehrlich bewerten (*✅ Gewusst / 🟡 Halb /
@@ -399,7 +401,7 @@ Lizenzen der Modelle: siehe [NOTICE.md](NOTICE.md).
    │                              (nennt die besten Fundstellen statt zu halluzinieren) │
    └────────────────────────────────────────────────────────────────────────────────────┘
 
-   Fragenmaterial (generierte Fragen + Klausur-Katalog)  ──▶  🎓 Karteikarten (SM-2, offline)
+   Fragenmaterial (generierte Fragen + Klausur-Katalog)  ──▶  🎓 Karteikarten (FSRS-6, offline)
 ```
 
 Ausführliche Erklärung: [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md).
@@ -413,7 +415,7 @@ Ausführliche Erklärung: [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md).
 ├─ ragapp/                     # Python-Paket mit der gesamten Logik
 │  ├─ config.py                #   Zentrale Konfiguration (alle Parameter)
 │  ├─ hardware.py              #   Hardware-Erkennung + Modell-Empfehlung (recommend)
-│  ├─ study.py                 #   Karteikarten ernten + SM-2-Planung (Spaced Repetition)
+│  ├─ study.py                 #   Karteikarten ernten + FSRS-6-Planung (Spaced Repetition)
 │  ├─ ingestion/               #   Loader, Chunking, Dedup, Fragen, Pipeline, Watcher
 │  ├─ retrieval/               #   Embeddings, ChromaDB, BM25, Reranker, Hybrid-Suche
 │  ├─ graph/                   #   LangGraph: retrieve→generate→faithfulness→fallback

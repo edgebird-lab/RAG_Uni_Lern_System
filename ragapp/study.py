@@ -1,6 +1,6 @@
 """
-Lern-Layer: Karteikarten + Spaced Repetition (SM-2-lite)
-========================================================
+Lern-Layer: Karteikarten + Spaced Repetition (FSRS-6)
+======================================================
 Verwandelt das ohnehin schon indexierte Fragenmaterial in echtes Klausurtraining
 (Testing-Effekt + verteiltes Wiederholen), OHNE zur Laufzeit ein LLM/Embedding zu
 brauchen - laeuft also sofort und offline auch auf schwacher Hardware.
@@ -11,14 +11,19 @@ Kartenquellen (aus ChromaDB geerntet):
   * ``type='question'`` (generierte Fragen): Vorderseite = die Frage, Rueckseite =
     der zugehoerige Eltern-Chunk (``parent_id``).
 
-Der Lernfortschritt (Faelligkeit, Leichtigkeit, Wiederholungen) liegt in
-``manifest.db`` (Tabellen review_items/review_log). Die Planung macht ein
-schlankes SM-2: gut -> laengeres Intervall, halb -> kuerzer, nicht gewusst ->
-zurueck auf Anfang (kommt in derselben Sitzung erneut).
+Der Lernfortschritt (Faelligkeit, Stabilitaet/Schwierigkeit, Wiederholungen) liegt in
+``manifest.db`` (Tabellen review_items/review_log). Die Planung nutzt FSRS-6 (Free
+Spaced Repetition Scheduler, Paket ``fsrs``) statt des frueheren handgestrickten SM-2:
+gewusst -> laengeres Intervall (abhaengig vom gelernten Vergessens-Modell), halb ->
+kurzer Relearn-Schritt, nicht gewusst -> zurueck auf Anfang (kommt in derselben
+Sitzung erneut). Siehe docs/ fuer die Herleitung, warum FSRS-6 SM-2 ablaeuft.
 """
 from __future__ import annotations
 
 import time
+from datetime import datetime, timezone
+
+from fsrs import Card, Rating, Scheduler, State
 
 from ragapp import manifest
 from ragapp.retrieval.vectorstore import get_vectorstore
@@ -220,55 +225,70 @@ def apply_embedding_flags(card_ids: "list[str]", progress=None) -> dict:
     return {"removed": removed, "added": added}
 
 
-def sm2_next(rating: int, ease: float, interval: int, reps: int,
-             lapses: int, now: "float | None" = None,
-             max_interval_days: "float | None" = None) -> dict:
-    """Konfigurierbarer Wiederholungs-Planer (SM-2/Anki-Stil). Intervalle, Ease-Schritte
-    und die GEWUSST-Leiter kommen aus den Einstellungen (SRS_*), damit der Nutzer die
-    Abstaende frei tunen kann. ``interval`` ist die Zahl der TAGE (0 = noch in kurzen
-    Minuten-Schritten); ``due`` ist der naechste Faelligkeits-Zeitpunkt.
-    rating: 0=nicht gewusst, 1=halb, 2=gewusst.
-    ``max_interval_days``: obere Schranke fuer die naechste Faelligkeit (Klausur-Modus)
-    - die Karte kommt dann spaetestens am Klausurtag wieder dran (nie ein laengeres
-    Intervall). Kappt nur nach oben, verkuerzt keine ohnehin kurzen Relearn-Schritte."""
+_FSRS_RATING = {NICHT: Rating.Again, HALB: Rating.Hard, GEWUSST: Rating.Good}
+# Rating.Easy wird von der 3-Tasten-UI nie ausgeloest (bewusste Vereinfachung, kein
+# Funktionsverlust - Standardvorgehen bei 3-stufigen Bewertungs-UIs, nur leicht
+# suboptimale FSRS-Kalibrierung ggue. einer 4-stufigen UI).
+
+
+def _scheduler() -> Scheduler:
     from ragapp.config import settings as S
+    # enable_fuzzing=False (Bibliotheks-Default: True): FSRS streut Faelligkeiten sonst
+    # zufaellig, damit sich Karten nicht auf denselben Tag stapeln - bei der Kartenzahl
+    # dieser App weniger relevant als vorhersehbare, reproduzierbare Faelligkeiten
+    # (passt zum "ehrlich statt ueberraschend"-Prinzip der App und macht Tests/Debugging
+    # deterministisch).
+    return Scheduler(desired_retention=float(S.FSRS_DESIRED_RETENTION),
+                     maximum_interval=int(S.FSRS_MAX_INTERVAL_DAYS),
+                     enable_fuzzing=False)
+
+
+def _to_utc(ts: "float | None") -> "datetime | None":
+    return datetime.fromtimestamp(float(ts), tz=timezone.utc) if ts is not None else None
+
+
+def fsrs_next(rating: int, card_row: dict, now: "float | None" = None,
+             max_interval_days: "float | None" = None) -> dict:
+    """FSRS-6-Wiederholungs-Planer (Paket ``fsrs``, ersetzt das fruehere handgestrickte
+    SM-2). ``card_row`` braucht ``fsrs_state``/``fsrs_step``/``stability``/
+    ``difficulty``/``due``/``last_review``/``reps``/``lapses`` (aus review_items; bei
+    einer frischen Karte sind die FSRS-Felder None -> FSRS startet neu).
+    rating: 0=nicht gewusst, 1=halb, 2=gewusst -> intern Again/Hard/Good (siehe
+    ``_FSRS_RATING``). ``max_interval_days``: obere Schranke fuer die naechste
+    Faelligkeit (Klausur-Modus) - die Karte kommt dann spaetestens am Klausurtag
+    wieder dran. reps/lapses sind KEINE FSRS-Felder, sondern eigene Buchfuehrung
+    (Mastery-/Leech-Logik haengt daran): Halb unveraendert, Gewusst reps+1, Nicht
+    reps=0 + lapses+1 - dieselbe Semantik wie beim frueheren SM-2."""
     now = now if now is not None else time.time()
-    ease = ease if ease else S.SRS_EASE_START
-    steps = [float(m) for m in (S.SRS_GOOD_STEPS_MIN or (1440,)) if float(m) > 0] or [1440.0]
-    emin, emax = S.SRS_EASE_MIN, S.SRS_EASE_MAX
+    now_dt = _to_utc(now)
+    state_val = card_row.get("fsrs_state")
+    card = Card(
+        state=State(int(state_val)) if state_val else State.Learning,
+        step=card_row.get("fsrs_step"),
+        stability=card_row.get("stability"),
+        difficulty=card_row.get("difficulty"),
+        due=_to_utc(card_row.get("due")) or now_dt,
+        last_review=_to_utc(card_row.get("last_review")),
+    )
+    fsrs_rating = _FSRS_RATING[min(max(int(rating), NICHT), GEWUSST)]
+    new_card, _log_entry = _scheduler().review_card(card, fsrs_rating, review_datetime=now_dt)
 
-    def _cap(res: dict) -> dict:
-        # Klausur-Modus: naechste Faelligkeit nie hinter den Klausurtag legen.
-        if max_interval_days and float(max_interval_days) > 0:
-            cap_due = now + float(max_interval_days) * 86400.0
-            if res["due"] > cap_due:
-                return {**res, "due": cap_due, "interval": round(float(max_interval_days), 4)}
-        return res
-
+    reps, lapses = int(card_row.get("reps") or 0), int(card_row.get("lapses") or 0)
     if rating <= NICHT:
-        # Zurueck auf Anfang; kurzer Relearn-Schritt (Standard 2 min).
-        return _cap({"ease": round(max(emin, ease + S.SRS_EASE_AGAIN), 3), "interval": 0,
-                     "reps": 0, "lapses": lapses + 1, "due": now + S.SRS_AGAIN_MINUTES * 60})
-    if rating == HALB:
-        # Kurzer Relearn (Standard 10 min); Stufe und Reps bleiben erhalten.
-        return _cap({"ease": round(max(emin, ease + S.SRS_EASE_HALF), 3), "interval": interval,
-                     "reps": reps, "lapses": lapses, "due": now + S.SRS_HALF_MINUTES * 60})
-    # GEWUSST: eine Stufe hoch auf der Leiter; jenseits der Leiter x Ease.
-    ease = min(emax, ease + S.SRS_EASE_GOOD)
-    reps += 1
-    if reps <= len(steps):
-        minutes = steps[reps - 1]
-    else:
-        # Wachstum aus dem ZULETZT tatsaechlich gesetzten Abstand (in Minuten),
-        # NICHT aus dem auf ganze Tage gerundeten interval - sonst frieren kurze
-        # Leitern (letzte Stufe < ~1 Tag) fuer immer ein.
-        base = max(float(interval) * 1440.0, steps[-1])
-        minutes = base * ease * max(0.1, S.SRS_INTERVAL_FACTOR)
-    # interval als echte Tage (auch < 1) speichern -> das Wachstum jenseits der Leiter
-    # kann sich aufbauen, selbst wenn eine Stufe unter einem Tag liegt.
-    interval_days = round(minutes / 1440.0, 4)
-    return _cap({"ease": round(ease, 3), "interval": interval_days, "reps": reps,
-                 "lapses": lapses, "due": now + minutes * 60})
+        reps, lapses = 0, lapses + 1
+    elif rating == GEWUSST:
+        reps += 1
+
+    due = new_card.due.timestamp()
+    if max_interval_days and float(max_interval_days) > 0:
+        due = min(due, now + float(max_interval_days) * 86400.0)
+
+    return {
+        "fsrs_state": int(new_card.state), "fsrs_step": new_card.step,
+        "stability": new_card.stability, "difficulty": new_card.difficulty,
+        "reps": reps, "lapses": lapses, "due": due,
+        "interval": round(max(0.0, (due - now) / 86400.0), 4),
+    }
 
 
 def humanize_due(due: float, now: "float | None" = None) -> str:
@@ -310,20 +330,19 @@ def deadline_cap_days(subject: "str | None") -> "float | None":
 
 
 def rate_card(card: dict, rating: int, confidence: "str | None" = None) -> dict:
-    """Wendet SM-2 auf eine Karte an, persistiert den neuen Zustand + Log-Eintrag
+    """Wendet FSRS-6 auf eine Karte an, persistiert den neuen Zustand + Log-Eintrag
     (inkl. Konfidenz/JOL). Im Klausur-Modus (Fach hat einen Termin) wird die naechste
     Faelligkeit auf den Klausurtag gekappt. Gibt den neuen Zustand zurueck."""
-    nxt = sm2_next(rating, card.get("ease", 2.5), card.get("interval", 0),
-                   card.get("reps", 0), card.get("lapses", 0),
-                   max_interval_days=deadline_cap_days(card.get("subject")))
+    nxt = fsrs_next(rating, card, max_interval_days=deadline_cap_days(card.get("subject")))
     # Hypercorrection-Effekt: War man SICHER und lag trotzdem daneben, ist die Luecke
-    # besonders hartnaeckig -> etwas staerkere Ease-Daempfung (kommt schneller wieder).
+    # besonders hartnaeckig -> Schwierigkeit zusaetzlich anheben (kommt schneller wieder).
     if confidence == "sicher" and rating <= NICHT:
-        from ragapp.config import settings as S
-        nxt["ease"] = round(max(S.SRS_EASE_MIN, nxt["ease"] - 0.10), 3)
+        nxt["difficulty"] = round(min(10.0, (nxt["difficulty"] or 5.0) + 0.5), 3)
     manifest.record_review(
-        card["card_id"], rating, ease=nxt["ease"], interval=nxt["interval"],
-        reps=nxt["reps"], lapses=nxt["lapses"], due=nxt["due"],
+        card["card_id"], rating,
+        fsrs_state=nxt["fsrs_state"], fsrs_step=nxt["fsrs_step"],
+        stability=nxt["stability"], difficulty=nxt["difficulty"],
+        interval=nxt["interval"], reps=nxt["reps"], lapses=nxt["lapses"], due=nxt["due"],
         subject=card.get("subject"), topic=card.get("topic"), confidence=confidence,
     )
     return nxt

@@ -83,9 +83,9 @@ CREATE TABLE IF NOT EXISTS chunk_hashes (
 CREATE INDEX IF NOT EXISTS idx_chunk_doc ON chunk_hashes(doc_id);
 CREATE INDEX IF NOT EXISTS idx_doc_contenthash ON documents(content_hash);
 
--- Lern-Layer: Karteikarten + Spaced Repetition (SM-2). Rein additiv - die Karten
--- werden aus dem schon indexierten Fragenmaterial (kind='exam_qa' / type='question')
--- geerntet; hier wird nur der LERNFORTSCHRITT gefuehrt.
+-- Lern-Layer: Karteikarten + Spaced Repetition (FSRS-6, siehe ragapp/study.py). Rein
+-- additiv - die Karten werden aus dem schon indexierten Fragenmaterial (kind='exam_qa' /
+-- type='question') geerntet; hier wird nur der LERNFORTSCHRITT gefuehrt.
 CREATE TABLE IF NOT EXISTS review_items (
     card_id     TEXT PRIMARY KEY,   -- stabile ID (= Chroma-ID der Quelle)
     source      TEXT,               -- 'exam_qa' | 'question'
@@ -95,11 +95,13 @@ CREATE TABLE IF NOT EXISTS review_items (
     front       TEXT NOT NULL,      -- Frage (Vorderseite)
     back        TEXT NOT NULL,      -- Antwort/Erklaerung (Rueckseite)
     doc_id      TEXT,
-    -- SM-2-Zustand
+    -- Legacy-SM-2-Feld: wird seit der FSRS-6-Umstellung NICHT mehr fortgeschrieben,
+    -- bleibt aber unangetastet stehen (keine destruktive Spalten-Migration fuer echte
+    -- Nutzerdaten ohne funktionalen Grund).
     ease        REAL    DEFAULT 2.5,
-    interval    INTEGER DEFAULT 0,  -- Tage bis zur naechsten Faelligkeit
-    reps        INTEGER DEFAULT 0,  -- Anzahl korrekter Wiederholungen in Folge
-    lapses      INTEGER DEFAULT 0,
+    interval    INTEGER DEFAULT 0,  -- Tage bis zur naechsten Faelligkeit (FSRS-gepflegt)
+    reps        INTEGER DEFAULT 0,  -- Anzahl korrekter Wiederholungen in Folge (eigene Buchfuehrung, FSRS kennt das nicht)
+    lapses      INTEGER DEFAULT 0,  -- Anzahl 'Nicht gewusst' (eigene Buchfuehrung)
     due         REAL,               -- naechster Faelligkeits-Zeitpunkt (epoch)
     last_review REAL,
     created_at  REAL,
@@ -108,7 +110,14 @@ CREATE TABLE IF NOT EXISTS review_items (
     answer      TEXT,               -- KI-generierte Antwort (statt rohem Chunk); leer = Chunk zeigen
     use_flashcard INTEGER DEFAULT 1,-- Karte fuer die Abfrage (Lernrunde) nutzen?
     use_embedding INTEGER DEFAULT 1,-- zugehoerige Frage im Vektorindex (Suche) halten?
-    edited        INTEGER DEFAULT 0 -- 1 = manuell bearbeitet -> Ernte ueberschreibt nicht mehr
+    edited        INTEGER DEFAULT 0,-- 1 = manuell bearbeitet -> Ernte ueberschreibt nicht mehr
+    -- FSRS-6-Zustand (siehe ragapp/study.py:fsrs_next). fsrs_state: 1=Learning,
+    -- 2=Review, 3=Relearning (Werte des fsrs.State-Enums). stability/difficulty NULL =
+    -- noch nie geuebt (frische Karte, Standard-Initialwerte kommen beim ersten Review).
+    fsrs_state  INTEGER,
+    fsrs_step   INTEGER,
+    stability   REAL,
+    difficulty  REAL
 );
 CREATE INDEX IF NOT EXISTS idx_review_due ON review_items(due);
 CREATE INDEX IF NOT EXISTS idx_review_subject ON review_items(subject);
@@ -121,11 +130,17 @@ CREATE TABLE IF NOT EXISTS review_log (
     rating         INTEGER,         -- 0=nicht gewusst, 1=halb, 2=gewusst
     reviewed_at    REAL,
     interval_after INTEGER,
-    ease_after     REAL,
+    ease_after     REAL,            -- Legacy (SM-2), seit FSRS-6 nicht mehr befuellt
     confidence     TEXT,            -- 'sicher'|'mittel'|'unsicher' (JOL vor dem Aufdecken)
     device_id      TEXT,            -- Geraet, das die Wiederholung erzeugt hat (Sync)
     event_uid      TEXT,            -- global eindeutige Ereignis-ID (idempotenter Import)
-    due_after      REAL             -- absolute Faelligkeit nach dieser Wiederholung (exakter Replay)
+    due_after      REAL,            -- absolute Faelligkeit nach dieser Wiederholung (exakter Replay)
+    -- FSRS-6-Zustand NACH dieser Wiederholung - noetig, damit sync.rebuild_state()
+    -- den echten FSRS-Zustand (nicht nur ease/interval) exakt replizieren kann.
+    fsrs_state_after  INTEGER,
+    fsrs_step_after   INTEGER,
+    stability_after   REAL,
+    difficulty_after  REAL
 );
 -- Der UNIQUE-Index auf event_uid wird in init_db() NACH der Spalten-Migration
 -- angelegt (sonst schlaegt er bei einer bestehenden DB ohne die Spalte fehl).
@@ -273,6 +288,10 @@ def init_db() -> None:
                 ("use_flashcard", "ALTER TABLE review_items ADD COLUMN use_flashcard INTEGER DEFAULT 1"),
                 ("use_embedding", "ALTER TABLE review_items ADD COLUMN use_embedding INTEGER DEFAULT 1"),
                 ("edited", "ALTER TABLE review_items ADD COLUMN edited INTEGER DEFAULT 0"),
+                ("fsrs_state", "ALTER TABLE review_items ADD COLUMN fsrs_state INTEGER"),
+                ("fsrs_step", "ALTER TABLE review_items ADD COLUMN fsrs_step INTEGER"),
+                ("stability", "ALTER TABLE review_items ADD COLUMN stability REAL"),
+                ("difficulty", "ALTER TABLE review_items ADD COLUMN difficulty REAL"),
             ]
             for name, ddl in _adds:
                 if name not in cols:
@@ -288,12 +307,39 @@ def init_db() -> None:
             for _c, _ddl in (("confidence", "ALTER TABLE review_log ADD COLUMN confidence TEXT"),
                              ("device_id", "ALTER TABLE review_log ADD COLUMN device_id TEXT"),
                              ("event_uid", "ALTER TABLE review_log ADD COLUMN event_uid TEXT"),
-                             ("due_after", "ALTER TABLE review_log ADD COLUMN due_after REAL")):
+                             ("due_after", "ALTER TABLE review_log ADD COLUMN due_after REAL"),
+                             ("fsrs_state_after", "ALTER TABLE review_log ADD COLUMN fsrs_state_after INTEGER"),
+                             ("fsrs_step_after", "ALTER TABLE review_log ADD COLUMN fsrs_step_after INTEGER"),
+                             ("stability_after", "ALTER TABLE review_log ADD COLUMN stability_after REAL"),
+                             ("difficulty_after", "ALTER TABLE review_log ADD COLUMN difficulty_after REAL")):
                 if _c not in rlcols:
                     conn.execute(_ddl)
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_reviewlog_uid ON review_log(event_uid)")
         except Exception:  # noqa: BLE001
             _log.warning("Additive Migration review_log uebersprungen", exc_info=True)
+        # Einmaliger FSRS-6-Backfill: bereits geuebte Karten (reps>0) OHNE FSRS-Zustand
+        # bekommen ein grobes Seeding aus dem alten SM-2-Zustand (stability ~ Intervall
+        # in Tagen, difficulty aus ease abgeleitet) - kein Forschungswert, nur ein
+        # Startpunkt; FSRS korrigiert sich mit der naechsten echten Wiederholung selbst.
+        # Idempotent (WHERE stability IS NULL), nie geuebte Karten bleiben unangetastet
+        # (starten frisch beim ersten echten Review). Additiv, aber echte Nutzerdaten
+        # -> vorher sichern.
+        try:
+            _to_seed = conn.execute(
+                "SELECT card_id, ease, interval FROM review_items "
+                "WHERE reps>0 AND stability IS NULL").fetchall()
+            if _to_seed:
+                _pre_destructive_snapshot("vor-fsrs-backfill")
+                for _r in _to_seed:
+                    _stability = max(1.0, float(_r["interval"] or 1))
+                    _difficulty = max(1.0, min(10.0, 11.0 - 3.0 * float(_r["ease"] or 2.5)))
+                    conn.execute(
+                        "UPDATE review_items SET fsrs_state=2, stability=?, difficulty=? "
+                        "WHERE card_id=?", (_stability, _difficulty, _r["card_id"]))
+                _log.info("FSRS-6-Backfill: %d Karte(n) mit Legacy-Zustand geseedet",
+                         len(_to_seed))
+        except Exception:  # noqa: BLE001
+            _log.warning("FSRS-6-Backfill uebersprungen", exc_info=True)
         # Additive Migration fuer documents: OCR-Zaehler (F2) + RAG-Auswahl (Dokument
         # verwalten/archivieren, ohne es zu chunken/einzubetten).
         try:
@@ -542,7 +588,7 @@ def stats() -> dict:
 # Lern-Layer: Karteikarten + Spaced Repetition
 # --------------------------------------------------------------------------- #
 def upsert_review_items(cards: list[dict]) -> int:
-    """Legt neue Karteikarten an (bewahrt bei bereits vorhandenen den SM-2-Fortschritt;
+    """Legt neue Karteikarten an (bewahrt bei bereits vorhandenen den Lernfortschritt;
     aktualisiert nur Inhalt/Metadaten). Gibt die Anzahl NEUER Karten zurueck."""
     if not cards:
         return 0
@@ -732,24 +778,28 @@ def count_new_today(subject: Optional[str] = None, deck: Optional[str] = None,
         return conn.execute(q, sargs + [day_start]).fetchone()["c"]
 
 
-def record_review(card_id: str, rating: int, *, ease: float, interval: int, reps: int,
-                  lapses: int, due: float, subject: Optional[str] = None,
+def record_review(card_id: str, rating: int, *, fsrs_state: int, fsrs_step: Optional[int],
+                  stability: Optional[float], difficulty: Optional[float], interval: float,
+                  reps: int, lapses: int, due: float, subject: Optional[str] = None,
                   topic: Optional[str] = None, confidence: Optional[str] = None) -> None:
-    """Schreibt den neuen SM-2-Zustand einer Karte + einen Eintrag ins Lern-Log
-    (inkl. optionaler Konfidenz/JOL vor dem Aufdecken)."""
+    """Schreibt den neuen FSRS-6-Zustand einer Karte + einen Eintrag ins Lern-Log
+    (inkl. optionaler Konfidenz/JOL vor dem Aufdecken). Das Legacy-Feld ``ease`` wird
+    NICHT mehr fortgeschrieben (siehe Schema-Kommentar in _SCHEMA)."""
     now = time.time()
     with _connect() as conn:
         conn.execute(
-            "UPDATE review_items SET ease=?, interval=?, reps=?, lapses=?, due=?, "
-            "last_review=? WHERE card_id=?",
-            (ease, interval, reps, lapses, due, now, card_id),
+            "UPDATE review_items SET fsrs_state=?, fsrs_step=?, stability=?, difficulty=?, "
+            "interval=?, reps=?, lapses=?, due=?, last_review=? WHERE card_id=?",
+            (fsrs_state, fsrs_step, stability, difficulty, interval, reps, lapses, due,
+             now, card_id),
         )
         conn.execute(
             "INSERT INTO review_log (card_id, subject, topic, rating, reviewed_at, "
-            "interval_after, ease_after, confidence, device_id, event_uid, due_after) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (card_id, subject, topic, rating, now, interval, ease, confidence,
-             _device_id(), uuid.uuid4().hex, due),
+            "interval_after, fsrs_state_after, fsrs_step_after, stability_after, "
+            "difficulty_after, confidence, device_id, event_uid, due_after) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (card_id, subject, topic, rating, now, interval, fsrs_state, fsrs_step,
+             stability, difficulty, confidence, _device_id(), uuid.uuid4().hex, due),
         )
 
 

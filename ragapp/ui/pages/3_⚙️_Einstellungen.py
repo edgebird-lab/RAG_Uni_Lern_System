@@ -720,76 +720,28 @@ st.divider()
 # Lern-Algorithmus (Spaced Repetition)
 # --------------------------------------------------------------------------- #
 st.header("🎓 Lern-Algorithmus (Karteikarten)")
-st.caption("Legt die Wiederholungs-Abstände fest. Standard folgt der Lernforschung "
-           "(SM-2 / Anki): kurze Lernschritte, danach automatisch wachsende Abstände – "
-           "so wird gegen die Vergessenskurve wiederholt. Die Leichtigkeit (Ease) "
-           "sinkt nie unter 1,3 (führt sonst zu nervig häufigem Wiedervorlegen).")
+st.caption("Legt fest, wie die Wiederholungs-Abstände berechnet werden. FSRS-6 (Free "
+           "Spaced Repetition Scheduler, derselbe Algorithmus, auf den Anki inzwischen "
+           "standardmäßig umgestiegen ist) lernt aus Millionen echter Wiederholungen ein "
+           "Vergessens-Modell statt fixer Formeln – braucht laut Benchmark 20–30 % "
+           "weniger Wiederholungen für denselben Lernerfolg als das ältere SM-2.")
 
-
-def _fmt_steps(mins) -> str:
-    out = []
-    for m in mins:
-        m = float(m)
-        if m < 60:
-            out.append(f"{int(round(m))}min")
-        elif m < 1440:
-            out.append(f"{m / 60:g}h")
-        else:
-            out.append(f"{m / 1440:g}d")
-    return ", ".join(out)
-
-
-def _parse_steps(s: str) -> list:
-    res = []
-    for tok in str(s).replace(";", ",").split(","):
-        tok = tok.strip().lower().replace(" ", "")
-        if not tok:
-            continue
-        try:
-            if tok.endswith("min"):
-                res.append(float(tok[:-3]))
-            elif tok.endswith("h"):
-                res.append(float(tok[:-1]) * 60)
-            elif tok.endswith(("d", "t")):
-                res.append(float(tok[:-1]) * 1440)
-            elif tok.endswith("m"):             # "5m" = 5 Minuten (nach "min"/"h"/"d" geprüft)
-                res.append(float(tok[:-1]))
-            else:
-                res.append(float(tok))          # nackte Zahl = Minuten
-        except ValueError:
-            pass
-    return [int(round(x)) for x in res if x > 0]
-
-
-_srs_keys = ("SRS_AGAIN_MINUTES", "SRS_HALF_MINUTES", "SRS_GOOD_STEPS_MIN",
-             "SRS_EASE_START", "SRS_EASE_MIN", "SRS_EASE_MAX", "SRS_EASE_GOOD",
-             "SRS_EASE_HALF", "SRS_EASE_AGAIN", "SRS_INTERVAL_FACTOR",
+_srs_keys = ("FSRS_DESIRED_RETENTION", "FSRS_MAX_INTERVAL_DAYS",
              "SRS_NEW_PER_DAY", "SRS_MAX_PER_SESSION")
 
 with st.form("srs_form"):
-    _sa, _sb = st.columns(2)
-    _v_again = _sa.number_input(
-        "Nicht gewusst → erneut nach (Minuten)", min_value=0.5, max_value=1440.0,
-        value=float(settings.SRS_AGAIN_MINUTES), step=0.5, key="cfg_SRS_AGAIN_MINUTES")
-    _v_half = _sb.number_input(
-        "Halb gewusst → erneut nach (Minuten)", min_value=0.5, max_value=1440.0,
-        value=float(settings.SRS_HALF_MINUTES), step=0.5, key="cfg_SRS_HALF_MINUTES")
-    _v_ladder = st.text_input(
-        "Gewusst-Leiter (Abstände nacheinander)", value=_fmt_steps(settings.SRS_GOOD_STEPS_MIN),
-        help="Komma-getrennt, z. B. 2h, 8h, 1d, 3d, 8d, 21d. Einheiten: min / h / d. "
-             "Nach der letzten Stufe wächst der Abstand automatisch (× Ease).")
-    _e1, _e2, _e3 = st.columns(3)
-    _v_ease = _e1.number_input("Wachstum (Ease-Start)", min_value=1.3, max_value=4.0,
-                               value=float(settings.SRS_EASE_START), step=0.05,
-                               key="cfg_SRS_EASE_START",
-                               help="Multiplikator für lange Abstände (2,5 = +150 %).")
-    _v_emin = _e2.number_input("Ease-Untergrenze", min_value=1.1, max_value=2.0,
-                               value=float(settings.SRS_EASE_MIN), step=0.05,
-                               key="cfg_SRS_EASE_MIN")
-    _v_ifac = _e3.number_input("Intervall-Faktor (%)", min_value=50, max_value=300,
-                               value=int(round(settings.SRS_INTERVAL_FACTOR * 100)), step=5,
-                               key="cfg_SRS_INTERVAL_FACTOR",
-                               help="Streckt/staucht alle langen Abstände. 100 % = normal.")
+    _f1, _f2 = st.columns(2)
+    _v_retention = _f1.slider(
+        "Ziel-Retention", min_value=0.70, max_value=0.97,
+        value=float(settings.FSRS_DESIRED_RETENTION), step=0.01, key="cfg_FSRS_DESIRED_RETENTION",
+        help="Wie sicher eine Karte am Fälligkeitstag noch gewusst werden soll. Höher = "
+             "häufigere Wiederholungen, aber weniger Vergessen. 90 % ist der verbreitete "
+             "Standardwert (auch bei Anki).")
+    _v_maxint = _f2.number_input(
+        "Max. Abstand (Tage)", min_value=30, max_value=3650,
+        value=int(settings.FSRS_MAX_INTERVAL_DAYS), step=30, key="cfg_FSRS_MAX_INTERVAL_DAYS",
+        help="Obergrenze für den Abstand zwischen zwei Wiederholungen, auch bei sehr "
+             "leichten Karten.")
     _d1, _d2 = st.columns(2)
     _v_npd = _d1.number_input("Neue Karten pro Tag", min_value=0, max_value=500,
                               value=int(settings.SRS_NEW_PER_DAY), step=5,
@@ -802,11 +754,8 @@ with st.form("srs_form"):
     _srs_reset = _sc2.form_submit_button("↩︎ Auf Standard zurücksetzen")
 
 if _srs_save:
-    _steps = _parse_steps(_v_ladder) or list(Settings().SRS_GOOD_STEPS_MIN)
     settings.update(
-        SRS_AGAIN_MINUTES=float(_v_again), SRS_HALF_MINUTES=float(_v_half),
-        SRS_GOOD_STEPS_MIN=_steps, SRS_EASE_START=float(_v_ease),
-        SRS_EASE_MIN=float(_v_emin), SRS_INTERVAL_FACTOR=float(_v_ifac) / 100.0,
+        FSRS_DESIRED_RETENTION=float(_v_retention), FSRS_MAX_INTERVAL_DAYS=int(_v_maxint),
         SRS_NEW_PER_DAY=int(_v_npd), SRS_MAX_PER_SESSION=int(_v_mps))
     settings.save()
     st.success("Lern-Einstellungen gespeichert. Gilt ab der nächsten Bewertung.")
@@ -820,18 +769,18 @@ if _srs_reset:
     st.success("Lern-Algorithmus auf Standard zurückgesetzt.")
     st.rerun()
 
-# Live-Vorschau des resultierenden Zeitplans
+# Live-Vorschau des resultierenden Zeitplans (frische Karte, immer "Gewusst")
 try:
     from ragapp import study as _study_preview
-    _e, _iv, _r, _l = settings.SRS_EASE_START, 0, 0, 0
+    _card = {"fsrs_state": None, "fsrs_step": None, "stability": None,
+            "difficulty": None, "due": 0.0, "last_review": None,
+            "reps": 0, "lapses": 0}
     _seq = []
-    for _ in range(min(8, len(settings.SRS_GOOD_STEPS_MIN) + 2)):
-        _stt = _study_preview.sm2_next(_study_preview.GEWUSST, _e, _iv, _r, _l, now=0.0)
-        _e, _iv, _r, _l = _stt["ease"], _stt["interval"], _stt["reps"], _stt["lapses"]
-        _seq.append(_study_preview.humanize_due(_stt["due"], 0.0).replace("in ", ""))
-    st.caption("**Vorschau bei immer Gewusst:** " + " → ".join(_seq)
-               + f"  ·  Nicht: {settings.SRS_AGAIN_MINUTES:g} min  ·  "
-               f"Halb: {settings.SRS_HALF_MINUTES:g} min")
+    for _ in range(6):
+        _stt = _study_preview.fsrs_next(_study_preview.GEWUSST, _card, now=_card["due"] or 0.0)
+        _card = {**_card, **_stt, "last_review": _card["due"] or 0.0}
+        _seq.append(_study_preview.humanize_due(_stt["due"], _card["last_review"]).replace("in ", ""))
+    st.caption("**Vorschau bei immer Gewusst (frische Karte):** " + " → ".join(_seq))
 except Exception:  # noqa: BLE001
     pass
 

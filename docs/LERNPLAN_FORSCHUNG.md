@@ -64,7 +64,7 @@ Zusätzlich bekommt jeder Gliederungs-Abschnitt einen **lokalen** Aufschlag
 viele Zahlen/Formelzeichen enthält (rechenlastiger Stoff wie Statistik oder
 Algorithmen-Komplexität) – ebenfalls ein Erfahrungswert, keine Studie.
 
-### Wiederholungen (SM-2) belegen echte Zeit im Plan
+### Wiederholungen (FSRS-6) belegen echte Zeit im Plan
 
 Der Tagesplan reservierte bislang nur Zeit für NEUEN Stoff und ignorierte, dass
 an jedem Tag zusätzlich fällige Karteikarten-Wiederholungen anstehen – der Plan

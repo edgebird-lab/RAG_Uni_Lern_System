@@ -1,7 +1,7 @@
 """
 Konfliktfreie Multi-Device-Sync (deterministischer review_log-Replay)
 =====================================================================
-Weil der Wiederholungs-Zustand (SM-2) eine reine Funktion der Bewertungs-Historie
+Weil der Wiederholungs-Zustand (FSRS-6) eine reine Funktion der Bewertungs-Historie
 ist, laesst sich ``review_log`` als append-only, kommutativer Ereignis-Stream
 behandeln (CRDT-artig). Handy und PC, die dieselbe Karte wiederholen, loesen sich
 dadurch OHNE manuelles Mergen auf - und JEDE einzelne Wiederholung bleibt erhalten
@@ -10,11 +10,12 @@ dadurch OHNE manuelles Mergen auf - und JEDE einzelne Wiederholung bleibt erhalt
   * ``export_events``  - alle (oder neue) Ereignisse als JSONL exportieren.
   * ``import_events``  - Ereignisse idempotent uebernehmen (INSERT OR IGNORE auf
     der global eindeutigen event_uid), danach den Zustand neu berechnen.
-  * ``rebuild_state``  - den SM-2-Zustand jeder Karte aus ihrer gesamten Historie
-    exakt rekonstruieren: ease/interval aus dem zuletzt geloggten ease_after/
-    interval_after (enthaelt bereits Cram-Kappung & Hypercorrection), reps/lapses
-    aus der Rating-Folge (dieselbe Logik wie sm2_next). Deterministisch -> alle
-    Geraete kommen zum selben Ergebnis.
+  * ``rebuild_state``  - den Lernzustand jeder Karte aus ihrer gesamten Historie
+    exakt rekonstruieren: der FSRS-Zustand (stability/difficulty/due) kommt vom
+    LETZTEN Log-Eintrag, der ihn bereits enthaelt (``fsrs_state_after IS NOT NULL``)
+    - reps/lapses werden weiterhin aus der Rating-Folge repliziert, da das
+    unabhaengig vom Alter eines Eintrags funktioniert (rating gab es schon vor der
+    FSRS-Umstellung). Deterministisch -> alle Geraete kommen zum selben Ergebnis.
 """
 from __future__ import annotations
 
@@ -28,7 +29,8 @@ from ragapp.config import MANIFEST_DB
 
 _FIELDS = ("card_id", "subject", "topic", "rating", "reviewed_at",
            "interval_after", "ease_after", "confidence", "device_id", "event_uid",
-           "due_after")
+           "due_after", "fsrs_state_after", "fsrs_step_after", "stability_after",
+           "difficulty_after")
 
 
 @contextmanager
@@ -85,7 +87,7 @@ def import_events(jsonl: str) -> dict:
 
 
 def rebuild_state() -> int:
-    """Rekonstruiert den SM-2-Zustand jeder Karte exakt aus ihrer gesamten
+    """Rekonstruiert den Lernzustand jeder Karte exakt aus ihrer gesamten
     Bewertungs-Historie. Deterministisch. Gibt die Zahl aktualisierter Karten zurueck.
     (Karten ohne review_items-Eintrag werden uebersprungen.)"""
     updated = 0
@@ -93,30 +95,42 @@ def rebuild_state() -> int:
         card_ids = [r["card_id"] for r in c.execute("SELECT DISTINCT card_id FROM review_log")]
         for cid in card_ids:
             evs = c.execute(
-                "SELECT rating, reviewed_at, interval_after, ease_after, due_after FROM review_log "
+                "SELECT rating, reviewed_at, due_after, fsrs_state_after, fsrs_step_after, "
+                "stability_after, difficulty_after FROM review_log "
                 "WHERE card_id=? ORDER BY reviewed_at, id", (cid,)).fetchall()
             if not evs:
                 continue
             reps = lapses = 0
-            for e in evs:                       # reps/lapses wie in sm2_next
-                r = int(e["rating"] or 0)
+            for e in evs:                       # reps/lapses: rating gab es schon vor
+                r = int(e["rating"] or 0)        # FSRS, funktioniert ueber die ganze Historie
                 if r <= 0:                       # NICHT: zurueck auf Anfang, Patzer++
                     reps = 0
                     lapses += 1
                 elif r >= 2:                     # GEWUSST: eine Stufe hoch
                     reps += 1
                 # HALB: reps/lapses unveraendert
-            last = evs[-1]
-            ease = float(last["ease_after"] if last["ease_after"] is not None else 2.5)
-            interval = float(last["interval_after"] or 0)
-            reviewed = last["reviewed_at"] or time.time()
-            # Exakte absolute Faelligkeit aus dem Log (faellt bei Altbestand ohne
-            # due_after auf reviewed_at + interval*Tage zurueck).
-            due = last["due_after"] if last["due_after"] is not None else reviewed + interval * 86400.0
-            cur = c.execute(
-                "UPDATE review_items SET ease=?, interval=?, reps=?, lapses=?, due=?, "
-                "last_review=? WHERE card_id=?",
-                (ease, interval, reps, lapses, due, reviewed, cid))
+            reviewed = evs[-1]["reviewed_at"] or time.time()
+            # Letzter Eintrag, der bereits einen FSRS-Zustand geloggt hat (rueckwaerts
+            # gesucht) - ganz ALTE Eintraege (vor der FSRS-Umstellung) haben diese
+            # Felder noch nicht; sie wuerden den lokal per Backfill bereits gesetzten
+            # Zustand sonst faelschlich auf NULL zuruecksetzen.
+            fsrs_ev = next((e for e in reversed(evs) if e["fsrs_state_after"] is not None), None)
+            if fsrs_ev is not None:
+                due = fsrs_ev["due_after"]
+                interval = round(max(0.0, (due - reviewed) / 86400.0), 4) if due else 0.0
+                cur = c.execute(
+                    "UPDATE review_items SET fsrs_state=?, fsrs_step=?, stability=?, "
+                    "difficulty=?, due=?, interval=?, reps=?, lapses=?, last_review=? "
+                    "WHERE card_id=?",
+                    (fsrs_ev["fsrs_state_after"], fsrs_ev["fsrs_step_after"],
+                     fsrs_ev["stability_after"], fsrs_ev["difficulty_after"], due,
+                     interval, reps, lapses, reviewed, cid))
+            else:
+                # Komplette Historie dieser Karte stammt von VOR der FSRS-Umstellung -
+                # FSRS-Zustand lokal unangetastet lassen, nur reps/lapses/last_review.
+                cur = c.execute(
+                    "UPDATE review_items SET reps=?, lapses=?, last_review=? "
+                    "WHERE card_id=?", (reps, lapses, reviewed, cid))
             if cur.rowcount:
                 updated += 1
     return updated

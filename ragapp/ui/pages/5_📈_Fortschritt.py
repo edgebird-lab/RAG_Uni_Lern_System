@@ -91,7 +91,7 @@ _ampel = {"grün": "🟢", "gelb": "🟡", "rot": "🔴"}.get(_goal["ampel"], "�
 gc1, gc2 = st.columns(2)
 gc1.metric("Klausur-Bereitschaft (Schätzung)", f"{_ready} %",
            help="Geschätzte mittlere Abrufwahrscheinlichkeit über alle Karten "
-                "(Vergessenskurve aus SM-2). Eine Schätzung, keine Garantie.")
+                "(Vergessenskurve aus FSRS-6). Eine Schätzung, keine Garantie.")
 gc2.metric("Heute-Ziel", f'{_goal["done_today"]} / {_goal["goal"]}',
            delta=f'{_ampel} {_goal["due"]} fällig', delta_color="off",
            help="Heute geübte Wiederholungen vs. Tagesziel · Ampel = Backlog "
@@ -282,7 +282,7 @@ if leeches:
         "Antwort": c.get("answer") or c.get("back") or "",
         "Fach": _fach(c.get("subject") or ""),
         "Patzer": c.get("lapses"),
-        "Ease": round(c.get("ease") or 0, 2),
+        "Schwierigkeit": round(c.get("difficulty") or 0, 1) if c.get("difficulty") else None,
         "_id": c["card_id"],
     } for c in leeches])
     _edited_l = st.data_editor(
@@ -292,7 +292,8 @@ if leeches:
             "Antwort": st.column_config.TextColumn(width="large"),
             "Fach": st.column_config.TextColumn(disabled=True),
             "Patzer": st.column_config.NumberColumn(disabled=True),
-            "Ease": st.column_config.NumberColumn(disabled=True),
+            "Schwierigkeit": st.column_config.NumberColumn(
+                disabled=True, help="FSRS-Schwierigkeit (1=leicht … 10=schwer)."),
             "_id": None,
         },
     )

@@ -328,7 +328,7 @@ _REVIEW_FORECAST_DAYS = 120   # Horizont fuer die Wiederholungs-Reservierung (si
 
 
 def _review_reservation_by_day(subject: Optional[str], effective_daily: int) -> dict[str, int]:
-    """Pro Tag (ISO-Datum) reservierte Minuten fuer faellige SM-2-Wiederholungen,
+    """Pro Tag (ISO-Datum) reservierte Minuten fuer faellige Karteikarten-Wiederholungen,
     aus der bestehenden Faelligkeits-Prognose (``analytics.due_forecast``) und
     einer groben Dauer/Karte (PLAN_REVIEW_SEC_PER_CARD). Gedeckelt auf
     PLAN_REVIEW_MAX_SHARE des Tagesbudgets, damit ein Wiederholungs-Stau den
@@ -354,7 +354,7 @@ def build_schedule(sections: list[dict], daily_minutes: int,
     PLAN_BLOCK_MIN-Portionen (verteiltes statt massiertes Lernen). Das taegliche
     Zeitbudget wird auf PLAN_MAX_DAILY_FOCUS_MIN gedeckelt, selbst wenn der Nutzer
     mehr angibt (siehe docs/LERNPLAN_FORSCHUNG.md). Faellige Karteikarten-
-    Wiederholungen (SM-2) belegen echte Zeit, BEVOR neuer Stoff drankommt - ohne
+    Wiederholungen belegen echte Zeit, BEVOR neuer Stoff drankommt - ohne
     das waere der Tagesplan zu optimistisch, weil er die parallel laufende
     Wiederholungslast ignoriert (siehe ``_review_reservation_by_day``). Reicht
     ein gesetztes Zieldatum trotzdem nicht, werden nur so viele Bloecke erzeugt,

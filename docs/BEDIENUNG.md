@@ -36,7 +36,7 @@ Seitenleiste findest du:
 | **📥 Ingestion** | Dokumente importieren/verwalten, Fragen-Anreicherung, Scan-Seiten per OCR nachlesen. |
 | **📊 Evaluation** | Trefferquote (Hit@k / MRR) messen und über die Zeit vergleichen. |
 | **⚙️ Einstellungen** | Tuning-Parameter, **hardwaregerechte Modellwahl** und Handy-Zugriff/PIN. |
-| **🎓 Lernen** | Karteikarten aus deinen Unterlagen – aktives Abfragen mit Spaced Repetition (SM-2). |
+| **🎓 Lernen** | Karteikarten aus deinen Unterlagen – aktives Abfragen mit Spaced Repetition (FSRS-6). |
 | **📈 Fortschritt** | Objektiver Lernstand, Klausurplanung, Themen-Mastery, Fälligkeits-Prognose. |
 | **📝 Prüfung** | Getimte Probeklausur – die KI benotet am Ende alle Antworten auf einmal. |
 | **📄 Zusammenfassung** | Aus einem Dokument oder ganzen Fach eine klausurtaugliche Zusammenfassung schreiben. |
@@ -223,7 +223,9 @@ das Zusammenfassung-Schreiben nutzen das Modell).
 
 Die App erntet Karteikarten aus deinem vorhandenen Fragenmaterial (dem
 **Klausur-Lernkatalog** und den per `enrich` **generierten Fragen**) und plant die
-Wiederholung mit dem **SM-2-Verfahren** (verteiltes Wiederholen). Beim ersten Besuch
+Wiederholung mit **FSRS-6** (demselben Algorithmus, auf den Anki inzwischen
+standardmäßig umgestiegen ist – verteiltes Wiederholen, aus echten Daten gelernt statt
+fester Formeln). Beim ersten Besuch
 einmal **„Karten aus meinen Unterlagen erstellen"** klicken; danach zeigt die Seite,
 wie viele Karten **fällig**, **neu** oder **schon geübt** sind, und fragt sie der
 Reihe nach ab. Gibt es noch kein Fragenmaterial, zuerst auf **📥 Ingestion** Fragen

@@ -62,3 +62,4 @@ psutil>=5.9.0,<8.0       # Hardware-Erkennung (RAM/CPU) für den recommend-Befeh
 qrcode>=7.4,<9.0         # QR-Code für den Handy-Zugriff (Pillow kommt über Streamlit)
 pyspellchecker>=0.8,<1.0     # Echtwort-Abgleich (de+en) fuer das Kauderwelsch-Gate der Ingestion
 genanki>=0.13,<1.0       # Karteikarten als Anki-.apkg exportieren (Lernen ohne PC/Server/Modell)
+fsrs>=6.3.0,<7.0         # FSRS-6-Scheduler fuer Karteikarten (ersetzt SM-2, siehe study.py)

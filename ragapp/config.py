@@ -217,24 +217,17 @@ class Settings:
     # ------------------------------------------------------------------ #
     # Lern-Algorithmus (Karteikarten / Spaced Repetition)
     # ------------------------------------------------------------------ #
-    # Wiederholungs-Abstaende, angelehnt an SM-2/Anki (Forschung: kurze Lernschritte
-    # von 1-10 min, danach multiplikatives Wachstum; Ease nie unter 1.3, da niedrigere
-    # Werte laut SuperMemo-Forschung zu haeufigem, nervigem Wiedervorlegen fuehren).
-    #   NICHT gewusst -> kurzer Relearn-Schritt (Minuten), Fortschritt zurueck auf Anfang
-    #   HALB          -> kurzer Relearn-Schritt (Minuten), Stufe bleibt
-    #   GEWUSST       -> klettert die Leiter hoch (Minuten); jenseits der Leiter x Ease
-    SRS_AGAIN_MINUTES: float = 2.0         # "Nicht gewusst" -> in 2 Minuten erneut
-    SRS_HALF_MINUTES: float = 10.0         # "Halb gewusst"  -> in 10 Minuten erneut
-    # GEWUSST-Leiter in Minuten: 2 h, 8 h, 1 Tag, 3 Tage, 8 Tage, 21 Tage (danach x Ease)
-    SRS_GOOD_STEPS_MIN: tuple = (120, 480, 1440, 4320, 11520, 30240)
-    SRS_EASE_START: float = 2.5            # Start-Leichtigkeit (250 %)
-    SRS_EASE_MIN: float = 1.3              # Untergrenze (SuperMemo-Forschung)
-    SRS_EASE_MAX: float = 2.8              # Obergrenze
-    SRS_EASE_GOOD: float = 0.05            # GEWUSST: Ease +
-    SRS_EASE_HALF: float = -0.15           # HALB:    Ease -
-    SRS_EASE_AGAIN: float = -0.20          # NICHT:   Ease -
-    SRS_INTERVAL_FACTOR: float = 1.0       # globaler Faktor auf lange Intervalle (1.0 = 100 %)
-    # Tages-/Runden-Limits
+    # Wiederholungs-Algorithmus: FSRS-6 (Free Spaced Repetition Scheduler) - loest
+    # das bisherige handgestrickte SM-2 ab. FSRS lernt aus 700+ Mio. echten
+    # Wiederholungen ein Vergessens-Modell statt fixer 1980er-Formeln; im Anki-
+    # Benchmark (9.999 Sammlungen, ~350 Mio. Reviews) sagt es fuer 99,5 % der
+    # Nutzer die Abrufwahrscheinlichkeit genauer voraus und braucht 20-30 %
+    # weniger Wiederholungen fuer denselben Lernerfolg (siehe ragapp/study.py).
+    FSRS_DESIRED_RETENTION: float = 0.9    # Zielwahrscheinlichkeit, eine Karte am
+                                            # Faelligkeitstag noch zu wissen (0.7-0.97)
+    FSRS_MAX_INTERVAL_DAYS: int = 365      # Obergrenze fuer den Abstand zwischen zwei
+                                            # Wiederholungen (auch bei sehr leichten Karten)
+    # Tages-/Runden-Limits (algorithmus-unabhaengig, bleiben unveraendert)
     SRS_NEW_PER_DAY: int = 20              # neue Karten pro Tag (0 = unbegrenzt)
     SRS_MAX_PER_SESSION: int = 100         # Obergrenze fuer eine Lernrunde
 
@@ -274,7 +267,7 @@ class Settings:
     PLAN_TIME_FACTOR: float = 1.5
     # Grobe Dauer EINER Karteikarten-Wiederholung (Sekunden) - Erfahrungswert
     # (Lesen der Frage, Erinnern, Aufdecken, Bewerten), keine eigene Studie.
-    # Reserviert im Lernplan taeglich Zeit fuer faellige SM-2-Wiederholungen,
+    # Reserviert im Lernplan taeglich Zeit fuer faellige Karteikarten-Wiederholungen,
     # BEVOR neuer Stoff eingeplant wird (siehe study_plan.py:build_schedule) -
     # sonst waere der Tagesplan zu optimistisch, weil er die parallel laufende
     # Wiederholungslast ignoriert.

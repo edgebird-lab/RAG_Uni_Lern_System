@@ -1,7 +1,7 @@
 """
 Lernstand-Snapshots (Datensicherung)
 ====================================
-Das ``review_log`` (jede einzelne Wiederholung) und ``review_items`` (der SM-2-
+Das ``review_log`` (jede einzelne Wiederholung) und ``review_items`` (der FSRS-6-
 Fortschritt) sind das wertvollste, unersetzliche Gut der App - Monate verteilten
 Uebens. Ein Absturz, ein Fehlklick auf "Karten loeschen" oder eine kaputte
 Migration kurz vor der Klausur wuerde den ganzen Vergessenskurven-Plan vernichten.

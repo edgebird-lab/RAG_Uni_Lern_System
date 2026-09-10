@@ -4,7 +4,7 @@ Anki-Export (.apkg)
 Exportiert deine Karteikarten als Anki-Deck, damit du sie unterwegs mit
 AnkiDroid/AnkiMobile lernen kannst - KOMPLETT ohne diesen Server/PC und ohne
 jedes lokale Modell. Reiner Inhalts-Export (Frage/Antwort): der Lernfortschritt
-(SM-2-Zustand, Klausurtermin-Planung) bleibt HIER die Quelle der Wahrheit -
+(FSRS-6-Zustand, Klausurtermin-Planung) bleibt HIER die Quelle der Wahrheit -
 Anki bekommt die Karten als "neu" und plant sie mit seinem eigenen Scheduler.
 
 Deck- und Notiz-IDs werden aus dem Namen bzw. Kartentext deterministisch

@@ -3,7 +3,7 @@ RAG-Lernsystem: Seite „Lernen" (Karteikarten + Spaced Repetition)
 =================================================================
 Aktives Ueben statt nur Nachschlagen: Die App erntet aus dem schon indexierten
 Fragenmaterial (Klausur-Katalog + generierte Fragen) Karteikarten und plant sie
-mit SM-2 (verteiltes Wiederholen). Alles offline, ohne LLM zur Laufzeit.
+mit FSRS-6 (verteiltes Wiederholen). Alles offline, ohne LLM zur Laufzeit.
 """
 from __future__ import annotations
 
