@@ -246,21 +246,23 @@ try {
     Write-Info "pip / setuptools / wheel aktualisieren ..."
     Invoke-Native -File $VenvPy -Arguments @('-m','pip','install','--upgrade','pip','setuptools','wheel') -What "pip-Update"
 
-    # ---- 4) torch ---------------------------------------------------------- #
-    # torch wird NUR fuer den Cross-Encoder-Reranker gebraucht, und der laeuft
-    # bewusst auf der CPU. Darum ueberall der schlanke CPU-Build (~200 MB) statt
-    # des ~2,5-GB-CUDA-Builds: schneller, deutlich zuverlaessiger (weniger
-    # Download/Speicherbedarf) und funktional identisch.
-    Write-Step "PyTorch installieren (nur fuer den Reranker noetig, laeuft auf der CPU)"
-    & $VenvPy -c "import torch" 1>$null 2>$null
+    # ---- 4) torch + torchaudio ---------------------------------------------- #
+    # torch wird fuer den Cross-Encoder-Reranker UND das Audio-Overview-TTS
+    # (XTTS-v2, siehe ragapp/audio_overview.py) gebraucht, torchaudio nur fuers
+    # TTS - beide laufen bewusst auf der CPU (langsamer, aber deutlich
+    # zuverlaessiger auf Windows als ein GPU-Build). Darum ueberall der
+    # schlanke CPU-Build statt des CUDA-Builds.
+    Write-Step "PyTorch + torchaudio installieren (Reranker + Audio-Overview, laeuft auf der CPU)"
+    & $VenvPy -c "import torch, torchaudio" 1>$null 2>$null
     if ($LASTEXITCODE -eq 0) {
-        Write-Ok "torch ist bereits installiert - uebersprungen."
+        Write-Ok "torch + torchaudio sind bereits installiert - uebersprungen."
     } else {
-        Write-Info "Installiere torch (schlanker CPU-Build ~200 MB) ..."
-        # Ro1: konservative Obergrenze (torch<3) - blockt einen kuenftigen brechenden
-        # Major-Release, aendert die Aufloesung heute aber nicht (CPU-Index liefert 2.x).
-        Invoke-Native -File $VenvPy -Arguments @('-m','pip','install','torch<3','--index-url','https://download.pytorch.org/whl/cpu') -What "torch (CPU)"
-        Write-Ok "torch installiert."
+        Write-Info "Installiere torch + torchaudio (schlanker CPU-Build) ..."
+        # Ro1: konservative Obergrenze (torch<3 / torchaudio<3) - blockt einen kuenftigen
+        # brechenden Major-Release, aendert die Aufloesung heute aber nicht (CPU-Index
+        # liefert 2.x).
+        Invoke-Native -File $VenvPy -Arguments @('-m','pip','install','torch<3','torchaudio<3','--index-url','https://download.pytorch.org/whl/cpu') -What "torch + torchaudio (CPU)"
+        Write-Ok "torch + torchaudio installiert."
     }
 
     # ---- 5) requirements --------------------------------------------------- #

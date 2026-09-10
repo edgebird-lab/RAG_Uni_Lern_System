@@ -147,43 +147,46 @@ fi
 info "pip / setuptools / wheel aktualisieren ..."
 "$VENV_PY" -m pip install --upgrade pip setuptools wheel
 
-# ---- 4) torch + torchvision ------------------------------------------------ #
-# torch = Reranker; torchvision = wird von easyocr (OCR) benoetigt. BEIDE aus dem
-# GLEICHEN Index installieren - sonst zieht easyocr ueber torchvision spaeter eine
-# unpassende (CUDA-)torch nach und ueberschreibt die GPU-Variante (z. B. ROCm).
+# ---- 4) torch + torchvision + torchaudio ------------------------------------ #
+# torch = Reranker + Audio-Overview-TTS; torchvision = easyocr (OCR); torchaudio =
+# Audio-Overview-TTS (XTTS-v2, siehe ragapp/audio_overview.py). ALLE drei aus dem
+# GLEICHEN Index installieren - sonst zieht ein spaeteres Paket (easyocr/coqui-tts)
+# eine unpassende (CUDA-)torch nach und ueberschreibt die GPU-Variante (z. B. ROCm).
 #
 # Versionsbereich (Ro1): torch/torchvision waren bisher voellig ungepinnt. Jetzt eine
-# konservative OBERGRENZE (torch<3 / torchvision<1) - das blockt einen kuenftigen,
-# potenziell brechenden Major-Release, aendert aber HEUTE nichts an der Aufloesung und
-# bricht insbesondere die ROCm-Index-Installation NICHT (dort ist die neueste passende
-# Version ohnehin < der Grenze). Bewusst KEIN harter ==-Pin, da die verfuegbaren
-# Versionen je Index (cpu / rocm6.0 / default) unterschiedlich sind. Bekannt-gute,
-# getestete Referenz auf diesem Rechner: torch 2.4.1+rocm6.0 / torchvision 0.19.1+rocm6.0
+# konservative OBERGRENZE (torch<3 / torchvision<1 / torchaudio<3) - das blockt einen
+# kuenftigen, potenziell brechenden Major-Release, aendert aber HEUTE nichts an der
+# Aufloesung und bricht insbesondere die ROCm-Index-Installation NICHT (dort ist die
+# neueste passende Version ohnehin < der Grenze). Bewusst KEIN harter ==-Pin, da die
+# verfuegbaren Versionen je Index (cpu / rocm6.0 / default) unterschiedlich sind.
+# Bekannt-gute, getestete Referenz auf diesem Rechner: torch 2.4.1+rocm6.0 /
+# torchvision 0.19.1+rocm6.0 / torchaudio 2.4.1+rocm6.0
 # (fuer volle Reproduzierbarkeit ggf. exakt auf die eigene Version pinnen).
 TORCH_SPEC="torch<3"
 TV_SPEC="torchvision<1"
-step "PyTorch (+ torchvision fuer OCR) installieren"
-if "$VENV_PY" -c "import torch, torchvision" >/dev/null 2>&1; then
-    ok "torch + torchvision bereits installiert - uebersprungen."
+TA_SPEC="torchaudio<3"
+step "PyTorch (+ torchvision fuer OCR, torchaudio fuer Audio-Overview) installieren"
+if "$VENV_PY" -c "import torch, torchvision, torchaudio" >/dev/null 2>&1; then
+    ok "torch + torchvision + torchaudio bereits installiert - uebersprungen."
 else
     case "$GPU_VENDOR" in
         nvidia)
-            info "Installiere torch + torchvision (CUDA/Default-Index) ..."
-            "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" ;;
+            info "Installiere torch + torchvision + torchaudio (CUDA/Default-Index) ..."
+            "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" "$TA_SPEC" ;;
         amd)
-            info "Installiere torch + torchvision (ROCm 6.0-Index) ..."
-            if ! "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" --index-url https://download.pytorch.org/whl/rocm6.0; then
+            info "Installiere torch + torchvision + torchaudio (ROCm 6.0-Index) ..."
+            if ! "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" "$TA_SPEC" --index-url https://download.pytorch.org/whl/rocm6.0; then
                 warn "ROCm-torch fehlgeschlagen - fallback auf CPU-Build."
-                "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" --index-url https://download.pytorch.org/whl/cpu
+                "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" "$TA_SPEC" --index-url https://download.pytorch.org/whl/cpu
             fi ;;
         apple)
-            info "Installiere torch + torchvision (Default-Index, MPS-faehig) ..."
-            "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" ;;
+            info "Installiere torch + torchvision + torchaudio (Default-Index, MPS-faehig) ..."
+            "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" "$TA_SPEC" ;;
         *)
-            info "Installiere torch + torchvision (CPU-Build) ..."
-            "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" --index-url https://download.pytorch.org/whl/cpu ;;
+            info "Installiere torch + torchvision + torchaudio (CPU-Build) ..."
+            "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" "$TA_SPEC" --index-url https://download.pytorch.org/whl/cpu ;;
     esac
-    ok "torch + torchvision installiert."
+    ok "torch + torchvision + torchaudio installiert."
 fi
 
 # ---- 5) requirements ------------------------------------------------------- #

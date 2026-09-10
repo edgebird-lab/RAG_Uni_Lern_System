@@ -11,7 +11,7 @@
 # gefunden wird. Getestete Referenz (dieser Rechner, ROCm/Linux, Python 3.12):
 #   langchain 1.3.x / -core 1.4.x / -community 0.4.x / langgraph 1.2.x,
 #   chromadb 1.5.x, streamlit 1.59.x, numpy 2.5.x, pandas 3.0.x,
-#   sentence-transformers 5.6.x, easyocr 1.7.x, plotly 6.9.x.
+#   sentence-transformers 5.6.x, easyocr 1.7.x, plotly 6.9.x, coqui-tts 0.27.x.
 # Fuer volle Reproduzierbarkeit koennen diese exakt (== / Hash-Pinning) gepinnt
 # werden; die Obergrenzen sind der konservative, nicht-brechende Kompromiss.
 # ============================================================================
@@ -46,6 +46,14 @@ sentence-transformers>=3.0.0,<6.0
 # (z. B. ROCm) installiert - sonst zieht easyocr ueber torchvision eine unpassende
 # torch-Version nach und ueberschreibt die GPU-Variante.
 easyocr>=1.7.0,<2.0
+
+# --- Audio-Overview: Sprachsynthese mit der eigenen (geklonten) Stimme (XTTS-v2) ---
+# coqui-tts = aktiv gepflegter Community-Fork (idiap/coqui-ai-TTS) des seit 2024
+# unmaintained coqui-ai/TTS - gleicher Import-Pfad (TTS.api.TTS). Braucht torch UND
+# torchaudio aus demselben (in install.sh vorab installierten) Index wie oben.
+# HINWEIS: XTTS-v2-Modellgewichte stehen unter der Coqui Public Model License
+# (nicht-kommerziell) - fuer eine private, nicht verkaufte Nutzung uneingeschraenkt ok.
+coqui-tts>=0.27.0,<0.28.0
 
 # --- Weboberfläche ---
 streamlit>=1.38.0,<2.0
