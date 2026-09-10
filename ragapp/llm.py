@@ -103,6 +103,12 @@ class LLM:
         self._client = ollama.Client(
             host=settings.OLLAMA_BASE_URL, timeout=settings.LLM_TIMEOUT
         )
+        # Echte Token-Zahlen des LETZTEN chat()-Aufrufs (aus Ollamas Antwort) -
+        # Grundlage der selbstlernenden Zeichen/Token-Kalibrierung fuer die
+        # Chat-Verlaufs-Kompaktierung (siehe ragapp/graph/rag_graph.py). None,
+        # solange noch kein Aufruf lief oder Ollama sie nicht mitgeliefert hat.
+        self.last_prompt_tokens: int | None = None
+        self.last_completion_tokens: int | None = None
 
     def chat(
         self,
@@ -137,6 +143,8 @@ class LLM:
                 resp = self._client.chat(**kwargs)
                 msg = resp.get("message", {}) or {}
                 content = msg.get("content", "") or ""
+                self.last_prompt_tokens = resp.get("prompt_eval_count")
+                self.last_completion_tokens = resp.get("eval_count")
                 # Reasoning-Modelle: bei knappem num_predict kann der Antwort-Channel
                 # leer bleiben (done_reason='length'). Den Denk-Kanal NUR im JSON-Pfad
                 # als Fallback nehmen (dort wird das JSON heraus-geparst) - fuer Freitext
@@ -242,6 +250,12 @@ class LLM:
                 delta = msg.get("content", "") or ""
                 if delta:
                     yield delta
+                if chunk.get("done"):
+                    # letzter Chunk traegt dieselben Stats wie die nicht-
+                    # streamende Antwort (siehe chat()) - fuer die Zeichen/
+                    # Token-Kalibrierung mitnehmen.
+                    self.last_prompt_tokens = chunk.get("prompt_eval_count")
+                    self.last_completion_tokens = chunk.get("eval_count")
 
         try:
             yielded = False

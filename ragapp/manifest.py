@@ -281,6 +281,19 @@ CREATE TABLE IF NOT EXISTS notes (
 CREATE INDEX IF NOT EXISTS idx_notes_subject ON notes(subject);
 CREATE INDEX IF NOT EXISTS idx_notes_doc ON notes(doc_id);
 CREATE INDEX IF NOT EXISTS idx_notes_collection ON notes(collection);
+
+-- Echte Zeichen/Token-Messwerte pro Modell (aus Ollamas prompt_eval_count) -
+-- kalibriert das Zeichen-Budget der Chat-Verlaufs-Kompaktierung selbstlernend
+-- auf das tatsaechlich konfigurierte Modell, statt eine feste Schaetzung zu
+-- raten (siehe ragapp/graph/rag_graph.py).
+CREATE TABLE IF NOT EXISTS llm_token_samples (
+    sample_id   TEXT PRIMARY KEY,
+    model       TEXT,
+    chars       INTEGER,
+    tokens      INTEGER,
+    created_at  REAL
+);
+CREATE INDEX IF NOT EXISTS idx_token_samples_model ON llm_token_samples(model);
 """
 
 
@@ -1690,6 +1703,34 @@ def eta_calibration(model: str, min_samples: int = 3, limit: int = 20) -> Option
         return None
     rates = [sec / chars * 1000.0 for chars, sec in usable]
     return sum(rates) / len(rates)
+
+
+def log_token_sample(model: str, chars: int, tokens: int) -> None:
+    """Speichert einen echten Zeichen/Token-Messwert (aus Ollamas
+    ``prompt_eval_count``) fuer ein Modell - Grundlage der selbstlernenden
+    Zeichen-Budget-Kalibrierung (siehe ``chars_per_token``)."""
+    if not tokens or tokens <= 0 or not chars or chars <= 0:
+        return
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO llm_token_samples (sample_id, model, chars, tokens, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (uuid.uuid4().hex[:16], model, int(chars), int(tokens), time.time()))
+
+
+def chars_per_token(model: str, min_samples: int = 5, limit: int = 40) -> Optional[float]:
+    """Durchschnittliches Zeichen/Token-Verhaeltnis aus den letzten ``limit``
+    echten Messungen fuer ``model``. ``None``, wenn (noch) zu wenige Messwerte
+    vorliegen (dann greift eine statische Schaetzung, siehe config.py)."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT chars, tokens FROM llm_token_samples WHERE model=? "
+            "ORDER BY created_at DESC LIMIT ?", (model, int(limit))).fetchall()
+    usable = [(r["chars"], r["tokens"]) for r in rows if r["tokens"] and r["tokens"] > 0]
+    if len(usable) < max(1, min_samples):
+        return None
+    ratios = [chars / tokens for chars, tokens in usable]
+    return sum(ratios) / len(ratios)
 
 
 def exam_map() -> dict:

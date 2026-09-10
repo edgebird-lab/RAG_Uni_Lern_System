@@ -343,11 +343,26 @@ class Settings:
     # Einstellungen abschaltbar, falls Tempo wichtiger ist.
     ENABLE_FAITHFULNESS_CHECK: bool = True
     MAX_CONTEXT_CHARS: int = 7000           # Obergrenze Kontext an das LLM
-    # Sokratischer Dialog: wie viele vorherige Chat-Turns (user+assistant) als
-    # echte Konversations-Historie an das Modell gehen, damit es sich an bereits
-    # gestellte Rueckfragen erinnert (siehe rag_graph.py:_history_messages).
-    # Begrenzt gegen Kontextfenster-Ueberlauf bei langen Gespraechen.
-    SOKRATISCH_MAX_HISTORY_TURNS: int = 6
+    # Tutor-Gespräch & Sokratischer Dialog: echte Mehrturn-Historie statt nur
+    # der aktuellen Frage (siehe rag_graph.py:_history_for_chat), damit sich das
+    # Modell an bereits Gesagtes erinnert - Strikt bleibt bewusst zustandslos
+    # (jede Antwort direkt+ausschliesslich aus dem RAG, kein Gespraechs-Drift).
+    # Waechst die rohe Historie ueber das Zeichen-Budget, werden die AELTEREN
+    # Turns per schnellem Modell zu einer knappen Zusammenfassung verdichtet
+    # (nur was TATSAECHLICH gesagt wurde, keine neuen Fakten) - die juengsten
+    # Turns bleiben fuer unmittelbaren Anschluss roh erhalten.
+    CHAT_HISTORY_KEEP_RECENT_TURNS: int = 6   # bei Kompaktierung roh erhaltene juengste Turns
+    # Zeichen-Reserve fuer System-Prompt (Tutor/Sokratisch sind laenger als
+    # Strict) bzw. die aktuelle Frage - beides zieht vom Kontextfenster ab,
+    # BEVOR die Historie ihr Budget bekommt (siehe _history_char_budget()).
+    CHAT_SYSTEM_PROMPT_RESERVE_CHARS: int = 2500
+    CHAT_QUESTION_RESERVE_CHARS: int = 500
+    # Fallback-Schaetzung Zeichen/Token (Deutsch), bis genug echte Messwerte aus
+    # Ollamas prompt_eval_count vorliegen (siehe manifest.chars_per_token).
+    DEFAULT_CHARS_PER_TOKEN: float = 3.2
+    # Sicherheitsabschlag auf das errechnete Zeichen-Budget der Historie (Puffer
+    # gegen Tokenizer-Abweichungen vom geschaetzten/kalibrierten Verhaeltnis).
+    CHAT_HISTORY_BUDGET_SAFETY: float = 0.75
 
     # ------------------------------------------------------------------ #
     # Evaluation

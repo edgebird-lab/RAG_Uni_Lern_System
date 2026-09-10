@@ -38,8 +38,10 @@ from ragapp.retrieval.hybrid import retrieve
 from ragapp.retrieval.reranker import get_reranker
 from ragapp.graph.prompts import (
     ANSWER_SYSTEM, ANSWER_PROMPT, TUTOR_SYSTEM, TUTOR_PROMPT,
-    SOKRATISCH_SYSTEM, SOKRATISCH_PROMPT, FAITHFULNESS_PROMPT, NO_ANSWER_TOKEN,
+    SOKRATISCH_SYSTEM, SOKRATISCH_PROMPT, COMPACT_SYSTEM, COMPACT_PROMPT,
+    FAITHFULNESS_PROMPT, NO_ANSWER_TOKEN,
 )
+from ragapp import manifest
 
 # Logger (zentrales Setup; faellt defensiv auf die stdlib zurueck, falls das Modul
 # in einer Teil-Installation noch nicht vorhanden ist).
@@ -183,20 +185,103 @@ def _relaxed_mode(state: RAGState) -> bool:
     return _chat_mode(state) in ("tutor", "sokratisch")
 
 
-def _history_messages(history: Optional[list]) -> list[dict]:
-    """Wandelt die UI-Chat-Historie ({'role','content',...}) in eine kompakte
-    messages-Liste fuer einen ECHTEN Mehrturn-LLM-Aufruf um (nur role+content),
-    auf die letzten SOKRATISCH_MAX_HISTORY_TURNS begrenzt (gegen Kontextfenster-
-    Ueberlauf bei langen Gespraechen). Nur user/assistant-Rollen; leere Beitraege
-    werden uebersprungen."""
+def _history_turns_raw(history: Optional[list]) -> list[dict]:
+    """Wandelt die UI-Chat-Historie ({'role','content',...}) in eine schlanke
+    Turn-Liste (nur role+content) um - nur user/assistant-Rollen, leere
+    Beitraege werden uebersprungen. KEINE Laengen-/Budget-Begrenzung hier
+    (siehe ``_history_for_chat`` fuer die budget-bewusste Verwendung)."""
     out = []
     for h in (history or []):
         role = h.get("role")
         content = (h.get("content") or "").strip()
         if role in ("user", "assistant") and content:
             out.append({"role": role, "content": content})
-    n = max(0, int(settings.SOKRATISCH_MAX_HISTORY_TURNS))
-    return out[-n:] if n else []
+    return out
+
+
+def _history_char_budget() -> int:
+    """Verfuegbares Zeichen-Budget fuer die ROHE Gespraechshistorie: was vom
+    Kontextfenster (LLM_NUM_CTX) nach Systemprompt, RAG-Kontext, Frage und
+    reservierter Antwortlaenge (LLM_NUM_PREDICT) noch uebrig bleibt - ueber ein
+    Zeichen/Token-Verhaeltnis umgerechnet, das sich aus echten Ollama-Messwerten
+    selbst kalibriert (siehe manifest.chars_per_token), sonst eine statische
+    Schaetzung (DEFAULT_CHARS_PER_TOKEN). Ein Sicherheitsabschlag laesst Luft
+    fuer Tokenizer-Abweichungen vom geschaetzten Verhaeltnis."""
+    ratio = manifest.chars_per_token(settings.LLM_MODEL) or settings.DEFAULT_CHARS_PER_TOKEN
+    total_chars = settings.LLM_NUM_CTX * ratio
+    reserved = (settings.LLM_NUM_PREDICT * ratio
+               + settings.CHAT_SYSTEM_PROMPT_RESERVE_CHARS
+               + settings.MAX_CONTEXT_CHARS
+               + settings.CHAT_QUESTION_RESERVE_CHARS)
+    budget = (total_chars - reserved) * settings.CHAT_HISTORY_BUDGET_SAFETY
+    return max(500, int(budget))
+
+
+def _summarize_history(turns: list[dict]) -> Optional[str]:
+    """Verdichtet aeltere Gespraechs-Turns per schnellem Modell zu einer
+    knappen Zusammenfassung (nur was TATSAECHLICH gesagt wurde, siehe
+    COMPACT_SYSTEM/COMPACT_PROMPT). ``None`` bei jedem Fehler - dann bleibt die
+    Historie lieber roh/gekuerzt statt mit einer kaputten Zusammenfassung."""
+    if not turns:
+        return None
+    verlauf = "\n".join(
+        f"{'Studierende(r)' if t['role'] == 'user' else 'Tutor'}: {t['content']}"
+        for t in turns)
+    try:
+        summary = get_llm(settings.LLM_MODEL_FAST).generate(
+            COMPACT_PROMPT.format(verlauf=verlauf), system=COMPACT_SYSTEM).strip()
+        return summary or None
+    except Exception as exc:  # noqa: BLE001
+        _log.debug("Verlaufs-Kompaktierung fehlgeschlagen: %s", exc)
+        return None
+
+
+def _history_for_chat(history: Optional[list]) -> list[dict]:
+    """Baut die messages-Liste (nur role+content) fuer einen ECHTEN Mehrturn-
+    LLM-Aufruf, budget-bewusst: passt die rohe Historie ins Zeichen-Budget
+    (``_history_char_budget``), bleibt sie unveraendert. Sonst werden die
+    AELTEREN Turns (alles ausser den letzten CHAT_HISTORY_KEEP_RECENT_TURNS) zu
+    einer Zusammenfassung verdichtet und als EIN Kontext-Turn vorangestellt -
+    die juengsten Turns bleiben fuer unmittelbaren Anschluss roh. Schlaegt die
+    Zusammenfassung fehl, werden einfach nur die juengsten Turns behalten
+    (lieber weniger Kontext als ein gesprengtes Kontextfenster)."""
+    turns = _history_turns_raw(history)
+    if not turns:
+        return []
+    budget = _history_char_budget()
+    keep_n = max(1, int(settings.CHAT_HISTORY_KEEP_RECENT_TURNS))
+    total_chars = sum(len(t["content"]) for t in turns)
+    if total_chars <= budget:
+        return turns   # passt roh, keine Kompaktierung noetig
+    if len(turns) <= keep_n:
+        # Zu wenige Turns zum sinnvollen Aufteilen (nichts "Aelteres" zum
+        # Zusammenfassen) - roh durchreichen, auch wenn ueber Budget (seltener
+        # Randfall: schon die juengsten Turns allein sind riesig). Nicht
+        # schlechter dran als ohne diese Funktion.
+        return turns
+    older, recent = turns[:-keep_n], turns[-keep_n:]
+    summary = _summarize_history(older)
+    if not summary:
+        return recent
+    context_msg = {"role": "user", "content": (
+        "[Kontext: bisheriger Gesprächsverlauf, zusammengefasst]\n" + summary
+        + "\n[Ende Kontext – die eigentliche Frage kommt weiter unten]")}
+    return [context_msg] + recent
+
+
+def _log_token_sample(llm_obj, messages: list[dict]) -> None:
+    """Speichert einen echten Zeichen/Token-Messwert des letzten chat()-Aufrufs
+    (best-effort, darf den Antwortpfad nie stoeren) - Grundlage von
+    ``_history_char_budget``'s Selbstkalibrierung."""
+    try:
+        tokens = getattr(llm_obj, "last_prompt_tokens", None)
+        if not tokens:
+            return
+        chars = sum(len(m.get("content") or "") for m in messages)
+        if chars > 0:
+            manifest.log_token_sample(llm_obj.model, chars, tokens)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _is_syllabus_intent(question: str) -> bool:
@@ -380,27 +465,25 @@ def generate_node(state: RAGState) -> RAGState:
         state["candidates"], max_chars=max_chars, extra_prefix=extra)
 
     if mode == "strict":
+        # Strikt bleibt bewusst zustandslos: jede Antwort direkt+ausschliesslich
+        # aus dem aktuell abgerufenen Kontext, kein Gespraechs-Drift.
         prompt = ANSWER_PROMPT.format(
             context=context, question=state["question"], no_answer=NO_ANSWER_TOKEN
         )
         answer = get_llm().generate(prompt, system=ANSWER_SYSTEM).strip()
     else:
-        if mode == "sokratisch":
-            system, prompt_template = SOKRATISCH_SYSTEM, SOKRATISCH_PROMPT
-        else:
-            system, prompt_template = TUTOR_SYSTEM, TUTOR_PROMPT
+        # Tutor UND Sokratisch fuehren ein ECHTES Gespraech: die Historie geht
+        # als Mehrturn-Konversation in den Aufruf (budget-bewusst kompaktiert,
+        # siehe _history_for_chat), nicht nur als einzelner system+user-Turn.
+        system, prompt_template = ((SOKRATISCH_SYSTEM, SOKRATISCH_PROMPT) if mode == "sokratisch"
+                                   else (TUTOR_SYSTEM, TUTOR_PROMPT))
         prompt = prompt_template.format(context=context, question=state["question"])
-        if mode == "sokratisch":
-            # Echte Mehrturn-Historie: der sokratische Dialog muss sich erinnern,
-            # welche Rueckfrage er selbst bereits gestellt hat (siehe
-            # _history_messages) - anders als generate()/Strict+Tutor, die immer
-            # nur einen einzelnen system+user-Turn schicken.
-            messages = ([{"role": "system", "content": system}]
-                        + _history_messages(state.get("history"))
-                        + [{"role": "user", "content": prompt}])
-            answer = get_llm().chat(messages).strip()
-        else:
-            answer = get_llm().generate(prompt, system=system).strip()
+        llm_obj = get_llm()
+        messages = ([{"role": "system", "content": system}]
+                    + _history_for_chat(state.get("history"))
+                    + [{"role": "user", "content": prompt}])
+        answer = llm_obj.chat(messages).strip()
+        _log_token_sample(llm_obj, messages)
         if NO_ANSWER_TOKEN in answer:
             answer = answer.replace(NO_ANSWER_TOKEN, "").strip()
 
@@ -760,19 +843,19 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
                      if (syllabus and subject) else "")
             context, sources = _build_context(
                 candidates, max_chars=max_chars, extra_prefix=extra)
-            if mode == "sokratisch":
-                prompt = SOKRATISCH_PROMPT.format(context=context, question=question)
-                # Echte Mehrturn-Historie wie in generate_node - der sokratische
-                # Dialog muss sich erinnern, welche Rueckfrage er selbst bereits
-                # gestellt hat.
-                stream_kwargs = {"messages": (
-                    [{"role": "system", "content": SOKRATISCH_SYSTEM}]
-                    + _history_messages(history)
-                    + [{"role": "user", "content": prompt}])}
-                guard_sentinel = False
-            elif mode == "tutor":
-                prompt = TUTOR_PROMPT.format(context=context, question=question)
-                stream_kwargs = {"prompt": prompt, "system": TUTOR_SYSTEM}
+            history_messages: Optional[list[dict]] = None
+            if mode in ("sokratisch", "tutor"):
+                # Tutor UND Sokratisch fuehren wie in generate_node ein echtes
+                # Gespraech: Historie budget-bewusst kompaktiert (siehe
+                # _history_for_chat), nicht nur ein einzelner system+user-Turn.
+                system, prompt_template = ((SOKRATISCH_SYSTEM, SOKRATISCH_PROMPT)
+                                            if mode == "sokratisch"
+                                            else (TUTOR_SYSTEM, TUTOR_PROMPT))
+                prompt = prompt_template.format(context=context, question=question)
+                history_messages = ([{"role": "system", "content": system}]
+                                     + _history_for_chat(history)
+                                     + [{"role": "user", "content": prompt}])
+                stream_kwargs = {"messages": history_messages}
                 guard_sentinel = False
             else:
                 prompt = ANSWER_PROMPT.format(
@@ -784,7 +867,8 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
             head = ""
             guard = len(NO_ANSWER_TOKEN) + 12
             no_answer = False
-            for delta in get_llm().generate_stream(**stream_kwargs):
+            llm_obj = get_llm()
+            for delta in llm_obj.generate_stream(**stream_kwargs):
                 accumulated.append(delta)
                 if flushed:
                     yield delta
@@ -804,6 +888,8 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
                     yield head
 
             timings["generate"] = round(time.time() - tg, 2)
+            if history_messages is not None:
+                _log_token_sample(llm_obj, history_messages)
             answer = "".join(accumulated).replace(NO_ANSWER_TOKEN, "").strip()
 
             if no_answer or not answer:
