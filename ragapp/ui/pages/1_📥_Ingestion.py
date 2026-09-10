@@ -23,6 +23,8 @@ from ragapp.ui._loading import page_boot
 page_boot("📥 Dokumente & Ingestion", page_title="Dokumente & Ingestion",
           icon="📥", layout="wide", accent="ingestion")
 
+from ragapp.ui._style import card
+
 # --------------------------------------------------------------------------- #
 # Styling ("schick"), identisch zur Startseite
 # --------------------------------------------------------------------------- #
@@ -145,410 +147,414 @@ if _ocr:
 # --------------------------------------------------------------------------- #
 # 1) Datei-Upload
 # --------------------------------------------------------------------------- #
-st.subheader("Dateien hochladen & indexieren")
-st.caption(
-    "Unterstützt: PDF, Markdown, Text, Word (docx), PowerPoint (pptx). "
-    "Hochgeladene Dateien werden im Ordner `data/inbox/` abgelegt und sofort indexiert."
-)
+with card("upload"):
+    st.subheader("Dateien hochladen & indexieren")
+    st.caption(
+        "Unterstützt: PDF, Markdown, Text, Word (docx), PowerPoint (pptx). "
+        "Hochgeladene Dateien werden im Ordner `data/inbox/` abgelegt und sofort indexiert."
+    )
 
-uploads = st.file_uploader(
-    "Dateien auswählen (Mehrfachauswahl möglich)",
-    type=["pdf", "md", "txt", "docx", "pptx"],
-    accept_multiple_files=True,
-)
+    uploads = st.file_uploader(
+        "Dateien auswählen (Mehrfachauswahl möglich)",
+        type=["pdf", "md", "txt", "docx", "pptx"],
+        accept_multiple_files=True,
+    )
 
-# Fach-Zuordnung für den Upload (sonst landet der Upload unter „inbox")
-_known_subjects = sorted(
-    set(SUBJECT_LABELS.keys())
-    | {d["subject"] for d in manifest.list_documents() if d["subject"]}
-)
-_up_choice = st.selectbox(
-    "Fach für die hochgeladenen Dateien",
-    ["(neues Fach eingeben …)"] + _known_subjects,
-    help="Ordnet den Upload einem Fach zu (für Filter & Übersicht).",
-)
-if _up_choice == "(neues Fach eingeben …)":
-    upload_subject = st.text_input("Neues Fach", value="").strip() or None
-else:
-    upload_subject = _up_choice
+    # Fach-Zuordnung für den Upload (sonst landet der Upload unter „inbox")
+    _known_subjects = sorted(
+        set(SUBJECT_LABELS.keys())
+        | {d["subject"] for d in manifest.list_documents() if d["subject"]}
+    )
+    _up_choice = st.selectbox(
+        "Fach für die hochgeladenen Dateien",
+        ["(neues Fach eingeben …)"] + _known_subjects,
+        help="Ordnet den Upload einem Fach zu (für Filter & Übersicht).",
+    )
+    if _up_choice == "(neues Fach eingeben …)":
+        upload_subject = st.text_input("Neues Fach", value="").strip() or None
+    else:
+        upload_subject = _up_choice
 
-upload_use_rag = st.checkbox(
-    "Ins RAG aufnehmen (durchsuchbar & im Chat zitierbar)", value=True,
-    help="AUS: die Datei wird geladen und hier in der Verwaltung registriert, aber "
-         "NICHT gechunkt/eingebettet – z. B. für Prüfungsordnungen oder Verwaltungskram, "
-         "die du nur archivieren, aber nicht durchsuchen willst. Später über die Tabelle "
-         "unten jederzeit nachträglich ein- oder ausschaltbar.")
+    upload_use_rag = st.checkbox(
+        "Ins RAG aufnehmen (durchsuchbar & im Chat zitierbar)", value=True,
+        help="AUS: die Datei wird geladen und hier in der Verwaltung registriert, aber "
+             "NICHT gechunkt/eingebettet – z. B. für Prüfungsordnungen oder Verwaltungskram, "
+             "die du nur archivieren, aber nicht durchsuchen willst. Später über die Tabelle "
+             "unten jederzeit nachträglich ein- oder ausschaltbar.")
 
-if uploads and st.button("📥 Hochgeladene Dateien indexieren", type="primary"):
-    from ragapp.ui._progress import ProgressReporter, fmt_dauer
+    if uploads and st.button("📥 Hochgeladene Dateien indexieren", type="primary"):
+        from ragapp.ui._progress import ProgressReporter, fmt_dauer
 
-    ergebnisse: list[dict] = []
-    n_up = len(uploads)
-    _outer = st.progress(0.0, text=f"0/{n_up} Dateien")   # Datei k/N
-    _inner = ProgressReporter()                           # OCR-Seiten / Embedding
-    _t0 = time.time()
-    # Grob-ETA über Dateien nach ARBEIT (Bytes) statt Dateizahl gewichten -> eine
-    # kleine + eine große Datei lässt die Schätzung nicht mehr springen.
-    _bytes_total = sum(int(getattr(u, "size", 0) or 0) for u in uploads)
-    _bytes_done = 0
+        ergebnisse: list[dict] = []
+        n_up = len(uploads)
+        _outer = st.progress(0.0, text=f"0/{n_up} Dateien")   # Datei k/N
+        _inner = ProgressReporter()                           # OCR-Seiten / Embedding
+        _t0 = time.time()
+        # Grob-ETA über Dateien nach ARBEIT (Bytes) statt Dateizahl gewichten -> eine
+        # kleine + eine große Datei lässt die Schätzung nicht mehr springen.
+        _bytes_total = sum(int(getattr(u, "size", 0) or 0) for u in uploads)
+        _bytes_done = 0
 
-    with st.status("Verarbeite hochgeladene Dateien …", expanded=True) as status:
-        for k, up in enumerate(uploads, 1):
-            ziel = INBOX_DIR / up.name
-            try:
-                ziel.write_bytes(up.getbuffer())
-            except Exception as exc:
-                status.write(f"⚠️ {up.name}: konnte nicht gespeichert werden ({exc})")
-                ergebnisse.append({"Datei": up.name, "Status": "error", "Info": str(exc)})
-                continue
+        with st.status("Verarbeite hochgeladene Dateien …", expanded=True) as status:
+            for k, up in enumerate(uploads, 1):
+                ziel = INBOX_DIR / up.name
+                try:
+                    ziel.write_bytes(up.getbuffer())
+                except Exception as exc:
+                    status.write(f"⚠️ {up.name}: konnte nicht gespeichert werden ({exc})")
+                    ergebnisse.append({"Datei": up.name, "Status": "error", "Info": str(exc)})
+                    continue
 
-            status.update(label=f"[{k}/{n_up}] Indexiere {up.name} …")
+                status.update(label=f"[{k}/{n_up}] Indexiere {up.name} …")
 
-            def _fortschritt(msg: str, done=None, total=None, _name=up.name) -> None:
-                if total:                       # zählbare Stufe -> Feinbalken + ETA
-                    _inner(f"{_name}: {msg}", done, total)
-                else:                            # grobe Stufe -> Log + Balkentext
-                    status.write(f"· {_name}: {msg}")
-                    _inner(f"{_name}: {msg}")
+                def _fortschritt(msg: str, done=None, total=None, _name=up.name) -> None:
+                    if total:                       # zählbare Stufe -> Feinbalken + ETA
+                        _inner(f"{_name}: {msg}", done, total)
+                    else:                            # grobe Stufe -> Log + Balkentext
+                        status.write(f"· {_name}: {msg}")
+                        _inner(f"{_name}: {msg}")
 
-            try:
-                r = ingest_file(ziel, subject=upload_subject, progress=_fortschritt,
-                                use_rag=upload_use_rag)
-            except Exception as exc:
-                r = {"status": "error", "file": up.name, "error": str(exc)}
+                try:
+                    r = ingest_file(ziel, subject=upload_subject, progress=_fortschritt,
+                                    use_rag=upload_use_rag)
+                except Exception as exc:
+                    r = {"status": "error", "file": up.name, "error": str(exc)}
 
-            info = ""
-            if r["status"] == "duplicate":
-                info = f"Duplikat von {r.get('duplicate_of', '?')}"
-            elif r["status"] == "unchanged":
-                info = "unverändert, bereits im Index"
-            elif r["status"] == "ok":
-                info = f"{r.get('chunks', 0)} Chunks, {r.get('questions', 0)} Fragen"
-            elif r["status"] == "archived":
-                info = "nur archiviert (nicht im RAG)"
-            elif r["status"] in ("skipped", "duplicate_chunks"):
-                info = r.get("reason", "übersprungen")
-            elif r["status"] == "error":
-                info = r.get("error", "Fehler")
-            ergebnisse.append({"Datei": r.get("file", up.name),
-                               "Status": r["status"], "Info": info})
-            status.write(f"✔️ {r.get('file', up.name)} → **{r['status']}** {info}")
+                info = ""
+                if r["status"] == "duplicate":
+                    info = f"Duplikat von {r.get('duplicate_of', '?')}"
+                elif r["status"] == "unchanged":
+                    info = "unverändert, bereits im Index"
+                elif r["status"] == "ok":
+                    info = f"{r.get('chunks', 0)} Chunks, {r.get('questions', 0)} Fragen"
+                elif r["status"] == "archived":
+                    info = "nur archiviert (nicht im RAG)"
+                elif r["status"] in ("skipped", "duplicate_chunks"):
+                    info = r.get("reason", "übersprungen")
+                elif r["status"] == "error":
+                    info = r.get("error", "Fehler")
+                ergebnisse.append({"Datei": r.get("file", up.name),
+                                   "Status": r["status"], "Info": info})
+                status.write(f"✔️ {r.get('file', up.name)} → **{r['status']}** {info}")
 
-            _bytes_done += int(getattr(up, "size", 0) or 0)
-            _el = time.time() - _t0                       # grobe Gesamt-ETA über Dateien
-            if _bytes_total > 0 and _bytes_done > 0:      # nach Arbeit (Bytes) gewichtet
-                _eta = _el * (_bytes_total - _bytes_done) / _bytes_done
-            else:                                         # Fallback: nach Dateizahl
-                _eta = (_el / k) * (n_up - k)
-            _outer.progress(k / n_up,
-                            text=f"{k}/{n_up} Dateien · noch ca. {fmt_dauer(_eta)}")
+                _bytes_done += int(getattr(up, "size", 0) or 0)
+                _el = time.time() - _t0                       # grobe Gesamt-ETA über Dateien
+                if _bytes_total > 0 and _bytes_done > 0:      # nach Arbeit (Bytes) gewichtet
+                    _eta = _el * (_bytes_total - _bytes_done) / _bytes_done
+                else:                                         # Fallback: nach Dateizahl
+                    _eta = (_el / k) * (n_up - k)
+                _outer.progress(k / n_up,
+                                text=f"{k}/{n_up} Dateien · noch ca. {fmt_dauer(_eta)}")
 
-        status.update(label="Fertig", state="complete")
+            status.update(label="Fertig", state="complete")
 
-    _inner.clear()
-    _outer.progress(1.0, text=f"{n_up}/{n_up} Dateien · fertig")
-    st.dataframe(pd.DataFrame(ergebnisse), use_container_width=True, hide_index=True)
-    ok = sum(1 for e in ergebnisse if e["Status"] == "ok")
-    st.success(f"{ok} von {len(ergebnisse)} Datei(en) neu indexiert.")
+        _inner.clear()
+        _outer.progress(1.0, text=f"{n_up}/{n_up} Dateien · fertig")
+        st.dataframe(pd.DataFrame(ergebnisse), use_container_width=True, hide_index=True)
+        ok = sum(1 for e in ergebnisse if e["Status"] == "ok")
+        st.success(f"{ok} von {len(ergebnisse)} Datei(en) neu indexiert.")
 
 st.divider()
 
 # --------------------------------------------------------------------------- #
 # 2) Kompletten Quellordner importieren
 # --------------------------------------------------------------------------- #
-st.subheader("Kompletten Quellordner importieren")
-st.caption(f"Quellordner: `{SOURCE_DIR}`")
-st.warning(
-    "⏳ **Achtung, langer Erstimport.** Ein **großer** Korpus (viele tausend Chunks) "
-    "dauert beim ersten Import **in Summe** eine Weile – es wird pro Chunk ein Embedding "
-    "erzeugt (ein einzelnes Chunk-Embedding dauert nur Millisekunden bis Sekundenbruchteile). "
-    "**Ohne GPU (nur CPU)** grob **1–2 Stunden gesamt** für viele tausend Chunks; **mit GPU "
-    "meist nur Minuten**. Der Streamlit-Prozess ist währenddessen blockiert – für den "
-    "**Erstimport** daher lieber der Ordnerwächter bzw. das CLI "
-    "(`python -m ragapp.scripts.cli ingest`), das im Hintergrund läuft und "
-    "unterbrechbar/fortsetzbar ist."
-)
+with card("quellordner"):
+    st.subheader("Kompletten Quellordner importieren")
+    st.caption(f"Quellordner: `{SOURCE_DIR}`")
+    st.warning(
+        "⏳ **Achtung, langer Erstimport.** Ein **großer** Korpus (viele tausend Chunks) "
+        "dauert beim ersten Import **in Summe** eine Weile – es wird pro Chunk ein Embedding "
+        "erzeugt (ein einzelnes Chunk-Embedding dauert nur Millisekunden bis Sekundenbruchteile). "
+        "**Ohne GPU (nur CPU)** grob **1–2 Stunden gesamt** für viele tausend Chunks; **mit GPU "
+        "meist nur Minuten**. Der Streamlit-Prozess ist währenddessen blockiert – für den "
+        "**Erstimport** daher lieber der Ordnerwächter bzw. das CLI "
+        "(`python -m ragapp.scripts.cli ingest`), das im Hintergrund läuft und "
+        "unterbrechbar/fortsetzbar ist."
+    )
 
-if st.button("📚 Kompletten Quellordner importieren"):
-    import re as _re_dir
-    from ragapp.ui._progress import ProgressReporter
+    if st.button("📚 Kompletten Quellordner importieren"):
+        import re as _re_dir
+        from ragapp.ui._progress import ProgressReporter
 
-    _FILE_TICK = _re_dir.compile(r"^\[(\d+)\s*/\s*(\d+)\]")
-    _outer = ProgressReporter()      # Datei i/n
-    _inner_slot = st.empty()         # Seite (OCR) / Embedding-Batch der aktuellen Datei
-    _inner = ProgressReporter(_inner_slot)
+        _FILE_TICK = _re_dir.compile(r"^\[(\d+)\s*/\s*(\d+)\]")
+        _outer = ProgressReporter()      # Datei i/n
+        _inner_slot = st.empty()         # Seite (OCR) / Embedding-Batch der aktuellen Datei
+        _inner = ProgressReporter(_inner_slot)
 
-    with st.status("Importiere Quellordner … (das kann sehr lange dauern)",
-                   expanded=True) as status:
-        def _fortschritt_dir(msg: str, done=None, total=None) -> None:
-            m = _FILE_TICK.match(msg)
-            if m:                                   # Datei-Ebene -> äußerer Balken
-                i, n = int(m.group(1)), int(m.group(2))
-                _outer(msg, done if done is not None else i,
-                       total if total is not None else n)
-                _inner_slot.empty()                 # Feinbalken der neuen Datei leeren
-                status.update(label=msg)
-            elif total:                             # Seite/Batch -> Feinbalken + ETA
-                _inner(msg, done, total)
-            else:                                   # grobe Stufenmeldung
-                status.write(msg)
+        with st.status("Importiere Quellordner … (das kann sehr lange dauern)",
+                       expanded=True) as status:
+            def _fortschritt_dir(msg: str, done=None, total=None) -> None:
+                m = _FILE_TICK.match(msg)
+                if m:                                   # Datei-Ebene -> äußerer Balken
+                    i, n = int(m.group(1)), int(m.group(2))
+                    _outer(msg, done if done is not None else i,
+                           total if total is not None else n)
+                    _inner_slot.empty()                 # Feinbalken der neuen Datei leeren
+                    status.update(label=msg)
+                elif total:                             # Seite/Batch -> Feinbalken + ETA
+                    _inner(msg, done, total)
+                else:                                   # grobe Stufenmeldung
+                    status.write(msg)
 
-        try:
-            summary = ingest_directory(progress=_fortschritt_dir)
-            status.update(label="Import abgeschlossen", state="complete")
-        except Exception as exc:
-            status.update(label=f"Fehler: {exc}", state="error")
-            summary = None
+            try:
+                summary = ingest_directory(progress=_fortschritt_dir)
+                status.update(label="Import abgeschlossen", state="complete")
+            except Exception as exc:
+                status.update(label=f"Fehler: {exc}", state="error")
+                summary = None
 
-    _inner_slot.empty()
-    if summary is not None:
-        _outer.finish("Import abgeschlossen")
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Neu", summary.get("ok", 0))
-        m2.metric("Duplikate", summary.get("duplicate", 0))
-        m3.metric("Unverändert", summary.get("unchanged", 0))
-        m4.metric("Fehler", summary.get("error", 0))
-        st.success(
-            f"Fertig: {summary.get('chunks', 0)} Chunks und "
-            f"{summary.get('questions', 0)} Fragen indexiert."
-        )
+        _inner_slot.empty()
+        if summary is not None:
+            _outer.finish("Import abgeschlossen")
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Neu", summary.get("ok", 0))
+            m2.metric("Duplikate", summary.get("duplicate", 0))
+            m3.metric("Unverändert", summary.get("unchanged", 0))
+            m4.metric("Fehler", summary.get("error", 0))
+            st.success(
+                f"Fertig: {summary.get('chunks', 0)} Chunks und "
+                f"{summary.get('questions', 0)} Fragen indexiert."
+            )
 
 st.divider()
 
 # --------------------------------------------------------------------------- #
 # 3) Fragen-Anreicherung
 # --------------------------------------------------------------------------- #
-st.subheader("🧠 Fragen-Anreicherung")
-st.caption(
-    "Erzeugt mit dem LLM hypothetische Fragen je Chunk und indexiert sie. Das "
-    "**erhöht die Trefferquote** und liefert **Karteikarten** für die 🎓 Lernen-Seite. "
-    "Weil dafür **pro Chunk ein LLM-Aufruf** nötig ist (nicht nur ein Embedding), kostet "
-    "es **ohne GPU ~20 s pro Chunk** (mit GPU schneller) – deshalb gedeckelt (Limit) und "
-    "resumierbar (bereits angereicherte Chunks werden übersprungen)."
-)
+with card("anreicherung"):
+    st.subheader("🧠 Fragen-Anreicherung")
+    st.caption(
+        "Erzeugt mit dem LLM hypothetische Fragen je Chunk und indexiert sie. Das "
+        "**erhöht die Trefferquote** und liefert **Karteikarten** für die 🎓 Lernen-Seite. "
+        "Weil dafür **pro Chunk ein LLM-Aufruf** nötig ist (nicht nur ein Embedding), kostet "
+        "es **ohne GPU ~20 s pro Chunk** (mit GPU schneller) – deshalb gedeckelt (Limit) und "
+        "resumierbar (bereits angereicherte Chunks werden übersprungen)."
+    )
 
-_docs_all = manifest.list_documents()
-_subjects = sorted({d["subject"] for d in _docs_all if d["subject"]})
-_doc_label = {
-    f"{d['filename']}  ·  {d['subject'] or '—'}  ({d['num_chunks']} Chunks · "
-    f"{d['num_questions']} Fragen)": d["doc_id"]
-    for d in _docs_all
-}
-_sel_docs = st.multiselect(
-    "Dateien auswählen (leer = alle passenden)", list(_doc_label.keys()),
-    help="Gezielt nur diese Dateien anreichern. Leer lassen = alle (nach Priorität).")
-_doc_ids = [_doc_label[k] for k in _sel_docs] or None
+    _docs_all = manifest.list_documents()
+    _subjects = sorted({d["subject"] for d in _docs_all if d["subject"]})
+    _doc_label = {
+        f"{d['filename']}  ·  {d['subject'] or '—'}  ({d['num_chunks']} Chunks · "
+        f"{d['num_questions']} Fragen)": d["doc_id"]
+        for d in _docs_all
+    }
+    _sel_docs = st.multiselect(
+        "Dateien auswählen (leer = alle passenden)", list(_doc_label.keys()),
+        help="Gezielt nur diese Dateien anreichern. Leer lassen = alle (nach Priorität).")
+    _doc_ids = [_doc_label[k] for k in _sel_docs] or None
 
-col_a, col_b, col_c = st.columns(3)
-with col_a:
-    enrich_limit = st.number_input(
-        "Maximale Anzahl Chunks (Limit)", min_value=1, max_value=100000,
-        value=100, step=10, help="Deckelt die Menge; wichtige/kompakte Dokumente zuerst.")
-with col_b:
-    enrich_choice = st.selectbox(
-        "Fach-Filter (optional)", ["Alle Fächer"] + _subjects,
-        help="Nur Chunks dieses Fachs (wirkt zusätzlich zur Datei-Auswahl).")
-with col_c:
-    enrich_n = st.number_input(
-        "Fragen pro Chunk", min_value=1, max_value=10,
-        value=int(getattr(settings, "NUM_INDEX_QUESTIONS", 3)), step=1,
-        help="Wie viele verschiedene Fragen je Textabschnitt erzeugt werden.")
-enrich_subject = None if enrich_choice == "Alle Fächer" else enrich_choice
-enrich_answers = st.checkbox(
-    "Musterlösungen gleich mitgenerieren (KI-Antwort statt Chunk)", value=True,
-    help="Erzeugt zu jeder Frage direkt eine echte Antwort. Braucht mehr Zeit "
-         "(~20 s pro Frage zusätzlich), spart aber das spätere Nachziehen auf der Lernen-Seite.")
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        enrich_limit = st.number_input(
+            "Maximale Anzahl Chunks (Limit)", min_value=1, max_value=100000,
+            value=100, step=10, help="Deckelt die Menge; wichtige/kompakte Dokumente zuerst.")
+    with col_b:
+        enrich_choice = st.selectbox(
+            "Fach-Filter (optional)", ["Alle Fächer"] + _subjects,
+            help="Nur Chunks dieses Fachs (wirkt zusätzlich zur Datei-Auswahl).")
+    with col_c:
+        enrich_n = st.number_input(
+            "Fragen pro Chunk", min_value=1, max_value=10,
+            value=int(getattr(settings, "NUM_INDEX_QUESTIONS", 3)), step=1,
+            help="Wie viele verschiedene Fragen je Textabschnitt erzeugt werden.")
+    enrich_subject = None if enrich_choice == "Alle Fächer" else enrich_choice
+    enrich_answers = st.checkbox(
+        "Musterlösungen gleich mitgenerieren (KI-Antwort statt Chunk)", value=True,
+        help="Erzeugt zu jeder Frage direkt eine echte Antwort. Braucht mehr Zeit "
+             "(~20 s pro Frage zusätzlich), spart aber das spätere Nachziehen auf der Lernen-Seite.")
 
-_mt1, _mt2 = st.columns([1, 2])
-with _mt1:
-    if st.button("🩺 Modell testen"):
-        from ragapp.hardware import probe_model
-        with st.spinner(f"Teste `{settings.LLM_MODEL_FAST}` …"):
-            _ok, _msg = probe_model(settings.LLM_MODEL_FAST)
-        if _ok:
-            st.success(f"✅ `{settings.LLM_MODEL_FAST}` antwortet – die Anreicherung kann starten.")
-        else:
-            st.error(f"❌ `{settings.LLM_MODEL_FAST}` läuft nicht: {_msg}  Wähle unter "
-                     "**⚙️ Einstellungen → Hardware & Modell-Auswahl** ein laufendes "
-                     "Modell (z. B. `gemma3:4b`).")
-
-if st.button("🧠 Fragen-Anreicherung starten", type="primary"):
-    import re as _re_en
-    from ragapp.ui._progress import ProgressReporter
-    _EN_TICK = _re_en.compile(r"(\d+)\s*/\s*(\d+)")
-    _en_bar = ProgressReporter()
-    with st.status("Reichere Fragen an … (~20 s pro Chunk)", expanded=True) as status:
-        def _fortschritt_enrich(msg: str, done=None, total=None) -> None:
-            if total:
-                _en_bar(msg, done, total)
+    _mt1, _mt2 = st.columns([1, 2])
+    with _mt1:
+        if st.button("🩺 Modell testen"):
+            from ragapp.hardware import probe_model
+            with st.spinner(f"Teste `{settings.LLM_MODEL_FAST}` …"):
+                _ok, _msg = probe_model(settings.LLM_MODEL_FAST)
+            if _ok:
+                st.success(f"✅ `{settings.LLM_MODEL_FAST}` antwortet – die Anreicherung kann starten.")
             else:
-                mm = _EN_TICK.search(msg)
-                if mm:
-                    _en_bar(msg, int(mm.group(1)), int(mm.group(2)))
+                st.error(f"❌ `{settings.LLM_MODEL_FAST}` läuft nicht: {_msg}  Wähle unter "
+                         "**⚙️ Einstellungen → Hardware & Modell-Auswahl** ein laufendes "
+                         "Modell (z. B. `gemma3:4b`).")
+
+    if st.button("🧠 Fragen-Anreicherung starten", type="primary"):
+        import re as _re_en
+        from ragapp.ui._progress import ProgressReporter
+        _EN_TICK = _re_en.compile(r"(\d+)\s*/\s*(\d+)")
+        _en_bar = ProgressReporter()
+        with st.status("Reichere Fragen an … (~20 s pro Chunk)", expanded=True) as status:
+            def _fortschritt_enrich(msg: str, done=None, total=None) -> None:
+                if total:
+                    _en_bar(msg, done, total)
                 else:
-                    status.update(label=msg)
+                    mm = _EN_TICK.search(msg)
+                    if mm:
+                        _en_bar(msg, int(mm.group(1)), int(mm.group(2)))
+                    else:
+                        status.update(label=msg)
 
-        try:
-            r = enrich_questions(limit=int(enrich_limit), subject=enrich_subject,
-                                 doc_ids=_doc_ids, n_per_chunk=int(enrich_n),
-                                 with_answers=bool(enrich_answers),
-                                 progress=_fortschritt_enrich)
-            status.update(label="Anreicherung abgeschlossen", state="complete")
-        except Exception as exc:  # noqa: BLE001
-            status.update(label=f"Fehler: {exc}", state="error")
-            r = None
+            try:
+                r = enrich_questions(limit=int(enrich_limit), subject=enrich_subject,
+                                     doc_ids=_doc_ids, n_per_chunk=int(enrich_n),
+                                     with_answers=bool(enrich_answers),
+                                     progress=_fortschritt_enrich)
+                status.update(label="Anreicherung abgeschlossen", state="complete")
+            except Exception as exc:  # noqa: BLE001
+                status.update(label=f"Fehler: {exc}", state="error")
+                r = None
 
-    if r is not None:
-        _st = r.get("status")
-        if _st == "nothing_to_do":
-            st.info("Nichts zu tun – die gewählten Chunks sind bereits angereichert.")
-        elif _st == "llm_error":
-            st.error(
-                f"❌ Es wurden **0 Fragen** erzeugt. {r.get('error_msg', '')}  Meist lädt "
-                "das schnelle Modell nicht: prüfe es oben mit **Modell testen** und wähle "
-                "unter **⚙️ Einstellungen** ein laufendes Modell (z. B. `gemma3:4b`).")
-        elif r.get("questions", 0) == 0:
-            st.warning("Es wurden **0 Fragen** erzeugt – die Chunks ergaben keine (kein "
-                       "Modellfehler). Wähle ggf. andere/längere Dokumente.")
-        else:
-            st.success(
-                f"✅ **{r['questions']} Fragen** für {r['processed']} Chunk(s) erzeugt und "
-                "indexiert. Tipp: auf **🎓 Lernen** die Karten aktualisieren, dann üben.")
-            st.session_state["_needs_card_harvest"] = True
-            _rows = [{"Datei": v["filename"], "Fragen erzeugt": v["questions"]}
-                     for v in r.get("per_doc", {}).values() if v["questions"]]
-            if _rows:
-                st.dataframe(pd.DataFrame(_rows), hide_index=True, use_container_width=True)
+        if r is not None:
+            _st = r.get("status")
+            if _st == "nothing_to_do":
+                st.info("Nichts zu tun – die gewählten Chunks sind bereits angereichert.")
+            elif _st == "llm_error":
+                st.error(
+                    f"❌ Es wurden **0 Fragen** erzeugt. {r.get('error_msg', '')}  Meist lädt "
+                    "das schnelle Modell nicht: prüfe es oben mit **Modell testen** und wähle "
+                    "unter **⚙️ Einstellungen** ein laufendes Modell (z. B. `gemma3:4b`).")
+            elif r.get("questions", 0) == 0:
+                st.warning("Es wurden **0 Fragen** erzeugt – die Chunks ergaben keine (kein "
+                           "Modellfehler). Wähle ggf. andere/längere Dokumente.")
+            else:
+                st.success(
+                    f"✅ **{r['questions']} Fragen** für {r['processed']} Chunk(s) erzeugt und "
+                    "indexiert. Tipp: auf **🎓 Lernen** die Karten aktualisieren, dann üben.")
+                st.session_state["_needs_card_harvest"] = True
+                _rows = [{"Datei": v["filename"], "Fragen erzeugt": v["questions"]}
+                         for v in r.get("per_doc", {}).values() if v["questions"]]
+                if _rows:
+                    st.dataframe(pd.DataFrame(_rows), hide_index=True, use_container_width=True)
 
 st.divider()
 
 # --------------------------------------------------------------------------- #
 # 4) Dokumentübersicht
 # --------------------------------------------------------------------------- #
-st.subheader("Indexierte Dokumente")
+with card("dokumente"):
+    st.subheader("Indexierte Dokumente")
 
-_docs = [dict(d) for d in manifest.list_documents()]
-if not _docs:
-    st.info("Noch keine Dokumente indexiert.")
-else:
-    st.caption(
-        "Häkchen **„Im RAG“** entscheidet, ob ein Dokument durchsuchbar/im Chat "
-        "zitierbar ist. Ausschalten entfernt nur die Chunks/Embeddings – das "
-        "Dokument bleibt hier registriert (archiviert). Einschalten liest die Datei "
-        "neu ein und bettet sie ein (kann je nach Größe etwas dauern)."
-    )
-    _doc_orig = {d["doc_id"]: d for d in _docs}
-    _df = pd.DataFrame([{
-        "Im RAG": bool(d.get("use_rag", 1)),
-        "Fach": d["subject"],
-        "Dateiname": d["filename"],
-        "Chunks": d["num_chunks"],
-        "Fragen": d["num_questions"],
-        "Status": d["status"],
-        "_id": d["doc_id"],
-    } for d in _docs])
-    _edited_docs = st.data_editor(
-        _df, hide_index=True, use_container_width=True, key="doc_rag_editor",
-        column_config={
-            "Im RAG": st.column_config.CheckboxColumn(width="small"),
-            "Fach": st.column_config.TextColumn(disabled=True),
-            "Dateiname": st.column_config.TextColumn(disabled=True),
-            "Chunks": st.column_config.NumberColumn(disabled=True),
-            "Fragen": st.column_config.NumberColumn(disabled=True),
-            "Status": st.column_config.TextColumn(disabled=True),
-            "_id": None,
-        },
-    )
-    st.caption(f"{len(_docs)} Dokument(e) insgesamt.")
-    _rag_changed = [
-        (row["_id"], bool(row["Im RAG"]))
-        for _, row in _edited_docs.iterrows()
-        if bool(row["Im RAG"]) != bool(_doc_orig[row["_id"]].get("use_rag", 1))
-    ]
-    if st.button(f"💾 RAG-Auswahl übernehmen ({len(_rag_changed)} geändert)",
-                 disabled=not _rag_changed):
-        _fehler = 0
-        with st.status(f"Wende {len(_rag_changed)} Änderung(en) an …", expanded=True) as status:
-            for doc_id, want_rag in _rag_changed:
-                name = _doc_orig[doc_id]["filename"]
-                status.write(f"· {name}: {'ins RAG aufnehmen …' if want_rag else 'aus dem RAG entfernen …'}")
-                try:
-                    res = set_document_use_rag(doc_id, want_rag)
-                    if res.get("status") in ("not_found", "missing_file"):
+    _docs = [dict(d) for d in manifest.list_documents()]
+    if not _docs:
+        st.info("Noch keine Dokumente indexiert.")
+    else:
+        st.caption(
+            "Häkchen **„Im RAG“** entscheidet, ob ein Dokument durchsuchbar/im Chat "
+            "zitierbar ist. Ausschalten entfernt nur die Chunks/Embeddings – das "
+            "Dokument bleibt hier registriert (archiviert). Einschalten liest die Datei "
+            "neu ein und bettet sie ein (kann je nach Größe etwas dauern)."
+        )
+        _doc_orig = {d["doc_id"]: d for d in _docs}
+        _df = pd.DataFrame([{
+            "Im RAG": bool(d.get("use_rag", 1)),
+            "Fach": d["subject"],
+            "Dateiname": d["filename"],
+            "Chunks": d["num_chunks"],
+            "Fragen": d["num_questions"],
+            "Status": d["status"],
+            "_id": d["doc_id"],
+        } for d in _docs])
+        _edited_docs = st.data_editor(
+            _df, hide_index=True, use_container_width=True, key="doc_rag_editor",
+            column_config={
+                "Im RAG": st.column_config.CheckboxColumn(width="small"),
+                "Fach": st.column_config.TextColumn(disabled=True),
+                "Dateiname": st.column_config.TextColumn(disabled=True),
+                "Chunks": st.column_config.NumberColumn(disabled=True),
+                "Fragen": st.column_config.NumberColumn(disabled=True),
+                "Status": st.column_config.TextColumn(disabled=True),
+                "_id": None,
+            },
+        )
+        st.caption(f"{len(_docs)} Dokument(e) insgesamt.")
+        _rag_changed = [
+            (row["_id"], bool(row["Im RAG"]))
+            for _, row in _edited_docs.iterrows()
+            if bool(row["Im RAG"]) != bool(_doc_orig[row["_id"]].get("use_rag", 1))
+        ]
+        if st.button(f"💾 RAG-Auswahl übernehmen ({len(_rag_changed)} geändert)",
+                     disabled=not _rag_changed):
+            _fehler = 0
+            with st.status(f"Wende {len(_rag_changed)} Änderung(en) an …", expanded=True) as status:
+                for doc_id, want_rag in _rag_changed:
+                    name = _doc_orig[doc_id]["filename"]
+                    status.write(f"· {name}: {'ins RAG aufnehmen …' if want_rag else 'aus dem RAG entfernen …'}")
+                    try:
+                        res = set_document_use_rag(doc_id, want_rag)
+                        if res.get("status") in ("not_found", "missing_file"):
+                            _fehler += 1
+                            status.write(f"⚠️ {name}: {res.get('status')}")
+                    except Exception as exc:  # noqa: BLE001
                         _fehler += 1
-                        status.write(f"⚠️ {name}: {res.get('status')}")
-                except Exception as exc:  # noqa: BLE001
-                    _fehler += 1
-                    status.write(f"⚠️ {name}: {exc}")
-            status.update(label="Fertig", state="error" if _fehler else "complete")
-        st.success(f"{len(_rag_changed) - _fehler} von {len(_rag_changed)} Änderung(en) übernommen.")
-        st.rerun()
-    st.caption(f"{len(_docs)} Dokument(e) insgesamt.")
-
-    # ----------------------------------------------------------------- #
-    # Dokumente löschen (Mehrfachauswahl)
-    # ----------------------------------------------------------------- #
-    st.markdown("##### 🗑️ Dokumente löschen")
-    st.caption("Entfernt die gewählten Dokumente **samt Chunks und Fragen** aus "
-               "Vektordatenbank, Manifest und Suchindex (BM25).")
-    _doc_label = {
-        f"[{d['subject']}] {d['filename']}  ·  {d['num_chunks']} Chunks, {d['num_questions']} Fragen": d["doc_id"]
-        for d in _docs
-    }
-    _del_sel = st.multiselect("Dokument(e) auswählen", list(_doc_label.keys()))
-    if st.button("🗑️ Ausgewählte Dokumente löschen", type="secondary",
-                 disabled=not _del_sel):
-        fehler = 0
-        with st.status(f"Lösche {len(_del_sel)} Dokument(e) …", expanded=False) as status:
-            for lbl in _del_sel:
-                try:
-                    remove_document(_doc_label[lbl])
-                except Exception as exc:  # noqa: BLE001
-                    fehler += 1
-                    status.write(f"⚠️ {lbl}: {exc}")
-            status.update(label="Fertig", state="error" if fehler else "complete")
-        st.success(f"{len(_del_sel) - fehler} Dokument(e) entfernt.")
-        st.rerun()
-
-    # ----------------------------------------------------------------- #
-    # Nur Fragen löschen (Dokumente/Chunks bleiben)
-    # ----------------------------------------------------------------- #
-    st.markdown("##### 🧠 Nur Fragen löschen (Dokumente & Chunks bleiben)")
-    st.caption("Generierte Fragen erhöhen die Trefferquote, aber sehr viele können "
-               "die Suche verlangsamen. Hier gezielt welche entfernen, ohne die "
-               "Dokumente selbst anzutasten.")
-    _q_total = sum(d["num_questions"] for d in _docs)
-    st.write(f"Aktuell **{_q_total}** Fragen im Index.")
-    _q_scope = st.radio("Umfang", ["Alle Fragen", "Nur ein Fach", "Nur bestimmte Dokumente"],
-                        horizontal=True)
-
-    if _q_scope == "Alle Fragen":
-        if st.button(f"🧹 Alle {_q_total} Fragen löschen", disabled=_q_total == 0):
-            remove_questions()
-            st.success("Alle Fragen wurden gelöscht (Chunks bleiben erhalten).")
+                        status.write(f"⚠️ {name}: {exc}")
+                status.update(label="Fertig", state="error" if _fehler else "complete")
+            st.success(f"{len(_rag_changed) - _fehler} von {len(_rag_changed)} Änderung(en) übernommen.")
             st.rerun()
-    elif _q_scope == "Nur ein Fach":
-        _subj_q: dict = {}
-        for d in _docs:
-            _subj_q[d["subject"]] = _subj_q.get(d["subject"], 0) + d["num_questions"]
-        _subj_map = {f"{s}  ·  {n} Fragen": s for s, n in sorted(_subj_q.items())}
-        _sel_subj = st.selectbox("Fach", list(_subj_map.keys()))
-        if st.button("🧹 Fragen dieses Fachs löschen"):
-            remove_questions(subject=_subj_map[_sel_subj])
-            st.success(f"Fragen im Fach „{_subj_map[_sel_subj]}“ gelöscht.")
-            st.rerun()
-    else:  # Nur bestimmte Dokumente
-        _q_docs = {
-            f"[{d['subject']}] {d['filename']}  ·  {d['num_questions']} Fragen": d["doc_id"]
-            for d in _docs if d["num_questions"] > 0
+        st.caption(f"{len(_docs)} Dokument(e) insgesamt.")
+
+        # ----------------------------------------------------------------- #
+        # Dokumente löschen (Mehrfachauswahl)
+        # ----------------------------------------------------------------- #
+        st.markdown("##### 🗑️ Dokumente löschen")
+        st.caption("Entfernt die gewählten Dokumente **samt Chunks und Fragen** aus "
+                   "Vektordatenbank, Manifest und Suchindex (BM25).")
+        _doc_label = {
+            f"[{d['subject']}] {d['filename']}  ·  {d['num_chunks']} Chunks, {d['num_questions']} Fragen": d["doc_id"]
+            for d in _docs
         }
-        if not _q_docs:
-            st.info("Kein Dokument hat aktuell Fragen.")
-        else:
-            _sel_qdocs = st.multiselect("Dokument(e)", list(_q_docs.keys()))
-            if st.button("🧹 Fragen der gewählten Dokumente löschen",
-                         disabled=not _sel_qdocs):
-                for lbl in _sel_qdocs:
-                    remove_questions(doc_id=_q_docs[lbl])
-                st.success(f"Fragen aus {len(_sel_qdocs)} Dokument(en) gelöscht.")
+        _del_sel = st.multiselect("Dokument(e) auswählen", list(_doc_label.keys()))
+        if st.button("🗑️ Ausgewählte Dokumente löschen", type="secondary",
+                     disabled=not _del_sel):
+            fehler = 0
+            with st.status(f"Lösche {len(_del_sel)} Dokument(e) …", expanded=False) as status:
+                for lbl in _del_sel:
+                    try:
+                        remove_document(_doc_label[lbl])
+                    except Exception as exc:  # noqa: BLE001
+                        fehler += 1
+                        status.write(f"⚠️ {lbl}: {exc}")
+                status.update(label="Fertig", state="error" if fehler else "complete")
+            st.success(f"{len(_del_sel) - fehler} Dokument(e) entfernt.")
+            st.rerun()
+
+        # ----------------------------------------------------------------- #
+        # Nur Fragen löschen (Dokumente/Chunks bleiben)
+        # ----------------------------------------------------------------- #
+        st.markdown("##### 🧠 Nur Fragen löschen (Dokumente & Chunks bleiben)")
+        st.caption("Generierte Fragen erhöhen die Trefferquote, aber sehr viele können "
+                   "die Suche verlangsamen. Hier gezielt welche entfernen, ohne die "
+                   "Dokumente selbst anzutasten.")
+        _q_total = sum(d["num_questions"] for d in _docs)
+        st.write(f"Aktuell **{_q_total}** Fragen im Index.")
+        _q_scope = st.radio("Umfang", ["Alle Fragen", "Nur ein Fach", "Nur bestimmte Dokumente"],
+                            horizontal=True)
+
+        if _q_scope == "Alle Fragen":
+            if st.button(f"🧹 Alle {_q_total} Fragen löschen", disabled=_q_total == 0):
+                remove_questions()
+                st.success("Alle Fragen wurden gelöscht (Chunks bleiben erhalten).")
                 st.rerun()
+        elif _q_scope == "Nur ein Fach":
+            _subj_q: dict = {}
+            for d in _docs:
+                _subj_q[d["subject"]] = _subj_q.get(d["subject"], 0) + d["num_questions"]
+            _subj_map = {f"{s}  ·  {n} Fragen": s for s, n in sorted(_subj_q.items())}
+            _sel_subj = st.selectbox("Fach", list(_subj_map.keys()))
+            if st.button("🧹 Fragen dieses Fachs löschen"):
+                remove_questions(subject=_subj_map[_sel_subj])
+                st.success(f"Fragen im Fach „{_subj_map[_sel_subj]}“ gelöscht.")
+                st.rerun()
+        else:  # Nur bestimmte Dokumente
+            _q_docs = {
+                f"[{d['subject']}] {d['filename']}  ·  {d['num_questions']} Fragen": d["doc_id"]
+                for d in _docs if d["num_questions"] > 0
+            }
+            if not _q_docs:
+                st.info("Kein Dokument hat aktuell Fragen.")
+            else:
+                _sel_qdocs = st.multiselect("Dokument(e)", list(_q_docs.keys()))
+                if st.button("🧹 Fragen der gewählten Dokumente löschen",
+                             disabled=not _sel_qdocs):
+                    for lbl in _sel_qdocs:
+                        remove_questions(doc_id=_q_docs[lbl])
+                    st.success(f"Fragen aus {len(_sel_qdocs)} Dokument(en) gelöscht.")
+                    st.rerun()

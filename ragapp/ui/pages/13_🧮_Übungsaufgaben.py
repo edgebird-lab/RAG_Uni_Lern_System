@@ -23,6 +23,8 @@ from ragapp.ui._loading import page_boot
 page_boot("🧮 Übungsaufgaben", page_title="Übungsaufgaben", icon="🧮", layout="wide",
          accent="uebungsaufgaben")
 
+from ragapp.ui._style import card
+
 st.markdown("""
 <style>
 .block-container {padding-top: 2rem; max-width: 1150px;}
@@ -147,21 +149,22 @@ if "_practice_pending_choice" in st.session_state:
 col_list, col_practice = st.columns([1, 2])
 
 with col_list:
-    if not _problems:
-        st.caption("Noch keine Übungsaufgaben für diese Filterung." if (_subj_arg or _kind_arg)
-                  else "Noch keine Übungsaufgaben – oben die erste generieren.")
-    with st.container(height=480):
-        for p in _problems:
-            _label = _KIND_LABEL.get(p["kind"], p["kind"]) + " · " + (
-                p["topic"] or (p["problem_text"][:40] + "…"
-                              if len(p["problem_text"]) > 40 else p["problem_text"]))
-            _meta = _fach(p["subject"])
-            _active = st.session_state.get("practice_choice") == p["problem_id"]
-            if st.button(f"{'▶️ ' if _active else ''}{_label}",
-                        key=f"practice_pick_{p['problem_id']}",
-                        use_container_width=True, help=_meta):
-                st.session_state["_practice_pending_choice"] = p["problem_id"]
-                st.rerun()
+    with card("liste"):
+        if not _problems:
+            st.caption("Noch keine Übungsaufgaben für diese Filterung." if (_subj_arg or _kind_arg)
+                      else "Noch keine Übungsaufgaben – oben die erste generieren.")
+        with st.container(height=480):
+            for p in _problems:
+                _label = _KIND_LABEL.get(p["kind"], p["kind"]) + " · " + (
+                    p["topic"] or (p["problem_text"][:40] + "…"
+                                  if len(p["problem_text"]) > 40 else p["problem_text"]))
+                _meta = _fach(p["subject"])
+                _active = st.session_state.get("practice_choice") == p["problem_id"]
+                if st.button(f"{'▶️ ' if _active else ''}{_label}",
+                            key=f"practice_pick_{p['problem_id']}",
+                            use_container_width=True, help=_meta):
+                    st.session_state["_practice_pending_choice"] = p["problem_id"]
+                    st.rerun()
 
 # --------------------------------------------------------------------------- #
 # Übungsfluss
@@ -170,88 +173,89 @@ _active_id = st.session_state.get("practice_choice")
 _active = manifest.get_practice_problem(_active_id) if _active_id else None
 
 with col_practice:
-    if _active is None:
-        st.caption("← Wähle links eine Aufgabe oder generiere oben eine neue.")
-    else:
-        pid = _active["problem_id"]
-        _hint_key = f"practice_hints_{pid}"
-        _step_key = f"practice_steps_{pid}"
-        _resolved_key = f"practice_resolved_{pid}"
-        st.session_state.setdefault(_hint_key, 0)
-        st.session_state.setdefault(_step_key, 0)
-        st.session_state.setdefault(_resolved_key, False)
+    with card("aufgabe"):
+        if _active is None:
+            st.caption("← Wähle links eine Aufgabe oder generiere oben eine neue.")
+        else:
+            pid = _active["problem_id"]
+            _hint_key = f"practice_hints_{pid}"
+            _step_key = f"practice_steps_{pid}"
+            _resolved_key = f"practice_resolved_{pid}"
+            st.session_state.setdefault(_hint_key, 0)
+            st.session_state.setdefault(_step_key, 0)
+            st.session_state.setdefault(_resolved_key, False)
 
-        st.markdown(f"##### {_KIND_LABEL.get(_active['kind'], _active['kind'])}")
-        if _active.get("topic"):
-            st.caption(f"Thema: {_active['topic']}")
-        st.markdown(_active["problem_text"])
+            st.markdown(f"##### {_KIND_LABEL.get(_active['kind'], _active['kind'])}")
+            if _active.get("topic"):
+                st.caption(f"Thema: {_active['topic']}")
+            st.markdown(_active["problem_text"])
 
-        if _active["given"]:
-            st.markdown("**Gegeben:**")
-            for g in _active["given"]:
-                st.markdown(f"- {g.get('label', '')}: {g.get('value', '')}"
-                           if g.get("label") else f"- {g.get('value', '')}")
+            if _active["given"]:
+                st.markdown("**Gegeben:**")
+                for g in _active["given"]:
+                    st.markdown(f"- {g.get('label', '')}: {g.get('value', '')}"
+                               if g.get("label") else f"- {g.get('value', '')}")
 
-        hcol, scol, rcol = st.columns(3)
-        _n_hints = len(_active["hints"])
-        if hcol.button(f"💡 Hinweis ({st.session_state[_hint_key]}/{_n_hints})",
-                      key=f"practice_hint_btn_{pid}", use_container_width=True,
-                      disabled=st.session_state[_hint_key] >= _n_hints):
-            st.session_state[_hint_key] += 1
-            st.rerun()
-        _n_steps = len(_active["steps"])
-        if scol.button(f"▶️ Nächster Schritt ({st.session_state[_step_key]}/{_n_steps})",
-                      key=f"practice_step_btn_{pid}", use_container_width=True,
-                      disabled=st.session_state[_step_key] >= _n_steps):
-            st.session_state[_step_key] += 1
-            st.rerun()
-        if rcol.button("🏁 Lösung anzeigen", key=f"practice_resolve_btn_{pid}",
-                       use_container_width=True,
-                       disabled=st.session_state[_resolved_key]):
-            st.session_state[_resolved_key] = True
-            st.rerun()
+            hcol, scol, rcol = st.columns(3)
+            _n_hints = len(_active["hints"])
+            if hcol.button(f"💡 Hinweis ({st.session_state[_hint_key]}/{_n_hints})",
+                          key=f"practice_hint_btn_{pid}", use_container_width=True,
+                          disabled=st.session_state[_hint_key] >= _n_hints):
+                st.session_state[_hint_key] += 1
+                st.rerun()
+            _n_steps = len(_active["steps"])
+            if scol.button(f"▶️ Nächster Schritt ({st.session_state[_step_key]}/{_n_steps})",
+                          key=f"practice_step_btn_{pid}", use_container_width=True,
+                          disabled=st.session_state[_step_key] >= _n_steps):
+                st.session_state[_step_key] += 1
+                st.rerun()
+            if rcol.button("🏁 Lösung anzeigen", key=f"practice_resolve_btn_{pid}",
+                           use_container_width=True,
+                           disabled=st.session_state[_resolved_key]):
+                st.session_state[_resolved_key] = True
+                st.rerun()
 
-        if st.session_state[_hint_key] > 0:
-            for h in _active["hints"][:st.session_state[_hint_key]]:
-                st.info(f"💡 {h}")
+            if st.session_state[_hint_key] > 0:
+                for h in _active["hints"][:st.session_state[_hint_key]]:
+                    st.info(f"💡 {h}")
 
-        if st.session_state[_step_key] > 0:
-            st.markdown("**Lösungsweg bisher:**")
-            for i, s in enumerate(_active["steps"][:st.session_state[_step_key]], 1):
-                st.markdown(f"{i}. {s.get('step_text', '')}")
+            if st.session_state[_step_key] > 0:
+                st.markdown("**Lösungsweg bisher:**")
+                for i, s in enumerate(_active["steps"][:st.session_state[_step_key]], 1):
+                    st.markdown(f"{i}. {s.get('step_text', '')}")
 
-        if st.session_state[_resolved_key] or st.session_state[_step_key] >= _n_steps:
-            if _active.get("final_answer"):
-                st.success(f"**Endergebnis:** {_active['final_answer']}")
+            if st.session_state[_resolved_key] or st.session_state[_step_key] >= _n_steps:
+                if _active.get("final_answer"):
+                    st.success(f"**Endergebnis:** {_active['final_answer']}")
 
-        if _active.get("source_excerpt"):
-            with st.expander("📚 Beleg (Textgrundlage)"):
-                st.caption(_active["source_excerpt"])
+            if _active.get("source_excerpt"):
+                with st.expander("📚 Beleg (Textgrundlage)"):
+                    st.caption(_active["source_excerpt"])
 
-        st.markdown("**Wie lief's?**")
-        r1, r2, r3 = st.columns(3)
+            st.markdown("**Wie lief's?**")
+            r1, r2, r3 = st.columns(3)
 
-        def _bewerten(rating: int) -> None:
-            manifest.log_practice_attempt(pid, self_rating=rating)
-            for k in (_hint_key, _step_key):
-                st.session_state[k] = 0
-            st.session_state[_resolved_key] = False
-            st.rerun()
+            def _bewerten(rating: int) -> None:
+                manifest.log_practice_attempt(pid, self_rating=rating)
+                for k in (_hint_key, _step_key):
+                    st.session_state[k] = 0
+                st.session_state[_resolved_key] = False
+                st.rerun()
 
-        if r1.button("❌ Nicht gewusst", key=f"practice_rate0_{pid}", use_container_width=True):
-            _bewerten(0)
-        if r2.button("🟡 Teilweise", key=f"practice_rate1_{pid}", use_container_width=True):
-            _bewerten(1)
-        if r3.button("✅ Gewusst", key=f"practice_rate2_{pid}", use_container_width=True):
-            _bewerten(2)
+            if r1.button("❌ Nicht gewusst", key=f"practice_rate0_{pid}", use_container_width=True):
+                _bewerten(0)
+            if r2.button("🟡 Teilweise", key=f"practice_rate1_{pid}", use_container_width=True):
+                _bewerten(1)
+            if r3.button("✅ Gewusst", key=f"practice_rate2_{pid}", use_container_width=True):
+                _bewerten(2)
 
-        _attempts = manifest.list_practice_attempts(pid, limit=5)
-        if _attempts:
-            _hist = " · ".join(_RATING_LABEL.get(a["self_rating"], "?") for a in _attempts)
-            st.caption(f"Bisher {len(_attempts)}x geübt (neueste zuerst): {_hist}")
+            _attempts = manifest.list_practice_attempts(pid, limit=5)
+            if _attempts:
+                _hist = " · ".join(_RATING_LABEL.get(a["self_rating"], "?") for a in _attempts)
+                st.caption(f"Bisher {len(_attempts)}x geübt (neueste zuerst): {_hist}")
 
-        if st.button("🗑️ Aufgabe löschen", key=f"practice_delete_{pid}"):
-            manifest.delete_practice_problem(pid)
-            st.session_state["_practice_pending_choice"] = None
-            st.success("Aufgabe gelöscht.")
-            st.rerun()
+            if st.button("🗑️ Aufgabe löschen", key=f"practice_delete_{pid}"):
+                manifest.delete_practice_problem(pid)
+                st.session_state["_practice_pending_choice"] = None
+                st.success("Aufgabe gelöscht.")
+                st.rerun()
