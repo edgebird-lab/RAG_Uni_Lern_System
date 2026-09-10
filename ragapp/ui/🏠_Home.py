@@ -174,13 +174,19 @@ _components.html(
 # ragapp.ui._style.render_nav_tile) - PAGE_REGISTRY dort ist die einzige
 # Quelle der Wahrheit fuer Titel/Icon/Zielpfad/Gruppierung.
 # --------------------------------------------------------------------------- #
-from ragapp.ui._style import apply_page_style, PAGE_REGISTRY, render_nav_tile, render_hero_title, card
+from ragapp.ui._style import (apply_page_style, PAGE_REGISTRY, render_nav_tile,
+                               render_hero_title, card, speech_bubble)
+from ragapp.ui._mascot import mascot_svg
 _theme = apply_page_style("home")
 
-render_hero_title("Willkommen zurück 👋", accent=_theme["accent"])
-st.markdown(
-    "<span style='opacity:.72'>Wähle unten einen Bereich – oder nutze das "
-    "☰-Menü links für die Kurzwahl.</span>", unsafe_allow_html=True)
+_hero_l, _hero_r = st.columns([3, 1])
+with _hero_l:
+    render_hero_title("Willkommen zurück 👋", accent=_theme["accent"])
+    speech_bubble("Wähle unten einen Bereich – oder nutze das ☰-Menü links für die Kurzwahl.",
+                  icon="✨")
+with _hero_r:
+    st.markdown(f'<div class="rag-mascot">{mascot_svg(_theme["accent"])}</div>',
+                unsafe_allow_html=True)
 
 with st.spinner("Wird geladen ..."):
     from ragapp import manifest

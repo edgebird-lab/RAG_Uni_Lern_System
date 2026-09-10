@@ -18,6 +18,8 @@ einmal eingetragen, nicht an drei Stellen gepflegt.
 """
 from __future__ import annotations
 
+from html import escape as html_escape
+
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -242,12 +244,44 @@ h1 {{
 }}
 
 /* Wiederverwendbare "weiche Karte" fuer Inhalts-Gruppen auf einzelnen Seiten
-   (siehe card()) - echter st.container(key=...), Klasse st-key-card_<key>. */
+   (siehe card()) - echter st.container(key=...), Klasse st-key-card_<key>.
+   "Manga-Panel"-Optik: sichtbarer Tuschestrich-Rahmen (statt nur eines
+   hauchduennen Pastell-Randes) + ein extrem dezentes Halbton-Punktraster im
+   Hintergrund (Comic-Screentone-Anspielung, kaum wahrnehmbar, stoert keinen
+   Text) - zusammen wirkt die Karte wie ein gezeichnetes Panel statt wie eine
+   austauschbare graue Box. */
 div[class*="st-key-card_"] {{
-  background:linear-gradient(160deg, #ffffff 0%, {soft} 145%) !important;
-  border:1px solid {soft} !important; border-radius:20px !important;
+  background:
+    radial-gradient(circle, rgba(43,32,54,.05) 1px, transparent 1.3px) 0 0/16px 16px,
+    linear-gradient(160deg, #ffffff 0%, {soft} 145%) !important;
+  border:2px solid rgba(43,32,54,.14) !important; border-radius:20px !important;
   padding:1.15rem 1.35rem !important; margin-bottom:1rem !important;
-  box-shadow:0 2px 14px rgba(0,0,0,.05) !important;
+  box-shadow:0 3px 0 rgba(43,32,54,.06), 0 2px 14px rgba(0,0,0,.05) !important;
+}}
+
+/* Sprechblasen-Kasten fuer Tipps/Hinweise (siehe speech_bubble() in _style.py) -
+   kleines Schwaenzchen unten links, wie eine Comic-Sprechblase. */
+.rag-bubble {{
+  position:relative; border:2px solid rgba(43,32,54,.16); border-radius:16px;
+  background:#ffffff; padding:.7rem 1rem; margin:.4rem 0 1.1rem 6px;
+  font-size:.92rem; box-shadow:0 2px 0 rgba(43,32,54,.05);
+}}
+.rag-bubble::after {{
+  content:""; position:absolute; left:18px; bottom:-9px; width:16px; height:16px;
+  background:#ffffff; border-right:2px solid rgba(43,32,54,.16);
+  border-bottom:2px solid rgba(43,32,54,.16);
+  clip-path:polygon(0 0, 100% 100%, 0 100%);
+}}
+html.rag-dark .rag-bubble {{background:#0f2440; border-color:rgba(231,237,245,.16);}}
+html.rag-dark .rag-bubble::after {{background:#0f2440; border-color:rgba(231,237,245,.16);}}
+
+/* Home-Maskottchen: leichtes Schweben, damit die Figur lebendig wirkt statt
+   wie ein statisches Bild. */
+.rag-mascot {{animation:ragMascotFloat 3.6s ease-in-out infinite; margin-top:-6px;}}
+.rag-mascot svg {{display:block; margin:0 auto; filter:drop-shadow(0 10px 14px rgba(43,32,54,.16));}}
+@keyframes ragMascotFloat {{
+  0%,100% {{transform:translateY(0) rotate(-1.5deg);}}
+  50%     {{transform:translateY(-9px) rotate(1.5deg);}}
 }}
 
 /* Kacheln (Home-Navigation) + wiederverwendbare "weiche Karte" fuer alle
@@ -327,7 +361,8 @@ html.rag-dark div[class*="st-key-tile_"] button {{
 html.rag-dark div[class*="st-key-tile_"] button:hover {{border-color:{accent} !important;}}
 html.rag-dark div[class*="st-key-card_"] {{
   background:linear-gradient(160deg, #132b4d 0%, #0d2038 145%) !important;
-  border-color:#1e3a5f !important; box-shadow:0 2px 14px rgba(0,0,0,.3) !important;
+  border-color:#2a4a72 !important;
+  box-shadow:0 3px 0 rgba(0,0,0,.25), 0 2px 14px rgba(0,0,0,.3) !important;
 }}
 html.rag-dark .rag-hero-title {{color:{accent} !important;}}
 
@@ -517,6 +552,15 @@ def render_hero_title(text: str, *, accent: str | None = None) -> None:
         for i, ch in enumerate(text)
     )
     st.markdown(f'<h1 class="rag-hero-title">{spans}</h1>', unsafe_allow_html=True)
+
+
+def speech_bubble(text: str, *, icon: str = "💡") -> None:
+    """Comic-Sprechblase fuer einen kurzen Tipp/Hinweis (siehe ``.rag-bubble``
+    in _BASE_CSS) - dezenter als ``st.info()``, aber verspielter: Text wird
+    NICHT als Markdown interpretiert (nur escaped), da hier ausschliesslich
+    kurze, feste Hinweistexte reinsollen, keine Nutzereingaben."""
+    st.markdown(f'<div class="rag-bubble">{icon} {html_escape(text)}</div>',
+                unsafe_allow_html=True)
 
 
 # --------------------------------------------------------------------------- #
