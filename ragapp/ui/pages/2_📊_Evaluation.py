@@ -24,6 +24,8 @@ from ragapp.ui._loading import page_boot
 page_boot("📊 Evaluation: Trefferquote", page_title="Evaluation: Trefferquote",
           icon="📊", layout="wide", accent="evaluation")
 
+from ragapp.ui._style import card
+
 # --------------------------------------------------------------------------- #
 # Styling ("schick"), identisch zur Startseite
 # --------------------------------------------------------------------------- #
@@ -91,162 +93,165 @@ st.divider()
 # --------------------------------------------------------------------------- #
 # 1) Gold-Set erzeugen
 # --------------------------------------------------------------------------- #
-st.subheader("1. Gold-Set erzeugen")
-st.caption(
-    "Zieht eine Zufallsstichprobe von Chunks und lässt das LLM je eine Testfrage "
-    "formulieren, deren korrekte Quelle bekannt ist."
-)
-st.warning("⏳ Dauert auf CPU spürbar: **~20 s pro Frage**.")
+with card("goldset"):
+    st.subheader("1. Gold-Set erzeugen")
+    st.caption(
+        "Zieht eine Zufallsstichprobe von Chunks und lässt das LLM je eine Testfrage "
+        "formulieren, deren korrekte Quelle bekannt ist."
+    )
+    st.warning("⏳ Dauert auf CPU spürbar: **~20 s pro Frage**.")
 
-sample_size = st.number_input(
-    "Stichprobengröße (Anzahl Chunks / Fragen)",
-    min_value=1, max_value=100000,
-    value=int(settings.EVAL_SAMPLE_SIZE), step=10,
-)
+    sample_size = st.number_input(
+        "Stichprobengröße (Anzahl Chunks / Fragen)",
+        min_value=1, max_value=100000,
+        value=int(settings.EVAL_SAMPLE_SIZE), step=10,
+    )
 
-if st.button("🧪 Gold-Set erzeugen", type="primary"):
-    with st.status("Erzeuge Gold-Set … (~20 s pro Frage)", expanded=True) as status:
-        def _fortschritt_gold(msg: str) -> None:
-            status.update(label=msg)
+    if st.button("🧪 Gold-Set erzeugen", type="primary"):
+        with st.status("Erzeuge Gold-Set … (~20 s pro Frage)", expanded=True) as status:
+            def _fortschritt_gold(msg: str) -> None:
+                status.update(label=msg)
 
-        try:
-            res = build_gold_set(sample_size=int(sample_size), progress=_fortschritt_gold)
-            status.update(label="Gold-Set erzeugt", state="complete")
-        except Exception as exc:
-            status.update(label=f"Fehler: {exc}", state="error")
-            res = None
+            try:
+                res = build_gold_set(sample_size=int(sample_size), progress=_fortschritt_gold)
+                status.update(label="Gold-Set erzeugt", state="complete")
+            except Exception as exc:
+                status.update(label=f"Fehler: {exc}", state="error")
+                res = None
 
-    if res is not None:
-        if res.get("status") == "no_chunks":
-            st.error("Keine Chunks vorhanden, bitte zuerst Dokumente indexieren.")
-        else:
-            st.success(f"{res.get('count', 0)} Testfragen erzeugt.")
+        if res is not None:
+            if res.get("status") == "no_chunks":
+                st.error("Keine Chunks vorhanden, bitte zuerst Dokumente indexieren.")
+            else:
+                st.success(f"{res.get('count', 0)} Testfragen erzeugt.")
 
-_gold = load_gold_set()
-st.info(f"Aktuelles Gold-Set: **{len(_gold)}** Frage(n).")
+    _gold = load_gold_set()
+    st.info(f"Aktuelles Gold-Set: **{len(_gold)}** Frage(n).")
 
 st.divider()
 
 # --------------------------------------------------------------------------- #
 # 2) Evaluation ausführen
 # --------------------------------------------------------------------------- #
-st.subheader("2. Evaluation ausführen")
-st.caption(
-    "Führt jede Gold-Frage durch die echte Retrieval-Pipeline und misst, ob und auf "
-    "welchem Rang die korrekte Quelle gefunden wird."
-)
-
-if st.button("▶️ Evaluation starten"):
-    if not _gold:
-        st.error("Kein Gold-Set vorhanden. Bitte zuerst unter Schritt 1 erzeugen.")
-    else:
-        with st.status("Evaluiere Retrieval …", expanded=True) as status:
-            def _fortschritt_eval(msg: str) -> None:
-                status.update(label=msg)
-
-            try:
-                report = run_retrieval_eval(progress=_fortschritt_eval)
-                status.update(label="Evaluation abgeschlossen", state="complete")
-            except Exception as exc:
-                status.update(label=f"Fehler: {exc}", state="error")
-                report = None
-
-        if report is not None:
-            if report.get("status") == "no_gold":
-                st.error(report.get("message", "Kein Gold-Set vorhanden."))
-            else:
-                st.session_state.eval_report = report
-
-# ---- Ergebnis des letzten Laufs anzeigen -------------------------------- #
-report = st.session_state.eval_report
-if report and report.get("status") == "ok":
-    metrics = report["metrics"]
-    hit_at_k = metrics.get("hit@k", {})
-
-    st.markdown("#### Ergebnis")
-    # Große Metriken: Hit@k (als Prozent) + MRR
-    k_sorted = sorted(hit_at_k.keys(), key=lambda x: int(x))
-    cols = st.columns(len(k_sorted) + 1)
-    for col, k in zip(cols, k_sorted):
-        col.metric(f"Hit@{k}", f"{hit_at_k[k] * 100:.1f} %")
-    cols[-1].metric("MRR", f"{metrics.get('mrr', 0):.3f}")
-
+with card("eval"):
+    st.subheader("2. Evaluation ausführen")
     st.caption(
-        f"{report.get('num_questions', 0)} Fragen · "
-        f"{report.get('elapsed_seconds', '?')} s Laufzeit"
+        "Führt jede Gold-Frage durch die echte Retrieval-Pipeline und misst, ob und auf "
+        "welchem Rang die korrekte Quelle gefunden wird."
     )
 
-    # Balkendiagramm Hit@k über k
-    chart_df = pd.DataFrame(
-        {"Hit@k (%)": [hit_at_k[k] * 100 for k in k_sorted]},
-        index=[f"k={k}" for k in k_sorted],
-    )
-    st.bar_chart(chart_df)
+    if st.button("▶️ Evaluation starten"):
+        if not _gold:
+            st.error("Kein Gold-Set vorhanden. Bitte zuerst unter Schritt 1 erzeugen.")
+        else:
+            with st.status("Evaluiere Retrieval …", expanded=True) as status:
+                def _fortschritt_eval(msg: str) -> None:
+                    status.update(label=msg)
 
-    # Tabelle „Nach Fach"
-    by_subject = metrics.get("by_subject", {})
-    if by_subject:
-        st.markdown("#### Nach Fach")
-        rows = []
-        for subj, vals in sorted(by_subject.items()):
-            row = {"Fach": subj, "n": vals.get("n", 0)}
-            for key, val in vals.items():
-                if key.startswith("hit@"):
-                    row[key] = round(val * 100, 1)
-            row["mrr"] = vals.get("mrr", 0.0)
-            rows.append(row)
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                try:
+                    report = run_retrieval_eval(progress=_fortschritt_eval)
+                    status.update(label="Evaluation abgeschlossen", state="complete")
+                except Exception as exc:
+                    status.update(label=f"Fehler: {exc}", state="error")
+                    report = None
 
-    # Hinweis auf CSV für Fehleranalyse
-    if report.get("csv"):
+            if report is not None:
+                if report.get("status") == "no_gold":
+                    st.error(report.get("message", "Kein Gold-Set vorhanden."))
+                else:
+                    st.session_state.eval_report = report
+
+    # ---- Ergebnis des letzten Laufs anzeigen -------------------------------- #
+    report = st.session_state.eval_report
+    if report and report.get("status") == "ok":
+        metrics = report["metrics"]
+        hit_at_k = metrics.get("hit@k", {})
+
+        st.markdown("#### Ergebnis")
+        # Große Metriken: Hit@k (als Prozent) + MRR
+        k_sorted = sorted(hit_at_k.keys(), key=lambda x: int(x))
+        cols = st.columns(len(k_sorted) + 1)
+        for col, k in zip(cols, k_sorted):
+            col.metric(f"Hit@{k}", f"{hit_at_k[k] * 100:.1f} %")
+        cols[-1].metric("MRR", f"{metrics.get('mrr', 0):.3f}")
+
         st.caption(
-            f"📄 Detail-Auswertung je Frage (für Fehleranalyse) gespeichert unter: "
-            f"`{report['csv']}`"
+            f"{report.get('num_questions', 0)} Fragen · "
+            f"{report.get('elapsed_seconds', '?')} s Laufzeit"
         )
+
+        # Balkendiagramm Hit@k über k
+        chart_df = pd.DataFrame(
+            {"Hit@k (%)": [hit_at_k[k] * 100 for k in k_sorted]},
+            index=[f"k={k}" for k in k_sorted],
+        )
+        st.bar_chart(chart_df)
+
+        # Tabelle „Nach Fach"
+        by_subject = metrics.get("by_subject", {})
+        if by_subject:
+            st.markdown("#### Nach Fach")
+            rows = []
+            for subj, vals in sorted(by_subject.items()):
+                row = {"Fach": subj, "n": vals.get("n", 0)}
+                for key, val in vals.items():
+                    if key.startswith("hit@"):
+                        row[key] = round(val * 100, 1)
+                row["mrr"] = vals.get("mrr", 0.0)
+                rows.append(row)
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+        # Hinweis auf CSV für Fehleranalyse
+        if report.get("csv"):
+            st.caption(
+                f"📄 Detail-Auswertung je Frage (für Fehleranalyse) gespeichert unter: "
+                f"`{report['csv']}`"
+            )
 
 st.divider()
 
 # --------------------------------------------------------------------------- #
 # 3) Verlauf
 # --------------------------------------------------------------------------- #
-st.subheader("3. Verlauf")
-st.caption(
-    "Zeigt, ob deine Änderungen (Chunking, Reranker, k-Werte …) die Trefferquote "
-    "über die Zeit verbessert haben."
-)
+with card("verlauf"):
+    st.subheader("3. Verlauf")
+    st.caption(
+        "Zeigt, ob deine Änderungen (Chunking, Reranker, k-Werte …) die Trefferquote "
+        "über die Zeit verbessert haben."
+    )
 
-_history = load_history()
-if not _history:
-    st.info("Noch kein Verlauf vorhanden. Führe zuerst eine Evaluation aus.")
-else:
-    # größtes k über den gesamten Verlauf bestimmen (für eine stabile Spalte)
-    alle_ks = set()
-    for h in _history:
-        alle_ks.update(int(k) for k in h.get("hit@k", {}).keys())
-    kmax = max(alle_ks) if alle_ks else None
-    hit_col = f"Hit@{kmax}"
+    _history = load_history()
+    if not _history:
+        st.info("Noch kein Verlauf vorhanden. Führe zuerst eine Evaluation aus.")
+    else:
+        # größtes k über den gesamten Verlauf bestimmen (für eine stabile Spalte)
+        alle_ks = set()
+        for h in _history:
+            alle_ks.update(int(k) for k in h.get("hit@k", {}).keys())
+        kmax = max(alle_ks) if alle_ks else None
+        hit_col = f"Hit@{kmax}"
 
-    verlauf = []
-    for h in _history:
-        hk = h.get("hit@k", {})
-        zeit = time.strftime("%d.%m.%Y %H:%M", time.localtime(h.get("timestamp", 0)))
-        eintrag = {
-            "Zeit": zeit,
-            "Fragen": h.get("num_questions"),
-            "MRR": h.get("mrr"),
-        }
-        if kmax is not None and str(kmax) in hk:
-            eintrag[hit_col] = round(hk[str(kmax)] * 100, 1)
-        verlauf.append(eintrag)
+        verlauf = []
+        for h in _history:
+            hk = h.get("hit@k", {})
+            zeit = time.strftime("%d.%m.%Y %H:%M", time.localtime(h.get("timestamp", 0)))
+            eintrag = {
+                "Zeit": zeit,
+                "Fragen": h.get("num_questions"),
+                "MRR": h.get("mrr"),
+            }
+            if kmax is not None and str(kmax) in hk:
+                eintrag[hit_col] = round(hk[str(kmax)] * 100, 1)
+            verlauf.append(eintrag)
 
-    df_hist = pd.DataFrame(verlauf)
+        df_hist = pd.DataFrame(verlauf)
 
-    # Liniendiagramm über die Zeit (MRR und Hit@größtes k)
-    chart_cols = [c for c in ("MRR", hit_col) if c in df_hist.columns]
-    if chart_cols:
-        st.line_chart(df_hist.set_index("Zeit")[chart_cols])
+        # Liniendiagramm über die Zeit (MRR und Hit@größtes k)
+        chart_cols = [c for c in ("MRR", hit_col) if c in df_hist.columns]
+        if chart_cols:
+            st.line_chart(df_hist.set_index("Zeit")[chart_cols])
 
-    st.dataframe(df_hist, use_container_width=True, hide_index=True)
+        st.dataframe(df_hist, use_container_width=True, hide_index=True)
 
 
 st.divider()
@@ -254,43 +259,44 @@ st.divider()
 # --------------------------------------------------------------------------- #
 # 4. Antwort-Qualität (RAGAS-lite): misst die ANTWORT, nicht nur das Retrieval
 # --------------------------------------------------------------------------- #
-st.subheader("4. Antwort-Qualität")
-st.caption("Misst, ob die generierten **Antworten** korrekt, vollständig und belegt sind "
-           "(nicht nur, ob der richtige Chunk gefunden wird). Ein LLM-Judge bewertet eine "
-           "Stichprobe der Gold-Fragen gegen den Quelltext – dauert etwas (LLM pro Frage). "
-           "Ehrlich: der Judge ist selbst KI, die Werte sind ein gutes, aber nicht perfektes Signal.")
+with card("antwortqualitaet"):
+    st.subheader("4. Antwort-Qualität")
+    st.caption("Misst, ob die generierten **Antworten** korrekt, vollständig und belegt sind "
+               "(nicht nur, ob der richtige Chunk gefunden wird). Ein LLM-Judge bewertet eine "
+               "Stichprobe der Gold-Fragen gegen den Quelltext – dauert etwas (LLM pro Frage). "
+               "Ehrlich: der Judge ist selbst KI, die Werte sind ein gutes, aber nicht perfektes Signal.")
 
-_ae1, _ae2 = st.columns([1, 2])
-_ae_n = _ae1.number_input("Stichprobe", min_value=3, max_value=50, value=8, step=1, key="ae_n")
-if _ae2.button("▶️ Antwort-Qualität messen", use_container_width=True):
-    with st.status("Beantworte & bewerte …", expanded=True) as _s:
-        _r = run_answer_eval(sample_size=int(_ae_n), progress=lambda m: _s.update(label=m))
-        _s.update(label="Fertig", state="complete")
-    if _r.get("status") == "no_gold":
-        st.warning("Kein Gold-Set vorhanden – erzeuge es oben unter **1.** zuerst.")
-    else:
-        st.session_state["_ae_last"] = _r
+    _ae1, _ae2 = st.columns([1, 2])
+    _ae_n = _ae1.number_input("Stichprobe", min_value=3, max_value=50, value=8, step=1, key="ae_n")
+    if _ae2.button("▶️ Antwort-Qualität messen", use_container_width=True):
+        with st.status("Beantworte & bewerte …", expanded=True) as _s:
+            _r = run_answer_eval(sample_size=int(_ae_n), progress=lambda m: _s.update(label=m))
+            _s.update(label="Fertig", state="complete")
+        if _r.get("status") == "no_gold":
+            st.warning("Kein Gold-Set vorhanden – erzeuge es oben unter **1.** zuerst.")
+        else:
+            st.session_state["_ae_last"] = _r
 
-_last = st.session_state.get("_ae_last")
-if _last and _last.get("status") == "ok":
-    _q1, _q2, _q3, _q4 = st.columns(4)
-    _q1.metric("Korrektheit", f'{_last["korrektheit"]} %' if _last["korrektheit"] is not None else "–")
-    _q2.metric("Vollständigkeit", f'{_last["vollstaendigkeit"]} %' if _last["vollstaendigkeit"] is not None else "–")
-    _q3.metric("Treue", f'{_last["treue"]} %' if _last["treue"] is not None else "–")
-    _q4.metric("Fallback", f'{_last["fallback_pct"]} %')
-    if _last.get("invalid_citation_pct"):
-        st.caption(f'⚠️ {_last["invalid_citation_pct"]} % der Antworten mit erfundener Quellenangabe.')
+    _last = st.session_state.get("_ae_last")
+    if _last and _last.get("status") == "ok":
+        _q1, _q2, _q3, _q4 = st.columns(4)
+        _q1.metric("Korrektheit", f'{_last["korrektheit"]} %' if _last["korrektheit"] is not None else "–")
+        _q2.metric("Vollständigkeit", f'{_last["vollstaendigkeit"]} %' if _last["vollstaendigkeit"] is not None else "–")
+        _q3.metric("Treue", f'{_last["treue"]} %' if _last["treue"] is not None else "–")
+        _q4.metric("Fallback", f'{_last["fallback_pct"]} %')
+        if _last.get("invalid_citation_pct"):
+            st.caption(f'⚠️ {_last["invalid_citation_pct"]} % der Antworten mit erfundener Quellenangabe.')
 
-_ahist = load_answer_history()
-if len(_ahist) > 1:
-    _dfa = pd.DataFrame([{
-        "Zeit": time.strftime("%d.%m.%Y %H:%M", time.localtime(h.get("ts", 0))),
-        "Korrektheit": h.get("korrektheit"), "Vollständigkeit": h.get("vollstaendigkeit"),
-        "Treue": h.get("treue"),
-    } for h in _ahist])
-    _ccols = [c for c in ("Korrektheit", "Vollständigkeit", "Treue") if c in _dfa.columns]
-    if _ccols:
-        st.line_chart(_dfa.set_index("Zeit")[_ccols])
+    _ahist = load_answer_history()
+    if len(_ahist) > 1:
+        _dfa = pd.DataFrame([{
+            "Zeit": time.strftime("%d.%m.%Y %H:%M", time.localtime(h.get("ts", 0))),
+            "Korrektheit": h.get("korrektheit"), "Vollständigkeit": h.get("vollstaendigkeit"),
+            "Treue": h.get("treue"),
+        } for h in _ahist])
+        _ccols = [c for c in ("Korrektheit", "Vollständigkeit", "Treue") if c in _dfa.columns]
+        if _ccols:
+            st.line_chart(_dfa.set_index("Zeit")[_ccols])
 
 
 st.divider()
@@ -298,55 +304,56 @@ st.divider()
 # --------------------------------------------------------------------------- #
 # 5. Judge-Zuverlässigkeit: ist die KI-Benotung / das Grounding-Gate kalibriert?
 # --------------------------------------------------------------------------- #
-st.subheader("5. Judge-Zuverlässigkeit")
-st.caption("Prüft gegen einen kleinen, von Hand gelabelten Satz, ob die KI-Benotung "
-           "(getippte Antworten, Probeklausur) und das Grounding-Gate kalibriert sind. "
-           "Wichtig, weil KI-Noten in die Wiederholungs-Planung einfließen. Erweiterbar über "
-           "`data/eval/judge_labels.json`.")
+with card("judge"):
+    st.subheader("5. Judge-Zuverlässigkeit")
+    st.caption("Prüft gegen einen kleinen, von Hand gelabelten Satz, ob die KI-Benotung "
+               "(getippte Antworten, Probeklausur) und das Grounding-Gate kalibriert sind. "
+               "Wichtig, weil KI-Noten in die Wiederholungs-Planung einfließen. Erweiterbar über "
+               "`data/eval/judge_labels.json`.")
 
-if st.button("▶️ Judge testen", key="jh_run"):
-    with st.status("Teste Benotung & Grounding-Gate …", expanded=True) as _js:
-        _jr = run_judge_harness(progress=lambda m: _js.update(label=m))
-        _js.update(label="Fertig", state="complete")
-    st.session_state["_jh_last"] = _jr
+    if st.button("▶️ Judge testen", key="jh_run"):
+        with st.status("Teste Benotung & Grounding-Gate …", expanded=True) as _js:
+            _jr = run_judge_harness(progress=lambda m: _js.update(label=m))
+            _js.update(label="Fertig", state="complete")
+        st.session_state["_jh_last"] = _jr
 
-_jl = st.session_state.get("_jh_last")
-if _jl and _jl.get("status") == "ok":
-    _g, _gr = _jl["grading"], _jl["grounding"]
-    _j1, _j2, _j3, _j4 = st.columns(4)
-    _j1.metric("Benotung exakt", f'{_g["exact_pct"]} %', help=f'{_g["n"]} Beispiele')
-    _j2.metric("Benotung ±1 Stufe", f'{_g["adjacent_pct"]} %')
-    _j3.metric("Gate-Genauigkeit", f'{_gr["accuracy_pct"]} %', help=f'{_gr["n"]} Beispiele')
-    _j4.metric("Erfundenes erkannt",
-               f'{_gr["reject_recall_pct"]} %' if _gr["reject_recall_pct"] is not None else "–",
-               help="Anteil nicht-belegter Antworten, die das Gate korrekt ablehnt.")
-    if (_g["exact_pct"] or 0) < 60:
-        st.warning("Die Benotung weicht oft vom Label ab – der Notenvorschlag ist nur ein "
-                   "Hinweis, überschreibe ihn im Zweifel. Ggf. ein stärkeres Benotungs-Modell wählen.")
+    _jl = st.session_state.get("_jh_last")
+    if _jl and _jl.get("status") == "ok":
+        _g, _gr = _jl["grading"], _jl["grounding"]
+        _j1, _j2, _j3, _j4 = st.columns(4)
+        _j1.metric("Benotung exakt", f'{_g["exact_pct"]} %', help=f'{_g["n"]} Beispiele')
+        _j2.metric("Benotung ±1 Stufe", f'{_g["adjacent_pct"]} %')
+        _j3.metric("Gate-Genauigkeit", f'{_gr["accuracy_pct"]} %', help=f'{_gr["n"]} Beispiele')
+        _j4.metric("Erfundenes erkannt",
+                   f'{_gr["reject_recall_pct"]} %' if _gr["reject_recall_pct"] is not None else "–",
+                   help="Anteil nicht-belegter Antworten, die das Gate korrekt ablehnt.")
+        if (_g["exact_pct"] or 0) < 60:
+            st.warning("Die Benotung weicht oft vom Label ab – der Notenvorschlag ist nur ein "
+                       "Hinweis, überschreibe ihn im Zweifel. Ggf. ein stärkeres Benotungs-Modell wählen.")
 
-st.markdown("**Eigene Kalibrier-Beispiele aus deinen Karten erzeugen**")
-st.caption("Nimmt Karten eines Fachs (mit Musterantwort) und lässt das LLM je Karte "
-           "drei Beispielantworten (gewusst/halb/nicht) erfinden – ein *Spiegel* deiner "
-           "Altklausur-Fragen. Diese werden dedupliziert in `data/eval/judge_labels.json` "
-           "gemergt und fließen beim nächsten **Judge testen** automatisch mit ein. "
-           "Je mehr eigene Beispiele, desto belastbarer die Kalibrierung.")
+    st.markdown("**Eigene Kalibrier-Beispiele aus deinen Karten erzeugen**")
+    st.caption("Nimmt Karten eines Fachs (mit Musterantwort) und lässt das LLM je Karte "
+               "drei Beispielantworten (gewusst/halb/nicht) erfinden – ein *Spiegel* deiner "
+               "Altklausur-Fragen. Diese werden dedupliziert in `data/eval/judge_labels.json` "
+               "gemergt und fließen beim nächsten **Judge testen** automatisch mit ein. "
+               "Je mehr eigene Beispiele, desto belastbarer die Kalibrierung.")
 
-_jm_subjects = manifest.study_subjects()
-if not _jm_subjects:
-    st.info("Noch keine Karten mit Fach vorhanden – zuerst Karten anlegen/ernten.")
-else:
-    _jm1, _jm2, _jm3 = st.columns([2, 1, 2])
-    _jm_subj = _jm1.selectbox("Fach", _jm_subjects, key="jm_subject")
-    _jm_n = _jm2.number_input("Karten", min_value=1, max_value=30, value=6, step=1, key="jm_n")
-    if _jm3.button("🪞 Altklausur-Spiegel-Items erzeugen", key="jm_run",
-                   use_container_width=True):
-        with st.status(f"Erzeuge Beispielantworten für {_jm_subj} …", expanded=True) as _jms:
-            _jmr = generate_mirror_items(_jm_subj, n=int(_jm_n),
-                                         progress=lambda m: _jms.update(label=m))
-            _jms.update(label="Fertig", state="complete")
-        if _jmr.get("status") == "no_cards":
-            st.warning("Für dieses Fach gibt es keine Karten mit Musterantwort "
-                       "(nur Karten mit KI-Antwort taugen als Referenz).")
-        else:
-            st.success(f'{_jmr["generated"]} neue Beispiel(e) aus {_jmr["cards"]} Karte(n) '
-                       f'ergänzt – jetzt {_jmr["merged"]} Benotungs-Beispiele in der Datei.')
+    _jm_subjects = manifest.study_subjects()
+    if not _jm_subjects:
+        st.info("Noch keine Karten mit Fach vorhanden – zuerst Karten anlegen/ernten.")
+    else:
+        _jm1, _jm2, _jm3 = st.columns([2, 1, 2])
+        _jm_subj = _jm1.selectbox("Fach", _jm_subjects, key="jm_subject")
+        _jm_n = _jm2.number_input("Karten", min_value=1, max_value=30, value=6, step=1, key="jm_n")
+        if _jm3.button("🪞 Altklausur-Spiegel-Items erzeugen", key="jm_run",
+                       use_container_width=True):
+            with st.status(f"Erzeuge Beispielantworten für {_jm_subj} …", expanded=True) as _jms:
+                _jmr = generate_mirror_items(_jm_subj, n=int(_jm_n),
+                                             progress=lambda m: _jms.update(label=m))
+                _jms.update(label="Fertig", state="complete")
+            if _jmr.get("status") == "no_cards":
+                st.warning("Für dieses Fach gibt es keine Karten mit Musterantwort "
+                           "(nur Karten mit KI-Antwort taugen als Referenz).")
+            else:
+                st.success(f'{_jmr["generated"]} neue Beispiel(e) aus {_jmr["cards"]} Karte(n) '
+                           f'ergänzt – jetzt {_jmr["merged"]} Benotungs-Beispiele in der Datei.')

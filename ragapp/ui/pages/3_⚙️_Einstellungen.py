@@ -25,6 +25,8 @@ from ragapp.ui._loading import page_boot
 page_boot("⚙️ Einstellungen (Tuning)", page_title="Einstellungen (Tuning)",
           icon="⚙️", layout="wide", accent="einstellungen")
 
+from ragapp.ui._style import card
+
 # --------------------------------------------------------------------------- #
 # Styling ("schick"), identisch zur Startseite
 # --------------------------------------------------------------------------- #
@@ -1086,108 +1088,110 @@ if gespeichert:
 # erlaubt ist) - ein Klick fürs reine Karteikarten-Lernen ohne jeden Modell-Ballast.
 # --------------------------------------------------------------------------- #
 st.divider()
-st.subheader("🎓 Uni-/Sparmodus")
-st.caption(
-    "Ein Klick für unterwegs: nichts lädt automatisch, Feinsortierung und "
-    "Beleg-Prüfung sind aus, ein geladenes Modell wird sofort wieder entladen. "
-    "Zum Karteikarten-Lernen brauchst du davon ohnehin nichts – Chat-Fragen bleiben "
-    "möglich, laden dann aber bewusst erst auf Zuruf."
-)
-_spar_werte = {"PREWARM_ON_START": False, "USE_RERANKER": False,
-              "ENABLE_FAITHFULNESS_CHECK": False, "OLLAMA_KEEP_ALIVE_MINUTES": 0.0}
-_normal_werte = {k: getattr(Settings(), k) for k in _spar_werte}
-_aktuell = {k: getattr(settings, k) for k in _spar_werte}
-_ist_sparmodus = _aktuell == _spar_werte
-_ist_normalmodus = _aktuell == _normal_werte
+with card("sparmodus"):
+    st.subheader("🎓 Uni-/Sparmodus")
+    st.caption(
+        "Ein Klick für unterwegs: nichts lädt automatisch, Feinsortierung und "
+        "Beleg-Prüfung sind aus, ein geladenes Modell wird sofort wieder entladen. "
+        "Zum Karteikarten-Lernen brauchst du davon ohnehin nichts – Chat-Fragen bleiben "
+        "möglich, laden dann aber bewusst erst auf Zuruf."
+    )
+    _spar_werte = {"PREWARM_ON_START": False, "USE_RERANKER": False,
+                  "ENABLE_FAITHFULNESS_CHECK": False, "OLLAMA_KEEP_ALIVE_MINUTES": 0.0}
+    _normal_werte = {k: getattr(Settings(), k) for k in _spar_werte}
+    _aktuell = {k: getattr(settings, k) for k in _spar_werte}
+    _ist_sparmodus = _aktuell == _spar_werte
+    _ist_normalmodus = _aktuell == _normal_werte
 
-# Dauerhaft sichtbarer Status (nicht nur eine Toast-Meldung, die nach dem Neuladen
-# wieder verschwindet) - direkt aus den echten Einstellungen abgeleitet.
-if _ist_sparmodus:
-    st.success("🎓 **Sparmodus ist aktiv.** Nichts lädt automatisch, Reranker/Beleg-Prüfung "
-               "sind aus, Modelle entladen sofort wieder.")
-elif _ist_normalmodus:
-    st.info("💬 **Normalmodus ist aktiv** (Standardwerte für Vorladen/Reranker/Beleg-Prüfung).")
-else:
-    st.caption("⚙️ Eigene Mischung aktiv – weder reiner Spar- noch Normalmodus "
-               "(z. B. weil du einzelne Werte oben selbst verändert hast).")
+    # Dauerhaft sichtbarer Status (nicht nur eine Toast-Meldung, die nach dem Neuladen
+    # wieder verschwindet) - direkt aus den echten Einstellungen abgeleitet.
+    if _ist_sparmodus:
+        st.success("🎓 **Sparmodus ist aktiv.** Nichts lädt automatisch, Reranker/Beleg-Prüfung "
+                   "sind aus, Modelle entladen sofort wieder.")
+    elif _ist_normalmodus:
+        st.info("💬 **Normalmodus ist aktiv** (Standardwerte für Vorladen/Reranker/Beleg-Prüfung).")
+    else:
+        st.caption("⚙️ Eigene Mischung aktiv – weder reiner Spar- noch Normalmodus "
+                   "(z. B. weil du einzelne Werte oben selbst verändert hast).")
 
-_sp1, _sp2 = st.columns(2)
-with _sp1:
-    if st.button("🎓 Uni-/Sparmodus aktivieren", use_container_width=True,
-                 type="primary" if _ist_sparmodus else "secondary",
-                 disabled=_ist_sparmodus):
-        settings.update(**_spar_werte)
-        settings.save()
-        for _k in _spar_werte:
-            st.session_state.pop(f"cfg_{_k}", None)
-        st.rerun()
-with _sp2:
-    if st.button("💬 Normalmodus (Chat-Komfort)", use_container_width=True,
-                 type="primary" if _ist_normalmodus else "secondary",
-                 disabled=_ist_normalmodus):
-        settings.update(**_normal_werte)
-        settings.save()
-        for _k in _normal_werte:
-            st.session_state.pop(f"cfg_{_k}", None)
-        st.rerun()
-
-# --------------------------------------------------------------------------- #
-# Zurücksetzen (außerhalb des Formulars, da st.button in Formularen nicht erlaubt ist)
-# --------------------------------------------------------------------------- #
-st.divider()
-st.subheader("↺ Zurücksetzen")
-st.caption(
-    "Einen einzelnen Bereich auf die Standardwerte zurücksetzen – praktisch, wenn du "
-    "dich vertippt hast oder ein Wert nicht wie gewünscht funktioniert hat. Betrifft "
-    "nur den gewählten Bereich (ungespeicherte Änderungen im Formular gehen dabei "
-    "verloren)."
-)
-
-# Bereich -> zugehörige Einstellungs-Schlüssel (gleiche Namen wie die cfg_-Widget-Keys)
-_BEREICHE = {
-    "🔎 Suche": ["DENSE_TOP_K", "BM25_TOP_K", "FUSION_TOP_K", "FINAL_TOP_K", "RRF_K",
-                 "RELEVANCE_MIN_SCORE", "DENSE_WEIGHT", "BM25_WEIGHT", "USE_RERANKER"],
-    "✂️ Textabschnitte": ["CHUNK_SIZE", "CHUNK_OVERLAP", "MIN_CHUNK_CHARS",
-                          "RESPECT_MARKDOWN_HEADERS"],
-    "💬 Antwort": ["LLM_TEMPERATURE", "LLM_NUM_CTX", "MAX_CONTEXT_CHARS",
-                  "ENABLE_FAITHFULNESS_CHECK"],
-    "🧹 Deduplizierung": ["DEDUP_NEAR_DUPLICATE_THRESHOLD", "RETRIEVAL_DEDUP_JACCARD",
-                         "RETRIEVAL_DEDUP"],
-    "🔌 Modell-Ladeverhalten": ["PREWARM_ON_START", "OLLAMA_KEEP_ALIVE_MINUTES"],
-    "🧠 Modelle": ["LLM_MODEL", "LLM_MODEL_FAST", "LLM_MODEL_AUTHOR", "EMBED_MODEL", "RERANKER_MODEL"],
-    "📋 Lernplan": ["PLAN_TIME_FACTOR", "PLAN_REVIEW_SEC_PER_CARD", "PLAN_REVIEW_MAX_SHARE"],
-    "📊 Evaluation": ["EVAL_SAMPLE_SIZE", "EVAL_QUESTIONS_PER_CHUNK"],
-}
-
-
-def _reset_bereich(keys: list) -> None:
-    """Setzt nur die angegebenen Schlüssel auf die dataclass-Standardwerte, speichert
-    und lädt die zugehörigen Formularfelder neu (Widget-State entfernen)."""
-    _def = Settings()
-    settings.update(**{k: getattr(_def, k) for k in keys})
-    settings.save()
-    for k in keys:
-        st.session_state.pop(f"cfg_{k}", None)
-        st.session_state.pop(f"cfg_{k}_custom", None)   # evtl. Eigen-Namensfeld
-
-
-_items = list(_BEREICHE.items())
-for _start in range(0, len(_items), 3):
-    _cols = st.columns(3)
-    for _col, (_name, _keys) in zip(_cols, _items[_start:_start + 3]):
-        if _col.button(f"↺ {_name}", key=f"reset_{_name}", use_container_width=True):
-            _reset_bereich(_keys)
-            st.success(f"**{_name}** auf Standardwerte zurückgesetzt.")
+    _sp1, _sp2 = st.columns(2)
+    with _sp1:
+        if st.button("🎓 Uni-/Sparmodus aktivieren", use_container_width=True,
+                     type="primary" if _ist_sparmodus else "secondary",
+                     disabled=_ist_sparmodus):
+            settings.update(**_spar_werte)
+            settings.save()
+            for _k in _spar_werte:
+                st.session_state.pop(f"cfg_{_k}", None)
+            st.rerun()
+    with _sp2:
+        if st.button("💬 Normalmodus (Chat-Komfort)", use_container_width=True,
+                     type="primary" if _ist_normalmodus else "secondary",
+                     disabled=_ist_normalmodus):
+            settings.update(**_normal_werte)
+            settings.save()
+            for _k in _normal_werte:
+                st.session_state.pop(f"cfg_{_k}", None)
             st.rerun()
 
-with st.expander("⚠️ Alles zurücksetzen"):
-    st.caption("Löscht `data/config.json` komplett und stellt für **alle** Bereiche die "
-               "Standardwerte wieder her.")
-    if st.button("↩️ Alles auf Standard zurücksetzen"):
-        RUNTIME_CONFIG_FILE.unlink(missing_ok=True)
-        settings.reset()
-        for _k in list(st.session_state.keys()):
-            if _k.startswith("cfg_"):
-                st.session_state.pop(_k, None)
-        st.success("Alle Standardwerte wiederhergestellt (data/config.json gelöscht).")
-        st.rerun()
+    # --------------------------------------------------------------------------- #
+    # Zurücksetzen (außerhalb des Formulars, da st.button in Formularen nicht erlaubt ist)
+    # --------------------------------------------------------------------------- #
+st.divider()
+with card("reset"):
+    st.subheader("↺ Zurücksetzen")
+    st.caption(
+        "Einen einzelnen Bereich auf die Standardwerte zurücksetzen – praktisch, wenn du "
+        "dich vertippt hast oder ein Wert nicht wie gewünscht funktioniert hat. Betrifft "
+        "nur den gewählten Bereich (ungespeicherte Änderungen im Formular gehen dabei "
+        "verloren)."
+    )
+
+    # Bereich -> zugehörige Einstellungs-Schlüssel (gleiche Namen wie die cfg_-Widget-Keys)
+    _BEREICHE = {
+        "🔎 Suche": ["DENSE_TOP_K", "BM25_TOP_K", "FUSION_TOP_K", "FINAL_TOP_K", "RRF_K",
+                     "RELEVANCE_MIN_SCORE", "DENSE_WEIGHT", "BM25_WEIGHT", "USE_RERANKER"],
+        "✂️ Textabschnitte": ["CHUNK_SIZE", "CHUNK_OVERLAP", "MIN_CHUNK_CHARS",
+                              "RESPECT_MARKDOWN_HEADERS"],
+        "💬 Antwort": ["LLM_TEMPERATURE", "LLM_NUM_CTX", "MAX_CONTEXT_CHARS",
+                      "ENABLE_FAITHFULNESS_CHECK"],
+        "🧹 Deduplizierung": ["DEDUP_NEAR_DUPLICATE_THRESHOLD", "RETRIEVAL_DEDUP_JACCARD",
+                             "RETRIEVAL_DEDUP"],
+        "🔌 Modell-Ladeverhalten": ["PREWARM_ON_START", "OLLAMA_KEEP_ALIVE_MINUTES"],
+        "🧠 Modelle": ["LLM_MODEL", "LLM_MODEL_FAST", "LLM_MODEL_AUTHOR", "EMBED_MODEL", "RERANKER_MODEL"],
+        "📋 Lernplan": ["PLAN_TIME_FACTOR", "PLAN_REVIEW_SEC_PER_CARD", "PLAN_REVIEW_MAX_SHARE"],
+        "📊 Evaluation": ["EVAL_SAMPLE_SIZE", "EVAL_QUESTIONS_PER_CHUNK"],
+    }
+
+
+    def _reset_bereich(keys: list) -> None:
+        """Setzt nur die angegebenen Schlüssel auf die dataclass-Standardwerte, speichert
+        und lädt die zugehörigen Formularfelder neu (Widget-State entfernen)."""
+        _def = Settings()
+        settings.update(**{k: getattr(_def, k) for k in keys})
+        settings.save()
+        for k in keys:
+            st.session_state.pop(f"cfg_{k}", None)
+            st.session_state.pop(f"cfg_{k}_custom", None)   # evtl. Eigen-Namensfeld
+
+
+    _items = list(_BEREICHE.items())
+    for _start in range(0, len(_items), 3):
+        _cols = st.columns(3)
+        for _col, (_name, _keys) in zip(_cols, _items[_start:_start + 3]):
+            if _col.button(f"↺ {_name}", key=f"reset_{_name}", use_container_width=True):
+                _reset_bereich(_keys)
+                st.success(f"**{_name}** auf Standardwerte zurückgesetzt.")
+                st.rerun()
+
+    with st.expander("⚠️ Alles zurücksetzen"):
+        st.caption("Löscht `data/config.json` komplett und stellt für **alle** Bereiche die "
+                   "Standardwerte wieder her.")
+        if st.button("↩️ Alles auf Standard zurücksetzen"):
+            RUNTIME_CONFIG_FILE.unlink(missing_ok=True)
+            settings.reset()
+            for _k in list(st.session_state.keys()):
+                if _k.startswith("cfg_"):
+                    st.session_state.pop(_k, None)
+            st.success("Alle Standardwerte wiederhergestellt (data/config.json gelöscht).")
+            st.rerun()
