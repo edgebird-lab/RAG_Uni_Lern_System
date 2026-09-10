@@ -26,6 +26,8 @@ from ragapp.ui._loading import page_boot
 page_boot("📝 Probeklausur", page_title="Probeklausur", icon="📝", layout="wide",
          accent="pruefung")
 
+from ragapp.ui._style import card
+
 st.markdown("<style>.block-container{padding-top:2rem;max-width:900px;}"
             "h1{font-weight:750;letter-spacing:-.5px;}</style>", unsafe_allow_html=True)
 
@@ -73,32 +75,33 @@ if not subjects:
 # Aufbau
 # --------------------------------------------------------------------------- #
 if EXAM not in st.session_state:
-    st.subheader("Probeklausur zusammenstellen")
-    c1, c2, c3 = st.columns(3)
-    _fs = c1.multiselect("Fächer (leer = alle)", subjects, format_func=_fach)
-    n = c2.number_input("Aufgaben", min_value=3, max_value=40, value=10, step=1)
-    minutes = c3.number_input("Zeitlimit (Min.)", min_value=5, max_value=240, value=30, step=5)
-    st.caption("Die Aufgaben werden aus deinen fälligen und – falls nötig – den schwächsten "
-               "Karten gemischt (fächerübergreifend, wenn kein Fach gewählt ist).")
+    with card("aufbau"):
+        st.subheader("Probeklausur zusammenstellen")
+        c1, c2, c3 = st.columns(3)
+        _fs = c1.multiselect("Fächer (leer = alle)", subjects, format_func=_fach)
+        n = c2.number_input("Aufgaben", min_value=3, max_value=40, value=10, step=1)
+        minutes = c3.number_input("Zeitlimit (Min.)", min_value=5, max_value=240, value=30, step=5)
+        st.caption("Die Aufgaben werden aus deinen fälligen und – falls nötig – den schwächsten "
+                   "Karten gemischt (fächerübergreifend, wenn kein Fach gewählt ist).")
 
-    if st.button("▶️ Probeklausur starten", type="primary", use_container_width=True):
-        if _fs:
-            # Pro Fach die (fälligen/schwächsten) Karten holen und daraus gleichmäßig
-            # per Round-Robin bis n auswählen, dann deterministisch mischen – so ist
-            # jedes gewählte Fach fair vertreten (nicht nur die zuerst geladenen).
-            per_subject = [(s, manifest.get_due_cards(s, limit=int(n), cram=True))
-                           for s in _fs]
-            cards = _fair_exam_selection(per_subject, int(n))
-        else:
-            cards = planner.phase_round(limit=int(n), cram=True)
-        if not cards:
-            st.warning("Keine Karten für diese Auswahl gefunden.")
-        else:
-            st.session_state[EXAM] = {
-                "cards": cards, "answers": {}, "start": time.time(),
-                "limit": int(minutes) * 60, "done": False,
-            }
-            st.rerun()
+        if st.button("▶️ Probeklausur starten", type="primary", use_container_width=True):
+            if _fs:
+                # Pro Fach die (fälligen/schwächsten) Karten holen und daraus gleichmäßig
+                # per Round-Robin bis n auswählen, dann deterministisch mischen – so ist
+                # jedes gewählte Fach fair vertreten (nicht nur die zuerst geladenen).
+                per_subject = [(s, manifest.get_due_cards(s, limit=int(n), cram=True))
+                               for s in _fs]
+                cards = _fair_exam_selection(per_subject, int(n))
+            else:
+                cards = planner.phase_round(limit=int(n), cram=True)
+            if not cards:
+                st.warning("Keine Karten für diese Auswahl gefunden.")
+            else:
+                st.session_state[EXAM] = {
+                    "cards": cards, "answers": {}, "start": time.time(),
+                    "limit": int(minutes) * 60, "done": False,
+                }
+                st.rerun()
     st.stop()
 
 exam = st.session_state[EXAM]
@@ -108,12 +111,13 @@ exam = st.session_state[EXAM]
 # --------------------------------------------------------------------------- #
 if exam.get("done"):
     res = exam["result"]
-    st.subheader("📊 Ergebnis")
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Gesamt", f'{res["total_pct"]} %')
-    m2.metric("Aufgaben", len(res["items"]))
-    m3.metric("Zeit", f'{res["used_min"]} Min.')
-    st.progress(min(1.0, res["total_pct"] / 100))
+    with card("ergebnis"):
+        st.subheader("📊 Ergebnis")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Gesamt", f'{res["total_pct"]} %')
+        m2.metric("Aufgaben", len(res["items"]))
+        m3.metric("Zeit", f'{res["used_min"]} Min.')
+        st.progress(min(1.0, res["total_pct"] / 100))
     st.divider()
     for i, it in enumerate(res["items"], 1):
         _sc = it.get("score")
