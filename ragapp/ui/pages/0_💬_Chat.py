@@ -28,6 +28,8 @@ from ragapp.ui._loading import page_boot
 page_boot("Frag deine Zusammenfassungen", page_title="Chat", icon="💬",
           layout="wide", accent="chat")
 
+from ragapp.ui._style import card
+
 # --------------------------------------------------------------------------- #
 # Styling - Rest kommt zentral aus apply_theme()/apply_page_style(); hier nur
 # die chat-funktionsspezifischen Klassen (Quellen-Karten, Badges, Dropdown-
@@ -389,14 +391,15 @@ def _render_onboarding() -> None:
     """Leerer Chat: ein paar klickbare Beispiel-Fragen als sanfter Einstieg.
     Ein Klick legt die Frage als 'ausstehend' ab und startet sie via Rerun -
     so wirkt der Button wie eine vorab ausgefüllte Eingabe."""
-    st.markdown("<span class='small'>Neu hier? Starte mit einer dieser Fragen "
-                "– oder tippe unten einfach deine eigene:</span>",
-                unsafe_allow_html=True)
-    cols = st.columns(len(_EXAMPLE_QUESTIONS))
-    for _i, (_col, _q) in enumerate(zip(cols, _EXAMPLE_QUESTIONS)):
-        if _col.button(_q, key=f"example_{_i}", use_container_width=True):
-            st.session_state["_pending_prompt"] = _q
-            st.rerun()
+    with card("onboarding"):
+        st.markdown("<span class='small'>Neu hier? Starte mit einer dieser Fragen "
+                    "– oder tippe unten einfach deine eigene:</span>",
+                    unsafe_allow_html=True)
+        cols = st.columns(len(_EXAMPLE_QUESTIONS))
+        for _i, (_col, _q) in enumerate(zip(cols, _EXAMPLE_QUESTIONS)):
+            if _col.button(_q, key=f"example_{_i}", use_container_width=True):
+                st.session_state["_pending_prompt"] = _q
+                st.rerun()
 
 
 def _friendly_error(exc: Exception) -> str:
