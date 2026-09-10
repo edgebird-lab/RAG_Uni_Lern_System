@@ -401,6 +401,13 @@ else:
                 f"<div class='splan-topic-meta'>{_fmt_min(_s['est_minutes'])}"
                 + (f" · {_html.escape(_summary_short)}" if _summary_short else "")
                 + "</div></div>", unsafe_allow_html=True)
+            if st.button("🧮 Übungsaufgabe", key=f"splan_practice_{_s['section_id']}",
+                        use_container_width=True):
+                st.session_state["practice_prefill"] = {
+                    "subject": _plan["subject"], "doc_ids": _plan["doc_ids"],
+                    "topic": _s["title"],
+                }
+                st.switch_page("pages/13_🧮_Übungsaufgaben.py")
 
     _sec_df = pd.DataFrame([{
         "🗑️": False, "Reihenfolge": s["order_index"], "Titel": s["title"],

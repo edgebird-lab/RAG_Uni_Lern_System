@@ -371,6 +371,20 @@ class Settings:
     SOKRATISCH_RESOLVE_AFTER_QUESTIONS: int = 3
 
     # ------------------------------------------------------------------ #
+    # Uebungsaufgaben-Generator (mehrschrittige Rechen-/Anwendungsaufgaben,
+    # bewusst GETRENNT von SM-2/FSRS-Karten - siehe manifest.py-Schema-Kommentar)
+    # ------------------------------------------------------------------ #
+    # Zahlen-/Formeldichte ab der eine Rechenaufgabe statt eines Anwendungs-
+    # szenarios generiert wird (dieselbe Heuristik wie der Lernplan-Zeitfaktor,
+    # siehe study_plan._TECHNICAL_MARKER_RE - Marker je 100 Zeichen).
+    PRACTICE_NUMERIC_DENSITY_THRESHOLD: float = 1.0
+    PRACTICE_MAX_HINTS: int = 3
+    # Obergrenze fuer den Quelltext im Generierungs-Prompt (Zeichen) - dieselbe
+    # Absicherung wie PLAN_MAX_TOC_CHARS: ohne Deckel wuerde ein sehr grosses
+    # Thema den Kontext sprengen und das Modell frei erfinden lassen.
+    PRACTICE_MAX_SOURCE_CHARS: int = 6000
+
+    # ------------------------------------------------------------------ #
     # Evaluation
     # ------------------------------------------------------------------ #
     EVAL_QUESTIONS_PER_CHUNK: int = 1      # Held-out-Fragen pro gesampeltem Chunk

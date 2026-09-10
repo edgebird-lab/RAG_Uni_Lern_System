@@ -294,6 +294,42 @@ CREATE TABLE IF NOT EXISTS llm_token_samples (
     created_at  REAL
 );
 CREATE INDEX IF NOT EXISTS idx_token_samples_model ON llm_token_samples(model);
+
+-- Uebungsaufgaben: mehrschrittige Rechen-/Anwendungsaufgaben mit Musterloesung.
+-- BEWUSST GETRENNT von review_items/review_log: SM-2/FSRS modellieren
+-- Vergessens-Zerfall fuer ATOMARE Fakten, bei denen ein Wiederabfragen "faellig
+-- in X Tagen" sinnvoll ist - eine mehrabsatzige Rechenaufgabe mit bekannten
+-- Zahlen erneut "in 2 Minuten" vorzulegen waere unehrlich. Eine Aufgabe wird
+-- daher nie "faellig", sie bleibt einfach dauerhaft in der Liste zum Ueben.
+CREATE TABLE IF NOT EXISTS practice_problems (
+    problem_id      TEXT PRIMARY KEY,
+    subject         TEXT,
+    doc_id          TEXT,
+    topic           TEXT,
+    kind            TEXT,               -- 'numeric' | 'scenario'
+    problem_text    TEXT NOT NULL,
+    given_json      TEXT,               -- [{"label":..., "value":...}]
+    steps_json      TEXT NOT NULL,      -- [{"step_text":...}]
+    final_answer    TEXT,
+    hints_json      TEXT,               -- [hinweis, ...] progressiv
+    source_excerpt  TEXT,
+    model           TEXT,
+    created_at      REAL
+);
+CREATE INDEX IF NOT EXISTS idx_practice_problems_subject ON practice_problems(subject);
+CREATE INDEX IF NOT EXISTS idx_practice_problems_doc ON practice_problems(doc_id);
+CREATE INDEX IF NOT EXISTS idx_practice_problems_topic ON practice_problems(topic);
+
+-- Append-only Log der Selbsteinschaetzungen (Stil wie review_log, aber OHNE
+-- SM-2/FSRS-Zustand - siehe Kommentar oben).
+CREATE TABLE IF NOT EXISTS practice_attempts (
+    attempt_id   TEXT PRIMARY KEY,
+    problem_id   TEXT NOT NULL,
+    attempted_at REAL,
+    self_rating  INTEGER,   -- 0=falsch, 1=teilweise, 2=richtig (wie review_log.rating)
+    notiz        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_practice_attempts_problem ON practice_attempts(problem_id);
 """
 
 
@@ -1845,6 +1881,118 @@ def list_collections(subject: Optional[str] = None) -> list[str]:
     sql += " ORDER BY collection"
     with _connect() as conn:
         return [r["collection"] for r in conn.execute(sql, args)]
+
+
+# --------------------------------------------------------------------------- #
+# Uebungsaufgaben (siehe _SCHEMA-Kommentar oben zur Abgrenzung von review_items)
+# --------------------------------------------------------------------------- #
+
+def _decode_practice_problem(row: dict) -> dict:
+    d = dict(row)
+    for col, key in (("given_json", "given"), ("steps_json", "steps"),
+                     ("hints_json", "hints")):
+        try:
+            d[key] = json.loads(d.get(col) or "[]")
+        except Exception:  # noqa: BLE001
+            d[key] = []
+    return d
+
+
+def create_practice_problem(*, subject: Optional[str] = None, doc_id: Optional[str] = None,
+                            topic: Optional[str] = None, kind: str = "scenario",
+                            problem_text: str, given: Optional[list] = None,
+                            steps: list, final_answer: Optional[str] = None,
+                            hints: Optional[list] = None,
+                            source_excerpt: Optional[str] = None,
+                            model: Optional[str] = None) -> str:
+    now = time.time()
+    pid = uuid.uuid4().hex[:16]
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO practice_problems (problem_id, subject, doc_id, topic, kind, "
+            "problem_text, given_json, steps_json, final_answer, hints_json, "
+            "source_excerpt, model, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (pid, subject, doc_id, topic, kind, problem_text.strip(),
+             json.dumps(given or []), json.dumps(steps),
+             (final_answer or "").strip() or None, json.dumps(hints or []),
+             source_excerpt, model, now),
+        )
+    return pid
+
+
+def get_practice_problem(problem_id: str) -> Optional[dict]:
+    with _connect() as conn:
+        r = conn.execute(
+            "SELECT * FROM practice_problems WHERE problem_id=?", (problem_id,)).fetchone()
+    return _decode_practice_problem(r) if r else None
+
+
+def list_practice_problems(subject: Optional[str] = None, doc_id: Optional[str] = None,
+                           topic: Optional[str] = None, kind: Optional[str] = None,
+                           limit: Optional[int] = None, offset: int = 0) -> list[dict]:
+    sql = "SELECT * FROM practice_problems WHERE 1=1"
+    args: list = []
+    if subject:
+        sql += " AND subject=?"; args.append(subject)
+    if doc_id:
+        sql += " AND doc_id=?"; args.append(doc_id)
+    if topic:
+        sql += " AND topic=?"; args.append(topic)
+    if kind:
+        sql += " AND kind=?"; args.append(kind)
+    sql += " ORDER BY created_at DESC"
+    if limit is not None:
+        sql += " LIMIT ? OFFSET ?"; args += [int(limit), int(offset)]
+    with _connect() as conn:
+        rows = conn.execute(sql, args).fetchall()
+    return [_decode_practice_problem(r) for r in rows]
+
+
+def count_practice_problems(subject: Optional[str] = None, doc_id: Optional[str] = None,
+                            topic: Optional[str] = None, kind: Optional[str] = None) -> int:
+    sql = "SELECT COUNT(*) AS n FROM practice_problems WHERE 1=1"
+    args: list = []
+    if subject:
+        sql += " AND subject=?"; args.append(subject)
+    if doc_id:
+        sql += " AND doc_id=?"; args.append(doc_id)
+    if topic:
+        sql += " AND topic=?"; args.append(topic)
+    if kind:
+        sql += " AND kind=?"; args.append(kind)
+    with _connect() as conn:
+        return int(conn.execute(sql, args).fetchone()["n"])
+
+
+def delete_practice_problem(problem_id: str) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM practice_problems WHERE problem_id=?", (problem_id,))
+        conn.execute("DELETE FROM practice_attempts WHERE problem_id=?", (problem_id,))
+
+
+def log_practice_attempt(problem_id: str, *, self_rating: int,
+                         notiz: Optional[str] = None) -> str:
+    aid = uuid.uuid4().hex[:16]
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO practice_attempts (attempt_id, problem_id, attempted_at, "
+            "self_rating, notiz) VALUES (?,?,?,?,?)",
+            (aid, problem_id, time.time(), int(self_rating), notiz),
+        )
+    return aid
+
+
+def list_practice_attempts(problem_id: Optional[str] = None,
+                           limit: Optional[int] = None, offset: int = 0) -> list[dict]:
+    sql = "SELECT * FROM practice_attempts WHERE 1=1"
+    args: list = []
+    if problem_id:
+        sql += " AND problem_id=?"; args.append(problem_id)
+    sql += " ORDER BY attempted_at DESC"
+    if limit is not None:
+        sql += " LIMIT ? OFFSET ?"; args += [int(limit), int(offset)]
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
 
 
 # Ro7: KEINE Initialisierung mehr als Import-Nebenwirkung. Schema/Migrationen
