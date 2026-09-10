@@ -394,6 +394,16 @@ class Settings:
     # Harte Obergrenze aller Knoten zusammen - schuetzt vor einer unlesbaren
     # SVG-Flaeche UND vor einem ausufernden Prompt bei der naechsten Anfrage.
     MINDMAP_MAX_NODES: int = 40
+    # Anders als die Lernplan-Gliederung (die nur ORDNET) muss die Mindmap
+    # Themen BENENNEN - bei Quellen ohne erkennbare Kapitelstruktur (Folien-
+    # saetze: Abschnittstitel nur "Seite N") ist der Titel allein kein
+    # Signal dafuer. Jede Zeile im Prompt bekommt daher zusaetzlich einen
+    # kurzen Inhalts-Ausschnitt (siehe mindmap._toc_with_excerpts) - die
+    # Ausschnittlaenge schrumpft automatisch mit der Abschnittszahl, damit
+    # der Gesamt-Prompt MINDMAP_PROMPT_BUDGET_CHARS nicht sprengt.
+    MINDMAP_PROMPT_BUDGET_CHARS: int = 9000
+    MINDMAP_EXCERPT_MIN_CHARS: int = 40
+    MINDMAP_EXCERPT_MAX_CHARS: int = 150
 
     # ------------------------------------------------------------------ #
     # Evaluation
