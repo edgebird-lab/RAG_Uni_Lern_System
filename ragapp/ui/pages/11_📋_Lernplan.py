@@ -23,6 +23,8 @@ import streamlit as st
 from ragapp.ui._loading import page_boot
 page_boot("📋 Lernplan", page_title="Lernplan", icon="📋", layout="wide", accent="lernplan")
 
+from ragapp.ui._style import card
+
 st.markdown("""
 <style>
 .block-container {padding-top: 2rem; max-width: 1150px;}
@@ -112,44 +114,45 @@ _plan_colors = manifest.subject_colors_map()
 # --------------------------------------------------------------------------- #
 _plans_all = manifest.list_study_plans()
 
-st.subheader("📋 Deine Lernpläne")
-c1, c2 = st.columns([3, 1])
-with c2:
-    st.write("")
-    _show_done = st.checkbox("✅ Abgeschlossene anzeigen", key="splan_show_done")
+with card("planwahl"):
+    st.subheader("📋 Deine Lernpläne")
+    c1, c2 = st.columns([3, 1])
+    with c2:
+        st.write("")
+        _show_done = st.checkbox("✅ Abgeschlossene anzeigen", key="splan_show_done")
 
-_plans = _plans_all if _show_done else [p for p in _plans_all if p["status"] != "done"]
-_plan_by_id = {p["plan_id"]: p for p in _plans}
-_n_hidden = len(_plans_all) - len(_plans)
-
-
-def _fmt_plan_option(pid: "str | None") -> str:
-    if pid is None:
-        return "➕ Neuer Plan"
-    p = _plan_by_id.get(pid)
-    return _plan_label(p) if p else "(gelöscht)"
+    _plans = _plans_all if _show_done else [p for p in _plans_all if p["status"] != "done"]
+    _plan_by_id = {p["plan_id"]: p for p in _plans}
+    _n_hidden = len(_plans_all) - len(_plans)
 
 
-# Die Auswahl haengt am STABILEN plan_id (nicht an einem Text-Label, das sich mit
-# Titel/Status aendert) - sonst waere die Auswahl z. B. nach einem automatischen
-# Statuswechsel active -> done (siehe sync_plan_status) ploetzlich ungueltig.
-if "_splan_pending_choice" in st.session_state:
-    # Widget-eigene session_state-Keys duerfen NICHT gesetzt werden, nachdem das
-    # Widget in diesem Lauf schon gerendert wurde - daher der "pending"-Umweg,
-    # angewendet HIER, VOR der Instanziierung (das ist erlaubt).
-    st.session_state["splan_choice"] = st.session_state.pop("_splan_pending_choice")
-elif st.session_state.get("splan_choice") not in ([None] + list(_plan_by_id.keys())):
-    # Der zuletzt gewaehlte Plan ist nicht mehr in der (ggf. gefilterten) Liste -
-    # z. B. gerade abgeschlossen und "Abgeschlossene anzeigen" ist aus. Ohne diesen
-    # Reset wuerde die Selectbox unten mit einem ungueltigen Wert abstuerzen.
-    st.session_state["splan_choice"] = None
+    def _fmt_plan_option(pid: "str | None") -> str:
+        if pid is None:
+            return "➕ Neuer Plan"
+        p = _plan_by_id.get(pid)
+        return _plan_label(p) if p else "(gelöscht)"
 
-with c1:
-    _active_plan_id = st.selectbox(
-        "Plan wählen", [None] + list(_plan_by_id.keys()),
-        format_func=_fmt_plan_option, key="splan_choice")
-if _n_hidden:
-    st.caption(f"{_n_hidden} abgeschlossene(r) Plan/Pläne ausgeblendet.")
+
+    # Die Auswahl haengt am STABILEN plan_id (nicht an einem Text-Label, das sich mit
+    # Titel/Status aendert) - sonst waere die Auswahl z. B. nach einem automatischen
+    # Statuswechsel active -> done (siehe sync_plan_status) ploetzlich ungueltig.
+    if "_splan_pending_choice" in st.session_state:
+        # Widget-eigene session_state-Keys duerfen NICHT gesetzt werden, nachdem das
+        # Widget in diesem Lauf schon gerendert wurde - daher der "pending"-Umweg,
+        # angewendet HIER, VOR der Instanziierung (das ist erlaubt).
+        st.session_state["splan_choice"] = st.session_state.pop("_splan_pending_choice")
+    elif st.session_state.get("splan_choice") not in ([None] + list(_plan_by_id.keys())):
+        # Der zuletzt gewaehlte Plan ist nicht mehr in der (ggf. gefilterten) Liste -
+        # z. B. gerade abgeschlossen und "Abgeschlossene anzeigen" ist aus. Ohne diesen
+        # Reset wuerde die Selectbox unten mit einem ungueltigen Wert abstuerzen.
+        st.session_state["splan_choice"] = None
+
+    with c1:
+        _active_plan_id = st.selectbox(
+            "Plan wählen", [None] + list(_plan_by_id.keys()),
+            format_func=_fmt_plan_option, key="splan_choice")
+    if _n_hidden:
+        st.caption(f"{_n_hidden} abgeschlossene(r) Plan/Pläne ausgeblendet.")
 
 # --------------------------------------------------------------------------- #
 # Cross-Plan-Uebersicht: andere laufende Plaene auf einen Blick, ohne jeden
@@ -292,41 +295,42 @@ _blocks = manifest.list_plan_blocks(_active_plan_id)
 _plan_color = subject_color(_plan["subject"], _plan_colors, _subjects_with_docs)
 
 st.divider()
-hh1, hh2 = st.columns([3, 1])
-with hh1:
-    st.markdown(
-        f"<h3 style='margin-bottom:0;border-left:5px solid {_plan_color};"
-        f"padding-left:10px;'>{_html.escape(_plan['title'])}</h3>",
-        unsafe_allow_html=True)
-    st.caption(_fach(_plan["subject"]))
-with hh2:
-    st.markdown(f"<div style='text-align:right;padding-top:10px'>"
-               f"{_status_badge(_plan['status'])}</div>", unsafe_allow_html=True)
+with card("kopf"):
+    hh1, hh2 = st.columns([3, 1])
+    with hh1:
+        st.markdown(
+            f"<h3 style='margin-bottom:0;border-left:5px solid {_plan_color};"
+            f"padding-left:10px;'>{_html.escape(_plan['title'])}</h3>",
+            unsafe_allow_html=True)
+        st.caption(_fach(_plan["subject"]))
+    with hh2:
+        st.markdown(f"<div style='text-align:right;padding-top:10px'>"
+                   f"{_status_badge(_plan['status'])}</div>", unsafe_allow_html=True)
 
-# Kennzahlen-Kopfzeile: der aktuelle Stand auf einen Blick, ohne erst runter-
-# scrollen zu muessen.
-_total_planned_all = sum(b["planned_min"] for b in _blocks)
-_done_planned_all = sum(b["planned_min"] for b in _blocks if b["done"])
-_dl_date = study_plan.parse_iso_date(_plan.get("deadline"))
-_days_left = (_dl_date - date.today()).days if _dl_date else None
+    # Kennzahlen-Kopfzeile: der aktuelle Stand auf einen Blick, ohne erst runter-
+    # scrollen zu muessen.
+    _total_planned_all = sum(b["planned_min"] for b in _blocks)
+    _done_planned_all = sum(b["planned_min"] for b in _blocks if b["done"])
+    _dl_date = study_plan.parse_iso_date(_plan.get("deadline"))
+    _days_left = (_dl_date - date.today()).days if _dl_date else None
 
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Themen", len(_sections))
-m2.metric("Lernzeit gesamt", _fmt_min(_total_planned_all) if _total_planned_all else "–")
-m3.metric("Erledigt", (f"{round(100 * _done_planned_all / _total_planned_all)} %"
-                       if _total_planned_all else "–"))
-m4.metric("Bis Zieldatum", (f"{_days_left} Tag(e)" if _days_left is not None else "offen"))
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Themen", len(_sections))
+    m2.metric("Lernzeit gesamt", _fmt_min(_total_planned_all) if _total_planned_all else "–")
+    m3.metric("Erledigt", (f"{round(100 * _done_planned_all / _total_planned_all)} %"
+                           if _total_planned_all else "–"))
+    m4.metric("Bis Zieldatum", (f"{_days_left} Tag(e)" if _days_left is not None else "offen"))
 
-_next_block = next((b for b in _blocks if not b["done"]), None)
-if _next_block is not None:
-    _next_title = next((s["title"] for s in _sections
-                        if s["section_id"] == _next_block["section_id"]), "Abschnitt")
-    _nb_when = ("heute" if _next_block["planned_date"] == date.today().isoformat()
-               else _next_block["planned_date"])
-    st.info(f"▶️ **Nächster Block:** {_next_title} · "
-           f"{_fmt_min(_next_block['planned_min'])} · {_nb_when}")
-elif _total_planned_all:
-    st.success("✅ Alle Blöcke dieses Plans sind erledigt.")
+    _next_block = next((b for b in _blocks if not b["done"]), None)
+    if _next_block is not None:
+        _next_title = next((s["title"] for s in _sections
+                            if s["section_id"] == _next_block["section_id"]), "Abschnitt")
+        _nb_when = ("heute" if _next_block["planned_date"] == date.today().isoformat()
+                   else _next_block["planned_date"])
+        st.info(f"▶️ **Nächster Block:** {_next_title} · "
+               f"{_fmt_min(_next_block['planned_min'])} · {_nb_when}")
+    elif _total_planned_all:
+        st.success("✅ Alle Blöcke dieses Plans sind erledigt.")
 
 with st.expander("⚙️ Einstellungen & Löschen"):
     ec1, ec2, ec3 = st.columns(3)
@@ -494,80 +498,81 @@ st.divider()
 # --------------------------------------------------------------------------- #
 # Zeitplan (Tagesblöcke)
 # --------------------------------------------------------------------------- #
-st.markdown("##### 🗓️ Zeitplan")
-if not _blocks:
-    st.caption("Noch kein Zeitplan berechnet – Gliederung anpassen und oben "
-               "„📐 Plan berechnen“ klicken.")
-else:
-    _sec_title = {s["section_id"]: s["title"] for s in _sections}
-    _total_planned = sum(b["planned_min"] for b in _blocks)
-    _done_planned = sum(b["planned_min"] for b in _blocks if b["done"])
-    st.progress(_done_planned / _total_planned if _total_planned else 0.0,
-               text=f"{_fmt_min(_done_planned)} von {_fmt_min(_total_planned)} erledigt")
+with card("zeitplan"):
+    st.markdown("##### 🗓️ Zeitplan")
+    if not _blocks:
+        st.caption("Noch kein Zeitplan berechnet – Gliederung anpassen und oben "
+                   "„📐 Plan berechnen“ klicken.")
+    else:
+        _sec_title = {s["section_id"]: s["title"] for s in _sections}
+        _total_planned = sum(b["planned_min"] for b in _blocks)
+        _done_planned = sum(b["planned_min"] for b in _blocks if b["done"])
+        st.progress(_done_planned / _total_planned if _total_planned else 0.0,
+                   text=f"{_fmt_min(_done_planned)} von {_fmt_min(_total_planned)} erledigt")
 
-    _by_date: dict = {}
-    for b in _blocks:
-        _by_date.setdefault(b["planned_date"], []).append(b)
-
-
-    def _render_timeline(by_date: dict, color: str) -> str:
-        """Horizontale Fortschritts-Zeitleiste: ein Segment pro Tag, Fuellhoehe =
-        Anteil erledigt an diesem Tag, gruen sobald der Tag komplett ist, der
-        heutige Tag hervorgehoben."""
-        today_iso = date.today().isoformat()
-        segs = []
-        for day in sorted(by_date.keys()):
-            day_blocks = by_date[day]
-            total = sum(bl["planned_min"] for bl in day_blocks)
-            done = sum(bl["planned_min"] for bl in day_blocks if bl["done"])
-            pct = round(100 * done / total) if total else 0
-            is_today = " splan-tl-today" if day == today_iso else ""
-            fill = "#16a34a" if pct == 100 else color
-            label = day[5:].replace("-", ".")
-            segs.append(
-                f"<div class='splan-tl-seg{is_today}' "
-                f"title='{day}: {_fmt_min(done)} / {_fmt_min(total)}'>"
-                f"<div class='splan-tl-fill' style='height:{pct}%;background:{fill};'></div>"
-                f"<div class='splan-tl-label'>{label}</div></div>")
-        return f"<div class='splan-tl-wrap'><div class='splan-tl-row'>{''.join(segs)}</div></div>"
+        _by_date: dict = {}
+        for b in _blocks:
+            _by_date.setdefault(b["planned_date"], []).append(b)
 
 
-    st.markdown(_render_timeline(_by_date, _plan_color), unsafe_allow_html=True)
+        def _render_timeline(by_date: dict, color: str) -> str:
+            """Horizontale Fortschritts-Zeitleiste: ein Segment pro Tag, Fuellhoehe =
+            Anteil erledigt an diesem Tag, gruen sobald der Tag komplett ist, der
+            heutige Tag hervorgehoben."""
+            today_iso = date.today().isoformat()
+            segs = []
+            for day in sorted(by_date.keys()):
+                day_blocks = by_date[day]
+                total = sum(bl["planned_min"] for bl in day_blocks)
+                done = sum(bl["planned_min"] for bl in day_blocks if bl["done"])
+                pct = round(100 * done / total) if total else 0
+                is_today = " splan-tl-today" if day == today_iso else ""
+                fill = "#16a34a" if pct == 100 else color
+                label = day[5:].replace("-", ".")
+                segs.append(
+                    f"<div class='splan-tl-seg{is_today}' "
+                    f"title='{day}: {_fmt_min(done)} / {_fmt_min(total)}'>"
+                    f"<div class='splan-tl-fill' style='height:{pct}%;background:{fill};'></div>"
+                    f"<div class='splan-tl-label'>{label}</div></div>")
+            return f"<div class='splan-tl-wrap'><div class='splan-tl-row'>{''.join(segs)}</div></div>"
 
-    for d in sorted(_by_date.keys()):
-        _day_blocks = _by_date[d]
-        _label = "**Heute**" if d == date.today().isoformat() else d
-        _day_done = sum(bl["planned_min"] for bl in _day_blocks if bl["done"])
-        _day_total = sum(bl["planned_min"] for bl in _day_blocks)
-        with st.expander(f"{_label} · {_fmt_min(_day_total)}"
-                        + (" ✅" if _day_done == _day_total else ""),
-                        expanded=(d == date.today().isoformat())):
-            for bl in _day_blocks:
-                bcol1, bcol2, bcol3 = st.columns([4, 1.3, 1.3])
-                title = _sec_title.get(bl["section_id"], "Abschnitt")
-                # Ehrlich sichtbar machen, WORAUF ein "erledigt" beruht: 🍅 = echte
-                # Pomodoro-Zeit erfasst, ✍️ = manuell abgehakt (z. B. Programmier-
-                # aufgaben, die sich nicht sinnvoll per Timer tracken lassen - beide
-                # Wege bleiben gleichwertig moeglich, siehe Verbesserungsvorschlag).
-                _via = {"pomodoro": " 🍅", "manual": " ✍️"}.get(bl.get("done_via"), "")
-                _mark = f"✅{_via}" if bl["done"] else "⬜"
-                bcol1.write(f"{_mark} {title} · {_fmt_min(bl['planned_min'])}")
-                if bcol2.button("Erledigt" if not bl["done"] else "↩️",
-                               key=f"splan_block_{bl['block_id']}", use_container_width=True):
-                    manifest.set_block_done(bl["block_id"], not bl["done"],
-                                            via=None if bl["done"] else "manual")
-                    _new_status = manifest.sync_plan_status(_active_plan_id)
-                    if _new_status == "done":
-                        st.balloons()
-                    st.rerun()
-                if not bl["done"]:
-                    if bcol3.button("🍅 Pomodoro", key=f"splan_pomo_{bl['block_id']}",
-                                    use_container_width=True,
-                                    help="Startet einen Pomodoro-Arbeitsblock auf der "
-                                         "Lernzeit-Seite; nach Abschluss gilt dieser "
-                                         "Block automatisch als erledigt."):
-                        st.session_state["pomo_prefill"] = {
-                            "subject": _plan["subject"], "minutes": bl["planned_min"],
-                            "block_id": bl["block_id"],
-                        }
-                        st.switch_page("pages/10_⏱️_Lernzeit.py")
+
+        st.markdown(_render_timeline(_by_date, _plan_color), unsafe_allow_html=True)
+
+        for d in sorted(_by_date.keys()):
+            _day_blocks = _by_date[d]
+            _label = "**Heute**" if d == date.today().isoformat() else d
+            _day_done = sum(bl["planned_min"] for bl in _day_blocks if bl["done"])
+            _day_total = sum(bl["planned_min"] for bl in _day_blocks)
+            with st.expander(f"{_label} · {_fmt_min(_day_total)}"
+                            + (" ✅" if _day_done == _day_total else ""),
+                            expanded=(d == date.today().isoformat())):
+                for bl in _day_blocks:
+                    bcol1, bcol2, bcol3 = st.columns([4, 1.3, 1.3])
+                    title = _sec_title.get(bl["section_id"], "Abschnitt")
+                    # Ehrlich sichtbar machen, WORAUF ein "erledigt" beruht: 🍅 = echte
+                    # Pomodoro-Zeit erfasst, ✍️ = manuell abgehakt (z. B. Programmier-
+                    # aufgaben, die sich nicht sinnvoll per Timer tracken lassen - beide
+                    # Wege bleiben gleichwertig moeglich, siehe Verbesserungsvorschlag).
+                    _via = {"pomodoro": " 🍅", "manual": " ✍️"}.get(bl.get("done_via"), "")
+                    _mark = f"✅{_via}" if bl["done"] else "⬜"
+                    bcol1.write(f"{_mark} {title} · {_fmt_min(bl['planned_min'])}")
+                    if bcol2.button("Erledigt" if not bl["done"] else "↩️",
+                                   key=f"splan_block_{bl['block_id']}", use_container_width=True):
+                        manifest.set_block_done(bl["block_id"], not bl["done"],
+                                                via=None if bl["done"] else "manual")
+                        _new_status = manifest.sync_plan_status(_active_plan_id)
+                        if _new_status == "done":
+                            st.balloons()
+                        st.rerun()
+                    if not bl["done"]:
+                        if bcol3.button("🍅 Pomodoro", key=f"splan_pomo_{bl['block_id']}",
+                                        use_container_width=True,
+                                        help="Startet einen Pomodoro-Arbeitsblock auf der "
+                                             "Lernzeit-Seite; nach Abschluss gilt dieser "
+                                             "Block automatisch als erledigt."):
+                            st.session_state["pomo_prefill"] = {
+                                "subject": _plan["subject"], "minutes": bl["planned_min"],
+                                "block_id": bl["block_id"],
+                            }
+                            st.switch_page("pages/10_⏱️_Lernzeit.py")
