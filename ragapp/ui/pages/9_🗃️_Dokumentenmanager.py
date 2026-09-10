@@ -133,6 +133,14 @@ def _view_doc_dialog(d: dict) -> None:
         "⬇️ Herunterladen", data=_read_file_bytes(str(path), d.get("updated_at") or 0),
         file_name=d["filename"], key=f"docmgr_dldlg_{d['doc_id']}", use_container_width=True)
 
+    if st.button("📝 Notiz zu diesem Dokument", key=f"docmgr_note_{d['doc_id']}",
+                use_container_width=True):
+        st.session_state["note_prefill"] = {
+            "subject": d.get("subject"), "doc_id": d["doc_id"],
+            "title": d["filename"],
+        }
+        st.switch_page("pages/12_🗒️_Notizen.py")
+
 
 _docs = [dict(d) for d in manifest.list_documents()]
 if not _docs:

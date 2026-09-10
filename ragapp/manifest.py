@@ -261,6 +261,26 @@ CREATE TABLE IF NOT EXISTS plan_eta_samples (
     created_at  REAL
 );
 CREATE INDEX IF NOT EXISTS idx_eta_samples_model ON plan_eta_samples(model);
+
+-- Freie Notizen: EIGENE Gedanken des Nutzers, im Unterschied zu allen anderen
+-- Inhalten der App (Zusammenfassung/Karten/Gliederung sind KI-generiert). Bewusst
+-- NICHT im RAG-Index (siehe ragapp/ui/pages/12_notizen.py-Docstring) - reine
+-- SQLite-Volltextsuche statt Vektor-/BM25-Suche.
+CREATE TABLE IF NOT EXISTS notes (
+    note_id     TEXT PRIMARY KEY,
+    subject     TEXT,
+    doc_id      TEXT,             -- optional: an ein bestimmtes Dokument geheftet
+    topic       TEXT,             -- optional: an ein Thema/Abschnitt geheftet
+    collection  TEXT,             -- freie "Sammlung" (wie 'deck' bei Karten)
+    title       TEXT,
+    body        TEXT NOT NULL,    -- Markdown
+    pinned      INTEGER DEFAULT 0,
+    created_at  REAL,
+    updated_at  REAL
+);
+CREATE INDEX IF NOT EXISTS idx_notes_subject ON notes(subject);
+CREATE INDEX IF NOT EXISTS idx_notes_doc ON notes(doc_id);
+CREATE INDEX IF NOT EXISTS idx_notes_collection ON notes(collection);
 """
 
 
@@ -1680,6 +1700,110 @@ def exam_map() -> dict:
 def delete_exam(subject: str) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM exams WHERE subject=?", (subject,))
+
+
+# --------------------------------------------------------------------------- #
+# Freie Notizen (eigene Gedanken - im Unterschied zu allen KI-generierten
+# Inhalten der App bewusst NICHT im RAG-Index, siehe Schema-Kommentar)
+# --------------------------------------------------------------------------- #
+def create_note(*, subject: Optional[str] = None, doc_id: Optional[str] = None,
+                topic: Optional[str] = None, collection: Optional[str] = None,
+                title: str = "", body: str, pinned: bool = False) -> str:
+    now = time.time()
+    nid = uuid.uuid4().hex[:16]
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO notes (note_id, subject, doc_id, topic, collection, title, "
+            "body, pinned, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (nid, subject, doc_id, topic, collection, (title or "").strip(),
+             body, 1 if pinned else 0, now, now),
+        )
+    return nid
+
+
+def update_note(note_id: str, **fields: Any) -> None:
+    """Aktualisiert nur die uebergebenen Felder (z. B. nur ``body`` beim Speichern
+    im Editor, oder nur ``pinned`` beim Anheften) - wie ``update_study_plan``."""
+    valid = {"subject", "doc_id", "topic", "collection", "title", "body", "pinned"}
+    sets = [f"{k}=?" for k in fields if k in valid]
+    if not sets:
+        return
+    args = [(1 if fields[k] else 0) if k == "pinned" else fields[k]
+           for k in fields if k in valid]
+    args += [time.time(), note_id]
+    with _connect() as conn:
+        conn.execute(f"UPDATE notes SET {','.join(sets)}, updated_at=? WHERE note_id=?", args)
+
+
+def get_note(note_id: str) -> Optional[dict]:
+    with _connect() as conn:
+        r = conn.execute("SELECT * FROM notes WHERE note_id=?", (note_id,)).fetchone()
+        return dict(r) if r else None
+
+
+def list_notes(subject: Optional[str] = None, doc_id: Optional[str] = None,
+               topic: Optional[str] = None, collection: Optional[str] = None,
+               search: Optional[str] = None, pinned_only: bool = False,
+               limit: Optional[int] = None, offset: int = 0) -> list[dict]:
+    sql = "SELECT * FROM notes WHERE 1=1"
+    args: list = []
+    if subject:
+        sql += " AND subject=?"; args.append(subject)
+    if doc_id:
+        sql += " AND doc_id=?"; args.append(doc_id)
+    if topic:
+        sql += " AND topic=?"; args.append(topic)
+    if collection is not None:
+        if collection == "__none__":
+            sql += " AND (collection IS NULL OR collection='')"
+        else:
+            sql += " AND collection=?"; args.append(collection)
+    if pinned_only:
+        sql += " AND pinned=1"
+    if search and search.strip():
+        q = f"%{search.strip()}%"
+        sql += " AND (title LIKE ? OR body LIKE ?)"
+        args += [q, q]
+    sql += " ORDER BY pinned DESC, updated_at DESC"
+    if limit is not None:
+        sql += " LIMIT ? OFFSET ?"; args += [int(limit), int(offset)]
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+
+def count_notes(subject: Optional[str] = None, collection: Optional[str] = None,
+               search: Optional[str] = None) -> int:
+    sql = "SELECT COUNT(*) AS c FROM notes WHERE 1=1"
+    args: list = []
+    if subject:
+        sql += " AND subject=?"; args.append(subject)
+    if collection is not None:
+        if collection == "__none__":
+            sql += " AND (collection IS NULL OR collection='')"
+        else:
+            sql += " AND collection=?"; args.append(collection)
+    if search and search.strip():
+        q = f"%{search.strip()}%"
+        sql += " AND (title LIKE ? OR body LIKE ?)"
+        args += [q, q]
+    with _connect() as conn:
+        return int(conn.execute(sql, args).fetchone()["c"])
+
+
+def delete_note(note_id: str) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM notes WHERE note_id=?", (note_id,))
+
+
+def list_collections(subject: Optional[str] = None) -> list[str]:
+    """Alle vorhandenen Sammlungs-Namen (optional nur eines Fachs) - wie ``list_decks``."""
+    sql = "SELECT DISTINCT collection FROM notes WHERE collection IS NOT NULL AND collection<>''"
+    args: list = []
+    if subject:
+        sql += " AND subject=?"; args.append(subject)
+    sql += " ORDER BY collection"
+    with _connect() as conn:
+        return [r["collection"] for r in conn.execute(sql, args)]
 
 
 # Ro7: KEINE Initialisierung mehr als Import-Nebenwirkung. Schema/Migrationen

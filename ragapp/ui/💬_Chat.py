@@ -484,6 +484,23 @@ def _save_card_button(question: str, answer: str, meta: dict,
                  if cid else "Konnte keine Karte anlegen.")
 
 
+def _save_note_button(question: "str | None", answer: str,
+                      sources: "list | None", key: str) -> None:
+    """Bietet an, die Antwort als FREIE Notiz zu speichern - im Unterschied zur
+    Karteikarte kein Abfrage-Material, sondern editierbarer Ausgangstext zum
+    Weiterdenken/Ergänzen. Springt über das Prefill-Muster zur Notizen-Seite."""
+    if not (answer or "").strip():
+        return
+    if st.button("📝 Als Notiz speichern", key=key,
+                 help="Öffnet die Notizen-Seite mit dieser Antwort als Ausgangstext."):
+        subj = subject_filter or ((sources or [{}])[0].get("subject") if sources else None)
+        st.session_state["note_prefill"] = {
+            "subject": subj, "title": (question or "").strip()[:80] or None,
+            "body": answer,
+        }
+        st.switch_page("pages/12_🗒️_Notizen.py")
+
+
 # Verlauf rendern
 for _mi, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"], avatar="🧑‍🎓" if msg["role"] == "user" else "🤖"):
@@ -496,6 +513,7 @@ for _mi, msg in enumerate(st.session_state.messages):
             _q = _prev.get("content") if _prev.get("role") == "user" else None
             _save_card_button(_q, msg["content"], msg.get("meta"), msg.get("sources"),
                               key=f"card_h{_mi}")
+            _save_note_button(_q, msg["content"], msg.get("sources"), key=f"note_h{_mi}")
         if msg.get("sources"):
             render_sources(msg["sources"], key_prefix=f"h{_mi}")
 
