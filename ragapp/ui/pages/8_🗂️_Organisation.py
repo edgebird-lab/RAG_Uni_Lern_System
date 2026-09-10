@@ -26,6 +26,8 @@ from ragapp.ui._loading import page_boot
 page_boot("🗂️ Organisation", page_title="Organisation", icon="🗂️", layout="wide",
          accent="organisation")
 
+from ragapp.ui._style import card
+
 st.markdown("""
 <style>
 .block-container {padding-top: 2rem; max-width: 1150px;}
@@ -190,247 +192,251 @@ _known_subjects = sorted(
 # --------------------------------------------------------------------------- #
 # Wochen-Dashboard
 # --------------------------------------------------------------------------- #
-st.subheader("📊 Heute im Blick")
+with card("heute"):
+    st.subheader("📊 Heute im Blick")
 
-_today_classes = sorted(
-    [s for s in manifest.list_timetable() if int(s["weekday"]) == _today_wd],
-    key=lambda s: s["start_time"])
-_open_tasks = manifest.list_tasks(include_done=False)
-_overdue = [t for t in _open_tasks if t.get("due_date") and t["due_date"] < _today_iso]
-_due_today = [t for t in _open_tasks if t.get("due_date") == _today_iso]
-_next_exam = next((e for e in manifest.list_exams()
-                   if e.get("exam_date") and e["exam_date"] >= _today_iso), None)
-_today_start_ts = time.mktime(_today.timetuple())
-_study_min_today = round(manifest.study_time_total(since=_today_start_ts) / 60)
-_plan_blocks_today = manifest.list_plan_blocks_detailed(date=_today_iso)
-_plan_min_today = sum(b["planned_min"] for b in _plan_blocks_today)
-_plan_done_today = sum(b["planned_min"] for b in _plan_blocks_today if b["done"])
+    _today_classes = sorted(
+        [s for s in manifest.list_timetable() if int(s["weekday"]) == _today_wd],
+        key=lambda s: s["start_time"])
+    _open_tasks = manifest.list_tasks(include_done=False)
+    _overdue = [t for t in _open_tasks if t.get("due_date") and t["due_date"] < _today_iso]
+    _due_today = [t for t in _open_tasks if t.get("due_date") == _today_iso]
+    _next_exam = next((e for e in manifest.list_exams()
+                       if e.get("exam_date") and e["exam_date"] >= _today_iso), None)
+    _today_start_ts = time.mktime(_today.timetuple())
+    _study_min_today = round(manifest.study_time_total(since=_today_start_ts) / 60)
+    _plan_blocks_today = manifest.list_plan_blocks_detailed(date=_today_iso)
+    _plan_min_today = sum(b["planned_min"] for b in _plan_blocks_today)
+    _plan_done_today = sum(b["planned_min"] for b in _plan_blocks_today if b["done"])
 
-d1, d2, d3, d4, d5, d6 = st.columns(6)
-d1.metric("Heute Vorlesungen", len(_today_classes))
-d2.metric("Fällig heute", len(_due_today))
-d3.metric("Überfällig", len(_overdue))
-d4.metric("Lernzeit heute", f"{_study_min_today} Min")
-d5.metric("Lernplan heute", f"{_plan_done_today}/{_plan_min_today} Min"
-         if _plan_blocks_today else "–")
-if _next_exam:
-    _dte = planner.days_to_exam(_next_exam["exam_date"])
-    d6.metric(f"Nächste Klausur: {_fach(_next_exam['subject'])}", planner.humanize_days(_dte))
-else:
-    d6.metric("Nächste Klausur", "–")
+    d1, d2, d3, d4, d5, d6 = st.columns(6)
+    d1.metric("Heute Vorlesungen", len(_today_classes))
+    d2.metric("Fällig heute", len(_due_today))
+    d3.metric("Überfällig", len(_overdue))
+    d4.metric("Lernzeit heute", f"{_study_min_today} Min")
+    d5.metric("Lernplan heute", f"{_plan_done_today}/{_plan_min_today} Min"
+             if _plan_blocks_today else "–")
+    if _next_exam:
+        _dte = planner.days_to_exam(_next_exam["exam_date"])
+        d6.metric(f"Nächste Klausur: {_fach(_next_exam['subject'])}", planner.humanize_days(_dte))
+    else:
+        d6.metric("Nächste Klausur", "–")
 
-if _today_classes:
-    st.caption("**Heute:** " + " · ".join(
-        f"{s['start_time']}–{s['end_time']} {_fach(s['subject'])}"
-        + (f" ({s['room']})" if s.get("room") else "")
-        for s in _today_classes))
-if _plan_blocks_today:
-    st.caption("**Lernplan heute:** " + " · ".join(
-        f"{'✅' if b['done'] else '⬜'} {b['section_title'] or 'Abschnitt'} "
-        f"({b['plan_title']}, {b['planned_min']} Min)" for b in _plan_blocks_today))
-if _overdue:
-    _txt = ", ".join(f"{t['title']} ({_fach(t.get('subject'))})" for t in _overdue[:6])
-    if len(_overdue) > 6:
-        _txt += f" … +{len(_overdue) - 6} weitere"
-    st.warning(f"⚠️ Überfällig: {_txt}")
+    if _today_classes:
+        st.caption("**Heute:** " + " · ".join(
+            f"{s['start_time']}–{s['end_time']} {_fach(s['subject'])}"
+            + (f" ({s['room']})" if s.get("room") else "")
+            for s in _today_classes))
+    if _plan_blocks_today:
+        st.caption("**Lernplan heute:** " + " · ".join(
+            f"{'✅' if b['done'] else '⬜'} {b['section_title'] or 'Abschnitt'} "
+            f"({b['plan_title']}, {b['planned_min']} Min)" for b in _plan_blocks_today))
+    if _overdue:
+        _txt = ", ".join(f"{t['title']} ({_fach(t.get('subject'))})" for t in _overdue[:6])
+        if len(_overdue) > 6:
+            _txt += f" … +{len(_overdue) - 6} weitere"
+        st.warning(f"⚠️ Überfällig: {_txt}")
 
 st.divider()
 
 # --------------------------------------------------------------------------- #
 # Stundenplan
 # --------------------------------------------------------------------------- #
-st.subheader("🗓️ Stundenplan")
+with card("stundenplan"):
+    st.subheader("🗓️ Stundenplan")
 
-with st.expander("➕ Neuen Termin hinzufügen"):
-    tc1, tc2, tc3, tc4 = st.columns(4)
-    with tc1:
-        _tt_choice = st.selectbox("Fach", _known_subjects + ["(neues Fach …)"], key="tt_new_subject")
-        _tt_subject = (st.text_input("Neues Fach", key="tt_new_subject_text").strip()
-                       if _tt_choice == "(neues Fach …)" else _tt_choice)
-    with tc2:
-        _tt_wd_label = st.selectbox("Wochentag", _WOCHENTAGE, key="tt_new_wd")
-    with tc3:
-        _tt_start = st.time_input("Start", key="tt_new_start")
-    with tc4:
-        _tt_end = st.time_input("Ende", key="tt_new_end")
-    _tt_room = st.text_input("Raum (optional)", key="tt_new_room")
-    if st.button("➕ Hinzufügen", key="tt_add"):
-        if not _tt_subject:
-            st.error("Bitte ein Fach wählen oder eingeben.")
-        elif _tt_end <= _tt_start:
-            st.error("Ende muss nach Start liegen.")
-        else:
-            manifest.upsert_timetable_slot(
-                subject=_tt_subject, weekday=_WOCHENTAGE.index(_tt_wd_label),
-                start_time=_tt_start.strftime("%H:%M"), end_time=_tt_end.strftime("%H:%M"),
-                room=_tt_room.strip() or None)
-            st.success("Termin hinzugefügt.")
+    with st.expander("➕ Neuen Termin hinzufügen"):
+        tc1, tc2, tc3, tc4 = st.columns(4)
+        with tc1:
+            _tt_choice = st.selectbox("Fach", _known_subjects + ["(neues Fach …)"], key="tt_new_subject")
+            _tt_subject = (st.text_input("Neues Fach", key="tt_new_subject_text").strip()
+                           if _tt_choice == "(neues Fach …)" else _tt_choice)
+        with tc2:
+            _tt_wd_label = st.selectbox("Wochentag", _WOCHENTAGE, key="tt_new_wd")
+        with tc3:
+            _tt_start = st.time_input("Start", key="tt_new_start")
+        with tc4:
+            _tt_end = st.time_input("Ende", key="tt_new_end")
+        _tt_room = st.text_input("Raum (optional)", key="tt_new_room")
+        if st.button("➕ Hinzufügen", key="tt_add"):
+            if not _tt_subject:
+                st.error("Bitte ein Fach wählen oder eingeben.")
+            elif _tt_end <= _tt_start:
+                st.error("Ende muss nach Start liegen.")
+            else:
+                manifest.upsert_timetable_slot(
+                    subject=_tt_subject, weekday=_WOCHENTAGE.index(_tt_wd_label),
+                    start_time=_tt_start.strftime("%H:%M"), end_time=_tt_end.strftime("%H:%M"),
+                    room=_tt_room.strip() or None)
+                st.success("Termin hinzugefügt.")
+                st.rerun()
+
+    _slots = manifest.list_timetable()
+    if not _slots:
+        st.info("Noch kein Stundenplan angelegt.")
+    else:
+        _tt_subjects = sorted({s["subject"] for s in _slots if s.get("subject")})
+        _tt_colors = manifest.subject_colors_map()
+
+        with st.expander("🎨 Fach-Farben"):
+            st.caption("Jedes Fach hat automatisch eine Farbe; hier lässt sie sich anpassen.")
+            _color_cols = st.columns(4)
+            _new_colors: dict = {}
+            for i, subj in enumerate(_tt_subjects):
+                with _color_cols[i % 4]:
+                    _cur = _subject_color(subj, _tt_colors, _tt_subjects)
+                    _new_colors[subj] = st.color_picker(_fach(subj), value=_cur,
+                                                        key=f"color_{subj}")
+            if st.button("💾 Farben speichern", key="color_save"):
+                for subj, col in _new_colors.items():
+                    manifest.set_subject_color(subj, col)
+                st.success("Farben gespeichert.")
+                st.rerun()
+
+        st.markdown(_render_week_grid(_slots, _tt_colors, _tt_subjects, _today_wd),
+                   unsafe_allow_html=True)
+
+        st.markdown("##### Bearbeiten / Löschen")
+        _tt_orig = {s["slot_id"]: s for s in _slots}
+        _tt_df = pd.DataFrame([{
+            "🗑️": False, "Fach": s["subject"], "Wochentag": _WOCHENTAGE[int(s["weekday"])],
+            "Start": s["start_time"], "Ende": s["end_time"], "Raum": s.get("room") or "",
+            "_id": s["slot_id"],
+        } for s in _slots])
+        _tt_edited = st.data_editor(
+            _tt_df, hide_index=True, use_container_width=True, key="tt_editor",
+            column_config={
+                "🗑️": st.column_config.CheckboxColumn(width="small"),
+                "Wochentag": st.column_config.SelectboxColumn(options=_WOCHENTAGE),
+                "_id": None,
+            },
+        )
+        ttb1, ttb2 = st.columns(2)
+        if ttb1.button("💾 Änderungen speichern", key="tt_save"):
+            _n = 0
+            for _, row in _tt_edited.iterrows():
+                if row["_id"] not in _tt_orig or row["🗑️"]:
+                    continue
+                manifest.upsert_timetable_slot(
+                    slot_id=row["_id"], subject=row["Fach"],
+                    weekday=_WOCHENTAGE.index(row["Wochentag"]),
+                    start_time=row["Start"], end_time=row["Ende"], room=row["Raum"] or None)
+                _n += 1
+            st.success(f"{_n} Termin(e) aktualisiert.")
             st.rerun()
-
-_slots = manifest.list_timetable()
-if not _slots:
-    st.info("Noch kein Stundenplan angelegt.")
-else:
-    _tt_subjects = sorted({s["subject"] for s in _slots if s.get("subject")})
-    _tt_colors = manifest.subject_colors_map()
-
-    with st.expander("🎨 Fach-Farben"):
-        st.caption("Jedes Fach hat automatisch eine Farbe; hier lässt sie sich anpassen.")
-        _color_cols = st.columns(4)
-        _new_colors: dict = {}
-        for i, subj in enumerate(_tt_subjects):
-            with _color_cols[i % 4]:
-                _cur = _subject_color(subj, _tt_colors, _tt_subjects)
-                _new_colors[subj] = st.color_picker(_fach(subj), value=_cur,
-                                                    key=f"color_{subj}")
-        if st.button("💾 Farben speichern", key="color_save"):
-            for subj, col in _new_colors.items():
-                manifest.set_subject_color(subj, col)
-            st.success("Farben gespeichert.")
+        _tt_del = [row["_id"] for _, row in _tt_edited.iterrows() if row["🗑️"]]
+        if ttb2.button(f"🗑️ Ausgewählte löschen ({len(_tt_del)})", disabled=not _tt_del, key="tt_del"):
+            for sid in _tt_del:
+                manifest.delete_timetable_slot(sid)
+            st.success(f"{len(_tt_del)} Termin(e) gelöscht.")
             st.rerun()
-
-    st.markdown(_render_week_grid(_slots, _tt_colors, _tt_subjects, _today_wd),
-               unsafe_allow_html=True)
-
-    st.markdown("##### Bearbeiten / Löschen")
-    _tt_orig = {s["slot_id"]: s for s in _slots}
-    _tt_df = pd.DataFrame([{
-        "🗑️": False, "Fach": s["subject"], "Wochentag": _WOCHENTAGE[int(s["weekday"])],
-        "Start": s["start_time"], "Ende": s["end_time"], "Raum": s.get("room") or "",
-        "_id": s["slot_id"],
-    } for s in _slots])
-    _tt_edited = st.data_editor(
-        _tt_df, hide_index=True, use_container_width=True, key="tt_editor",
-        column_config={
-            "🗑️": st.column_config.CheckboxColumn(width="small"),
-            "Wochentag": st.column_config.SelectboxColumn(options=_WOCHENTAGE),
-            "_id": None,
-        },
-    )
-    ttb1, ttb2 = st.columns(2)
-    if ttb1.button("💾 Änderungen speichern", key="tt_save"):
-        _n = 0
-        for _, row in _tt_edited.iterrows():
-            if row["_id"] not in _tt_orig or row["🗑️"]:
-                continue
-            manifest.upsert_timetable_slot(
-                slot_id=row["_id"], subject=row["Fach"],
-                weekday=_WOCHENTAGE.index(row["Wochentag"]),
-                start_time=row["Start"], end_time=row["Ende"], room=row["Raum"] or None)
-            _n += 1
-        st.success(f"{_n} Termin(e) aktualisiert.")
-        st.rerun()
-    _tt_del = [row["_id"] for _, row in _tt_edited.iterrows() if row["🗑️"]]
-    if ttb2.button(f"🗑️ Ausgewählte löschen ({len(_tt_del)})", disabled=not _tt_del, key="tt_del"):
-        for sid in _tt_del:
-            manifest.delete_timetable_slot(sid)
-        st.success(f"{len(_tt_del)} Termin(e) gelöscht.")
-        st.rerun()
 
 st.divider()
 
 # --------------------------------------------------------------------------- #
 # Aufgaben & Hausaufgaben
 # --------------------------------------------------------------------------- #
-st.subheader("📝 Aufgaben & Hausaufgaben")
+with card("aufgaben"):
+    st.subheader("📝 Aufgaben & Hausaufgaben")
 
-with st.expander("➕ Neue Aufgabe hinzufügen"):
-    ac1, ac2, ac3 = st.columns(3)
-    with ac1:
-        _task_title = st.text_input("Titel", key="task_new_title")
-    with ac2:
-        _task_choice = st.selectbox("Fach (optional)", ["(kein Fach)"] + _known_subjects
-                                    + ["(neues Fach …)"], key="task_new_subject")
-        if _task_choice == "(neues Fach …)":
-            _task_subject = st.text_input("Neues Fach", key="task_new_subject_text").strip() or None
-        elif _task_choice == "(kein Fach)":
-            _task_subject = None
-        else:
-            _task_subject = _task_choice
-    with ac3:
-        _task_has_due = st.checkbox("Frist setzen", value=True, key="task_new_has_due")
-        _task_due = (st.date_input("Frist", value=_today, key="task_new_due")
-                    if _task_has_due else None)
-    _task_notiz = st.text_area("Notiz (optional)", key="task_new_notiz", height=68)
-    if st.button("➕ Hinzufügen", key="task_add"):
-        if not _task_title.strip():
-            st.error("Bitte einen Titel eingeben.")
-        else:
-            manifest.upsert_task(
-                subject=_task_subject, title=_task_title,
-                due_date=_task_due.isoformat() if _task_due else None,
-                notiz=_task_notiz.strip() or None)
-            st.success("Aufgabe hinzugefügt.")
+    with st.expander("➕ Neue Aufgabe hinzufügen"):
+        ac1, ac2, ac3 = st.columns(3)
+        with ac1:
+            _task_title = st.text_input("Titel", key="task_new_title")
+        with ac2:
+            _task_choice = st.selectbox("Fach (optional)", ["(kein Fach)"] + _known_subjects
+                                        + ["(neues Fach …)"], key="task_new_subject")
+            if _task_choice == "(neues Fach …)":
+                _task_subject = st.text_input("Neues Fach", key="task_new_subject_text").strip() or None
+            elif _task_choice == "(kein Fach)":
+                _task_subject = None
+            else:
+                _task_subject = _task_choice
+        with ac3:
+            _task_has_due = st.checkbox("Frist setzen", value=True, key="task_new_has_due")
+            _task_due = (st.date_input("Frist", value=_today, key="task_new_due")
+                        if _task_has_due else None)
+        _task_notiz = st.text_area("Notiz (optional)", key="task_new_notiz", height=68)
+        if st.button("➕ Hinzufügen", key="task_add"):
+            if not _task_title.strip():
+                st.error("Bitte einen Titel eingeben.")
+            else:
+                manifest.upsert_task(
+                    subject=_task_subject, title=_task_title,
+                    due_date=_task_due.isoformat() if _task_due else None,
+                    notiz=_task_notiz.strip() or None)
+                st.success("Aufgabe hinzugefügt.")
+                st.rerun()
+
+    _task_filter = st.radio("Anzeige", ["Offen", "Alle", "Erledigt"], horizontal=True, key="task_filter")
+    _all_tasks = manifest.list_tasks()
+    if _task_filter == "Offen":
+        _shown_tasks = [t for t in _all_tasks if not t["done"]]
+    elif _task_filter == "Erledigt":
+        _shown_tasks = [t for t in _all_tasks if t["done"]]
+    else:
+        _shown_tasks = _all_tasks
+
+
+    def _task_status(t: dict) -> str:
+        if t["done"]:
+            return "✅ erledigt"
+        return planner.humanize_days(planner.days_to_exam(t.get("due_date")))
+
+
+    if not _shown_tasks:
+        st.info("Keine Aufgaben in dieser Ansicht.")
+    else:
+        _task_orig = {t["task_id"]: t for t in _shown_tasks}
+        _task_df = pd.DataFrame([{
+            "Erledigt": bool(t["done"]), "Titel": t["title"], "Fach": t.get("subject") or "",
+            "Frist": t.get("due_date") or "", "Status": _task_status(t),
+            "Notiz": t.get("notiz") or "", "🗑️": False, "_id": t["task_id"],
+        } for t in _shown_tasks])
+        _task_edited = st.data_editor(
+            _task_df, hide_index=True, use_container_width=True, key="task_editor",
+            column_config={
+                "Status": st.column_config.TextColumn(disabled=True),
+                "Frist": st.column_config.TextColumn(help="ISO-Format JJJJ-MM-TT, leer = kein Termin"),
+                "🗑️": st.column_config.CheckboxColumn(width="small"),
+                "_id": None,
+            },
+        )
+        tb1, tb2 = st.columns(2)
+        if tb1.button("💾 Änderungen speichern", key="task_save"):
+            _n = 0
+            for _, row in _task_edited.iterrows():
+                o = _task_orig.get(row["_id"])
+                if o is None or row["🗑️"]:
+                    continue
+                nf = (row["Frist"] or "").strip() or None
+                manifest.upsert_task(
+                    task_id=row["_id"], subject=row["Fach"] or None, title=row["Titel"],
+                    notiz=row["Notiz"] or None, due_date=nf, done=bool(row["Erledigt"]))
+                _n += 1
+            st.success(f"{_n} Aufgabe(n) aktualisiert.")
             st.rerun()
-
-_task_filter = st.radio("Anzeige", ["Offen", "Alle", "Erledigt"], horizontal=True, key="task_filter")
-_all_tasks = manifest.list_tasks()
-if _task_filter == "Offen":
-    _shown_tasks = [t for t in _all_tasks if not t["done"]]
-elif _task_filter == "Erledigt":
-    _shown_tasks = [t for t in _all_tasks if t["done"]]
-else:
-    _shown_tasks = _all_tasks
-
-
-def _task_status(t: dict) -> str:
-    if t["done"]:
-        return "✅ erledigt"
-    return planner.humanize_days(planner.days_to_exam(t.get("due_date")))
-
-
-if not _shown_tasks:
-    st.info("Keine Aufgaben in dieser Ansicht.")
-else:
-    _task_orig = {t["task_id"]: t for t in _shown_tasks}
-    _task_df = pd.DataFrame([{
-        "Erledigt": bool(t["done"]), "Titel": t["title"], "Fach": t.get("subject") or "",
-        "Frist": t.get("due_date") or "", "Status": _task_status(t),
-        "Notiz": t.get("notiz") or "", "🗑️": False, "_id": t["task_id"],
-    } for t in _shown_tasks])
-    _task_edited = st.data_editor(
-        _task_df, hide_index=True, use_container_width=True, key="task_editor",
-        column_config={
-            "Status": st.column_config.TextColumn(disabled=True),
-            "Frist": st.column_config.TextColumn(help="ISO-Format JJJJ-MM-TT, leer = kein Termin"),
-            "🗑️": st.column_config.CheckboxColumn(width="small"),
-            "_id": None,
-        },
-    )
-    tb1, tb2 = st.columns(2)
-    if tb1.button("💾 Änderungen speichern", key="task_save"):
-        _n = 0
-        for _, row in _task_edited.iterrows():
-            o = _task_orig.get(row["_id"])
-            if o is None or row["🗑️"]:
-                continue
-            nf = (row["Frist"] or "").strip() or None
-            manifest.upsert_task(
-                task_id=row["_id"], subject=row["Fach"] or None, title=row["Titel"],
-                notiz=row["Notiz"] or None, due_date=nf, done=bool(row["Erledigt"]))
-            _n += 1
-        st.success(f"{_n} Aufgabe(n) aktualisiert.")
-        st.rerun()
-    _task_del = [row["_id"] for _, row in _task_edited.iterrows() if row["🗑️"]]
-    if tb2.button(f"🗑️ Ausgewählte löschen ({len(_task_del)})", disabled=not _task_del, key="task_del"):
-        for tid in _task_del:
-            manifest.delete_task(tid)
-        st.success(f"{len(_task_del)} Aufgabe(n) gelöscht.")
-        st.rerun()
+        _task_del = [row["_id"] for _, row in _task_edited.iterrows() if row["🗑️"]]
+        if tb2.button(f"🗑️ Ausgewählte löschen ({len(_task_del)})", disabled=not _task_del, key="task_del"):
+            for tid in _task_del:
+                manifest.delete_task(tid)
+            st.success(f"{len(_task_del)} Aufgabe(n) gelöscht.")
+            st.rerun()
 
 st.divider()
 
 # --------------------------------------------------------------------------- #
 # Kalender-Export
 # --------------------------------------------------------------------------- #
-st.subheader("📤 Kalender-Export")
-_ics = planner.organizer_to_ics()
-if _ics:
-    st.download_button(
-        "📅 Klausuren + Aufgaben + Stundenplan als Kalender (.ics)",
-        data=_ics, file_name="organisation.ics", mime="text/calendar",
-        help="In Google/Apple/Outlook-Kalender importieren. Der Stundenplan wird als "
-             "wöchentlich wiederkehrender Termin exportiert.")
-else:
-    st.caption("Noch keine Termine für den Export vorhanden (Klausurtermin, Aufgaben-Frist "
-               "oder Stundenplan-Eintrag anlegen).")
+with card("export"):
+    st.subheader("📤 Kalender-Export")
+    _ics = planner.organizer_to_ics()
+    if _ics:
+        st.download_button(
+            "📅 Klausuren + Aufgaben + Stundenplan als Kalender (.ics)",
+            data=_ics, file_name="organisation.ics", mime="text/calendar",
+            help="In Google/Apple/Outlook-Kalender importieren. Der Stundenplan wird als "
+                 "wöchentlich wiederkehrender Termin exportiert.")
+    else:
+        st.caption("Noch keine Termine für den Export vorhanden (Klausurtermin, Aufgaben-Frist "
+                   "oder Stundenplan-Eintrag anlegen).")

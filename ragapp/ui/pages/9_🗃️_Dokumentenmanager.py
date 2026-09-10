@@ -23,6 +23,8 @@ from ragapp.ui._loading import page_boot
 page_boot("🗃️ Dokumentenmanager", page_title="Dokumentenmanager", icon="🗃️", layout="wide",
          accent="dokumente")
 
+from ragapp.ui._style import card
+
 st.markdown("""
 <style>
 .block-container {padding-top: 2rem; max-width: 1250px;}
@@ -154,17 +156,18 @@ if not _docs:
 _subjects_present = sorted({d["subject"] for d in _docs if d["subject"]})
 _tags_present = manifest.all_document_tags()
 
-f1, f2, f3, f4, f5 = st.columns([1, 1, 1, 1.2, 0.9])
-with f1:
-    _subj_filter = st.multiselect("Fach", _subjects_present, format_func=_fach)
-with f2:
-    _tag_filter = st.multiselect("Kategorie", _tags_present) if _tags_present else []
-with f3:
-    _rag_filter = st.selectbox("RAG-Status", ["Alle", "Nur im RAG", "Nur archiviert"])
-with f4:
-    _search = st.text_input("Suche (Dateiname)", placeholder="z. B. Klausur_2023 …")
-with f5:
-    _sort_choice = st.selectbox("Sortierung", ["Fach", "Name", "Zuletzt geändert"])
+with card("filter"):
+    f1, f2, f3, f4, f5 = st.columns([1, 1, 1, 1.2, 0.9])
+    with f1:
+        _subj_filter = st.multiselect("Fach", _subjects_present, format_func=_fach)
+    with f2:
+        _tag_filter = st.multiselect("Kategorie", _tags_present) if _tags_present else []
+    with f3:
+        _rag_filter = st.selectbox("RAG-Status", ["Alle", "Nur im RAG", "Nur archiviert"])
+    with f4:
+        _search = st.text_input("Suche (Dateiname)", placeholder="z. B. Klausur_2023 …")
+    with f5:
+        _sort_choice = st.selectbox("Sortierung", ["Fach", "Name", "Zuletzt geändert"])
 
 
 def _matches(d: dict) -> bool:
