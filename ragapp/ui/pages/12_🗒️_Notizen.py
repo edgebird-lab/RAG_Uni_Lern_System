@@ -51,26 +51,40 @@ with st.spinner("Notizen werden geladen ..."):
 
 _FENCE_RE = re.compile(r"(```.*?```)", re.DOTALL)
 _SINGLE_NEWLINE_RE = re.compile(r"(?<!\n)\n(?!\n)")
+# Markdown verlangt zwingend ein Leerzeichen zwischen den Rauten und dem Text
+# ("## Text", NICHT "##Text") - ohne Leerzeichen ist es KEINE Ueberschrift,
+# sondern normaler Text, der zufaellig mit # beginnt. Fuer lockeres Notizen-
+# Schreiben ("##Text" ohne Leerzeichen getippt) ist das nicht intuitiv, daher
+# wird ein fehlendes Leerzeichen automatisch ergaenzt. Nur am Zeilenanfang
+# (^ mit MULTILINE), 1-6 Rauten (CommonMark-Grenze), NICHT gefolgt von einer
+# weiteren Raute (sonst waeren es in Wahrheit >6 Rauten - keine gueltige
+# Ueberschrift, unveraendert lassen) oder Leerzeichen (schon korrekt).
+_HEADING_NOSPACE_RE = re.compile(r"^(#{1,6})(?=[^#\s])", re.MULTILINE)
 
 
 def _render_note_markdown(text: "str | None") -> None:
-    """Rendert Notiz-Text als Markdown - mit EINEM wichtigen Unterschied zu
-    reinem ``st.markdown(text)``: ein einzelner Enter-Zeilenumbruch gilt in
-    Markdown (CommonMark) nur als "weicher" Umbruch OHNE sichtbaren Zeilen-
-    sprung (erst eine Leerzeile trennt Absaetze) - beim Notizen-Schreiben
-    erwartet aber niemand, dass ein einfaches Enter zwei Leerzeilen braucht.
-    Deshalb wird jeder EINZELNE Zeilenumbruch (keine Leerzeile) in einen
-    Markdown-Hard-Break (zwei Leerzeichen + Umbruch) uebersetzt - echte
-    Absatztrennung (Leerzeile) bleibt unangetastet. Code-Bloecke (```...```)
-    werden ausgenommen, damit dort keine Leerzeichen in den Code rutschen -
-    Tabellen/Listen sind von der Umwandlung unberuehrt lesbar (ein Hard-Break
-    am Zeilenende stoert deren Zeilenstruktur nicht)."""
+    """Rendert Notiz-Text als Markdown - mit ZWEI Unterschieden zu reinem
+    ``st.markdown(text)``, die beide auf lockeres Notizen-Schreiben statt
+    strikter Markdown-Syntax abzielen:
+    1. Ein einzelner Enter-Zeilenumbruch gilt in Markdown (CommonMark) nur als
+       "weicher" Umbruch OHNE sichtbaren Zeilensprung (erst eine Leerzeile
+       trennt Absaetze) - wird daher in einen Hard-Break (zwei Leerzeichen +
+       Umbruch) uebersetzt. Echte Absatztrennung (Leerzeile) bleibt
+       unangetastet.
+    2. "##Text" (ohne Leerzeichen nach den Rauten) ist KEINE gueltige
+       Ueberschrift, sondern normaler Text - ein fehlendes Leerzeichen wird
+       automatisch ergaenzt ("## Text").
+    Beides nur AUSSERHALB von Code-Bloecken (```...```), damit dort weder
+    Leerzeichen in den Code rutschen noch ein Kommentar wie "#include" zur
+    Ueberschrift wird. Tabellen/Listen bleiben durch den Hard-Break am
+    Zeilenende unberuehrt lesbar."""
     if not (text or "").strip():
         st.markdown("*(leer)*")
         return
     parts = _FENCE_RE.split(text)
     out = "".join(
-        part if i % 2 == 1 else _SINGLE_NEWLINE_RE.sub("  \n", part)
+        part if i % 2 == 1
+        else _SINGLE_NEWLINE_RE.sub("  \n", _HEADING_NOSPACE_RE.sub(r"\1 ", part))
         for i, part in enumerate(parts)
     )
     st.markdown(out)
