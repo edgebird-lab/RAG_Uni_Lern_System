@@ -20,7 +20,7 @@ import pytest
 def _fake_settings(**overrides):
     base = dict(
         PLAN_MAX_TOC_CHARS=10000, MINDMAP_PROMPT_BUDGET_CHARS=9000,
-        MINDMAP_EXCERPT_MIN_CHARS=40, MINDMAP_EXCERPT_MAX_CHARS=150,
+        TOC_EXCERPT_MIN_CHARS=40, TOC_EXCERPT_MAX_CHARS=150,
         MINDMAP_MAX_NODES=40, MINDMAP_MAX_TOPICS=8, MINDMAP_MAX_SUBTOPICS=6,
         MINDMAP_MAX_LINKS=8, LLM_MODEL_AUTHOR="", LLM_MODEL="fallback-model",
     )
@@ -58,14 +58,21 @@ def _identity_cap(granular, max_chars):
 @pytest.fixture
 def generate_mindmap_funcs(load_functions, ragapp_dir):
     def _make(*, llm, settings_obj=None, n_sections=5):
+        settings = settings_obj or _fake_settings()
+        # _toc_with_excerpts lebt jetzt in study_plan.py (gemeinsam mit der
+        # Lernplan-Gliederung genutzt) - real geladen statt gefaked, damit der
+        # Test nicht an einer duplizierten Kopie vorbeitestet.
+        toc_funcs = load_functions(
+            ragapp_dir / "study_plan.py", ["_toc_with_excerpts"], {"settings": settings})
         return load_functions(
             ragapp_dir / "mindmap.py",
-            ["generate_mindmap", "_author_model", "_repair_mindmap", "_toc_with_excerpts"],
+            ["generate_mindmap", "_author_model", "_repair_mindmap"],
             {
-                "settings": settings_obj or _fake_settings(),
+                "settings": settings,
                 "get_llm": lambda model=None: llm,
                 "_granular_sections": _fake_granular_sections_factory(n_sections),
                 "_cap_granular_for_prompt": _identity_cap,
+                "_toc_with_excerpts": toc_funcs["_toc_with_excerpts"],
                 "MindmapError": RuntimeError,
                 "Optional": None,
             },

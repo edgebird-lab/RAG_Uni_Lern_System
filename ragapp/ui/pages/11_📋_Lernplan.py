@@ -256,7 +256,8 @@ if _active_plan_id is None:
         with st.spinner("KI erstellt die Gliederung … das kann je nach Umfang und "
                         "Hardware einige Zeit dauern (siehe Schätzung oben)."):
             try:
-                outline = study_plan.generate_outline(doc_ids, _new_subject, model=_new_model)
+                outline, _outline_warning = study_plan.generate_outline(
+                    doc_ids, _new_subject, model=_new_model)
             except study_plan.OutlineError as exc:
                 st.error(str(exc))
                 st.stop()
@@ -265,7 +266,10 @@ if _active_plan_id is None:
             doc_ids=doc_ids, deadline=_new_deadline.isoformat() if _new_deadline else None,
             daily_minutes=int(_new_daily))
         manifest.replace_plan_sections(pid, outline)
-        st.success(f"Gliederung mit {len(outline)} Themen erzeugt.")
+        if _outline_warning:
+            st.session_state["_splan_gen_warning"] = _outline_warning
+        else:
+            st.success(f"Gliederung mit {len(outline)} Themen erzeugt.")
         # Auswahl auf den neuen Plan setzen - ueber den "pending"-Umweg, da die
         # Selectbox in diesem Lauf schon gerendert wurde (siehe Kommentar oben).
         st.session_state["_splan_pending_choice"] = pid
@@ -370,14 +374,21 @@ if st.button("🔄 Gliederung neu erzeugen", key=f"splan_regen_{_active_plan_id}
     with st.spinner("KI erstellt die Gliederung neu … das kann je nach Umfang und "
                     "Hardware einige Zeit dauern."):
         try:
-            outline = study_plan.generate_outline(_plan["doc_ids"], _plan["subject"],
-                                                  model=_regen_model)
+            outline, _regen_warning = study_plan.generate_outline(
+                _plan["doc_ids"], _plan["subject"], model=_regen_model)
         except study_plan.OutlineError as exc:
             st.error(str(exc))
             st.stop()
     manifest.replace_plan_sections(_active_plan_id, outline)
-    st.success(f"Gliederung mit {len(outline)} Themen neu erzeugt.")
+    if _regen_warning:
+        st.session_state["_splan_gen_warning"] = _regen_warning
+    else:
+        st.success(f"Gliederung mit {len(outline)} Themen neu erzeugt.")
     st.rerun()
+
+_splan_gen_warning = st.session_state.pop("_splan_gen_warning", None)
+if _splan_gen_warning:
+    st.warning(_splan_gen_warning)
 
 if not _sections:
     st.info("Noch keine Gliederung vorhanden.")

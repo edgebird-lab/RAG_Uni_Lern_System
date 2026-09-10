@@ -109,8 +109,16 @@ class Settings:
 
     # LLM-Generierung
     LLM_TEMPERATURE: float = 0.1           # niedrig = faktentreu, wenig Halluzination
-    LLM_NUM_CTX: int = 8192                # Kontextfenster für Generierung
-    LLM_NUM_PREDICT: int = 1024            # max. Antwortlänge (Tokens), begrenzt CPU-Zeit
+    # Grosszuegig bemessen (nicht das technische Minimum): manche lokale
+    # Reasoning-Modelle (z. B. gpt-oss) denken auch bei einfachen JSON-Aufgaben
+    # ausfuehrlich weiter und verbrauchen dabei mehrere Tausend Tokens, BEVOR
+    # ueberhaupt Antwort-Text entsteht - ein knappes Budget schneidet dann
+    # mitten im Denken ab (done_reason='length', leerer Antwort-Kanal). Bei
+    # 24+ GB VRAM ist der Puffer den Speicher-Mehrverbrauch wert (getestet:
+    # ein 17-GB-Modell braucht bei num_ctx=32768 ca. 21 GB VRAM - auf einer
+    # 24-GB-Karte bewusst in Kauf genommen, auf kleineren Karten ggf. senken).
+    LLM_NUM_CTX: int = 32768               # Kontextfenster für Generierung
+    LLM_NUM_PREDICT: int = 16384           # max. Antwortlänge (Tokens)
     LLM_TIMEOUT: int = 600                 # Sekunden (CPU-Inferenz kann dauern)
 
     # ------------------------------------------------------------------ #
@@ -281,7 +289,21 @@ class Settings:
     PLAN_BLOCK_MIN: int = 25               # Groesse eines Lernblocks (= 1 Pomodoro-Arbeitsblock)
     PLAN_MAX_OUTLINE_SECTIONS: int = 15    # Obergrenze fuer die KI-Gliederung (Uebersichtlichkeit)
     PLAN_MIN_GRANULAR_CHARS: int = 400     # kleinere Original-Abschnitte werden VOR der KI-Anfrage mit dem naechsten zusammengelegt (weniger Uebersegmentierung + kuerzerer Prompt)
-    PLAN_MAX_TOC_CHARS: int = 10000        # Obergrenze fuer das Inhaltsverzeichnis im Gliederungs-Prompt: bei SEHR grossen/vielen Dokumenten wuerde die TOC sonst das Kontextfenster sprengen - das Modell sieht dann nur einen abgeschnittenen Rest und erfindet frei (beobachtet: Marketing-PDF -> Gliederung ueber Deutsch-Grammatik). Weit unter LLM_NUM_CTX (8192 Tokens), damit auch Systemprompt+Anweisung+Antwort sicher reinpassen.
+    PLAN_MAX_TOC_CHARS: int = 10000        # Obergrenze fuer das Inhaltsverzeichnis im Gliederungs-Prompt: bei SEHR grossen/vielen Dokumenten wuerde die TOC sonst das Kontextfenster sprengen - das Modell sieht dann nur einen abgeschnittenen Rest und erfindet frei (beobachtet: Marketing-PDF -> Gliederung ueber Deutsch-Grammatik). Weit unter LLM_NUM_CTX, damit auch Systemprompt+Anweisung+Antwort sicher reinpassen.
+    # Anders als eine reine Titel-Liste (bei der die Reihenfolge das einzige
+    # ist, was zaehlt) muss die Gliederung Abschnitte teils auch thematisch
+    # ZUSAMMENFASSEN - bei Quellen ohne erkennbare Kapitelstruktur (Folien-
+    # saetze: Abschnittstitel nur "Seite N") ist der Titel allein dafuer kein
+    # Signal (beobachtet: identischer Fallback-Bug wie bei der Mindmap, siehe
+    # dort). Jede TOC-Zeile bekommt daher zusaetzlich einen kurzen Inhalts-
+    # Ausschnitt (study_plan._toc_with_excerpts, auch von mindmap.py genutzt) -
+    # die Ausschnittlaenge schrumpft automatisch mit der Abschnittszahl, damit
+    # der Gesamt-Prompt PLAN_PROMPT_BUDGET_CHARS nicht sprengt.
+    PLAN_PROMPT_BUDGET_CHARS: int = 9000
+    # Gemeinsame Ausschnitt-Laengengrenzen fuer _toc_with_excerpts (Lernplan-
+    # Gliederung UND Mindmap).
+    TOC_EXCERPT_MIN_CHARS: int = 40
+    TOC_EXCERPT_MAX_CHARS: int = 150
     # Grobe Wartezeit-Schaetzung fuer die UI (Sekunden) - KEINE Forschung, nur aus
     # eigenen Messwerten kalibriert; haengt stark von der Hardware ab, daher immer
     # als Richtwert kommunizieren, nie als Zusage.
@@ -394,16 +416,11 @@ class Settings:
     # Harte Obergrenze aller Knoten zusammen - schuetzt vor einer unlesbaren
     # SVG-Flaeche UND vor einem ausufernden Prompt bei der naechsten Anfrage.
     MINDMAP_MAX_NODES: int = 40
-    # Anders als die Lernplan-Gliederung (die nur ORDNET) muss die Mindmap
-    # Themen BENENNEN - bei Quellen ohne erkennbare Kapitelstruktur (Folien-
-    # saetze: Abschnittstitel nur "Seite N") ist der Titel allein kein
-    # Signal dafuer. Jede Zeile im Prompt bekommt daher zusaetzlich einen
-    # kurzen Inhalts-Ausschnitt (siehe mindmap._toc_with_excerpts) - die
-    # Ausschnittlaenge schrumpft automatisch mit der Abschnittszahl, damit
-    # der Gesamt-Prompt MINDMAP_PROMPT_BUDGET_CHARS nicht sprengt.
+    # Braucht wie die Lernplan-Gliederung Inhalts-Ausschnitte statt nur Titel
+    # (siehe study_plan._toc_with_excerpts, PLAN_PROMPT_BUDGET_CHARS-Kommentar
+    # fuer die Begruendung) - eigenes Zeichen-Budget, da Mindmap-Prompts durch
+    # die Baum-/Link-Struktur laenger als reine Gliederungs-Prompts sind.
     MINDMAP_PROMPT_BUDGET_CHARS: int = 9000
-    MINDMAP_EXCERPT_MIN_CHARS: int = 40
-    MINDMAP_EXCERPT_MAX_CHARS: int = 150
 
     # ------------------------------------------------------------------ #
     # Evaluation

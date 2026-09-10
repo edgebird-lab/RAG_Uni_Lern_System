@@ -4,20 +4,9 @@ Mindmap: Themenbaum aus dem Inhaltsverzeichnis einer Lernquelle
 Erzeugt aus den bereits indexierten Abschnitten gewaehlter Dokumente EINEN
 hierarchischen Themenbaum (Hauptthemen -> Unterthemen, plus optionale
 Querverbindungen) - dieselbe Abschnitts-Grundlage wie die Lernplan-Gliederung
-(``study_plan._granular_sections``/``_cap_granular_for_prompt``).
-
-WICHTIG - anders als bei der Lernplan-Gliederung reicht die reine Titelliste
-(``study_plan._toc_text``) hier NICHT: die Gliederung muss Abschnitte nur in
-eine sinnvolle REIHENFOLGE bringen (die Originaltitel, egal wie generisch,
-funktionieren dafuer). Die Mindmap muss Abschnitte dagegen THEMATISCH BENENNEN
-- bei Quellen ohne erkennbare Kapitelstruktur (z. B. Foliensaetze) sind die
-Abschnittstitel oft nur "Seite N" (beobachtet: eine 53-seitige IT-Sicherheit-
-Zusammenfassung mit reichhaltigem Inhalt, aber durchgehend generischen
-Seiten-Titeln erzeugte eine Mindmap aus 53 bedeutungslosen "Seite N"-Knoten
-ohne jede Gruppierung - das Modell hatte schlicht kein einziges echtes Signal,
-um Themen zu benennen). Der Prompt gibt deshalb je Abschnitt zusaetzlich einen
-kurzen INHALTS-Ausschnitt mit (siehe ``_toc_with_excerpts``) - das Modell soll
-Themennamen aus dem tatsaechlichen Inhalt ableiten, nicht raten.
+(``study_plan._granular_sections``/``_cap_granular_for_prompt``/
+``_toc_with_excerpts`` - siehe dort fuer die Begruendung, warum die TOC-Zeilen
+kurze Inhalts-Ausschnitte statt nur Titel brauchen).
 
 Das Rendering (reines SVG-Layout, kein System-Graphviz noetig) lebt bewusst in
 einem eigenen Modul ohne Streamlit-Import: ``ragapp/mindmap_render.py``.
@@ -29,7 +18,7 @@ from typing import Optional
 from ragapp.config import settings
 from ragapp.llm import get_llm
 from ragapp import manifest
-from ragapp.study_plan import _granular_sections, _cap_granular_for_prompt
+from ragapp.study_plan import _granular_sections, _cap_granular_for_prompt, _toc_with_excerpts
 
 
 class MindmapError(RuntimeError):
@@ -72,23 +61,6 @@ Antworte NUR als JSON:
 
 def _author_model() -> str:
     return settings.author_model()
-
-
-def _toc_with_excerpts(capped: list[tuple[str, str, str]], budget_chars: int) -> str:
-    """Wie ``study_plan._toc_text``, aber mit einem kurzen Inhalts-Ausschnitt je
-    Abschnitt (siehe Modul-Docstring, warum die Mindmap - anders als die
-    Lernplan-Gliederung - echten Inhalt statt nur Titel braucht). Die Ausschnitt-
-    länge schrumpft automatisch mit der Anzahl Abschnitte, damit der Gesamt-
-    Prompt ``budget_chars`` unabhängig von der Dokumentgröße nicht sprengt."""
-    n = max(1, len(capped))
-    excerpt_chars = max(
-        settings.MINDMAP_EXCERPT_MIN_CHARS,
-        min(settings.MINDMAP_EXCERPT_MAX_CHARS, budget_chars // n))
-    lines = []
-    for i, (_, title, body) in enumerate(capped):
-        excerpt = " ".join(body.split())[:excerpt_chars].strip()
-        lines.append(f'{i}. {title} (~{len(body)} Zeichen): "{excerpt}…"')
-    return "\n".join(lines)
 
 
 def _repair_mindmap(data: object, n: int) -> Optional[dict]:

@@ -44,14 +44,35 @@ def test_generate_json_retried_bei_trunkierung_und_erfolgreichem_zweiten_versuch
         _resp(content="", thinking="denk denk denk", done_reason="length", eval_count=1024),
         _resp(content='{"a": 2}', done_reason="stop", eval_count=500),
     ]
+    # Expliziter (kleinerer) num_ctx simuliert einen Aufrufer mit eigenem
+    # Budget - der Standard selbst liegt inzwischen bereits am Deckel
+    # (LLM_NUM_CTX=32768, siehe test_generate_json_retry_num_ctx_gedeckelt_bei_32768),
+    # da waechst ein Retry ohne eigenes num_ctx nicht mehr weiter.
     with patch.object(llm._client, "chat", side_effect=responses) as m:
-        data = llm.generate_json("prompt")
+        data = llm.generate_json("prompt", num_ctx=4096, num_predict=1024)
     assert data == {"a": 2}
     assert m.call_count == 2
     first_options = m.call_args_list[0].kwargs["options"]
     retry_options = m.call_args_list[1].kwargs["options"]
     assert retry_options["num_ctx"] > first_options["num_ctx"]
     assert retry_options["num_predict"] > first_options["num_predict"]
+
+
+def test_generate_json_retry_bleibt_am_deckel_wenn_standard_bereits_maximal_ist():
+    # Regressionstest fuer die neuen "Maximum"-Standardwerte: liegt
+    # LLM_NUM_CTX (Standard) bereits am 32768-Deckel, waechst ein Retry OHNE
+    # explizites num_ctx nicht weiter - das ist erwuenscht (kein Grund, ueber
+    # den als sicher gemessenen VRAM-Rahmen hinauszugehen), nicht kaputt.
+    llm = LLM(model="test-model")
+    with patch.object(llm_settings, "LLM_NUM_CTX", 32768):
+        with patch.object(llm._client, "chat", return_value=_resp(
+                content="", thinking="x", done_reason="length", eval_count=1024)) as m:
+            data = llm.generate_json("prompt")
+    assert data is None
+    assert m.call_count == 2
+    first_options = m.call_args_list[0].kwargs["options"]
+    retry_options = m.call_args_list[1].kwargs["options"]
+    assert first_options["num_ctx"] == retry_options["num_ctx"] == 32768
 
 
 def test_generate_json_gibt_none_zurueck_wenn_auch_retry_trunkiert_wird():
