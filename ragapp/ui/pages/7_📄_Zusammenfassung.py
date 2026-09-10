@@ -22,6 +22,8 @@ from ragapp.ui._loading import page_boot
 page_boot("📄 Zusammenfassung schreiben", page_title="Zusammenfassung",
           icon="📄", layout="wide", accent="zusammenfassung")
 
+from ragapp.ui._style import card
+
 st.markdown("<style>.block-container{padding-top:2rem;max-width:900px;}"
             "h1{font-weight:750;letter-spacing:-.5px;}</style>", unsafe_allow_html=True)
 
@@ -47,71 +49,73 @@ if not docs:
 
 subjects = sorted({d["subject"] for d in docs if d["subject"]})
 
-quelle = st.radio("Quelle", ["Dokument", "Fach"], horizontal=True)
+with card("quelle"):
+    quelle = st.radio("Quelle", ["Dokument", "Fach"], horizontal=True)
 
-if quelle == "Dokument":
-    opts = {d["doc_id"]: f'{d["filename"]}  ·  {_fach(d["subject"] or "")}' for d in docs}
-    target = st.selectbox("Dokument", list(opts), format_func=lambda k: opts[k])
-    mode = "document"
-else:
-    target = st.selectbox("Fach", subjects, format_func=_fach)
-    mode = "subject"
-    st.warning("Fach-Modus fasst **alle** Chunks des Fachs abschnittsweise zusammen. "
-               "Bei vielen Dokumenten kann das längere Zeit dauern.")
-
-model = (getattr(settings, "LLM_MODEL_AUTHOR", "") or settings.LLM_MODEL)
-st.caption(f"Autoren-Modell: `{model}`. Das kann je nach Umfang etwas dauern.")
-
-if st.button("📝 Zusammenfassung erzeugen", type="primary", use_container_width=True):
-    status = st.empty()
-    stats = SummaryStats()
-
-    def _prog(msg: str) -> None:
-        status.info(msg)
-
-    try:
-        with st.spinner("Erzeuge Zusammenfassung …"):
-            path = summarize.write_summary(
-                target, mode=mode, progress=_prog, stats_out=stats,
-            )
-    except ValueError as exc:
-        status.warning(str(exc))
-    except Exception as exc:                      # noqa: BLE001
-        status.error(f"Fehler bei der Generierung: {exc}")
+    if quelle == "Dokument":
+        opts = {d["doc_id"]: f'{d["filename"]}  ·  {_fach(d["subject"] or "")}' for d in docs}
+        target = st.selectbox("Dokument", list(opts), format_func=lambda k: opts[k])
+        mode = "document"
     else:
-        status.empty()
-        content = pathlib.Path(path).read_text("utf-8")
-        st.session_state["_zus_md"] = content
-        st.session_state["_zus_name"] = pathlib.Path(path).name
-        st.session_state["_zus_stats"] = {
-            "written": stats.written,
-            "failed": stats.failed,
-            "skipped_short": stats.skipped_short,
-            "skipped_empty": stats.skipped_empty,
-            "total_sections": stats.total_sections,
-            "errors": list(stats.errors),
-        }
-        st.success(
-            f"Fertig – {stats.written} Abschnitte geschrieben "
-            f"(von {stats.total_sections}). Gespeichert unter docs/{pathlib.Path(path).name}"
-        )
-        if stats.failed:
-            st.warning(
-                f"{stats.failed} Abschnitte fehlgeschlagen"
-                + (f": {stats.errors[0]}" if stats.errors else ".")
+        target = st.selectbox("Fach", subjects, format_func=_fach)
+        mode = "subject"
+        st.warning("Fach-Modus fasst **alle** Chunks des Fachs abschnittsweise zusammen. "
+                   "Bei vielen Dokumenten kann das längere Zeit dauern.")
+
+    model = (getattr(settings, "LLM_MODEL_AUTHOR", "") or settings.LLM_MODEL)
+    st.caption(f"Autoren-Modell: `{model}`. Das kann je nach Umfang etwas dauern.")
+
+    if st.button("📝 Zusammenfassung erzeugen", type="primary", use_container_width=True):
+        status = st.empty()
+        stats = SummaryStats()
+
+        def _prog(msg: str) -> None:
+            status.info(msg)
+
+        try:
+            with st.spinner("Erzeuge Zusammenfassung …"):
+                path = summarize.write_summary(
+                    target, mode=mode, progress=_prog, stats_out=stats,
+                )
+        except ValueError as exc:
+            status.warning(str(exc))
+        except Exception as exc:                      # noqa: BLE001
+            status.error(f"Fehler bei der Generierung: {exc}")
+        else:
+            status.empty()
+            content = pathlib.Path(path).read_text("utf-8")
+            st.session_state["_zus_md"] = content
+            st.session_state["_zus_name"] = pathlib.Path(path).name
+            st.session_state["_zus_stats"] = {
+                "written": stats.written,
+                "failed": stats.failed,
+                "skipped_short": stats.skipped_short,
+                "skipped_empty": stats.skipped_empty,
+                "total_sections": stats.total_sections,
+                "errors": list(stats.errors),
+            }
+            st.success(
+                f"Fertig – {stats.written} Abschnitte geschrieben "
+                f"(von {stats.total_sections}). Gespeichert unter docs/{pathlib.Path(path).name}"
             )
+            if stats.failed:
+                st.warning(
+                    f"{stats.failed} Abschnitte fehlgeschlagen"
+                    + (f": {stats.errors[0]}" if stats.errors else ".")
+                )
 
 if st.session_state.get("_zus_md"):
-    _zs = st.session_state.get("_zus_stats") or {}
-    if _zs:
-        st.caption(
-            f"Abschnitte: {_zs.get('written', '?')} geschrieben · "
-            f"{_zs.get('failed', 0)} Fehler · "
-            f"{_zs.get('skipped_empty', 0)} ohne Prüfungsstoff · "
-            f"{_zs.get('skipped_short', 0)} zu kurz"
-        )
-    st.download_button("⬇️ Markdown herunterladen", st.session_state["_zus_md"],
-                       file_name=st.session_state["_zus_name"], mime="text/markdown",
-                       use_container_width=True)
-    st.divider()
-    st.markdown(st.session_state["_zus_md"])
+    with card("ergebnis"):
+        _zs = st.session_state.get("_zus_stats") or {}
+        if _zs:
+            st.caption(
+                f"Abschnitte: {_zs.get('written', '?')} geschrieben · "
+                f"{_zs.get('failed', 0)} Fehler · "
+                f"{_zs.get('skipped_empty', 0)} ohne Prüfungsstoff · "
+                f"{_zs.get('skipped_short', 0)} zu kurz"
+            )
+        st.download_button("⬇️ Markdown herunterladen", st.session_state["_zus_md"],
+                           file_name=st.session_state["_zus_name"], mime="text/markdown",
+                           use_container_width=True)
+        st.divider()
+        st.markdown(st.session_state["_zus_md"])
