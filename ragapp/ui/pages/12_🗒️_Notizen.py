@@ -15,6 +15,7 @@ ungefilterter Gedankenraum) nicht braucht. Volltextsuche läuft daher rein in SQ
 """
 from __future__ import annotations
 
+import re
 import sys
 import pathlib
 
@@ -46,6 +47,33 @@ st.caption("Deine eigenen Gedanken, Fragen und Merksätze – im Unterschied zu 
 with st.spinner("Notizen werden geladen ..."):
     from ragapp import manifest
     from ragapp.config import SUBJECT_LABELS
+
+
+_FENCE_RE = re.compile(r"(```.*?```)", re.DOTALL)
+_SINGLE_NEWLINE_RE = re.compile(r"(?<!\n)\n(?!\n)")
+
+
+def _render_note_markdown(text: "str | None") -> None:
+    """Rendert Notiz-Text als Markdown - mit EINEM wichtigen Unterschied zu
+    reinem ``st.markdown(text)``: ein einzelner Enter-Zeilenumbruch gilt in
+    Markdown (CommonMark) nur als "weicher" Umbruch OHNE sichtbaren Zeilen-
+    sprung (erst eine Leerzeile trennt Absaetze) - beim Notizen-Schreiben
+    erwartet aber niemand, dass ein einfaches Enter zwei Leerzeilen braucht.
+    Deshalb wird jeder EINZELNE Zeilenumbruch (keine Leerzeile) in einen
+    Markdown-Hard-Break (zwei Leerzeichen + Umbruch) uebersetzt - echte
+    Absatztrennung (Leerzeile) bleibt unangetastet. Code-Bloecke (```...```)
+    werden ausgenommen, damit dort keine Leerzeichen in den Code rutschen -
+    Tabellen/Listen sind von der Umwandlung unberuehrt lesbar (ein Hard-Break
+    am Zeilenende stoert deren Zeilenstruktur nicht)."""
+    if not (text or "").strip():
+        st.markdown("*(leer)*")
+        return
+    parts = _FENCE_RE.split(text)
+    out = "".join(
+        part if i % 2 == 1 else _SINGLE_NEWLINE_RE.sub("  \n", part)
+        for i, part in enumerate(parts)
+    )
+    st.markdown(out)
 
 
 def _fach(code: "str | None") -> str:
@@ -168,7 +196,7 @@ with col_editor:
         _draft_key = "notiz_new_body_draft"
         _preview = st.toggle("👁️ Vorschau", key="notiz_new_preview")
         if _preview:
-            st.markdown(st.session_state.get(_draft_key) or "*(leer)*")
+            _render_note_markdown(st.session_state.get(_draft_key))
         else:
             st.session_state[_draft_key] = st.text_area(
                 "Text (Markdown)", value=st.session_state.get(_draft_key, ""),
@@ -214,7 +242,7 @@ with col_editor:
         _draft_key = f"notiz_edit_body_draft_{_nid}"
         _m_preview = st.toggle("👁️ Vorschau", key=_prev_key)
         if _m_preview:
-            st.markdown(st.session_state.get(_draft_key, _active_note.get("body") or ""))
+            _render_note_markdown(st.session_state.get(_draft_key, _active_note.get("body")))
         else:
             st.session_state[_draft_key] = st.text_area(
                 "Text (Markdown)",
