@@ -168,10 +168,8 @@ def _render_week_grid(slots: list, colors: dict, ordered_subjects: list, today_w
   text-overflow:ellipsis; }}
 .rag-tt-time {{ font-size:10.5px; opacity:0.92; }}
 .rag-tt-room {{ font-size:10.5px; opacity:0.85; }}
-@media (prefers-color-scheme: dark) {{
-  .rag-tt-daycol {{ background:rgba(148,163,184,0.08); border-color:rgba(148,163,184,0.22); }}
-  .rag-tt-header {{ color:#cbd5e1; }}
-}}
+html.rag-dark .rag-tt-daycol {{ background:rgba(31,58,99,0.35); border-color:rgba(30,58,95,0.7); }}
+html.rag-dark .rag-tt-header {{ color:#c7d6ea; }}
 </style>
 <div class="rag-tt-wrap"><div class="rag-tt-grid">
 <div class="rag-tt-corner"></div>

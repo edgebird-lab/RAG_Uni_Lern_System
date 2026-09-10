@@ -42,9 +42,7 @@ h1 {font-weight: 750; letter-spacing:-0.5px;}
 .splan-tl-fill {width:100%;}
 .splan-tl-label {position:absolute; bottom:-18px; left:0; right:0; text-align:center;
   font-size:9.5px; color:#94a3b8; white-space:nowrap;}
-@media (prefers-color-scheme: dark) {
-  .splan-tl-seg {background:rgba(148,163,184,.2);}
-}
+html.rag-dark .splan-tl-seg {background:rgba(148,163,184,.2);}
 </style>
 """, unsafe_allow_html=True)
 

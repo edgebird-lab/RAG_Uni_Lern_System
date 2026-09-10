@@ -127,7 +127,7 @@ _FONT_FACE_CSS = """
   font-style: normal;
   font-display: swap;
 }
-html, body, [class*="st-emotion"], .stApp,
+html, body, .stApp,
 [data-testid="stMarkdownContainer"], [data-testid="stMarkdownContainer"] p,
 [data-testid="stMarkdownContainer"] li, [data-testid="stWidgetLabel"],
 [data-testid="stCaptionContainer"], [data-testid="stMetricValue"],
@@ -140,6 +140,17 @@ input, textarea, select, table, th, td {
 h1, h2, h3, h4, h5, h6 {
   font-family: 'RAG Heading', 'Fredoka', -apple-system, BlinkMacSystemFont,
     'Segoe UI', sans-serif !important;
+}
+/* Streamlits Icon-Glyphen (Sidebar-Pfeil, Expander-Chevron, Button-Icons wie
+   "keyboard_double_arrow_right"/"expand_more") sind KEIN Text, sondern
+   Ligaturen der "Material Symbols Rounded"-Iconschrift - ein zu breiter
+   Font-Family-Selektor (frueher u. a. [class*="st-emotion"], das praktisch
+   JEDES Streamlit-Element trifft) hat diese Schrift ueberschrieben, sodass
+   der rohe Ligatur-Name als Text ueber dem eigentlichen Label auftauchte.
+   Deshalb hier explizit wieder auf die Iconschrift zurueckgesetzt. */
+[data-testid="stIconMaterial"], [data-testid^="stIcon"],
+span[class*="material-symbols"], span[class*="MaterialSymbol"] {
+  font-family: 'Material Symbols Rounded' !important;
 }
 </style>
 """
@@ -280,7 +291,7 @@ div[class*="st-key-tile_"] button p {{
 }}
 #rag-theme-toggle:hover {{transform:scale(1.08); box-shadow:0 6px 16px rgba(0,0,0,.16);}}
 html.rag-dark #rag-theme-toggle {{
-  background:#161b22; border-color:#2a3040; box-shadow:0 2px 10px rgba(0,0,0,.35);
+  background:#0f2440; border-color:#1e3a5f; box-shadow:0 2px 10px rgba(0,0,0,.35);
 }}
 
 /* Doodle-Hintergrund: fix positioniert, klickdurchlaessig, dezent. */
@@ -306,17 +317,17 @@ html.rag-dark [data-testid="stAppViewContainer"] {{
   background:
     radial-gradient(circle at 10% -8%, {accent}22 0%, transparent 45%),
     radial-gradient(circle at 92% 108%, {accent}18 0%, transparent 40%),
-    #0e1117 !important;
+    #0a1930 !important;
 }}
 html.rag-dark .rag-doodle {{opacity:.10;}}
 html.rag-dark div[class*="st-key-tile_"] button {{
-  background:linear-gradient(150deg, #1b2130 0%, #11151d 75%) !important;
-  color:#e6edf3 !important; border-color:#2a3040 !important;
+  background:linear-gradient(150deg, #132b4d 0%, #0d2038 75%) !important;
+  color:#e7edf5 !important; border-color:#1e3a5f !important;
 }}
 html.rag-dark div[class*="st-key-tile_"] button:hover {{border-color:{accent} !important;}}
 html.rag-dark div[class*="st-key-card_"] {{
-  background:linear-gradient(160deg, #171c26 0%, #11151d 145%) !important;
-  border-color:#2a3040 !important; box-shadow:0 2px 14px rgba(0,0,0,.3) !important;
+  background:linear-gradient(160deg, #132b4d 0%, #0d2038 145%) !important;
+  border-color:#1e3a5f !important; box-shadow:0 2px 14px rgba(0,0,0,.3) !important;
 }}
 html.rag-dark .rag-hero-title {{color:{accent} !important;}}
 

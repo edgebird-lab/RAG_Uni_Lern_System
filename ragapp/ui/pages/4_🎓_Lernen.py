@@ -25,6 +25,8 @@ from ragapp.ui._loading import page_boot
 # damit beim Seitenwechsel kein weisser Bildschirm entsteht.
 page_boot("🎓 Lernen", page_title="Lernen", icon="🎓", layout="wide", accent="lernen")
 
+from ragapp.ui._style import card
+
 # Nur noch das seiten-spezifische Layout; die Karteikarten-Optik (hell + dunkel)
 # kommt jetzt zentral aus ragapp.ui._theme.apply_theme().
 st.markdown("""
@@ -74,11 +76,12 @@ if _counts["total"] == 0:
     st.stop()
 
 # Kopfzeile mit Zahlen
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Karten gesamt", _counts["total"])
-c2.metric("Jetzt fällig", _counts["due"])
-c3.metric("Neu", _counts["neu"])
-c4.metric("Schon geübt", _counts["gelernt"])
+with card("kopfzeile"):
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Karten gesamt", _counts["total"])
+    c2.metric("Jetzt fällig", _counts["due"])
+    c3.metric("Neu", _counts["neu"])
+    c4.metric("Schon geübt", _counts["gelernt"])
 
 # Hinweis nach Import/Fragen-Anreicherung: Karten oft noch nicht geerntet
 if st.session_state.pop("_needs_card_harvest", None):
