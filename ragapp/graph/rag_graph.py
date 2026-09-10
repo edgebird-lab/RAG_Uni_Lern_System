@@ -38,7 +38,7 @@ from ragapp.retrieval.hybrid import retrieve
 from ragapp.retrieval.reranker import get_reranker
 from ragapp.graph.prompts import (
     ANSWER_SYSTEM, ANSWER_PROMPT, TUTOR_SYSTEM, TUTOR_PROMPT,
-    FAITHFULNESS_PROMPT, NO_ANSWER_TOKEN,
+    SOKRATISCH_SYSTEM, SOKRATISCH_PROMPT, FAITHFULNESS_PROMPT, NO_ANSWER_TOKEN,
 )
 
 # Logger (zentrales Setup; faellt defensiv auf die stdlib zurueck, falls das Modul
@@ -56,7 +56,10 @@ class RAGState(TypedDict, total=False):
     search_query: str        # fuer die Suche genutzte (ggf. verlaufsbereinigte) Frage
     sub_queries: list        # Teilfragen bei breiten Fragen (vergleiche/nenne alle/...)
     subject: Optional[str]
-    chat_mode: str           # "strict" | "tutor" – Tutor = freier, weiterhin gegroundet
+    chat_mode: str           # "strict" | "tutor" | "sokratisch" (siehe _chat_mode())
+    history: list            # bisherige Chat-Turns ({"role","content"}) - fuer den
+                              # Sokratischen Dialog eine ECHTE Mehrturn-Historie (siehe
+                              # generate_node), sonst nur zur Rueckfragen-Umformulierung
     syllabus: bool           # Ueberblicks-/Lernstoff-Frage -> breiteres Retrieval
     use_reranker: Optional[bool]        # None = Einstellung, False = "Schnelle Antworten"
     check_faithfulness: Optional[bool]  # None = Einstellung, False = "Schnelle Antworten"
@@ -164,8 +167,36 @@ def _build_context(candidates: list[dict],
     return "\n\n---\n\n".join(parts), sources
 
 
-def _is_tutor(state: RAGState) -> bool:
-    return (state.get("chat_mode") or "strict") == "tutor"
+_CHAT_MODES = ("strict", "tutor", "sokratisch")
+
+
+def _chat_mode(state: RAGState) -> str:
+    m = state.get("chat_mode") or "strict"
+    return m if m in _CHAT_MODES else "strict"
+
+
+def _relaxed_mode(state: RAGState) -> bool:
+    """Tutor UND Sokratischer Dialog teilen sich dieselben Lockerungen (weichere
+    Relevanzschwelle, Faithfulness standardmaessig aus, Teilantworten statt hartem
+    Fallback) - beides sind freie, aber weiterhin gegroundete Gespraechsformen im
+    Gegensatz zum strengen Modus."""
+    return _chat_mode(state) in ("tutor", "sokratisch")
+
+
+def _history_messages(history: Optional[list]) -> list[dict]:
+    """Wandelt die UI-Chat-Historie ({'role','content',...}) in eine kompakte
+    messages-Liste fuer einen ECHTEN Mehrturn-LLM-Aufruf um (nur role+content),
+    auf die letzten SOKRATISCH_MAX_HISTORY_TURNS begrenzt (gegen Kontextfenster-
+    Ueberlauf bei langen Gespraechen). Nur user/assistant-Rollen; leere Beitraege
+    werden uebersprungen."""
+    out = []
+    for h in (history or []):
+        role = h.get("role")
+        content = (h.get("content") or "").strip()
+        if role in ("user", "assistant") and content:
+            out.append({"role": role, "content": content})
+    n = max(0, int(settings.SOKRATISCH_MAX_HISTORY_TURNS))
+    return out[-n:] if n else []
 
 
 def _is_syllabus_intent(question: str) -> bool:
@@ -273,7 +304,7 @@ def _pool_fusion_candidates(queries: list[str], subject: Optional[str]) -> list[
                   key=lambda c: c.get("fusion_score", 0.0), reverse=True)
 
 
-def _relevance_ok(candidates: list[dict], *, tutor: bool = False,
+def _relevance_ok(candidates: list[dict], *, relaxed: bool = False,
                   subject: Optional[str] = None) -> bool:
     """Relevanz-Gate: waehlt die zur genutzten Score-Quelle passende, WIRKSAME
     Schwelle.
@@ -283,7 +314,8 @@ def _relevance_ok(candidates: list[dict], *, tutor: bool = False,
         Top-Treffers gaten (echtes Relevanzsignal) gegen DENSE_RELEVANCE_MIN_SCORE.
         Nur wenn der Top-Treffer keinen Dense-Score hat (rein aus BM25), bleibt der
         RRF-Mindestwert der Rueckfall.
-    Tutor + Fach: etwas toleranter, damit Ueberblicksfragen nicht sofort fallen."""
+    ``relaxed`` (Tutor/Sokratisch) + Fach: etwas toleranter, damit Ueberblicks-/
+    Gespraechsfragen nicht sofort fallen."""
     if not candidates:
         return False
     top = candidates[0]
@@ -291,8 +323,8 @@ def _relevance_ok(candidates: list[dict], *, tutor: bool = False,
     fu = top.get("fusion_score")
     if rr is None:                     # kein Score vorhanden -> nicht blockieren
         return True
-    # Tutor mit Fachfilter: irgendwelche Treffer im Fach reichen oft fuer Teilanworten
-    if tutor and subject and len(candidates) >= 2:
+    # Relaxed mit Fachfilter: irgendwelche Treffer im Fach reichen oft fuer Teilanworten
+    if relaxed and subject and len(candidates) >= 2:
         dense_any = [c.get("dense_score") for c in candidates
                      if c.get("dense_score") is not None]
         if dense_any and max(dense_any) >= (settings.DENSE_RELEVANCE_MIN_SCORE * 0.75):
@@ -300,12 +332,12 @@ def _relevance_ok(candidates: list[dict], *, tutor: bool = False,
     reranked = (fu is None) or (rr != fu)
     if reranked:
         thr = settings.RELEVANCE_MIN_SCORE
-        if tutor:
+        if relaxed:
             thr = thr - 1.5          # Logit-Skala: etwas weicher
         return rr >= thr
     dense = [c.get("dense_score") for c in candidates if c.get("dense_score") is not None]
     dense_thr = settings.DENSE_RELEVANCE_MIN_SCORE
-    if tutor:
+    if relaxed:
         dense_thr = dense_thr * 0.85
     if dense:
         return max(dense) >= dense_thr
@@ -319,7 +351,7 @@ def retrieve_node(state: RAGState) -> RAGState:
     use_rr = state.get("use_reranker")
     subj = state.get("subject")
     syllabus = bool(state.get("syllabus"))
-    tutor = _is_tutor(state)
+    relaxed = _relaxed_mode(state)
     top_k = (_TUTOR_SYLLABUS_TOP_K if (syllabus and subj) else settings.FINAL_TOP_K)
     pool = _pool_fusion_candidates(queries, subj)
     if syllabus:
@@ -330,14 +362,14 @@ def retrieve_node(state: RAGState) -> RAGState:
     timings["retrieve"] = round(time.time() - t0, 2)
     return {
         "candidates": candidates,
-        "relevance_ok": _relevance_ok(candidates, tutor=tutor, subject=subj),
+        "relevance_ok": _relevance_ok(candidates, relaxed=relaxed, subject=subj),
         "timings": timings,
     }
 
 
 def generate_node(state: RAGState) -> RAGState:
     t0 = time.time()
-    tutor = _is_tutor(state)
+    mode = _chat_mode(state)
     syllabus = bool(state.get("syllabus"))
     max_chars = (_TUTOR_SYLLABUS_MAX_CHARS
                  if (syllabus and state.get("subject")) else None)
@@ -346,17 +378,32 @@ def generate_node(state: RAGState) -> RAGState:
         extra = _load_existing_summary_md(state.get("subject"))
     context, sources = _build_context(
         state["candidates"], max_chars=max_chars, extra_prefix=extra)
-    if tutor:
-        prompt = TUTOR_PROMPT.format(context=context, question=state["question"])
-        system = TUTOR_SYSTEM
-    else:
+
+    if mode == "strict":
         prompt = ANSWER_PROMPT.format(
             context=context, question=state["question"], no_answer=NO_ANSWER_TOKEN
         )
-        system = ANSWER_SYSTEM
-    answer = get_llm().generate(prompt, system=system).strip()
-    if tutor and NO_ANSWER_TOKEN in answer:
-        answer = answer.replace(NO_ANSWER_TOKEN, "").strip()
+        answer = get_llm().generate(prompt, system=ANSWER_SYSTEM).strip()
+    else:
+        if mode == "sokratisch":
+            system, prompt_template = SOKRATISCH_SYSTEM, SOKRATISCH_PROMPT
+        else:
+            system, prompt_template = TUTOR_SYSTEM, TUTOR_PROMPT
+        prompt = prompt_template.format(context=context, question=state["question"])
+        if mode == "sokratisch":
+            # Echte Mehrturn-Historie: der sokratische Dialog muss sich erinnern,
+            # welche Rueckfrage er selbst bereits gestellt hat (siehe
+            # _history_messages) - anders als generate()/Strict+Tutor, die immer
+            # nur einen einzelnen system+user-Turn schicken.
+            messages = ([{"role": "system", "content": system}]
+                        + _history_messages(state.get("history"))
+                        + [{"role": "user", "content": prompt}])
+            answer = get_llm().chat(messages).strip()
+        else:
+            answer = get_llm().generate(prompt, system=system).strip()
+        if NO_ANSWER_TOKEN in answer:
+            answer = answer.replace(NO_ANSWER_TOKEN, "").strip()
+
     timings = dict(state.get("timings", {}))
     timings["generate"] = round(time.time() - t0, 2)
     return {"answer": answer, "context": context, "sources": sources, "timings": timings}
@@ -364,9 +411,9 @@ def generate_node(state: RAGState) -> RAGState:
 
 def faithfulness_node(state: RAGState) -> RAGState:
     # Pro Anfrage abschaltbar ("Schnelle Antworten"): None = globale Einstellung.
-    # Tutor-Modus: Faithfulness standardmaessig AUS (Synthese sonst oft verworfen).
+    # Tutor/Sokratisch: Faithfulness standardmaessig AUS (Synthese sonst oft verworfen).
     if state.get("check_faithfulness") is None:
-        enabled = (False if _is_tutor(state)
+        enabled = (False if _relaxed_mode(state)
                    else settings.ENABLE_FAITHFULNESS_CHECK)
     else:
         enabled = bool(state.get("check_faithfulness"))
@@ -397,8 +444,8 @@ def faithfulness_node(state: RAGState) -> RAGState:
     if verdict == "belegt":
         grounded, mode, confidence = True, "answer", "belegt"
     elif verdict == "unbelegt":
-        # Tutor: Soft-Fail – Antwort behalten, Badge unsicher (kein harter Fallback)
-        if _is_tutor(state):
+        # Tutor/Sokratisch: Soft-Fail – Antwort behalten, Badge unsicher (kein harter Fallback)
+        if _relaxed_mode(state):
             grounded, mode, confidence = False, "answer", "unsicher"
         else:
             grounded, mode, confidence = False, "fallback", "fallback"
@@ -444,8 +491,8 @@ def fallback_node(state: RAGState) -> RAGState:
 def route_after_retrieve(state: RAGState) -> str:
     if state.get("relevance_ok"):
         return "generate"
-    # Tutor: bei vorhandenen Kandidaten trotzdem versuchen (Teilanwort + Luecken)
-    if _is_tutor(state) and state.get("candidates"):
+    # Tutor/Sokratisch: bei vorhandenen Kandidaten trotzdem versuchen (Teilanwort + Luecken)
+    if _relaxed_mode(state) and state.get("candidates"):
         return "generate"
     return "fallback"
 
@@ -455,8 +502,8 @@ def route_after_generate(state: RAGState) -> str:
     if not answer.strip():
         return "fallback"
     if NO_ANSWER_TOKEN in answer:
-        # Tutor: generate_node entfernt den Sentinel bereits; Restfall -> Fallback
-        if _is_tutor(state):
+        # Tutor/Sokratisch: generate_node entfernt den Sentinel bereits; Restfall -> Fallback
+        if _relaxed_mode(state):
             return "faithfulness"
         return "fallback"
     return "faithfulness"
@@ -593,11 +640,14 @@ def answer_query(question: str, subject: Optional[str] = None,
     überspringen ("Schnelle Antworten" auf der Startseite -> schneller, dafür
     gröbere Trefferreihenfolge bzw. keine zusätzliche Beleg-Prüfung).
     history: bisherige Chat-Nachrichten -> kurze Rückfragen werden für die Suche zu
-    eigenständigen Fragen umformuliert (die Antwort nutzt die Originalfrage).
-    chat_mode: "strict" (Default, Sentinel/Faithfulness) oder "tutor" (freier
-    Dialog, Fakten weiterhin nur aus dem Kontext)."""
+    eigenständigen Fragen umformuliert (die Antwort nutzt die Originalfrage); im
+    Sokratischen Dialog geht die Historie zusätzlich als ECHTE Mehrturn-Konversation
+    in den Antwort-Aufruf (siehe generate_node).
+    chat_mode: "strict" (Default, Sentinel/Faithfulness), "tutor" (freier Dialog)
+    oder "sokratisch" (Rückfragen statt Antworten vorgeben) - Fakten kommen in
+    allen drei Modi weiterhin nur aus dem Kontext."""
     t0 = time.time()
-    mode = "tutor" if chat_mode == "tutor" else "strict"
+    mode = chat_mode if chat_mode in _CHAT_MODES else "strict"
     syllabus = _is_syllabus_intent(question)
     search_query = question
     if history and _looks_followup(question):
@@ -605,14 +655,14 @@ def answer_query(question: str, subject: Optional[str] = None,
     # Syllabus/Ueberblick: kein teures Decompose (breiteres Retrieval reicht)
     do_decompose = decompose and _is_broad(question) and not syllabus
     sub_queries = _decompose_query(search_query) if do_decompose else []
-    # Tutor: Faithfulness default aus, sofern nicht explizit gesetzt
+    # Tutor/Sokratisch: Faithfulness default aus, sofern nicht explizit gesetzt
     faith = check_faithfulness
-    if mode == "tutor" and faith is None:
+    if mode in ("tutor", "sokratisch") and faith is None:
         faith = False
     state: RAGState = {"question": question, "search_query": search_query,
                        "sub_queries": sub_queries, "subject": subject,
-                       "chat_mode": mode, "syllabus": syllabus,
-                       "use_reranker": use_reranker,
+                       "chat_mode": mode, "history": history or [],
+                       "syllabus": syllabus, "use_reranker": use_reranker,
                        "check_faithfulness": faith, "mode": "answer"}
     result = get_graph().invoke(state)
     if search_query != question:
@@ -632,7 +682,8 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
                         history: Optional[list] = None,
                         decompose: bool = True,
                         chat_mode: str = "strict"):
-    """Streaming-Variante von :func:`answer_query` fuer den SCHNELL-/Tutor-Modus.
+    """Streaming-Variante von :func:`answer_query` fuer den SCHNELL-/Tutor-/
+    Sokratisch-Modus.
 
     Rueckgabe ``(stream, holder)``:
         * ``stream`` - Generator ueber Antwort-Token (``str``). Erschoepft man ihn
@@ -645,13 +696,13 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
           faith_checked/timings/total_time - analog zu :func:`answer_query`). Vor dem
           Erschoepfen nicht auslesen.
 
-    Warum nur im Schnell-/Tutor-Modus: Bei aktiver Gegenpruefung (Faithfulness) kann
-    die Antwort nach der Generierung noch verworfen werden - dann haette man bereits
-    verworfenen Text gestreamt.
+    Warum nur im Schnell-/Tutor-/Sokratisch-Modus: Bei aktiver Gegenpruefung
+    (Faithfulness) kann die Antwort nach der Generierung noch verworfen werden -
+    dann haette man bereits verworfenen Text gestreamt.
     """
-    mode = "tutor" if chat_mode == "tutor" else "strict"
+    mode = chat_mode if chat_mode in _CHAT_MODES else "strict"
     faith_arg = check_faithfulness
-    if mode == "tutor" and faith_arg is None:
+    if mode in ("tutor", "sokratisch") and faith_arg is None:
         faith_arg = False
     faith_enabled = (settings.ENABLE_FAITHFULNESS_CHECK
                      if faith_arg is None else faith_arg)
@@ -682,7 +733,7 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
             candidates = get_reranker().rerank(
                 queries[0], pool, top_k=top_k, use_reranker=use_reranker)
             relevance_ok = _relevance_ok(
-                candidates, tutor=(mode == "tutor"), subject=subject)
+                candidates, relaxed=(mode in ("tutor", "sokratisch")), subject=subject)
             timings = {"retrieve": round(time.time() - tr, 2)}
 
             base: dict = {"question": question, "subject": subject,
@@ -693,7 +744,7 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
             if sub_queries:
                 base["sub_queries"] = sub_queries
 
-            allow_weak = (mode == "tutor" and bool(candidates))
+            allow_weak = (mode in ("tutor", "sokratisch") and bool(candidates))
             if not relevance_ok and not allow_weak:
                 fb = fallback_node({"candidates": candidates})
                 yield fb.get("answer", "")
@@ -709,21 +760,31 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
                      if (syllabus and subject) else "")
             context, sources = _build_context(
                 candidates, max_chars=max_chars, extra_prefix=extra)
-            if mode == "tutor":
+            if mode == "sokratisch":
+                prompt = SOKRATISCH_PROMPT.format(context=context, question=question)
+                # Echte Mehrturn-Historie wie in generate_node - der sokratische
+                # Dialog muss sich erinnern, welche Rueckfrage er selbst bereits
+                # gestellt hat.
+                stream_kwargs = {"messages": (
+                    [{"role": "system", "content": SOKRATISCH_SYSTEM}]
+                    + _history_messages(history)
+                    + [{"role": "user", "content": prompt}])}
+                guard_sentinel = False
+            elif mode == "tutor":
                 prompt = TUTOR_PROMPT.format(context=context, question=question)
-                system = TUTOR_SYSTEM
+                stream_kwargs = {"prompt": prompt, "system": TUTOR_SYSTEM}
                 guard_sentinel = False
             else:
                 prompt = ANSWER_PROMPT.format(
                     context=context, question=question, no_answer=NO_ANSWER_TOKEN)
-                system = ANSWER_SYSTEM
+                stream_kwargs = {"prompt": prompt, "system": ANSWER_SYSTEM}
                 guard_sentinel = True
             tg = time.time()
 
             head = ""
             guard = len(NO_ANSWER_TOKEN) + 12
             no_answer = False
-            for delta in get_llm().generate_stream(prompt, system=system):
+            for delta in get_llm().generate_stream(**stream_kwargs):
                 accumulated.append(delta)
                 if flushed:
                     yield delta

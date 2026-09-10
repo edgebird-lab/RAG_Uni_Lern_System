@@ -343,6 +343,11 @@ class Settings:
     # Einstellungen abschaltbar, falls Tempo wichtiger ist.
     ENABLE_FAITHFULNESS_CHECK: bool = True
     MAX_CONTEXT_CHARS: int = 7000           # Obergrenze Kontext an das LLM
+    # Sokratischer Dialog: wie viele vorherige Chat-Turns (user+assistant) als
+    # echte Konversations-Historie an das Modell gehen, damit es sich an bereits
+    # gestellte Rueckfragen erinnert (siehe rag_graph.py:_history_messages).
+    # Begrenzt gegen Kontextfenster-Ueberlauf bei langen Gespraechen.
+    SOKRATISCH_MAX_HISTORY_TURNS: int = 6
 
     # ------------------------------------------------------------------ #
     # Evaluation

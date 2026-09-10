@@ -294,12 +294,20 @@ with st.sidebar:
              "belegt ist (Schutz vor erfundenen Aussagen). AUS = schneller, dafür wird "
              "die Antwort weniger streng gegengeprüft. Sie stammt aber weiterhin nur "
              "aus deinen Unterlagen. Technisch: Faithfulness-Check.")
-    tutor_ui = st.toggle(
-        "🗣️ Tutor-Gespräch", value=False, key="ui_tutor",
-        help="Freier Dialog über deine Unterlagen: strukturieren, priorisieren, "
-             "Lernüberblick. Fakten kommen weiterhin nur aus dem RAG – nichts wird "
-             "erfunden; fehlende Stellen werden klar benannt. Gegenprüfung ist in "
-             "diesem Modus aus (sonst würde Synthese oft verworfen).")
+    _mode_choice = st.radio(
+        "Gesprächsmodus", ["🎯 Strikt", "🗣️ Tutor-Gespräch", "🧭 Sokratischer Dialog"],
+        key="ui_chat_mode",
+        help="🎯 Strikt: nur Antworten, die direkt aus deinen Unterlagen belegt "
+             "sind. 🗣️ Tutor-Gespräch: freier formuliert, strukturiert, "
+             "priorisiert, Lernüberblick. 🧭 Sokratischer Dialog: stellt dir "
+             "gezielte Rückfragen und hilft, die Antwort SELBST zu erarbeiten, "
+             "statt sie direkt vorzugeben – gut zum wirklichen Verstehen statt "
+             "Nachschlagen. In allen drei Modi kommen Fakten weiterhin "
+             "ausschließlich aus dem RAG – nichts wird erfunden. Gegenprüfung "
+             "ist in Tutor-Gespräch und Sokratischem Dialog aus (sonst würde "
+             "Synthese oft verworfen).")
+    _chat_mode = {"🎯 Strikt": "strict", "🗣️ Tutor-Gespräch": "tutor",
+                 "🧭 Sokratischer Dialog": "sokratisch"}[_mode_choice]
 
     show_sources = st.toggle("Quellen anzeigen", value=True)
     st.divider()
@@ -600,9 +608,8 @@ if prompt:
 
         from ragapp.graph.rag_graph import answer_query, answer_query_stream
 
-        _chat_mode = "tutor" if tutor_ui else "strict"
-        # Tutor: Faithfulness aus (Synthese), Streaming erlaubt
-        _faith_for_call = False if tutor_ui else check_faith_ui
+        # Tutor/Sokratisch: Faithfulness aus (Synthese), Streaming erlaubt
+        _faith_for_call = False if _chat_mode != "strict" else check_faith_ui
 
         # Schnell-Modus (Gegenprüfung AUS) / Tutor UND Quellen-Anzeige AN -> streamen
         if not _vram_low and _faith_for_call is False and show_sources:
