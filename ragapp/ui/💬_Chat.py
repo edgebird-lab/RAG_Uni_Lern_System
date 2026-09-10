@@ -27,11 +27,16 @@ _PAGE_ICON = str(_icon_png) if _icon_png.is_file() else "🎓"
 st.set_page_config(page_title="RAG-Lernsystem", page_icon=_PAGE_ICON, layout="wide")
 
 # Schwere Importe (torch/chromadb) im Hintergrund vorwärmen -> spätere
-# Seitenwechsel öffnen sofort statt mit weißem Bildschirm. Reine Optimierung.
-from ragapp.ui._loading import prewarm
-prewarm("ragapp.retrieval.embeddings",
-        "ragapp.retrieval.vectorstore",
-        "ragapp.ingestion.pipeline")
+# Seitenwechsel öffnen sofort statt mit weißem Bildschirm, UND Embedding+Reranker
+# schon einmal ins RAM/VRAM laden, damit die erste echte Frage nicht den Kaltstart
+# zahlt. Per Einstellung abschaltbar (PREWARM_ON_START) - wer die Sitzung nur zum
+# Karteikarten-Lernen oeffnet, will dafuer gar kein Modell laden.
+from ragapp.config import settings
+if settings.PREWARM_ON_START:
+    from ragapp.ui._loading import prewarm
+    prewarm("ragapp.retrieval.embeddings",
+            "ragapp.retrieval.vectorstore",
+            "ragapp.ingestion.pipeline")
 
 # Tab-Close-Waechter: beendet die App sauber, wenn kein Browser-Tab mehr offen ist
 # (nur aktiv im lokalen Starter-Betrieb via start.sh -> RAG_IDLE_SHUTDOWN=1).
@@ -231,6 +236,34 @@ with st.sidebar:
     st.markdown("### 🎓 Lern-Assistent")
     st.caption(f"Modell: `{settings.LLM_MODEL}` · Embedding: `{settings.EMBED_MODEL}`")
 
+    # Modell-Status: selbst entscheiden, wann das Antwort-LLM laedt/entladen wird,
+    # statt das nur passiv geschehen zu lassen. Rein informativ + zwei Buttons -
+    # kein automatisches Verhalten wird dadurch veraendert.
+    with st.expander("🔌 Modell-Status", expanded=False):
+        from ragapp.llm import model_status, warm_llm
+        _mst = model_status()
+        if not _mst["reachable"]:
+            st.caption("⚠️ Ollama nicht erreichbar.")
+        elif _mst["resident"]:
+            st.caption(f"🟢 `{_mst['model']}` ist geladen (belegt RAM/VRAM).")
+        else:
+            st.caption(f"⚪ `{_mst['model']}` ist nicht geladen (laedt bei der "
+                       "naechsten Frage automatisch).")
+        _mc1, _mc2 = st.columns(2)
+        if _mc1.button("▶️ Jetzt laden", use_container_width=True,
+                       disabled=not _mst["reachable"] or _mst["resident"]):
+            with st.spinner("Modell wird geladen ..."):
+                try:
+                    warm_llm()
+                    st.rerun()
+                except Exception as exc:  # noqa: BLE001
+                    st.error(str(exc))
+        if _mc2.button("⏹️ Jetzt entladen", use_container_width=True,
+                       disabled=not _mst["reachable"] or not _mst["resident"]):
+            from ragapp.scripts.stop_ollama_standby import unload_resident_models
+            unload_resident_models(settings.OLLAMA_BASE_URL)
+            st.rerun()
+
     stats = manifest.stats()
     c1, c2 = st.columns(2)
     c1.metric("Dokumente", stats["documents"])
@@ -278,62 +311,15 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 
+from ragapp.ui import _docviewer
+
+
 def _load_full_text(src: dict) -> "str | None":
     """Volltext des Quell-Dokuments laden (aus der Originaldatei)."""
     sp = src.get("source_path", "")
     if not sp:
         return None
-    path = PROJECT_ROOT / sp
-    if not path.is_file():
-        return None
-    try:
-        from ragapp.ingestion.loaders import load_document
-        return load_document(path).text
-    except Exception:
-        return None
-
-
-def _locate(full: str, chunk: str) -> "tuple[int, int]":
-    """Textstelle im Volltext finden - robust auch bei Markdown (der Chunk hat dort
-    einen Breadcrumb-Präfix, der so nicht im Original steht)."""
-    if chunk:
-        i = full.find(chunk[:200])
-        if i >= 0:
-            return i, min(i + len(chunk), len(full))
-    # Anker: längste inhaltliche Zeilen des Chunks, die im Volltext vorkommen
-    cands = sorted((ln.strip() for ln in (chunk or "").split("\n") if len(ln.strip()) >= 20),
-                   key=len, reverse=True)
-    for c in cands[:10]:
-        i = full.find(c)
-        if i >= 0:
-            return i, min(i + len(chunk), len(full))
-    return -1, -1
-
-
-def _render_pdf_page(src: dict, page_num: int, chunk: str) -> "bytes | None":
-    """Rendert die ECHTE PDF-Seite als Bild mit gemaltem Highlight auf der gefundenen
-    Stelle (Layout, Formeln, Diagramme bleiben lesbar; aktiviert räumliches Gedächtnis
-    als Abrufhinweis). Gibt PNG-Bytes zurück oder None. CPU-only, offline (fitz)."""
-    path = PROJECT_ROOT / (src.get("source_path") or "")
-    if not path.is_file():
-        return None
-    try:
-        import fitz  # PyMuPDF (bereits Abhängigkeit der Loader)
-        doc = fitz.open(str(path))
-        if page_num < 1 or page_num > doc.page_count:
-            return None
-        page = doc.load_page(page_num - 1)
-        anchors = sorted((ln.strip() for ln in (chunk or "").split("\n")
-                          if len(ln.strip()) >= 15), key=len, reverse=True)[:6]
-        for a in anchors:
-            try:
-                for rect in page.search_for(a[:90]):
-                    page.add_highlight_annot(rect)
-            except Exception:  # noqa: BLE001
-                pass
-        return page.get_pixmap(dpi=140).tobytes("png")
-    except Exception:  # noqa: BLE001
-        return None
+    return _docviewer.load_full_text(PROJECT_ROOT / sp)
 
 
 @st.dialog("📄 Dokument ansehen", width="large")
@@ -348,7 +334,8 @@ def _view_document(src: dict) -> None:
     import re as _re3
     _m = _re3.search(r"(\d+)", src.get("location", "") or "")
     if _m and (src.get("filename", "").lower().endswith(".pdf")):
-        _png = _render_pdf_page(src, int(_m.group(1)), chunk)
+        _png = _docviewer.render_pdf_page(PROJECT_ROOT / (src.get("source_path") or ""),
+                                          int(_m.group(1)), highlight_text=chunk)
         if _png:
             st.image(_png, use_container_width=True)
             st.caption(f"Seite {int(_m.group(1))} – die gefundene Stelle ist gelb markiert.")
@@ -360,7 +347,7 @@ def _view_document(src: dict) -> None:
                 "Hier die gefundene Textstelle:")
         st.write(chunk or "—")
         return
-    start, end = _locate(full, chunk)
+    start, end = _docviewer.locate(full, chunk)
     if start < 0:
         body = html.escape(full)
     else:

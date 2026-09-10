@@ -164,6 +164,7 @@ def ingest_file(
     force: bool = False,
     rebuild_bm25: bool = True,
     progress: ProgressFn = None,
+    use_rag: Optional[bool] = None,
 ) -> dict:
     path = Path(path)
     # Fortschritts-Contract: p(message, done=None, total=None) - done/total
@@ -181,6 +182,15 @@ def ingest_file(
     doc_id = dedup.doc_id_for(rel)
     subject = subject or _subject_for(path)
 
+    # RAG-Auswahl (Dokumentenverwaltung): use_rag=None -> ein schon vorhandener Wert
+    # bleibt unangetastet (Watcher/Ordner-Re-Scan darf ein bewusst nur archiviertes
+    # Dokument NIE stillschweigend wieder ins RAG holen); erst ein NEUES Dokument
+    # bekommt den Standard "an". Explizit True/False (Upload-Haken, RAG-Umschalter
+    # in der Dokumentenliste) hat immer Vorrang.
+    existing_doc = manifest.get_document(doc_id)
+    if use_rag is None:
+        use_rag = bool(existing_doc["use_rag"]) if existing_doc is not None else True
+
     p(f"Lade {path.name} …")
     loaded = load_document(path, progress=p)   # p meldet OCR-Seiten (done/total)
     # F2: unvollstaendig gelesene OCR-Seiten (fuer Ingestion-Warnung sichtbar machen)
@@ -193,7 +203,7 @@ def ingest_file(
                 doc_id=doc_id, content_hash=dedup.content_hash(loaded.text),
                 source_path=rel, filename=path.name, subject=subject,
                 filetype=loaded.filetype, num_chunks=0, num_questions=0,
-                char_count=0, status="ocr_needed")
+                char_count=0, status="ocr_needed", use_rag=use_rag)
             _log({"event": "ingest", "file": rel, "status": "ocr_needed", "reason": "empty_pdf"})
             return {"status": "ocr_needed", "file": path.name,
                     "reason": "kein Text extrahierbar (Scan/Bild – OCR nötig)"}
@@ -207,7 +217,6 @@ def ingest_file(
 
     # ---- Dedup auf Dokumentebene -------------------------------------- #
     existing_same_content = manifest.find_document_by_content(chash)
-    existing_doc = manifest.get_document(doc_id)
 
     if existing_same_content and existing_same_content["doc_id"] != doc_id and not force:
         _log({"event": "ingest", "file": rel, "status": "duplicate",
@@ -237,7 +246,7 @@ def ingest_file(
         manifest.upsert_document(
             doc_id=doc_id, content_hash=chash, source_path=rel, filename=path.name,
             subject=subject, filetype=loaded.filetype, num_chunks=0, num_questions=0,
-            char_count=len(loaded.text), status="unreadable")
+            char_count=len(loaded.text), status="unreadable", use_rag=use_rag)
         if is_update:
             # content_hash steht -> jetzt erst die alten Chunks entfernen.
             get_vectorstore().delete_by_doc(doc_id)
@@ -248,6 +257,27 @@ def ingest_file(
               "reason": _q_reason})
         return {"status": "unreadable", "file": path.name,
                 "reason": "Text unlesbar – Handschrift/Scan; nichts gespeichert"}
+
+    # ---- RAG-Auswahl: nur verwalten/archivieren, NICHT chunken/einbetten ---- #
+    # Das Dokument ist geladen (inkl. OCR) und registriert, taucht in der
+    # Dokumentenliste auf - aber ohne Chunks/Embeddings ist es weder im Chat
+    # zitierbar noch durchsuchbar. Spart zugleich die teure Embedding-Zeit fuer
+    # Dokumente, die man nur "haben", aber nicht ins RAG aufnehmen will.
+    if not use_rag:
+        manifest.upsert_document(
+            doc_id=doc_id, content_hash=chash, source_path=rel, filename=path.name,
+            subject=subject, filetype=loaded.filetype, num_chunks=0, num_questions=0,
+            char_count=len(loaded.text), status="ok" if _q_ok else "ocr_needed",
+            ocr_partial_pages=_ocr_partial, use_rag=False)
+        if is_update:
+            # War vorher im RAG (hatte Chunks) -> die jetzt entfernen.
+            get_vectorstore().delete_by_doc(doc_id)
+            manifest.clear_chunk_hashes(doc_id)
+            if rebuild_bm25:
+                rebuild_bm25_from_store()
+        _log({"event": "ingest", "file": rel, "status": "archived_only"})
+        return {"status": "archived", "file": path.name, "subject": subject,
+                "chunks": 0, "questions": 0, "quality_ok": _q_ok, "quality_reason": _q_reason}
 
     # ---- Chunking ----------------------------------------------------- #
     base_meta = {
@@ -305,7 +335,7 @@ def ingest_file(
             manifest.upsert_document(
                 doc_id=doc_id, content_hash=chash, source_path=rel, filename=path.name,
                 subject=subject, filetype=loaded.filetype, num_chunks=0, num_questions=0,
-                char_count=len(loaded.text), status="unreadable")
+                char_count=len(loaded.text), status="unreadable", use_rag=use_rag)
             if is_update:
                 # content_hash steht -> alte Chunks erst danach entfernen.
                 get_vectorstore().delete_by_doc(doc_id)
@@ -323,7 +353,7 @@ def ingest_file(
         manifest.upsert_document(
             doc_id=doc_id, content_hash=chash, source_path=rel, filename=path.name,
             subject=subject, filetype=loaded.filetype, num_chunks=0, num_questions=0,
-            char_count=len(loaded.text), status="all_duplicate",
+            char_count=len(loaded.text), status="all_duplicate", use_rag=use_rag,
         )
         if is_update:
             # content_hash steht -> alte Chunks erst danach entfernen, sonst
@@ -428,7 +458,7 @@ def ingest_file(
         subject=subject, filetype=loaded.filetype, num_chunks=len(kept_chunks),
         num_questions=n_questions, char_count=len(loaded.text),
         status="ok" if _q_ok else "ocr_needed",
-        ocr_partial_pages=_ocr_partial,
+        ocr_partial_pages=_ocr_partial, use_rag=True,
     )
 
     # Jetzt erst die verwaisten ALTEN Chunks entfernen (die die neue Version nicht
@@ -456,6 +486,36 @@ def ingest_file(
             "chunks": len(kept_chunks), "questions": n_questions,
             "quality_ok": _q_ok, "quality_reason": _q_reason,
             "dropped_chunks": dropped_gibberish}   # NEU
+
+
+def set_document_use_rag(doc_id: str, use_rag: bool) -> dict:
+    """Schaltet ein bereits registriertes Dokument nachtraeglich ins RAG ein/aus,
+    OHNE es aus der Verwaltung (Dokumentenliste) zu entfernen.
+
+    EIN  -> echter Ingestion-Lauf (force=True): laedt die Quelldatei neu, chunkt
+            und bettet sie ein.
+    AUS  -> vorhandene Chunks/Embeddings werden aus Chroma + BM25 entfernt, das
+            Dokument bleibt registriert (nur noch archiviert)."""
+    doc = manifest.get_document(doc_id)
+    if not doc:
+        return {"status": "not_found"}
+    if use_rag:
+        path = PROJECT_ROOT / doc["source_path"]
+        if not path.is_file():
+            return {"status": "missing_file", "file": doc["filename"], "path": str(path)}
+        return ingest_file(path, subject=doc["subject"], force=True, use_rag=True)
+
+    get_vectorstore().delete_by_doc(doc_id)
+    manifest.clear_chunk_hashes(doc_id)
+    rebuild_bm25_from_store()
+    manifest.upsert_document(
+        doc_id=doc_id, content_hash=doc["content_hash"], source_path=doc["source_path"],
+        filename=doc["filename"], subject=doc["subject"], filetype=doc["filetype"],
+        num_chunks=0, num_questions=0, char_count=doc["char_count"], status=doc["status"],
+        ocr_partial_pages=doc["ocr_partial_pages"], use_rag=False,
+    )
+    _log({"event": "rag_toggle", "file": doc["source_path"], "status": "removed_from_rag"})
+    return {"status": "removed_from_rag", "file": doc["filename"]}
 
 
 def ingest_directory(

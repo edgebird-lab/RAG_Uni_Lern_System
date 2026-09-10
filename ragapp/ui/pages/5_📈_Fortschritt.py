@@ -228,19 +228,78 @@ st.subheader("🩹 Dauerpatzer")
 leeches = analytics.leeches(subject, limit=40)
 if leeches:
     st.caption(f"{len(leeches)} Karten mit ≥ {settings.LEECH_LAPSES_THRESHOLD} Patzern – "
-               "hier lohnt Umformulieren/Aufteilen statt stumpfem Wiederholen.")
-    dfl = pd.DataFrame([{"Frage": (c.get("front") or "")[:80], "Fach": _fach(c.get("subject") or ""),
-                         "Patzer": c.get("lapses"), "Ease": round(c.get("ease") or 0, 2)}
-                        for c in leeches])
-    st.dataframe(dfl, use_container_width=True, hide_index=True)
-    if st.button(f'➡️ Diese {len(leeches)} Karten als Stapel „Schwachstellen" sammeln'):
+               "hier lohnt Umformulieren/Aufteilen statt stumpfem Wiederholen. Frage/Antwort "
+               "direkt hier bearbeiten – meist steckt der Dauerpatzer in einer zu unscharf "
+               "gestellten Frage oder einer zu grossen Antwort.")
+    _leech_orig = {c["card_id"]: c for c in leeches}
+    _dfl = pd.DataFrame([{
+        "Frage": c.get("front") or "",
+        "Antwort": c.get("answer") or c.get("back") or "",
+        "Fach": _fach(c.get("subject") or ""),
+        "Patzer": c.get("lapses"),
+        "Ease": round(c.get("ease") or 0, 2),
+        "_id": c["card_id"],
+    } for c in leeches])
+    _edited_l = st.data_editor(
+        _dfl, hide_index=True, use_container_width=True, key="leech_editor",
+        column_config={
+            "Frage": st.column_config.TextColumn(width="large"),
+            "Antwort": st.column_config.TextColumn(width="large"),
+            "Fach": st.column_config.TextColumn(disabled=True),
+            "Patzer": st.column_config.NumberColumn(disabled=True),
+            "Ease": st.column_config.NumberColumn(disabled=True),
+            "_id": None,
+        },
+    )
+    # Dokumente hinter den Dauerpatzern (fuer den Fokus-Lernplan) - nur solche, die
+    # tatsaechlich im RAG sind (sonst kann daraus keine Gliederung entstehen).
+    _leech_doc_ids: list[str] = []
+    for _did in sorted({c.get("doc_id") for c in leeches if c.get("doc_id")}):
+        _doc = manifest.get_document(_did)
+        if _doc is not None and _doc["use_rag"]:
+            _leech_doc_ids.append(_did)
+
+    lb1, lb2, lb3 = st.columns(3)
+    if lb1.button("💾 Frage/Antwort speichern", use_container_width=True):
+        _n_edit = 0
+        for _, row in _edited_l.iterrows():
+            o = _leech_orig.get(row["_id"])
+            if o is None:
+                continue
+            nf, na = (row["Frage"] or "").strip(), (row["Antwort"] or "").strip()
+            of = (o.get("front") or "").strip()
+            oa = (o.get("answer") or o.get("back") or "").strip()
+            if nf != of or na != oa:
+                manifest.update_card(row["_id"], front=nf if nf != of else None,
+                                     answer=na if na != oa else None)
+                _n_edit += 1
+        st.success(f"{_n_edit} Karte(n) aktualisiert." if _n_edit else "Keine Änderungen.")
+        if _n_edit:
+            st.rerun()
+    if lb2.button(f'➡️ Diese {len(leeches)} Karten als Stapel „Schwachstellen" sammeln',
+                 use_container_width=True):
         n = manifest.assign_deck("Schwachstellen",
                                  card_ids=[c["card_id"] for c in leeches])
         st.success(f'{n} Karten dem Stapel „Schwachstellen" zugeordnet – jetzt gezielt '
                    "auf 🎓 Lernen üben.")
         st.rerun()
+    if lb3.button(f"📋 Fokus-Lernplan ({len(_leech_doc_ids)} Dok.)", use_container_width=True,
+                 disabled=not _leech_doc_ids,
+                 help="Legt einen neuen Lernplan-Entwurf an, der sich auf die "
+                      "Dokumente hinter diesen Dauerpatzern konzentriert."):
+        _leech_subject = subject or (leeches[0].get("subject") if leeches else None)
+        _leech_title = ("Fokus: Dauerpatzer " + _fach(_leech_subject)) if _leech_subject \
+            else "Fokus: Dauerpatzer"
+        st.session_state["splan_prefill"] = {
+            "subject": _leech_subject, "doc_ids": _leech_doc_ids, "title": _leech_title,
+        }
+        st.switch_page("pages/11_📋_Lernplan.py")
 else:
-    st.caption("Keine Dauerpatzer – gut! 🎉")
+    _max_lapses = analytics.max_lapses(subject)
+    st.caption(
+        f"Keine Dauerpatzer – gut! 🎉 (höchste Patzer-Zahl aktuell: {_max_lapses}, "
+        f"Schwelle: {settings.LEECH_LAPSES_THRESHOLD}. Eine Karte erscheint hier erst, "
+        "wenn sie mindestens so oft als „nicht gewusst“ bewertet wurde.)")
 
 st.divider()
 
@@ -289,3 +348,40 @@ if _up is not None:
     st.success(f'{_sr["imported"]} neue Wiederholungen übernommen, {_sr["skipped"]} bereits '
                f'vorhanden · Zustand von {_sr["updated"]} Karten neu berechnet.')
     st.rerun()
+
+st.divider()
+
+# --------------------------------------------------------------------------- #
+# Anki-Export (Karten unterwegs lernen - ganz ohne PC/Server/Modell)
+# --------------------------------------------------------------------------- #
+st.subheader("📤 Anki-Export")
+st.caption(
+    "Exportiert Frage + Antwort deiner Karten als Anki-Deck (.apkg) – lernbar mit "
+    "AnkiDroid/AnkiMobile **komplett ohne diesen Server, ohne PC, ohne Modell**. "
+    "Dein Lernfortschritt (Fälligkeit, Klausurplanung) bleibt weiterhin hier die "
+    "Quelle der Wahrheit; Anki startet die exportierten Karten als „neu“ und plant "
+    "sie mit seinem eigenen Wiederholungs-Algorithmus."
+)
+ac1, ac2 = st.columns(2)
+with ac1:
+    _anki_subject = st.selectbox(
+        "Fach", ["Alle Fächer"] + subjects, key="anki_subject",
+        format_func=lambda s: s if s == "Alle Fächer" else _fach(s))
+with ac2:
+    st.write("")
+    st.write("")
+    if st.button("📤 .apkg erzeugen", use_container_width=True):
+        try:
+            from ragapp.export_anki import build_apkg
+            _sub_arg = None if _anki_subject == "Alle Fächer" else _anki_subject
+            _apkg_bytes, _apkg_n = build_apkg(subject=_sub_arg)
+            st.session_state["_anki_apkg"] = _apkg_bytes
+            st.session_state["_anki_apkg_n"] = _apkg_n
+        except ModuleNotFoundError:
+            st.error("Dazu fehlt das Paket `genanki` – bitte `pip install -r requirements.txt` "
+                      "erneut ausführen.")
+if st.session_state.get("_anki_apkg"):
+    st.download_button(
+        f'⬇️ {st.session_state["_anki_apkg_n"]} Karten herunterladen (.apkg)',
+        data=st.session_state["_anki_apkg"], file_name="rag-lernsystem.apkg",
+        mime="application/octet-stream", use_container_width=True)

@@ -126,6 +126,7 @@ class LLM:
             "messages": messages,
             "options": options,
             "think": think,
+            "keep_alive": settings.keep_alive_seconds(),
         }
         if json_mode:
             kwargs["format"] = "json"
@@ -232,6 +233,7 @@ class LLM:
             "options": options,
             "think": think,
             "stream": True,
+            "keep_alive": settings.keep_alive_seconds(),
         }
 
         def _iter_once(kw: dict) -> Iterator[str]:
@@ -408,3 +410,31 @@ def vram_preflight(model: "str | None" = None) -> dict:
                 "model": model}
     except Exception:  # noqa: BLE001
         return {"status": "unknown", "model": model}
+
+
+# --------------------------------------------------------------------------- #
+# Manuelle Modell-Steuerung (Sidebar-Button): selbst entscheiden, wann das
+# Antwort-LLM laedt, statt nur passiv auf den ersten Kaltstart zu warten.
+# --------------------------------------------------------------------------- #
+def model_status(model: str | None = None) -> dict:
+    """Ist das Antwort-LLM aktuell in Ollama geladen (im RAM/VRAM resident)?
+    Rein lesend, best-effort - bei nicht erreichbarem Ollama {"resident": False,
+    "reachable": False}."""
+    model = model or settings.LLM_MODEL
+    data = _ollama_get_json("/api/ps")
+    if data is None:
+        return {"model": model, "resident": False, "reachable": False}
+    return {"model": model, "resident": _model_resident(model), "reachable": True}
+
+
+def warm_llm(model: str | None = None) -> None:
+    """Laedt das Antwort-LLM JETZT (statt erst bei der naechsten Frage). Nutzt
+    Ollamas Leer-Prompt: das Modell wird ins RAM/VRAM geladen, ohne einen Token zu
+    generieren. Wirft bei Fehlern (Ollama aus, Modell fehlt) eine verstaendliche
+    deutsche Meldung (siehe diagnose_error)."""
+    model = model or settings.LLM_MODEL
+    client = ollama.Client(host=settings.OLLAMA_BASE_URL, timeout=settings.LLM_TIMEOUT)
+    try:
+        client.generate(model=model, prompt="", keep_alive=settings.keep_alive_seconds())
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(diagnose_error(exc)) from exc

@@ -19,12 +19,13 @@ Die Tabelle ``documents`` dient zusätzlich als Anzeige-Registry für die UI
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Any, Iterator, Optional
 
 from ragapp.config import MANIFEST_DB, DATA_DIR
 from ragapp.logging_setup import get_logger
@@ -66,6 +67,8 @@ CREATE TABLE IF NOT EXISTS documents (
     char_count     INTEGER DEFAULT 0,
     status         TEXT DEFAULT 'ok',
     ocr_partial_pages INTEGER DEFAULT 0,   -- F2: unvollstaendig gelesene OCR-Seiten
+    use_rag        INTEGER DEFAULT 1,      -- 0 = nur archiviert (kein Chunking/Embedding, nicht im Chat zitierbar)
+    tags           TEXT,                   -- frei vergebene Kategorien, kommagetrennt
     ingested_at    REAL,
     updated_at     REAL
 );
@@ -140,6 +143,106 @@ CREATE TABLE IF NOT EXISTS exams (
     created_at  REAL,
     updated_at  REAL
 );
+
+-- Verwaltungsbereich (Organisation): Aufgaben/Hausaufgaben + Stundenplan. Rein
+-- organisatorisch, unabhaengig von RAG/Lern-Layer - kein LLM, kein Embedding.
+CREATE TABLE IF NOT EXISTS tasks (
+    task_id     TEXT PRIMARY KEY,
+    subject     TEXT,
+    title       TEXT NOT NULL,
+    notiz       TEXT,
+    due_date    TEXT,               -- ISO 'YYYY-MM-DD' (optional, ohne Termin = NULL)
+    done        INTEGER DEFAULT 0,
+    created_at  REAL,
+    updated_at  REAL
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due_date);
+CREATE INDEX IF NOT EXISTS idx_tasks_subject ON tasks(subject);
+
+CREATE TABLE IF NOT EXISTS timetable (
+    slot_id     TEXT PRIMARY KEY,
+    subject     TEXT NOT NULL,
+    weekday     INTEGER NOT NULL,   -- 0=Montag .. 6=Sonntag (wie date.weekday())
+    start_time  TEXT NOT NULL,      -- 'HH:MM'
+    end_time    TEXT NOT NULL,      -- 'HH:MM'
+    room        TEXT,
+    notiz       TEXT,
+    created_at  REAL,
+    updated_at  REAL
+);
+CREATE INDEX IF NOT EXISTS idx_timetable_weekday ON timetable(weekday);
+
+-- Frei waehlbare Fach-Farben (Stundenplan-Kacheln). Fehlt ein Eintrag, weist die
+-- Oberflaeche automatisch eine Palettenfarbe zu (deterministisch, ohne DB-Eintrag).
+CREATE TABLE IF NOT EXISTS subject_colors (
+    subject     TEXT PRIMARY KEY,
+    color       TEXT NOT NULL    -- Hex, z. B. '#4A45C4'
+);
+
+-- Lernzeit-Tracker (Pomodoro + freier Timer): EIN Eintrag pro abgeschlossenem
+-- Lernblock (Arbeitsphase). Wird erst beim Beenden des Blocks geschrieben, nicht
+-- waehrend er laeuft - ein Browser-Reload waehrenddessen verliert daher hoechstens
+-- den aktuell laufenden Block, nie fertige.
+CREATE TABLE IF NOT EXISTS study_sessions (
+    session_id    TEXT PRIMARY KEY,
+    subject       TEXT,
+    mode          TEXT,             -- 'pomodoro' | 'frei'
+    started_at    REAL NOT NULL,
+    ended_at      REAL NOT NULL,
+    duration_sec  INTEGER NOT NULL,
+    notiz         TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_study_sessions_subject ON study_sessions(subject);
+CREATE INDEX IF NOT EXISTS idx_study_sessions_started ON study_sessions(started_at);
+
+-- Lernplan: KI-Gliederung eines/mehrerer Dokumente -> realistischer, auf Tage
+-- verteilter Zeitplan (siehe ragapp/study_plan.py, docs/LERNPLAN_FORSCHUNG.md).
+CREATE TABLE IF NOT EXISTS study_plans (
+    plan_id       TEXT PRIMARY KEY,
+    title         TEXT NOT NULL,
+    subject       TEXT,
+    doc_ids       TEXT,             -- JSON-Liste gewaehlter Dokument-IDs
+    deadline      TEXT,             -- ISO-Datum oder NULL ("so schnell wie moeglich")
+    daily_minutes INTEGER NOT NULL, -- vom Nutzer angegebenes Zeitbudget/Tag
+    status        TEXT DEFAULT 'draft',  -- draft (Gliederung wird bearbeitet) | active | done
+    created_at    REAL,
+    updated_at    REAL
+);
+
+CREATE TABLE IF NOT EXISTS study_plan_sections (
+    section_id    TEXT PRIMARY KEY,
+    plan_id       TEXT NOT NULL,
+    order_index   INTEGER NOT NULL,
+    title         TEXT NOT NULL,
+    summary       TEXT,
+    est_chars     INTEGER DEFAULT 0,
+    est_minutes   INTEGER DEFAULT 0,
+    done          INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_plan_sections_plan ON study_plan_sections(plan_id);
+
+CREATE TABLE IF NOT EXISTS study_plan_blocks (
+    block_id      TEXT PRIMARY KEY,
+    plan_id       TEXT NOT NULL,
+    section_id    TEXT,
+    planned_date  TEXT NOT NULL,    -- ISO-Datum
+    planned_min   INTEGER NOT NULL,
+    done          INTEGER DEFAULT 0,
+    done_via      TEXT              -- 'pomodoro' (echte Zeit erfasst) | 'manual' | NULL
+);
+CREATE INDEX IF NOT EXISTS idx_plan_blocks_plan ON study_plan_blocks(plan_id);
+CREATE INDEX IF NOT EXISTS idx_plan_blocks_date ON study_plan_blocks(planned_date);
+
+-- Echte gemessene Gliederungs-Dauern (pro Modell) - kalibriert die grobe ETA-
+-- Formel in der Oberflaeche mit der Zeit selbstlernend nach (siehe study_plan.py).
+CREATE TABLE IF NOT EXISTS plan_eta_samples (
+    sample_id   TEXT PRIMARY KEY,
+    model       TEXT,
+    chars       INTEGER,
+    seconds     REAL,
+    created_at  REAL
+);
+CREATE INDEX IF NOT EXISTS idx_eta_samples_model ON plan_eta_samples(model);
 """
 
 
@@ -188,13 +291,26 @@ def init_db() -> None:
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_reviewlog_uid ON review_log(event_uid)")
         except Exception:  # noqa: BLE001
             _log.warning("Additive Migration review_log uebersprungen", exc_info=True)
-        # Additive Migration fuer documents: Zaehler unvollstaendig gelesener OCR-Seiten (F2).
+        # Additive Migration fuer documents: OCR-Zaehler (F2) + RAG-Auswahl (Dokument
+        # verwalten/archivieren, ohne es zu chunken/einzubetten).
         try:
             dcols = {r["name"] for r in conn.execute("PRAGMA table_info(documents)")}
             if "ocr_partial_pages" not in dcols:
                 conn.execute("ALTER TABLE documents ADD COLUMN ocr_partial_pages INTEGER DEFAULT 0")
+            if "use_rag" not in dcols:
+                conn.execute("ALTER TABLE documents ADD COLUMN use_rag INTEGER DEFAULT 1")
+            if "tags" not in dcols:
+                conn.execute("ALTER TABLE documents ADD COLUMN tags TEXT")
         except Exception:  # noqa: BLE001
             _log.warning("Additive Migration documents uebersprungen", exc_info=True)
+        # Additive Migration fuer study_plan_blocks: ehrlich unterscheiden, ob ein
+        # Block ueber eine echte Pomodoro-Zeitmessung oder manuell abgehakt wurde.
+        try:
+            bcols = {r["name"] for r in conn.execute("PRAGMA table_info(study_plan_blocks)")}
+            if "done_via" not in bcols:
+                conn.execute("ALTER TABLE study_plan_blocks ADD COLUMN done_via TEXT")
+        except Exception:  # noqa: BLE001
+            _log.warning("Additive Migration study_plan_blocks uebersprungen", exc_info=True)
 
 
 def _ensure_initialized() -> None:
@@ -259,20 +375,29 @@ def upsert_document(
     char_count: int,
     status: str = "ok",
     ocr_partial_pages: int = 0,
+    use_rag: Optional[bool] = None,
 ) -> None:
+    """``use_rag=None`` laesst einen bereits vorhandenen Wert unveraendert (Default
+    fuer neue Dokumente: an) - so ueberschreibt ein routinemaessiger Re-Scan (Watcher,
+    Ordner-Import) NIE die bewusste Entscheidung 'nur archivieren' eines Nutzers,
+    solange der Aufrufer sie nicht ausdruecklich (True/False) setzen will."""
     now = time.time()
     with _connect() as conn:
         exists = conn.execute(
-            "SELECT ingested_at FROM documents WHERE doc_id = ?", (doc_id,)
+            "SELECT ingested_at, use_rag FROM documents WHERE doc_id = ?", (doc_id,)
         ).fetchone()
         ingested_at = exists["ingested_at"] if exists else now
+        if use_rag is None:
+            use_rag_val = int(exists["use_rag"]) if exists and exists["use_rag"] is not None else 1
+        else:
+            use_rag_val = 1 if use_rag else 0
         conn.execute(
             """
             INSERT INTO documents
                 (doc_id, content_hash, source_path, filename, subject, filetype,
                  num_chunks, num_questions, char_count, status, ocr_partial_pages,
-                 ingested_at, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 use_rag, ingested_at, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(doc_id) DO UPDATE SET
                 content_hash=excluded.content_hash,
                 source_path=excluded.source_path,
@@ -284,11 +409,12 @@ def upsert_document(
                 char_count=excluded.char_count,
                 status=excluded.status,
                 ocr_partial_pages=excluded.ocr_partial_pages,
+                use_rag=excluded.use_rag,
                 updated_at=excluded.updated_at
             """,
             (doc_id, content_hash, source_path, filename, subject, filetype,
              num_chunks, num_questions, char_count, status, int(ocr_partial_pages or 0),
-             ingested_at, now),
+             use_rag_val, ingested_at, now),
         )
 
 
@@ -297,6 +423,28 @@ def delete_document(doc_id: str) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
         conn.execute("DELETE FROM chunk_hashes WHERE doc_id = ?", (doc_id,))
+
+
+def set_document_tags(doc_id: str, tags: "str | None") -> None:
+    """Setzt die frei vergebenen Kategorien (kommagetrennt) eines Dokuments."""
+    dedup = list(dict.fromkeys(t.strip() for t in (tags or "").split(",") if t.strip()))
+    norm = ", ".join(dedup) or None
+    with _connect() as conn:
+        conn.execute("UPDATE documents SET tags=?, updated_at=? WHERE doc_id=?",
+                     (norm, time.time(), doc_id))
+
+
+def all_document_tags() -> list[str]:
+    """Alle im Bestand vorkommenden Kategorien (sortiert, ohne Duplikate) - fuer
+    Filter/Vorschlaege in der Oberflaeche."""
+    seen: set[str] = set()
+    with _connect() as conn:
+        for r in conn.execute("SELECT DISTINCT tags FROM documents WHERE tags IS NOT NULL"):
+            for t in (r["tags"] or "").split(","):
+                t = t.strip()
+                if t:
+                    seen.add(t)
+    return sorted(seen)
 
 
 def set_num_questions(doc_id: str, n: int) -> None:
@@ -829,6 +977,377 @@ def list_exams() -> list[dict]:
         rows = conn.execute(
             "SELECT * FROM exams ORDER BY (exam_date IS NULL), exam_date, subject").fetchall()
         return [dict(r) for r in rows]
+
+
+# --------------------------------------------------------------------------- #
+# Verwaltungsbereich: Aufgaben/Hausaufgaben
+# --------------------------------------------------------------------------- #
+def upsert_task(*, task_id: Optional[str] = None, subject: Optional[str] = None,
+                title: str, notiz: Optional[str] = None,
+                due_date: Optional[str] = None, done: bool = False) -> str:
+    """Legt eine Aufgabe an (``task_id=None``) oder aktualisiert sie. Gibt die
+    (ggf. neu erzeugte) ``task_id`` zurueck."""
+    now = time.time()
+    tid = task_id or uuid.uuid4().hex[:16]
+    due_date = (due_date or "").strip() or None
+    with _connect() as conn:
+        exists = conn.execute("SELECT created_at FROM tasks WHERE task_id=?", (tid,)).fetchone()
+        created = exists["created_at"] if exists else now
+        conn.execute(
+            "INSERT INTO tasks (task_id, subject, title, notiz, due_date, done, "
+            "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(task_id) DO UPDATE SET subject=excluded.subject, "
+            "title=excluded.title, notiz=excluded.notiz, due_date=excluded.due_date, "
+            "done=excluded.done, updated_at=excluded.updated_at",
+            (tid, subject, (title or "").strip(), notiz, due_date,
+             1 if done else 0, created, now),
+        )
+    return tid
+
+
+def list_tasks(subject: Optional[str] = None, include_done: bool = True) -> list[dict]:
+    sql = "SELECT * FROM tasks WHERE 1=1"
+    args: list = []
+    if subject:
+        sql += " AND subject=?"
+        args.append(subject)
+    if not include_done:
+        sql += " AND done=0"
+    sql += " ORDER BY (due_date IS NULL), due_date, title"
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+
+def set_task_done(task_id: str, done: bool) -> None:
+    with _connect() as conn:
+        conn.execute("UPDATE tasks SET done=?, updated_at=? WHERE task_id=?",
+                     (1 if done else 0, time.time(), task_id))
+
+
+def delete_task(task_id: str) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM tasks WHERE task_id=?", (task_id,))
+
+
+# --------------------------------------------------------------------------- #
+# Verwaltungsbereich: Stundenplan
+# --------------------------------------------------------------------------- #
+def upsert_timetable_slot(*, slot_id: Optional[str] = None, subject: str,
+                          weekday: int, start_time: str, end_time: str,
+                          room: Optional[str] = None, notiz: Optional[str] = None) -> str:
+    now = time.time()
+    sid = slot_id or uuid.uuid4().hex[:16]
+    with _connect() as conn:
+        exists = conn.execute(
+            "SELECT created_at FROM timetable WHERE slot_id=?", (sid,)).fetchone()
+        created = exists["created_at"] if exists else now
+        conn.execute(
+            "INSERT INTO timetable (slot_id, subject, weekday, start_time, end_time, "
+            "room, notiz, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(slot_id) DO UPDATE SET subject=excluded.subject, "
+            "weekday=excluded.weekday, start_time=excluded.start_time, "
+            "end_time=excluded.end_time, room=excluded.room, notiz=excluded.notiz, "
+            "updated_at=excluded.updated_at",
+            (sid, subject, int(weekday), start_time, end_time, room, notiz, created, now),
+        )
+    return sid
+
+
+def list_timetable(subject: Optional[str] = None) -> list[dict]:
+    sql = "SELECT * FROM timetable WHERE 1=1"
+    args: list = []
+    if subject:
+        sql += " AND subject=?"
+        args.append(subject)
+    sql += " ORDER BY weekday, start_time"
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+
+def delete_timetable_slot(slot_id: str) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM timetable WHERE slot_id=?", (slot_id,))
+
+
+# --------------------------------------------------------------------------- #
+# Verwaltungsbereich: Fach-Farben (Stundenplan-Kacheln)
+# --------------------------------------------------------------------------- #
+def set_subject_color(subject: str, color: str) -> None:
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO subject_colors (subject, color) VALUES (?,?) "
+            "ON CONFLICT(subject) DO UPDATE SET color=excluded.color",
+            (subject, color),
+        )
+
+
+def subject_colors_map() -> dict:
+    with _connect() as conn:
+        return {r["subject"]: r["color"]
+               for r in conn.execute("SELECT subject, color FROM subject_colors")}
+
+
+# --------------------------------------------------------------------------- #
+# Lernzeit-Tracker (Pomodoro + freier Timer)
+# --------------------------------------------------------------------------- #
+def log_study_session(*, subject: Optional[str], mode: str, started_at: float,
+                      ended_at: float, duration_sec: int,
+                      notiz: Optional[str] = None) -> str:
+    """Speichert einen ABGESCHLOSSENEN Lernblock. Wird erst beim Beenden
+    aufgerufen (siehe Modul-Docstring der Tabelle) - ein laufender Block steht nur
+    in st.session_state, nicht in der DB."""
+    sid = uuid.uuid4().hex[:16]
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO study_sessions (session_id, subject, mode, started_at, "
+            "ended_at, duration_sec, notiz) VALUES (?,?,?,?,?,?,?)",
+            (sid, subject, mode, started_at, ended_at, int(duration_sec), notiz),
+        )
+    return sid
+
+
+def list_study_sessions(subject: Optional[str] = None,
+                        since: Optional[float] = None) -> list[dict]:
+    sql = "SELECT * FROM study_sessions WHERE 1=1"
+    args: list = []
+    if subject:
+        sql += " AND subject=?"
+        args.append(subject)
+    if since is not None:
+        sql += " AND started_at>=?"
+        args.append(since)
+    sql += " ORDER BY started_at DESC"
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+
+def delete_study_session(session_id: str) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM study_sessions WHERE session_id=?", (session_id,))
+
+
+def study_time_by_subject(since: Optional[float] = None) -> dict:
+    """Fach -> Summe Lernzeit (Sekunden) seit ``since`` (None = gesamter Verlauf)."""
+    sql = "SELECT subject, SUM(duration_sec) AS s FROM study_sessions WHERE 1=1"
+    args: list = []
+    if since is not None:
+        sql += " AND started_at>=?"
+        args.append(since)
+    sql += " GROUP BY subject"
+    with _connect() as conn:
+        return {(r["subject"] or "Ohne Fach"): (r["s"] or 0)
+               for r in conn.execute(sql, args)}
+
+
+def study_time_total(since: Optional[float] = None) -> int:
+    return sum(study_time_by_subject(since).values())
+
+
+# --------------------------------------------------------------------------- #
+# Lernplan (KI-Gliederung -> realistischer, tagesverteilter Zeitplan)
+# --------------------------------------------------------------------------- #
+def create_study_plan(*, title: str, subject: Optional[str], doc_ids: list[str],
+                      deadline: Optional[str], daily_minutes: int) -> str:
+    now = time.time()
+    pid = uuid.uuid4().hex[:16]
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO study_plans (plan_id, title, subject, doc_ids, deadline, "
+            "daily_minutes, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (pid, title.strip(), subject, json.dumps(doc_ids), (deadline or "").strip() or None,
+             int(daily_minutes), "draft", now, now),
+        )
+    return pid
+
+
+def get_study_plan(plan_id: str) -> Optional[dict]:
+    with _connect() as conn:
+        r = conn.execute("SELECT * FROM study_plans WHERE plan_id=?", (plan_id,)).fetchone()
+    if not r:
+        return None
+    d = dict(r)
+    try:
+        d["doc_ids"] = json.loads(d.get("doc_ids") or "[]")
+    except Exception:  # noqa: BLE001
+        d["doc_ids"] = []
+    return d
+
+
+def list_study_plans() -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute("SELECT * FROM study_plans ORDER BY created_at DESC").fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["doc_ids"] = json.loads(d.get("doc_ids") or "[]")
+        except Exception:  # noqa: BLE001
+            d["doc_ids"] = []
+        out.append(d)
+    return out
+
+
+def update_study_plan(plan_id: str, **fields: Any) -> None:
+    """Aktualisiert einzelne Felder (z. B. status, deadline, daily_minutes)."""
+    valid = {"title", "subject", "deadline", "daily_minutes", "status"}
+    sets = [f"{k}=?" for k in fields if k in valid]
+    if not sets:
+        return
+    args = [fields[k] for k in fields if k in valid] + [time.time(), plan_id]
+    with _connect() as conn:
+        conn.execute(f"UPDATE study_plans SET {','.join(sets)}, updated_at=? WHERE plan_id=?", args)
+
+
+def delete_study_plan(plan_id: str) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM study_plans WHERE plan_id=?", (plan_id,))
+        conn.execute("DELETE FROM study_plan_sections WHERE plan_id=?", (plan_id,))
+        conn.execute("DELETE FROM study_plan_blocks WHERE plan_id=?", (plan_id,))
+
+
+def replace_plan_sections(plan_id: str, sections: list[dict]) -> None:
+    """Ersetzt die komplette Gliederung eines Plans (KI-Erstellung oder Bearbeitung
+    speichern beides ueber diesen Weg - einfacher als Zeile-fuer-Zeile-Diffing).
+    ``sections``: Liste von {title, summary, est_chars, est_minutes, done?}."""
+    with _connect() as conn:
+        conn.execute("DELETE FROM study_plan_sections WHERE plan_id=?", (plan_id,))
+        for i, s in enumerate(sections):
+            conn.execute(
+                "INSERT INTO study_plan_sections (section_id, plan_id, order_index, "
+                "title, summary, est_chars, est_minutes, done) VALUES (?,?,?,?,?,?,?,?)",
+                (s.get("section_id") or uuid.uuid4().hex[:16], plan_id, i,
+                 (s.get("title") or "").strip(), s.get("summary"),
+                 int(s.get("est_chars") or 0), int(s.get("est_minutes") or 0),
+                 1 if s.get("done") else 0),
+            )
+        conn.execute("UPDATE study_plans SET updated_at=? WHERE plan_id=?", (time.time(), plan_id))
+
+
+def list_plan_sections(plan_id: str) -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM study_plan_sections WHERE plan_id=? ORDER BY order_index",
+            (plan_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+
+def set_section_done(section_id: str, done: bool) -> None:
+    with _connect() as conn:
+        conn.execute("UPDATE study_plan_sections SET done=? WHERE section_id=?",
+                     (1 if done else 0, section_id))
+
+
+def replace_plan_blocks(plan_id: str, blocks: list[dict]) -> None:
+    """Ersetzt den kompletten Tages-Zeitplan eines Plans (Neuberechnung).
+    ``blocks``: Liste von {section_id, planned_date, planned_min}."""
+    with _connect() as conn:
+        conn.execute("DELETE FROM study_plan_blocks WHERE plan_id=?", (plan_id,))
+        for b in blocks:
+            conn.execute(
+                "INSERT INTO study_plan_blocks (block_id, plan_id, section_id, "
+                "planned_date, planned_min, done) VALUES (?,?,?,?,?,0)",
+                (uuid.uuid4().hex[:16], plan_id, b.get("section_id"),
+                 b["planned_date"], int(b["planned_min"])),
+            )
+        conn.execute("UPDATE study_plans SET updated_at=? WHERE plan_id=?", (time.time(), plan_id))
+
+
+def list_plan_blocks(plan_id: Optional[str] = None, date: Optional[str] = None) -> list[dict]:
+    sql = "SELECT * FROM study_plan_blocks WHERE 1=1"
+    args: list = []
+    if plan_id:
+        sql += " AND plan_id=?"
+        args.append(plan_id)
+    if date:
+        sql += " AND planned_date=?"
+        args.append(date)
+    sql += " ORDER BY planned_date"
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+
+def set_block_done(block_id: str, done: bool, via: Optional[str] = None) -> None:
+    """``via``: 'pomodoro' (aus einer echten, abgeschlossenen Zeitmessung) oder
+    'manual' (Haekchen ohne Zeittracking - z. B. Programmieraufgaben, die sich
+    nicht sinnvoll per Pomodoro tracken lassen). None beim Zuruecksetzen."""
+    with _connect() as conn:
+        conn.execute("UPDATE study_plan_blocks SET done=?, done_via=? WHERE block_id=?",
+                     (1 if done else 0, via if done else None, block_id))
+
+
+def get_plan_block(block_id: str) -> Optional[dict]:
+    with _connect() as conn:
+        r = conn.execute("SELECT * FROM study_plan_blocks WHERE block_id=?", (block_id,)).fetchone()
+        return dict(r) if r else None
+
+
+def list_plan_blocks_detailed(plan_id: Optional[str] = None,
+                              date: Optional[str] = None) -> list[dict]:
+    """Wie ``list_plan_blocks``, aber mit Plan-Titel/-Fach und Abschnitts-Titel
+    angereichert (JOIN) - fuer Uebersichten ueber MEHRERE Plaene hinweg (z. B. das
+    Wochen-Dashboard "heute faellige Lernplan-Bloecke", planübergreifend)."""
+    sql = (
+        "SELECT b.*, p.title AS plan_title, p.subject AS plan_subject, "
+        "p.status AS plan_status, s.title AS section_title "
+        "FROM study_plan_blocks b "
+        "JOIN study_plans p ON p.plan_id = b.plan_id "
+        "LEFT JOIN study_plan_sections s ON s.section_id = b.section_id "
+        "WHERE 1=1"
+    )
+    args: list = []
+    if plan_id:
+        sql += " AND b.plan_id=?"
+        args.append(plan_id)
+    if date:
+        sql += " AND b.planned_date=?"
+        args.append(date)
+    sql += " ORDER BY b.planned_date"
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+
+def sync_plan_status(plan_id: str) -> str:
+    """Nach JEDER Block-Status-Aenderung aufrufen: setzt einen Plan automatisch auf
+    'done', sobald ALLE seine Bloecke erledigt sind, bzw. zurueck auf 'active',
+    wenn nicht mehr alle erledigt sind (z. B. nach Zuruecksetzen eines Hakens).
+    Ein Plan im Entwurf ('draft', noch keine Bloecke berechnet) oder ganz ohne
+    Bloecke bleibt unangetastet. Gibt den (ggf. neuen) Status zurueck."""
+    plan = get_study_plan(plan_id)
+    if not plan or plan["status"] == "draft":
+        return plan["status"] if plan else ""
+    blocks = list_plan_blocks(plan_id)
+    if not blocks:
+        return plan["status"]
+    new_status = "done" if all(b["done"] for b in blocks) else "active"
+    if new_status != plan["status"]:
+        update_study_plan(plan_id, status=new_status)
+    return new_status
+
+
+# --------------------------------------------------------------------------- #
+# Lernplan: selbstlernende Wartezeit-Schaetzung (echte Messwerte je Modell)
+# --------------------------------------------------------------------------- #
+def log_eta_sample(model: str, chars: int, seconds: float) -> None:
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO plan_eta_samples (sample_id, model, chars, seconds, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (uuid.uuid4().hex[:16], model, int(chars), float(seconds), time.time()))
+
+
+def eta_calibration(model: str, min_samples: int = 3, limit: int = 20) -> Optional[float]:
+    """Durchschnittliche Sekunden PRO 1000 Zeichen aus den letzten ``limit``
+    echten Messungen fuer ``model``. ``None``, wenn (noch) zu wenige Messwerte da
+    sind (dann greift in der UI die statische Formel aus config.py)."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT chars, seconds FROM plan_eta_samples WHERE model=? "
+            "ORDER BY created_at DESC LIMIT ?", (model, int(limit))).fetchall()
+    usable = [(r["chars"], r["seconds"]) for r in rows if r["chars"] and r["chars"] > 0]
+    if len(usable) < max(1, min_samples):
+        return None
+    rates = [sec / chars * 1000.0 for chars, sec in usable]
+    return sum(rates) / len(rates)
 
 
 def exam_map() -> dict:

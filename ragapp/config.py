@@ -114,6 +114,21 @@ class Settings:
     LLM_TIMEOUT: int = 600                 # Sekunden (CPU-Inferenz kann dauern)
 
     # ------------------------------------------------------------------ #
+    # Modell-Ladeverhalten (Ressourcen-Kontrolle fuer den Uni-Alltag)
+    # ------------------------------------------------------------------ #
+    # Embedding + Reranker beim Oeffnen der Startseite automatisch im Hintergrund
+    # vorladen (dann ist die erste echte Frage sofort schnell). AUS -> es laedt
+    # NICHTS, bevor man wirklich etwas fragt/einreicht - z. B. wenn man die Sitzung
+    # nur zum Karteikarten-Lernen (kein LLM noetig) oeffnet.
+    PREWARM_ON_START: bool = True
+    # Wie lange bleibt ein ueber Ollama geladenes Modell (Antwort-LLM, Embedding)
+    # nach der letzten Nutzung im Speicher (RAM/VRAM)? 0 = sofort nach jeder Antwort
+    # entladen (schont Speicher, kostet bei der naechsten Frage den Kaltstart wieder),
+    # -1 = fuer immer geladen lassen, sonst Minuten (Ollama-Standard: 5). Wirkt NICHT
+    # auf den lokal geladenen Reranker (eigener Prozessspeicher, kein Ollama-Modell).
+    OLLAMA_KEEP_ALIVE_MINUTES: float = 5.0
+
+    # ------------------------------------------------------------------ #
     # OCR (Scan-/Bild-PDFs, inkl. Handschrift)
     # ------------------------------------------------------------------ #
     # Engine fuer text-lose PDF-Seiten:
@@ -232,6 +247,27 @@ class Settings:
     LEECH_LAPSES_THRESHOLD: int = 4       # ab so vielen Patzern gilt eine Karte als "Dauerpatzer" (Leech)
     BACKUP_KEEP: int = 12                 # Anzahl aufbewahrter Lernstand-Snapshots
     BACKUP_MIN_HOURS: float = 24.0        # automatischer Start-Snapshot nur, wenn letzter aelter als dies
+
+    # ------------------------------------------------------------------ #
+    # Lernplan (KI-Gliederung -> realistischer Zeitplan)
+    # ------------------------------------------------------------------ #
+    # Alle Werte sind an Forschung zu Lesegeschwindigkeit, Vokabel-/Fakten-
+    # Lernrate und nachhaltiger taeglicher Fokuszeit angelehnt (Herleitung +
+    # Quellen: docs/LERNPLAN_FORSCHUNG.md) - bewusst NICHT frei erfunden, damit
+    # "3 Stunden Zeit" nie zu einem unrealistischen Plan fuehrt.
+    PLAN_CHARS_PER_PAGE: int = 3000        # grobe Umrechnung Zeichen -> Buchseite
+    PLAN_PAGES_PER_HOUR: float = 25.0      # verstehendes Lesen dichten/technischen Stoffs (Forschung: 20-30 S/h)
+    PLAN_CHARS_PER_CONCEPT: int = 1000     # ~1 lernbares Konzept/Fakt je ... Zeichen (grobe Heuristik)
+    PLAN_ITEMS_PER_HOUR: float = 10.0      # neue Konzepte/Vokabeln pro Stunde aktiver Uebung (Forschungswert)
+    PLAN_MAX_DAILY_FOCUS_MIN: int = 240    # nachhaltige Tagesobergrenze hochfokussierten Lernens (Forschung: 3-4h optimal, Qualitaet faellt ab ~4-5h)
+    PLAN_BLOCK_MIN: int = 25               # Groesse eines Lernblocks (= 1 Pomodoro-Arbeitsblock)
+    PLAN_MAX_OUTLINE_SECTIONS: int = 15    # Obergrenze fuer die KI-Gliederung (Uebersichtlichkeit)
+    PLAN_MIN_GRANULAR_CHARS: int = 400     # kleinere Original-Abschnitte werden VOR der KI-Anfrage mit dem naechsten zusammengelegt (weniger Uebersegmentierung + kuerzerer Prompt)
+    # Grobe Wartezeit-Schaetzung fuer die UI (Sekunden) - KEINE Forschung, nur aus
+    # eigenen Messwerten kalibriert; haengt stark von der Hardware ab, daher immer
+    # als Richtwert kommunizieren, nie als Zusage.
+    PLAN_ETA_BASE_SEC: float = 30.0
+    PLAN_ETA_SEC_PER_1000_CHARS: float = 8.0
 
     # ------------------------------------------------------------------ #
     # Retrieval-Deduplizierung (gegen doppelte Informationen in der Antwort)
@@ -358,6 +394,12 @@ class Settings:
         LLM_MODEL zurueck, wenn LLM_MODEL_AUTHOR leer ist (dann kein zweites Modell
         noetig)."""
         return (self.LLM_MODEL_AUTHOR or "").strip() or self.LLM_MODEL
+
+    def keep_alive_seconds(self) -> float:
+        """OLLAMA_KEEP_ALIVE_MINUTES in Ollamas ``keep_alive``-Einheit (Sekunden;
+        -1 = fuer immer)."""
+        m = self.OLLAMA_KEEP_ALIVE_MINUTES
+        return -1.0 if m < 0 else m * 60.0
 
 
 # Globale Instanz, überall importierbar.

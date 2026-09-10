@@ -993,6 +993,44 @@ with st.form("einstellungen"):
     st.divider()
 
     # ------------------------------------------------------------------ #
+    st.subheader("🔌 Modell-Ladeverhalten")
+    st.caption("Steuert, WANN Embedding/Antwort-Modell Speicher (RAM/VRAM) belegen – "
+               "praktisch, wenn die Sitzung oft nur zum Karteikarten-Lernen offen ist "
+               "und dafür gar kein Modell gebraucht wird.")
+    m1, m2 = st.columns(2)
+    with m1:
+        neu["PREWARM_ON_START"] = st.toggle(
+            "Beim Öffnen automatisch vorladen", value=bool(settings.PREWARM_ON_START),
+            key="cfg_PREWARM_ON_START",
+            help="AN: Embedding + Reranker laden schon beim Öffnen der Startseite im "
+                 "Hintergrund (erste Frage antwortet dadurch schneller). AUS: Es lädt "
+                 "NICHTS automatisch – erst die erste echte Frage/Aktion lädt ein "
+                 "Modell. Das Antwort-LLM selbst lädt in beiden Fällen erst bei "
+                 "Bedarf. Technisch: PREWARM_ON_START")
+    with m2:
+        _ka_optionen = {
+            "Sofort entladen (0 Min)": 0.0,
+            "5 Minuten (Standard)": 5.0,
+            "30 Minuten": 30.0,
+            "Dauerhaft geladen": -1.0,
+        }
+        _ka_labels = list(_ka_optionen)
+        _ka_aktuell = float(settings.OLLAMA_KEEP_ALIVE_MINUTES)
+        _ka_label_default = next(
+            (lbl for lbl, v in _ka_optionen.items() if v == _ka_aktuell), _ka_labels[1])
+        _ka_sel = st.selectbox(
+            "Wie lange bleibt ein geladenes Modell im Speicher?", _ka_labels,
+            index=_ka_labels.index(_ka_label_default), key="cfg_OLLAMA_KEEP_ALIVE_MINUTES",
+            help="Nach der letzten Nutzung bleibt ein über Ollama geladenes Modell "
+                 "(Antwort-LLM, Embedding) so lange im RAM/VRAM, bevor es automatisch "
+                 "entladen wird. Kürzer = mehr freier Speicher für andere Programme, "
+                 "kostet aber bei der nächsten Nutzung wieder den Kaltstart. "
+                 "Technisch: OLLAMA_KEEP_ALIVE_MINUTES")
+        neu["OLLAMA_KEEP_ALIVE_MINUTES"] = _ka_optionen[_ka_sel]
+
+    st.divider()
+
+    # ------------------------------------------------------------------ #
     st.subheader("🧠 Modelle")
     st.caption("Das **Antwort-Modell** (KI) wählst und lädst du oben unter "
                "**🖥️ Hardware & Modell-Auswahl**. Hier stellst du das Such- und das "
@@ -1081,6 +1119,56 @@ if gespeichert:
     )
 
 # --------------------------------------------------------------------------- #
+# Uni-/Sparmodus (außerhalb des Formulars, da st.button in Formularen nicht
+# erlaubt ist) - ein Klick fürs reine Karteikarten-Lernen ohne jeden Modell-Ballast.
+# --------------------------------------------------------------------------- #
+st.divider()
+st.subheader("🎓 Uni-/Sparmodus")
+st.caption(
+    "Ein Klick für unterwegs: nichts lädt automatisch, Feinsortierung und "
+    "Beleg-Prüfung sind aus, ein geladenes Modell wird sofort wieder entladen. "
+    "Zum Karteikarten-Lernen brauchst du davon ohnehin nichts – Chat-Fragen bleiben "
+    "möglich, laden dann aber bewusst erst auf Zuruf."
+)
+_spar_werte = {"PREWARM_ON_START": False, "USE_RERANKER": False,
+              "ENABLE_FAITHFULNESS_CHECK": False, "OLLAMA_KEEP_ALIVE_MINUTES": 0.0}
+_normal_werte = {k: getattr(Settings(), k) for k in _spar_werte}
+_aktuell = {k: getattr(settings, k) for k in _spar_werte}
+_ist_sparmodus = _aktuell == _spar_werte
+_ist_normalmodus = _aktuell == _normal_werte
+
+# Dauerhaft sichtbarer Status (nicht nur eine Toast-Meldung, die nach dem Neuladen
+# wieder verschwindet) - direkt aus den echten Einstellungen abgeleitet.
+if _ist_sparmodus:
+    st.success("🎓 **Sparmodus ist aktiv.** Nichts lädt automatisch, Reranker/Beleg-Prüfung "
+               "sind aus, Modelle entladen sofort wieder.")
+elif _ist_normalmodus:
+    st.info("💬 **Normalmodus ist aktiv** (Standardwerte für Vorladen/Reranker/Beleg-Prüfung).")
+else:
+    st.caption("⚙️ Eigene Mischung aktiv – weder reiner Spar- noch Normalmodus "
+               "(z. B. weil du einzelne Werte oben selbst verändert hast).")
+
+_sp1, _sp2 = st.columns(2)
+with _sp1:
+    if st.button("🎓 Uni-/Sparmodus aktivieren", use_container_width=True,
+                 type="primary" if _ist_sparmodus else "secondary",
+                 disabled=_ist_sparmodus):
+        settings.update(**_spar_werte)
+        settings.save()
+        for _k in _spar_werte:
+            st.session_state.pop(f"cfg_{_k}", None)
+        st.rerun()
+with _sp2:
+    if st.button("💬 Normalmodus (Chat-Komfort)", use_container_width=True,
+                 type="primary" if _ist_normalmodus else "secondary",
+                 disabled=_ist_normalmodus):
+        settings.update(**_normal_werte)
+        settings.save()
+        for _k in _normal_werte:
+            st.session_state.pop(f"cfg_{_k}", None)
+        st.rerun()
+
+# --------------------------------------------------------------------------- #
 # Zurücksetzen (außerhalb des Formulars, da st.button in Formularen nicht erlaubt ist)
 # --------------------------------------------------------------------------- #
 st.divider()
@@ -1102,6 +1190,7 @@ _BEREICHE = {
                   "ENABLE_FAITHFULNESS_CHECK"],
     "🧹 Deduplizierung": ["DEDUP_NEAR_DUPLICATE_THRESHOLD", "RETRIEVAL_DEDUP_JACCARD",
                          "RETRIEVAL_DEDUP"],
+    "🔌 Modell-Ladeverhalten": ["PREWARM_ON_START", "OLLAMA_KEEP_ALIVE_MINUTES"],
     "🧠 Modelle": ["LLM_MODEL", "LLM_MODEL_FAST", "LLM_MODEL_AUTHOR", "EMBED_MODEL", "RERANKER_MODEL"],
     "📊 Evaluation": ["EVAL_SAMPLE_SIZE", "EVAL_QUESTIONS_PER_CHUNK"],
 }

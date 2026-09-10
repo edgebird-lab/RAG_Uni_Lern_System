@@ -131,6 +131,91 @@ def exams_to_ics() -> str:
     return ("\r\n".join(lines) + "\r\n") if n else ""
 
 
+def organizer_to_ics() -> str:
+    """Kombinierter Kalender-Export der Seite 'Organisation': Klausurtermine +
+    Aufgaben-Fristen (Einzeltermine) + Stundenplan (woechentlich wiederkehrend via
+    RRULE). Importierbar in Google/Apple/Outlook-Kalender."""
+    from datetime import date, timedelta
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0",
+             "PRODID:-//RAG-Lernsystem//Organisation//DE", "CALSCALE:GREGORIAN"]
+    n = 0
+    for e in manifest.list_exams():
+        ed = e.get("exam_date")
+        if not ed:
+            continue
+        start = ed.replace("-", "")
+        try:
+            y, m, d = (int(x) for x in ed.split("-")[:3])
+            end = (date(y, m, d) + timedelta(days=1)).strftime("%Y%m%d")
+        except Exception:  # noqa: BLE001
+            end = start
+        lines += ["BEGIN:VEVENT", f"UID:klausur-{e['subject']}@rag-lernsystem",
+                  f"DTSTART;VALUE=DATE:{start}", f"DTEND;VALUE=DATE:{end}",
+                  f"SUMMARY:Klausur {e['subject']}", "END:VEVENT"]
+        n += 1
+
+    for t in manifest.list_tasks(include_done=False):
+        ed = t.get("due_date")
+        if not ed:
+            continue
+        start = ed.replace("-", "")
+        try:
+            y, m, d = (int(x) for x in ed.split("-")[:3])
+            end = (date(y, m, d) + timedelta(days=1)).strftime("%Y%m%d")
+        except Exception:  # noqa: BLE001
+            end = start
+        summary = f"Frist: {t['title']}" + (f" ({t['subject']})" if t.get("subject") else "")
+        lines += ["BEGIN:VEVENT", f"UID:aufgabe-{t['task_id']}@rag-lernsystem",
+                  f"DTSTART;VALUE=DATE:{start}", f"DTEND;VALUE=DATE:{end}",
+                  f"SUMMARY:{summary}", "END:VEVENT"]
+        n += 1
+
+    _WD_ICS = ("MO", "TU", "WE", "TH", "FR", "SA", "SU")
+    _today = date.today()
+    for slot in manifest.list_timetable():
+        try:
+            wd = int(slot["weekday"]) % 7
+            sh, sm = (int(x) for x in slot["start_time"].split(":")[:2])
+            eh, em = (int(x) for x in slot["end_time"].split(":")[:2])
+        except Exception:  # noqa: BLE001
+            continue
+        # Erste zukuenftige Instanz dieses Wochentags als DTSTART; RRULE laesst den
+        # Termin danach woechentlich wiederkehren.
+        first = _today + timedelta(days=(wd - _today.weekday()) % 7)
+        dtstart = f"{first.strftime('%Y%m%d')}T{sh:02d}{sm:02d}00"
+        dtend = f"{first.strftime('%Y%m%d')}T{eh:02d}{em:02d}00"
+        summary = slot["subject"] + (f" ({slot['room']})" if slot.get("room") else "")
+        lines += ["BEGIN:VEVENT", f"UID:stunde-{slot['slot_id']}@rag-lernsystem",
+                  f"DTSTART:{dtstart}", f"DTEND:{dtend}",
+                  f"RRULE:FREQ=WEEKLY;BYDAY={_WD_ICS[wd]}",
+                  f"SUMMARY:{summary}", "END:VEVENT"]
+        n += 1
+
+    # Lernplan-Bloecke: pro Plan+Tag zu EINEM Ganztags-Termin gebuendelt (sonst
+    # waeren es bei 25-Min-Bloecken schnell viele Mini-Termine). Nur offene
+    # Bloecke - erledigte (siehe sync_plan_status) sind kein Planungsgegenstand mehr.
+    _by_plan_day: dict[tuple[str, str], list[dict]] = {}
+    for b in manifest.list_plan_blocks_detailed():
+        if b["done"]:
+            continue
+        _by_plan_day.setdefault((b["plan_id"], b["planned_date"]), []).append(b)
+    for (plan_id, day), day_blocks in _by_plan_day.items():
+        try:
+            y, m, d = (int(x) for x in day.split("-")[:3])
+            end = (date(y, m, d) + timedelta(days=1)).strftime("%Y%m%d")
+        except Exception:  # noqa: BLE001
+            end = day.replace("-", "")
+        total_min = sum(bl["planned_min"] for bl in day_blocks)
+        summary = f"Lernplan: {day_blocks[0]['plan_title']} ({total_min} Min)"
+        lines += ["BEGIN:VEVENT", f"UID:lernplan-{plan_id}-{day}@rag-lernsystem",
+                  f"DTSTART;VALUE=DATE:{day.replace('-', '')}",
+                  f"DTEND;VALUE=DATE:{end}", f"SUMMARY:{summary}", "END:VEVENT"]
+        n += 1
+
+    lines.append("END:VCALENDAR")
+    return ("\r\n".join(lines) + "\r\n") if n else ""
+
+
 def humanize_days(days: Optional[int]) -> str:
     """Menschliche Beschreibung des Abstands zur Klausur."""
     if days is None:

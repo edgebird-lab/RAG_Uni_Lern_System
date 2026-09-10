@@ -330,3 +330,14 @@ def leeches(subject: Optional[str] = None, limit: int = 60) -> list[dict]:
             "SELECT * FROM review_items WHERE suspended=0 AND lapses>=?" + sc +
             " ORDER BY lapses DESC, ease ASC LIMIT ?", [lt] + sa + [int(limit)]).fetchall()
     return [dict(r) for r in rows]
+
+
+def max_lapses(subject: Optional[str] = None) -> int:
+    """Hoechste Patzer-Zahl unter den (nicht pausierten) Karten - nur fuer die
+    Anzeige, WARUM (noch) keine Dauerpatzer da sind (0, wenn keine Karten da sind)."""
+    sc, sa = _subj_clause(subject)
+    with _conn() as c:
+        row = c.execute(
+            "SELECT MAX(lapses) AS m FROM review_items WHERE suspended=0" + sc, sa
+        ).fetchone()
+    return int(row["m"] or 0)

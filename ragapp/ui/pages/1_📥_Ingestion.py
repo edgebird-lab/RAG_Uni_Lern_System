@@ -85,6 +85,7 @@ ingest_file = _pipe.ingest_file
 ingest_directory = _pipe.ingest_directory
 remove_document = _pipe.remove_document
 remove_questions = _pipe.remove_questions
+set_document_use_rag = _pipe.set_document_use_rag
 enrich_questions = _enrich_mod.enrich_questions
 
 st.info(
@@ -171,6 +172,13 @@ if _up_choice == "(neues Fach eingeben …)":
 else:
     upload_subject = _up_choice
 
+upload_use_rag = st.checkbox(
+    "Ins RAG aufnehmen (durchsuchbar & im Chat zitierbar)", value=True,
+    help="AUS: die Datei wird geladen und hier in der Verwaltung registriert, aber "
+         "NICHT gechunkt/eingebettet – z. B. für Prüfungsordnungen oder Verwaltungskram, "
+         "die du nur archivieren, aber nicht durchsuchen willst. Später über die Tabelle "
+         "unten jederzeit nachträglich ein- oder ausschaltbar.")
+
 if uploads and st.button("📥 Hochgeladene Dateien indexieren", type="primary"):
     from ragapp.ui._progress import ProgressReporter, fmt_dauer
 
@@ -204,7 +212,8 @@ if uploads and st.button("📥 Hochgeladene Dateien indexieren", type="primary")
                     _inner(f"{_name}: {msg}")
 
             try:
-                r = ingest_file(ziel, subject=upload_subject, progress=_fortschritt)
+                r = ingest_file(ziel, subject=upload_subject, progress=_fortschritt,
+                                use_rag=upload_use_rag)
             except Exception as exc:
                 r = {"status": "error", "file": up.name, "error": str(exc)}
 
@@ -215,6 +224,8 @@ if uploads and st.button("📥 Hochgeladene Dateien indexieren", type="primary")
                 info = "unverändert, bereits im Index"
             elif r["status"] == "ok":
                 info = f"{r.get('chunks', 0)} Chunks, {r.get('questions', 0)} Fragen"
+            elif r["status"] == "archived":
+                info = "nur archiviert (nicht im RAG)"
             elif r["status"] in ("skipped", "duplicate_chunks"):
                 info = r.get("reason", "übersprungen")
             elif r["status"] == "error":
@@ -415,18 +426,62 @@ st.divider()
 # --------------------------------------------------------------------------- #
 st.subheader("Indexierte Dokumente")
 
-_docs = manifest.list_documents()
+_docs = [dict(d) for d in manifest.list_documents()]
 if not _docs:
     st.info("Noch keine Dokumente indexiert.")
 else:
-    df = pd.DataFrame([{
+    st.caption(
+        "Häkchen **„Im RAG“** entscheidet, ob ein Dokument durchsuchbar/im Chat "
+        "zitierbar ist. Ausschalten entfernt nur die Chunks/Embeddings – das "
+        "Dokument bleibt hier registriert (archiviert). Einschalten liest die Datei "
+        "neu ein und bettet sie ein (kann je nach Größe etwas dauern)."
+    )
+    _doc_orig = {d["doc_id"]: d for d in _docs}
+    _df = pd.DataFrame([{
+        "Im RAG": bool(d.get("use_rag", 1)),
         "Fach": d["subject"],
         "Dateiname": d["filename"],
         "Chunks": d["num_chunks"],
         "Fragen": d["num_questions"],
         "Status": d["status"],
+        "_id": d["doc_id"],
     } for d in _docs])
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    _edited_docs = st.data_editor(
+        _df, hide_index=True, use_container_width=True, key="doc_rag_editor",
+        column_config={
+            "Im RAG": st.column_config.CheckboxColumn(width="small"),
+            "Fach": st.column_config.TextColumn(disabled=True),
+            "Dateiname": st.column_config.TextColumn(disabled=True),
+            "Chunks": st.column_config.NumberColumn(disabled=True),
+            "Fragen": st.column_config.NumberColumn(disabled=True),
+            "Status": st.column_config.TextColumn(disabled=True),
+            "_id": None,
+        },
+    )
+    st.caption(f"{len(_docs)} Dokument(e) insgesamt.")
+    _rag_changed = [
+        (row["_id"], bool(row["Im RAG"]))
+        for _, row in _edited_docs.iterrows()
+        if bool(row["Im RAG"]) != bool(_doc_orig[row["_id"]].get("use_rag", 1))
+    ]
+    if st.button(f"💾 RAG-Auswahl übernehmen ({len(_rag_changed)} geändert)",
+                 disabled=not _rag_changed):
+        _fehler = 0
+        with st.status(f"Wende {len(_rag_changed)} Änderung(en) an …", expanded=True) as status:
+            for doc_id, want_rag in _rag_changed:
+                name = _doc_orig[doc_id]["filename"]
+                status.write(f"· {name}: {'ins RAG aufnehmen …' if want_rag else 'aus dem RAG entfernen …'}")
+                try:
+                    res = set_document_use_rag(doc_id, want_rag)
+                    if res.get("status") in ("not_found", "missing_file"):
+                        _fehler += 1
+                        status.write(f"⚠️ {name}: {res.get('status')}")
+                except Exception as exc:  # noqa: BLE001
+                    _fehler += 1
+                    status.write(f"⚠️ {name}: {exc}")
+            status.update(label="Fertig", state="error" if _fehler else "complete")
+        st.success(f"{len(_rag_changed) - _fehler} von {len(_rag_changed)} Änderung(en) übernommen.")
+        st.rerun()
     st.caption(f"{len(_docs)} Dokument(e) insgesamt.")
 
     # ----------------------------------------------------------------- #
