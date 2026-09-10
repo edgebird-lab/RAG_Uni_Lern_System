@@ -26,7 +26,9 @@ from ragapp.ui._loading import page_boot
 page_boot("📈 Fortschritt", page_title="Fortschritt", icon="📈", layout="wide",
          accent="fortschritt")
 
-from ragapp.ui._style import card
+from ragapp.ui._style import card, theme_for
+from ragapp.ui import _charts
+_theme = theme_for("fortschritt")
 
 st.markdown("""
 <style>
@@ -171,15 +173,20 @@ with card("trend"):
     with tcol1:
         st.subheader("📉 Treffer-Verlauf (30 Tage)")
         tr = analytics.retention_trend(30, subject)
-        dft = pd.DataFrame(tr).set_index("tag")
-        st.line_chart(dft["treffer_pct"], height=220, color="#4A45C4")
-        st.bar_chart(dft["wiederholungen"], height=140, color="#9BA3C9")
+        _tage = [t["tag"] for t in tr]
+        st.markdown(_charts.line_chart(_tage, [t["treffer_pct"] for t in tr],
+                                        color=_theme["accent"], height=200, value_suffix=" %"),
+                    unsafe_allow_html=True)
+        st.markdown(_charts.bar_chart(_tage, [t["wiederholungen"] for t in tr],
+                                       color="#9BA3C9", height=110),
+                    unsafe_allow_html=True)
     with tcol2:
         st.subheader("📅 Fälligkeits-Prognose (14 Tage)")
         st.caption("Warnt vor Wiederholungs-Stau kurz vor der Klausur.")
         fc = analytics.due_forecast(14, subject)
-        dff = pd.DataFrame(fc).set_index("tag")
-        st.bar_chart(dff["faellig"], height=360, color="#C08A2E")
+        st.markdown(_charts.bar_chart([f["tag"] for f in fc], [f["faellig"] for f in fc],
+                                       color="#C08A2E", height=340),
+                    unsafe_allow_html=True)
 
 # --------------------------------------------------------------------------- #
 # Mastery je Fach / Thema
@@ -191,10 +198,10 @@ with card("mastery"):
         st.caption("Anteil sitzender Karten je Fach")
         ms = analytics.mastery_by_subject()
         if ms:
-            dfm = pd.DataFrame([{"Fach": _fach(m["subject"]), "Mastery %": m["mastery_pct"]}
-                                for m in ms]).set_index("Fach")
-            st.bar_chart(dfm["Mastery %"], height=max(160, 40 * len(dfm)), horizontal=True,
-                         color="#3E9B6C")
+            st.markdown(_charts.bar_chart(
+                [_fach(m["subject"]) for m in ms], [m["mastery_pct"] for m in ms],
+                color="#3E9B6C", height=max(150, 34 * len(ms)), horizontal=True, value_suffix=" %"),
+                unsafe_allow_html=True)
     with mcol2:
         topic_subject = subject or (subjects[0] if subjects else None)
         st.caption(f"Schwächste Themen · {_fach(topic_subject)}")
@@ -260,8 +267,10 @@ with card("kurve"):
             if _dte and _dte > 0:
                 _cap_txt += f" · Klausur in {_dte} Tagen (rechter Rand)"
             st.caption(_cap_txt + " – übe weiter, damit die Kurve oben bleibt.")
-            _dfcurve = pd.DataFrame(_curve).set_index("tag")
-            st.area_chart(_dfcurve["bereitschaft_pct"], height=240, color="#C08A2E")
+            st.markdown(_charts.line_chart(
+                [c["tag"] for c in _curve], [c["bereitschaft_pct"] for c in _curve],
+                color="#C08A2E", height=220, value_suffix=" %"),
+                unsafe_allow_html=True)
 
 # --------------------------------------------------------------------------- #
 # Dauerpatzer (Leeches)
