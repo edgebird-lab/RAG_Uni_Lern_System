@@ -58,6 +58,9 @@ class RAGState(TypedDict, total=False):
     search_query: str        # fuer die Suche genutzte (ggf. verlaufsbereinigte) Frage
     sub_queries: list        # Teilfragen bei breiten Fragen (vergleiche/nenne alle/...)
     subject: Optional[str]
+    doc_ids: Optional[list]  # optionale Dokument-Auswahl (z. B. Mindmap-Chat) - schraenkt
+                              # das Retrieval zusaetzlich zu 'subject' auf genau diese
+                              # Dokumente ein (leer/None = kein Dokument-Filter)
     chat_mode: str           # "strict" | "tutor" | "sokratisch" (siehe _chat_mode())
     history: list            # bisherige Chat-Turns ({"role","content"}) - fuer den
                               # Sokratischen Dialog eine ECHTE Mehrturn-Historie (siehe
@@ -347,15 +350,19 @@ def _load_existing_summary_md(subject: Optional[str], max_chars: int = 6000) -> 
 # --------------------------------------------------------------------------- #
 # Knoten
 # --------------------------------------------------------------------------- #
-def _fusion_candidates(query: str, subject: Optional[str]) -> list[dict]:
+def _fusion_candidates(query: str, subject: Optional[str],
+                       doc_ids: Optional[list] = None) -> list[dict]:
     """Nur die Fusionskandidaten einer (Teil-)Frage holen – OHNE den teuren
     Cross-Encoder-Rerank (use_reranker=False). ``final_top_k=FUSION_TOP_K`` liefert
-    genug Kandidaten zum Poolen (statt nur der finalen FINAL_TOP_K)."""
-    return retrieve(query, subject, final_top_k=settings.FUSION_TOP_K,
+    genug Kandidaten zum Poolen (statt nur der finalen FINAL_TOP_K). ``doc_ids``
+    schraenkt zusaetzlich zu ``subject`` auf genau diese Dokumente ein (z. B.
+    Mindmap-Chat: nur die fuer die Mindmap gewaehlten Quellen, siehe retrieve())."""
+    return retrieve(query, subject, doc_ids=doc_ids, final_top_k=settings.FUSION_TOP_K,
                     use_reranker=False)
 
 
-def _pool_fusion_candidates(queries: list[str], subject: Optional[str]) -> list[dict]:
+def _pool_fusion_candidates(queries: list[str], subject: Optional[str],
+                            doc_ids: Optional[list] = None) -> list[dict]:
     """Fusionskandidaten aller (Teil-)Fragen poolen und per Dokument deduplizieren
     (hoeheren fusion_score behalten). Mehrere Teilfragen werden parallel gesucht."""
     results: list[list[dict]]
@@ -364,7 +371,7 @@ def _pool_fusion_candidates(queries: list[str], subject: Optional[str]) -> list[
         # Fehler einer Teilfrage duerfen den Gesamtlauf nicht kippen.
         results = []
         with ThreadPoolExecutor(max_workers=min(4, len(queries))) as pool:
-            futures = [pool.submit(_fusion_candidates, qq, subject) for qq in queries]
+            futures = [pool.submit(_fusion_candidates, qq, subject, doc_ids) for qq in queries]
             for fut in futures:
                 try:
                     results.append(fut.result())
@@ -372,7 +379,7 @@ def _pool_fusion_candidates(queries: list[str], subject: Optional[str]) -> list[
                     _log.warning("Fusionssuche fuer Teilfrage fehlgeschlagen: %s", exc)
                     results.append([])
     else:
-        results = [_fusion_candidates(queries[0], subject)]
+        results = [_fusion_candidates(queries[0], subject, doc_ids)]
 
     pooled: dict = {}
     for cand_list in results:
@@ -435,10 +442,11 @@ def retrieve_node(state: RAGState) -> RAGState:
     queries += [q for q in (state.get("sub_queries") or []) if q]
     use_rr = state.get("use_reranker")
     subj = state.get("subject")
+    doc_ids = state.get("doc_ids")
     syllabus = bool(state.get("syllabus"))
     relaxed = _relaxed_mode(state)
     top_k = (_TUTOR_SYLLABUS_TOP_K if (syllabus and subj) else settings.FINAL_TOP_K)
-    pool = _pool_fusion_candidates(queries, subj)
+    pool = _pool_fusion_candidates(queries, subj, doc_ids)
     if syllabus:
         pool = _pedagogical_boost(pool)
     candidates = get_reranker().rerank(
@@ -784,7 +792,8 @@ def answer_query(question: str, subject: Optional[str] = None,
                  check_faithfulness: Optional[bool] = None,
                  history: Optional[list] = None,
                  decompose: bool = True,
-                 chat_mode: str = "strict") -> dict:
+                 chat_mode: str = "strict",
+                 doc_ids: Optional[list] = None) -> dict:
     """Öffentliche Schnittstelle für UI/CLI. Führt den Graphen aus.
 
     use_reranker / check_faithfulness: None = globale Einstellung; False =
@@ -796,7 +805,10 @@ def answer_query(question: str, subject: Optional[str] = None,
     in den Antwort-Aufruf (siehe generate_node).
     chat_mode: "strict" (Default, Sentinel/Faithfulness), "tutor" (freier Dialog)
     oder "sokratisch" (Rückfragen statt Antworten vorgeben) - Fakten kommen in
-    allen drei Modi weiterhin nur aus dem Kontext."""
+    allen drei Modi weiterhin nur aus dem Kontext.
+    doc_ids: optionale Dokument-Auswahl, schränkt das Retrieval zusätzlich zu
+    ``subject`` auf genau diese Dokumente ein (z. B. der an eine Mindmap
+    gebundene Chat - siehe ragapp/ui/pages/14_🧠_Mindmap.py)."""
     t0 = time.time()
     mode = chat_mode if chat_mode in _CHAT_MODES else "strict"
     syllabus = _is_syllabus_intent(question)
@@ -812,7 +824,7 @@ def answer_query(question: str, subject: Optional[str] = None,
         faith = False
     state: RAGState = {"question": question, "search_query": search_query,
                        "sub_queries": sub_queries, "subject": subject,
-                       "chat_mode": mode, "history": history or [],
+                       "doc_ids": doc_ids, "chat_mode": mode, "history": history or [],
                        "syllabus": syllabus, "use_reranker": use_reranker,
                        "check_faithfulness": faith, "mode": "answer"}
     result = get_graph().invoke(state)
@@ -832,9 +844,10 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
                         check_faithfulness: Optional[bool] = None,
                         history: Optional[list] = None,
                         decompose: bool = True,
-                        chat_mode: str = "strict"):
+                        chat_mode: str = "strict",
+                        doc_ids: Optional[list] = None):
     """Streaming-Variante von :func:`answer_query` fuer den SCHNELL-/Tutor-/
-    Sokratisch-Modus.
+    Sokratisch-Modus. ``doc_ids``: siehe :func:`answer_query`.
 
     Rueckgabe ``(stream, holder)``:
         * ``stream`` - Generator ueber Antwort-Token (``str``). Erschoepft man ihn
@@ -876,7 +889,7 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
             queries = [search_query] + [q for q in sub_queries if q]
 
             tr = time.time()
-            pool = _pool_fusion_candidates(queries, subject)
+            pool = _pool_fusion_candidates(queries, subject, doc_ids)
             if syllabus:
                 pool = _pedagogical_boost(pool)
             top_k = (_TUTOR_SYLLABUS_TOP_K if (syllabus and subject)

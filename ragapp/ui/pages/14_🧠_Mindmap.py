@@ -226,10 +226,12 @@ _sel_topic_id = st.selectbox(
 if _sel_topic_id:
     _sel_node = next(n for _, n in _topics if n["id"] == _sel_topic_id)
     tc1, tc2 = st.columns(2)
-    if tc1.button("🔎 Dazu im Chat fragen", key=f"mm_chat_{_active_id}_{_sel_topic_id}",
-                 use_container_width=True):
-        st.session_state["_pending_prompt"] = f"Erkläre mir das Thema: {_sel_node['title']}"
-        st.switch_page("💬_Chat.py")
+    if tc1.button("🔎 Dazu fragen", key=f"mm_chat_{_active_id}_{_sel_topic_id}",
+                 use_container_width=True,
+                 help="Stellt die Frage im Chat unten - bleibt auf dieser Seite."):
+        st.session_state[f"_mm_chat_pending_{_active_id}"] = (
+            f"Erkläre mir das Thema: {_sel_node['title']}")
+        st.rerun()
     if tc2.button("🧮 Dazu eine Übungsaufgabe", key=f"mm_practice_{_active_id}_{_sel_topic_id}",
                  use_container_width=True):
         st.session_state["practice_prefill"] = {
@@ -237,3 +239,72 @@ if _sel_topic_id:
             "topic": _sel_node["title"],
         }
         st.switch_page("pages/13_🧮_Übungsaufgaben.py")
+
+# --------------------------------------------------------------------------- #
+# Eingebetteter Chat - gescoped auf GENAU die Dokumente dieser Mindmap (nicht
+# die ganze Bibliothek), damit man z. B. bei einer Marketing-Mindmap nicht
+# plötzlich Cybersecurity-Inhalte aus anderen Dokumenten bekommt. Bewusst AUF
+# DIESER SEITE (nicht mehr ein Sprung zur globalen Chat-Seite) - man bleibt
+# im Thema, die Mindmap bleibt sichtbar, waehrend man Fragen stellt.
+# --------------------------------------------------------------------------- #
+st.divider()
+st.markdown("##### 💬 Fragen zu dieser Mindmap")
+st.caption("Antwortet nur aus den " + str(len(_active["doc_ids"])) +
+          " Dokument(en) dieser Mindmap - nicht aus dem Rest deiner Bibliothek.")
+
+_chat_key = f"mm_chat_messages_{_active_id}"
+st.session_state.setdefault(_chat_key, [])
+
+if st.session_state[_chat_key] and st.button(
+        "🗑️ Chat-Verlauf löschen", key=f"mm_chat_clear_{_active_id}"):
+    st.session_state[_chat_key] = []
+    st.rerun()
+
+for _msg in st.session_state[_chat_key]:
+    with st.chat_message(_msg["role"], avatar="🧑‍🎓" if _msg["role"] == "user" else "🤖"):
+        st.markdown(_msg["content"])
+        if _msg.get("sources"):
+            with st.expander(f"📚 Quellen ({len(_msg['sources'])})"):
+                for s in _msg["sources"]:
+                    loc = f" · {s['location']}" if s.get("location") else ""
+                    st.caption(f"[{s['rank']}] {s['filename']}{loc}")
+                    _snip = s.get("snippet", "")
+                    st.caption("„" + _snip[:240] + ("…" if len(_snip) > 240 else "") + "”")
+
+_mm_prompt = st.chat_input("Frage zu diesen Dokumenten …", key=f"mm_chat_input_{_active_id}")
+if not _mm_prompt:
+    _mm_prompt = st.session_state.pop(f"_mm_chat_pending_{_active_id}", None)
+
+if _mm_prompt:
+    st.session_state[_chat_key].append({"role": "user", "content": _mm_prompt})
+    with st.chat_message("user", avatar="🧑‍🎓"):
+        st.markdown(_mm_prompt)
+    with st.chat_message("assistant", avatar="🤖"):
+        from ragapp.graph.rag_graph import answer_query_stream
+        _history = [{"role": m["role"], "content": m["content"]}
+                   for m in st.session_state[_chat_key][:-1]]
+        with st.spinner("🧠 Antwort wird erstellt …"):
+            try:
+                _mm_stream, _mm_holder = answer_query_stream(
+                    _mm_prompt, subject=_active["subject"], doc_ids=_active["doc_ids"],
+                    check_faithfulness=False, history=_history, chat_mode="tutor")
+            except Exception:  # noqa: BLE001 - Setup-Fehler -> als Antwort anzeigen
+                _mm_stream, _mm_holder = None, {}
+            if _mm_stream is not None:
+                try:
+                    _mm_answer = st.write_stream(_mm_stream)
+                except Exception as exc:  # noqa: BLE001 - Stream-Fehler nie roh anzeigen
+                    _mm_answer = _mm_holder.get("answer") or f"Fehler: {exc}"
+            else:
+                _mm_answer = _mm_holder.get("answer") or "Keine Antwort erhalten."
+                st.markdown(_mm_answer)
+        _mm_sources = _mm_holder.get("sources", [])
+        if _mm_sources:
+            with st.expander(f"📚 Quellen ({len(_mm_sources)})"):
+                for s in _mm_sources:
+                    loc = f" · {s['location']}" if s.get("location") else ""
+                    st.caption(f"[{s['rank']}] {s['filename']}{loc}")
+                    _snip = s.get("snippet", "")
+                    st.caption("„" + _snip[:240] + ("…" if len(_snip) > 240 else "") + "”")
+    st.session_state[_chat_key].append(
+        {"role": "assistant", "content": _mm_answer, "sources": _mm_sources})

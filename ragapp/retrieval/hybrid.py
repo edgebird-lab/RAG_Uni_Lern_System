@@ -49,12 +49,16 @@ def _dense_chunk_ranking(query_emb: list[float], where: Optional[dict]) -> tuple
     return ordered, dense_score
 
 
-def _bm25_chunk_ranking(query: str, subject: Optional[str]) -> tuple[list[str], dict]:
+def _bm25_chunk_ranking(query: str, subject: Optional[str],
+                        doc_ids: Optional[list] = None) -> tuple[list[str], dict]:
     results = get_bm25().query(query, top_k=settings.BM25_TOP_K * 2)
     ordered: list[str] = []
     bm25_score: dict[str, float] = {}
+    doc_id_set = set(doc_ids) if doc_ids else None
     for r in results:
         if subject and r["meta"].get("subject") != subject:
+            continue
+        if doc_id_set and r["meta"].get("doc_id") not in doc_id_set:
             continue
         ordered.append(r["id"])
         bm25_score[r["id"]] = r["score"]
@@ -100,12 +104,30 @@ def _rrf(rank_lists: list[tuple[list[str], float]], k: int) -> dict[str, float]:
     return fused
 
 
+def _build_where(subject: Optional[str], doc_ids: Optional[list]) -> Optional[dict]:
+    """Baut den Chroma-``where``-Filter aus Fach- UND/ODER Dokument-Einschränkung.
+    Sicherheitsrelevant (z. B. Mindmap-Chat, der NUR in seinen eigenen Quellen
+    suchen darf) - daher als eigene, direkt testbare Funktion statt inline."""
+    where_clauses = []
+    if subject:
+        where_clauses.append({"subject": subject})
+    if doc_ids:
+        where_clauses.append({"doc_id": {"$in": list(doc_ids)}})
+    if len(where_clauses) > 1:
+        return {"$and": where_clauses}
+    return where_clauses[0] if where_clauses else None
+
+
 def retrieve(query: str, subject: Optional[str] = None,
+             doc_ids: Optional[list] = None,
              final_top_k: Optional[int] = None,
              dedup: Optional[bool] = None,
              use_reranker: Optional[bool] = None) -> list[dict]:
     """Führt die vollständige Hybrid-Retrieval-Pipeline aus.
 
+    doc_ids schränkt zusätzlich zu subject auf genau diese Dokumente ein
+    (z. B. der an eine Mindmap gebundene Chat, der NUR in deren Quellen suchen
+    darf - keine anderen Themen/Fächer aus der übrigen Bibliothek).
     final_top_k überschreibt die Anzahl finaler Treffer (z. B. für die Evaluation,
     die Hit@k für größere k messen muss).
     dedup überschreibt den Near-Duplicate-Filter (in der Evaluation aus, um die
@@ -116,13 +138,13 @@ def retrieve(query: str, subject: Optional[str] = None,
     embedder = get_embedder()
     store = get_vectorstore()
 
-    where = {"subject": subject} if subject else None
+    where = _build_where(subject, doc_ids)
     query_emb = embedder.embed_query(query)
 
     # Dense (Chroma) und BM25 parallel – unabhängige I/O-/CPU-Pfade.
     with ThreadPoolExecutor(max_workers=2) as pool:
         fut_dense = pool.submit(_dense_chunk_ranking, query_emb, where)
-        fut_bm25 = pool.submit(_bm25_chunk_ranking, query, subject)
+        fut_bm25 = pool.submit(_bm25_chunk_ranking, query, subject, doc_ids)
         dense_ids, dense_score = fut_dense.result()
         bm25_ids, bm25_score = fut_bm25.result()
 
