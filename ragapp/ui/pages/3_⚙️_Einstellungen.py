@@ -1072,6 +1072,21 @@ with st.form("einstellungen"):
     st.divider()
 
     # ------------------------------------------------------------------ #
+    st.subheader("📋 Lernplan")
+    st.caption("Wie realistisch die KI-Gliederung die Lernzeit schätzt.")
+    neu["PLAN_TIME_FACTOR"] = st.slider(
+        "Zeit-Korrekturfaktor", min_value=0.5, max_value=3.0,
+        value=float(settings.PLAN_TIME_FACTOR), step=0.1, key="cfg_PLAN_TIME_FACTOR",
+        help="Die Formel schätzt den Übungsanteil auf Basis von Vokabel-Lernrate "
+             "(siehe docs/LERNPLAN_FORSCHUNG.md) - für technischen/prozeduralen "
+             "Stoff (Rechnen, Algorithmen, Modelle) meist zu optimistisch. Höher = "
+             "der Plan rechnet mehr Zeit pro Thema ein. Merkst du, dass du in der "
+             "Praxis deutlich länger brauchst als geplant, hier erhöhen. "
+             "1.0 = reine Formel ohne Korrektur. Technisch: PLAN_TIME_FACTOR")
+
+    st.divider()
+
+    # ------------------------------------------------------------------ #
     st.subheader("📊 Evaluation (Qualitätsmessung)")
     st.caption("Für den Test der Suchqualität auf der Seite „Evaluation\".")
     e1, e2 = st.columns(2)
@@ -1192,6 +1207,7 @@ _BEREICHE = {
                          "RETRIEVAL_DEDUP"],
     "🔌 Modell-Ladeverhalten": ["PREWARM_ON_START", "OLLAMA_KEEP_ALIVE_MINUTES"],
     "🧠 Modelle": ["LLM_MODEL", "LLM_MODEL_FAST", "LLM_MODEL_AUTHOR", "EMBED_MODEL", "RERANKER_MODEL"],
+    "📋 Lernplan": ["PLAN_TIME_FACTOR"],
     "📊 Evaluation": ["EVAL_SAMPLE_SIZE", "EVAL_QUESTIONS_PER_CHUNK"],
 }
 

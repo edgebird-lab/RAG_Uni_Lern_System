@@ -259,6 +259,15 @@ class Settings:
     PLAN_PAGES_PER_HOUR: float = 25.0      # verstehendes Lesen dichten/technischen Stoffs (Forschung: 20-30 S/h)
     PLAN_CHARS_PER_CONCEPT: int = 1000     # ~1 lernbares Konzept/Fakt je ... Zeichen (grobe Heuristik)
     PLAN_ITEMS_PER_HOUR: float = 10.0      # neue Konzepte/Vokabeln pro Stunde aktiver Uebung (Forschungswert)
+    # Erfahrungskorrektur: PLAN_ITEMS_PER_HOUR stammt aus Vokabel-/Fakten-Lernen
+    # (atomare, isolierte Items). Ein "Konzept" in technischem/prozeduralem Stoff
+    # (Algorithmen, Rechenverfahren, Modelle) ist damit nicht vergleichbar - dort
+    # kostet WIRKLICHES Verstehen+Ueben (Aufgaben rechnen, Fehlversuche, spaeteres
+    # Wiederholen bis zur Klausurreife) deutlich mehr Zeit als reines Abfragen.
+    # Ohne Korrektur faellt der Plan spuerbar zu optimistisch aus. 1.5 ist ein
+    # Startwert (kein Forschungswert) - in Einstellungen -> Lernplan pro Erfahrung
+    # nachjustierbar (siehe docs/LERNPLAN_FORSCHUNG.md, Abschnitt "Grenzen").
+    PLAN_TIME_FACTOR: float = 1.5
     PLAN_MAX_DAILY_FOCUS_MIN: int = 240    # nachhaltige Tagesobergrenze hochfokussierten Lernens (Forschung: 3-4h optimal, Qualitaet faellt ab ~4-5h)
     PLAN_BLOCK_MIN: int = 25               # Groesse eines Lernblocks (= 1 Pomodoro-Arbeitsblock)
     PLAN_MAX_OUTLINE_SECTIONS: int = 15    # Obergrenze fuer die KI-Gliederung (Uebersichtlichkeit)

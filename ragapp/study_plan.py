@@ -167,10 +167,12 @@ def estimate_outline_eta_seconds(doc_ids: list[str], model: Optional[str] = None
 
 def estimate_minutes(chars: int) -> int:
     """Formel-basierte Zeitschaetzung (Minuten) aus Zeichenzahl - siehe
-    docs/LERNPLAN_FORSCHUNG.md fuer Herleitung + Quellen."""
+    docs/LERNPLAN_FORSCHUNG.md fuer Herleitung + Quellen. PLAN_TIME_FACTOR
+    korrigiert den aus Vokabel-Lernrate abgeleiteten Uebungsanteil auf
+    technisches/prozedurales Lernen hoch (siehe Kommentar in config.py)."""
     reading_min = chars / settings.PLAN_CHARS_PER_PAGE * (60.0 / settings.PLAN_PAGES_PER_HOUR)
     concepts = chars / settings.PLAN_CHARS_PER_CONCEPT
-    practice_min = concepts * (60.0 / settings.PLAN_ITEMS_PER_HOUR)
+    practice_min = concepts * (60.0 / settings.PLAN_ITEMS_PER_HOUR) * settings.PLAN_TIME_FACTOR
     return max(5, round(reading_min + practice_min))
 
 

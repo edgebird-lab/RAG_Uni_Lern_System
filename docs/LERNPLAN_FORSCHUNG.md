@@ -22,11 +22,30 @@ Werte bei Bedarf nachvollziehbar nachjustiert werden können.
 
 ```
 Lesezeit (Min)    = Zeichen / PLAN_CHARS_PER_PAGE × (60 / PLAN_PAGES_PER_HOUR)
-Übungszeit (Min)  = (Zeichen / PLAN_CHARS_PER_CONCEPT) × (60 / PLAN_ITEMS_PER_HOUR)
-Geschätzte Zeit   = Lesezeit + Übungszeit   (siehe ragapp/study_plan.py:_estimate_minutes)
+Übungszeit (Min)  = (Zeichen / PLAN_CHARS_PER_CONCEPT) × (60 / PLAN_ITEMS_PER_HOUR) × PLAN_TIME_FACTOR
+Geschätzte Zeit   = Lesezeit + Übungszeit   (siehe ragapp/study_plan.py:estimate_minutes)
 
 Effektive Tageszeit = min(vom Nutzer angegebene Minuten/Tag, PLAN_MAX_DAILY_FOCUS_MIN)
 ```
+
+### Erfahrungskorrektur: `PLAN_TIME_FACTOR` (Standard 1.5)
+
+`PLAN_ITEMS_PER_HOUR` stammt aus Forschung zu **Vokabel-/Fakten-Lernen** –
+isolierten, atomaren Items, die im Wesentlichen nur erkannt/abgerufen werden
+müssen. Ein "Konzept" in technischem oder prozeduralem Stoff (Algorithmen,
+Rechenverfahren, statistische Modelle) ist damit nicht vergleichbar: dort
+braucht wirkliches Verstehen eigenständiges Rechnen/Anwenden, Fehlversuche und
+späteres Wiederholen bis zur Klausurreife – deutlich mehr als der reine
+Abfrage-Takt aus der Vokabel-Studie. Ohne Korrektur fällt der Plan dadurch
+spürbar zu optimistisch aus (in der Praxis beobachtet, v. a. bei Fächern wie
+Algorithmen/Statistik).
+
+`PLAN_TIME_FACTOR` ist deshalb ein **einstellbarer** Multiplikator auf die
+Übungszeit (Einstellungen → 📋 Lernplan), kein weiterer Forschungswert. 1.0
+= reine Formel, höher = mehr eingeplante Zeit pro Thema. Der Startwert 1.5
+ist eine bewusst vorsichtige Annahme; nach ein paar echten Lernplänen lohnt
+es sich, ihn anhand der tatsächlich gebrauchten Zeit (Seite ⏱️ Lernzeit)
+nachzujustieren.
 
 Der Plan wird in `PLAN_BLOCK_MIN`-Portionen über die verfügbaren Tage verteilt.
 Reicht die Zeit bis zu einem gesetzten Zieldatum nicht aus, meldet das System den
