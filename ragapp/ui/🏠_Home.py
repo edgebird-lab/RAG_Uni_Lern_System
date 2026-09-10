@@ -174,10 +174,10 @@ _components.html(
 # ragapp.ui._style.render_nav_tile) - PAGE_REGISTRY dort ist die einzige
 # Quelle der Wahrheit fuer Titel/Icon/Zielpfad/Gruppierung.
 # --------------------------------------------------------------------------- #
-from ragapp.ui._style import apply_page_style, PAGE_REGISTRY, render_nav_tile
-apply_page_style("home")
+from ragapp.ui._style import apply_page_style, PAGE_REGISTRY, render_nav_tile, render_hero_title, card
+_theme = apply_page_style("home")
 
-st.title("Willkommen zurück 👋")
+render_hero_title("Willkommen zurück 👋", accent=_theme["accent"])
 st.markdown(
     "<span style='opacity:.72'>Wähle unten einen Bereich – oder nutze das "
     "☰-Menü links für die Kurzwahl.</span>", unsafe_allow_html=True)
@@ -187,11 +187,12 @@ with st.spinner("Wird geladen ..."):
 
 try:
     _stats = manifest.stats()
-    _s1, _s2, _s3, _s4 = st.columns(4)
-    _s1.metric("📄 Dokumente", _stats["documents"])
-    _s2.metric("🧩 Textstellen", _stats["chunks"])
-    _s3.metric("❓ Fragen", _stats["questions"])
-    _s4.metric("🏷️ Fächer", _stats["subjects"])
+    with card("stats"):
+        _s1, _s2, _s3, _s4 = st.columns(4)
+        _s1.metric("📄 Dokumente", _stats["documents"])
+        _s2.metric("🧩 Textstellen", _stats["chunks"])
+        _s3.metric("❓ Fragen", _stats["questions"])
+        _s4.metric("🏷️ Fächer", _stats["subjects"])
 except Exception:  # noqa: BLE001 - Statistik ist ein Bonus, nie blockierend
     pass
 

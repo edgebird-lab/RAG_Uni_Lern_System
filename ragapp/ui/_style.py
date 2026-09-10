@@ -99,6 +99,53 @@ def theme_for(page_key: str) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# Schriften: einmalig lokal heruntergeladen (Variable Fonts, "latin"-Subset -
+# deckt deutsche Umlaute/ß bereits ab), ausgeliefert ueber Streamlits eigenes
+# Static-Serving (``enableStaticServing = true``, siehe .streamlit/config.toml)
+# unter dem SERVERWEITEN Pfad ``/app/static/...`` - bewusst mit fuehrendem "/"
+# (nicht relativ), weil Streamlit-Multipage-Routen alle auf unterschiedlichen
+# Unterpfaden liegen (z. B. "/Chat") und ein relativer Pfad dort auf
+# "/Chat/app/static/..." aufloesen wuerde. Kein Nachladen von einer externen
+# Font-CDN zur Laufzeit - bleibt mit dem Offline-Grundsatz der App vereinbar,
+# obwohl das Herunterladen von Grafiken/Schriften aus dem Netz erlaubt wurde.
+# Fredoka = rundlich-verspielt fuer Ueberschriften, Nunito = ruhig/gut lesbar
+# fuer Fliesstext - beide als Variable Font (eine Datei deckt alle Schnitte ab).
+# --------------------------------------------------------------------------- #
+_FONT_FACE_CSS = """
+<style>
+@font-face {
+  font-family: 'RAG Heading';
+  src: url('/app/static/fonts/Fredoka-Variable.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'RAG Body';
+  src: url('/app/static/fonts/Nunito-Variable.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+html, body, [class*="st-emotion"], .stApp,
+[data-testid="stMarkdownContainer"], [data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li, [data-testid="stWidgetLabel"],
+[data-testid="stCaptionContainer"], [data-testid="stMetricValue"],
+[data-testid="stMetricLabel"], [data-testid="stMetricDelta"],
+.stButton > button, .stDownloadButton > button, .stFormSubmitButton > button,
+input, textarea, select, table, th, td {
+  font-family: 'RAG Body', 'Nunito', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif !important;
+}
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'RAG Heading', 'Fredoka', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif !important;
+}
+</style>
+"""
+
+
+# --------------------------------------------------------------------------- #
 # Doodles: handgebaute, dezente Deko-SVGs (Sterne/Wolke/Blatt/Funkeln) - fixe
 # Position, niedrige Deckkraft, NIE klickbar (pointer-events:none), liegen
 # HINTER dem Inhalt (z-index negativ + .block-container bekommt z-index:1).
@@ -145,12 +192,51 @@ _BASE_CSS = """
   animation:ragFadeIn .45s ease-out both;
 }}
 
+/* Seiten-Hintergrund: weicher Farbverlauf statt reinem Weiss, je Seite im
+   eigenen Akzent - dezent genug, dass Inhalt/Kontrast unangetastet bleibt. */
+[data-testid="stAppViewContainer"] {{
+  background:
+    radial-gradient(circle at 10% -8%, {soft} 0%, transparent 42%),
+    radial-gradient(circle at 92% 108%, {soft} 0%, transparent 38%),
+    #fbfaf7 !important;
+  background-attachment:fixed !important;
+}}
+[data-testid="stHeader"] {{background:transparent !important;}}
+
+@keyframes ragTitleFly {{
+  from {{opacity:0; transform:translateX(-16px);}}
+  to   {{opacity:1; transform:translateX(0);}}
+}}
 h1 {{
   font-weight:800 !important; letter-spacing:-0.5px;
   background:linear-gradient(90deg, {accent} 0%, {accent} 55%, {soft} 100%);
   -webkit-background-clip:text; background-clip:text; color:transparent !important;
   display:inline-block; padding-bottom:2px;
   border-bottom:4px solid {soft}; margin-bottom:.3rem !important;
+  animation:ragTitleFly .5s cubic-bezier(.22,1,.36,1) both;
+}}
+
+/* Optionale "Hero"-Ueberschrift (siehe render_hero_title()): Buchstabe-fuer-
+   Buchstabe-Einflug statt Gradient (Gradient-Text-Clip wuerde pro <span>
+   neu ansetzen und in Streifen zerfallen - daher hier stattdessen Vollton). */
+.rag-hero-title {{
+  font-weight:800 !important; letter-spacing:-0.5px;
+  border-bottom:4px solid {soft}; padding-bottom:2px; margin-bottom:.3rem !important;
+  color:{accent} !important;
+}}
+.rag-hero-title span {{display:inline-block; opacity:0; animation:ragLetterIn .45s ease forwards;}}
+@keyframes ragLetterIn {{
+  from {{opacity:0; transform:translateY(10px) scale(.85);}}
+  to   {{opacity:1; transform:translateY(0) scale(1);}}
+}}
+
+/* Wiederverwendbare "weiche Karte" fuer Inhalts-Gruppen auf einzelnen Seiten
+   (siehe card()) - echter st.container(key=...), Klasse st-key-card_<key>. */
+div[class*="st-key-card_"] {{
+  background:linear-gradient(160deg, #ffffff 0%, {soft} 145%) !important;
+  border:1px solid {soft} !important; border-radius:20px !important;
+  padding:1.15rem 1.35rem !important; margin-bottom:1rem !important;
+  box-shadow:0 2px 14px rgba(0,0,0,.05) !important;
 }}
 
 /* Kacheln (Home-Navigation) + wiederverwendbare "weiche Karte" fuer alle
@@ -182,6 +268,21 @@ div[class*="st-key-tile_"] button p {{
   border-radius:14px !important;
 }}
 
+/* Dark-Mode-Umschalter (siehe _theme_toggle_html()) - schwebender runder
+   Button oben rechts, ausserhalb des Streamlit-Baums direkt an <body>. */
+#rag-theme-toggle {{
+  position:fixed; top:14px; right:18px; z-index:1000000;
+  width:42px; height:42px; border-radius:50%;
+  border:1px solid {soft}; background:#ffffff; cursor:pointer;
+  font-size:1.15rem; line-height:1; display:flex; align-items:center; justify-content:center;
+  box-shadow:0 2px 10px rgba(0,0,0,.10);
+  transition:transform .18s ease, box-shadow .18s ease;
+}}
+#rag-theme-toggle:hover {{transform:scale(1.08); box-shadow:0 6px 16px rgba(0,0,0,.16);}}
+html.rag-dark #rag-theme-toggle {{
+  background:#161b22; border-color:#2a3040; box-shadow:0 2px 10px rgba(0,0,0,.35);
+}}
+
 /* Doodle-Hintergrund: fix positioniert, klickdurchlaessig, dezent. */
 .rag-doodles {{position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden;}}
 .rag-doodle {{position:absolute; opacity:.16;}}
@@ -198,16 +299,29 @@ div[class*="st-key-tile_"] button p {{
   50%  {{transform:translateX(18px);}}
   100% {{transform:translateX(0);}}
 }}
-@media (prefers-color-scheme: dark) {{
-  .rag-doodle {{opacity:.10;}}
-  div[class*="st-key-tile_"] button {{
-    background:linear-gradient(150deg, #1b2130 0%, #11151d 75%) !important;
-    color:#e6edf3 !important; border-color:#2a3040 !important;
-  }}
-  div[class*="st-key-tile_"] button:hover {{border-color:{accent} !important;}}
+/* Dark-Mode: haengt an der Klasse "rag-dark" auf <html> (siehe
+   _theme_toggle_html() unten) statt an @media - so wirkt der manuelle
+   Umschalter unabhaengig von der Betriebssystem-Einstellung. */
+html.rag-dark [data-testid="stAppViewContainer"] {{
+  background:
+    radial-gradient(circle at 10% -8%, {accent}22 0%, transparent 45%),
+    radial-gradient(circle at 92% 108%, {accent}18 0%, transparent 40%),
+    #0e1117 !important;
 }}
+html.rag-dark .rag-doodle {{opacity:.10;}}
+html.rag-dark div[class*="st-key-tile_"] button {{
+  background:linear-gradient(150deg, #1b2130 0%, #11151d 75%) !important;
+  color:#e6edf3 !important; border-color:#2a3040 !important;
+}}
+html.rag-dark div[class*="st-key-tile_"] button:hover {{border-color:{accent} !important;}}
+html.rag-dark div[class*="st-key-card_"] {{
+  background:linear-gradient(160deg, #171c26 0%, #11151d 145%) !important;
+  border-color:#2a3040 !important; box-shadow:0 2px 14px rgba(0,0,0,.3) !important;
+}}
+html.rag-dark .rag-hero-title {{color:{accent} !important;}}
+
 @media (prefers-reduced-motion: reduce) {{
-  .block-container, .rag-doodle {{animation:none !important;}}
+  .block-container, .rag-doodle, h1, .rag-hero-title span {{animation:none !important;}}
 }}
 </style>
 """
@@ -266,6 +380,72 @@ def _transition_html(accent: str, soft: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Dark-Mode-Umschalter: kleiner runder Button, oben rechts im ECHTEN Elternfenster
+# (nicht nur im Chat/dieser Seite) - 3 Zustaende (Auto/Hell/Dunkel), persistiert in
+# localStorage, wirkt SOFORT ohne Streamlit-Rerun (reiner Client-Toggle, setzt die
+# Klasse "rag-dark"/"rag-light" direkt auf <html>). Bei "Auto" hoert ein
+# matchMedia-Listener live auf OS-Aenderungen. Bewusst UNBEDINGT (nicht nur bei
+# Seitenwechsel) injiziert, weil Idempotenz billig ist und so auch nach einem
+# reinen Widget-Rerun garantiert der richtige Zustand steht.
+# --------------------------------------------------------------------------- #
+def _theme_toggle_html() -> str:
+    return """
+<script>
+(function() {
+  try {
+    var doc = window.parent.document;
+    var root = doc.documentElement;
+    var KEY = 'rag-theme';
+    var mql = window.parent.matchMedia ? window.parent.matchMedia('(prefers-color-scheme: dark)') : null;
+
+    function label(mode) {
+      return mode === 'dark' ? '🌙' : (mode === 'light' ? '☀️' : '🌗');
+    }
+    function title(mode) {
+      return 'Darstellung: ' + (mode === 'dark' ? 'Dunkel' : (mode === 'light' ? 'Hell' : 'Automatisch'));
+    }
+    function apply(mode) {
+      root.classList.remove('rag-dark', 'rag-light');
+      if (mode === 'dark') { root.classList.add('rag-dark'); }
+      else if (mode === 'light') { root.classList.add('rag-light'); }
+      else if (mql && mql.matches) { root.classList.add('rag-dark'); }
+    }
+
+    var saved = localStorage.getItem(KEY) || 'auto';
+    apply(saved);
+
+    if (mql && !mql._ragBound) {
+      mql._ragBound = true;
+      mql.addEventListener('change', function() {
+        if ((localStorage.getItem(KEY) || 'auto') === 'auto') { apply('auto'); }
+      });
+    }
+
+    var btn = doc.getElementById('rag-theme-toggle');
+    if (!btn) {
+      btn = doc.createElement('button');
+      btn.id = 'rag-theme-toggle';
+      btn.setAttribute('aria-label', 'Darstellung wechseln');
+      doc.body.appendChild(btn);
+      btn.addEventListener('click', function() {
+        var cur = localStorage.getItem(KEY) || 'auto';
+        var next = cur === 'auto' ? 'light' : (cur === 'light' ? 'dark' : 'auto');
+        localStorage.setItem(KEY, next);
+        apply(next);
+        btn.textContent = label(next);
+        btn.title = title(next);
+      });
+    }
+    var cur2 = localStorage.getItem(KEY) || 'auto';
+    btn.textContent = label(cur2);
+    btn.title = title(cur2);
+  } catch (e) {}
+})();
+</script>
+"""
+
+
+# --------------------------------------------------------------------------- #
 # Hamburger-Kurzwahl (Sidebar-Popover): Home + die 3 meistgenutzten Seiten.
 # Ergaenzt die Sidebar, ersetzt sie nicht - require_pin()'s "Zweites Fenster"/
 # "App beenden"-Buttons bleiben unangetastet (siehe _auth.py).
@@ -306,6 +486,28 @@ def render_nav_tile(page_key: str) -> None:
             _go_to(page)
 
 
+def card(key: str):
+    """Weiche, abgerundete Karte fuer eine Inhalts-Gruppe auf einer Seite -
+    als Kontext-Manager verwenden: ``with card("stats"): st.metric(...)``.
+    Echter ``st.container(key=...)``, gestylt ueber die automatisch vergebene
+    Klasse ``st-key-card_<key>`` (siehe _BASE_CSS) - kein HTML-Overlay noetig."""
+    return st.container(key=f"card_{key}")
+
+
+def render_hero_title(text: str, *, accent: str | None = None) -> None:
+    """Grosse Willkommens-Ueberschrift mit Buchstabe-fuer-Buchstabe-Einflug -
+    fuer den EINEN Blickfang-Moment einer Seite (z. B. Home), nicht als
+    Ersatz fuer normale ``st.title()``-Aufrufe gedacht (die bekommen ihre
+    eigene, dezentere Fly-in-Animation schon automatisch ueber den globalen
+    ``h1``-Stil in _BASE_CSS)."""
+    accent = accent or _DEFAULT_THEME["accent"]
+    spans = "".join(
+        f'<span style="animation-delay:{i * 0.035:.3f}s">{"&nbsp;" if ch == " " else ch}</span>'
+        for i, ch in enumerate(text)
+    )
+    st.markdown(f'<h1 class="rag-hero-title">{spans}</h1>', unsafe_allow_html=True)
+
+
 # --------------------------------------------------------------------------- #
 # Haupt-Einstiegspunkt: von page_boot() fuer jede normale Seite aufgerufen,
 # und direkt von der Home-Seite (🏠_Home.py), die ihre Boot-Sequenz aus
@@ -315,8 +517,15 @@ def apply_page_style(page_key: str, *, show_nav: bool = True) -> dict:
     theme = theme_for(page_key)
     accent, soft = theme["accent"], theme["soft"]
 
-    st.markdown(_BASE_CSS.format(accent=accent, soft=soft) + _doodle_layer(accent, soft),
-               unsafe_allow_html=True)
+    st.markdown(
+        _FONT_FACE_CSS + _BASE_CSS.format(accent=accent, soft=soft) + _doodle_layer(accent, soft),
+        unsafe_allow_html=True,
+    )
+
+    # Dark-Mode-Bootstrap + Umschalt-Button: UNBEDINGT bei jedem Aufruf (billig,
+    # idempotent) - garantiert den richtigen Hell/Dunkel-Zustand auch direkt
+    # nach einem reinen Widget-Rerun (siehe _theme_toggle_html Docstring).
+    components.html(_theme_toggle_html(), height=0)
 
     # Uebergangs-Animation NUR bei echter Seiten-Navigation abspielen (nicht
     # bei jedem Widget-Rerun innerhalb derselben Seite - siehe _transition_html
