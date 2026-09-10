@@ -1073,16 +1073,37 @@ with st.form("einstellungen"):
 
     # ------------------------------------------------------------------ #
     st.subheader("📋 Lernplan")
-    st.caption("Wie realistisch die KI-Gliederung die Lernzeit schätzt.")
-    neu["PLAN_TIME_FACTOR"] = st.slider(
-        "Zeit-Korrekturfaktor", min_value=0.5, max_value=3.0,
-        value=float(settings.PLAN_TIME_FACTOR), step=0.1, key="cfg_PLAN_TIME_FACTOR",
-        help="Die Formel schätzt den Übungsanteil auf Basis von Vokabel-Lernrate "
-             "(siehe docs/LERNPLAN_FORSCHUNG.md) - für technischen/prozeduralen "
-             "Stoff (Rechnen, Algorithmen, Modelle) meist zu optimistisch. Höher = "
-             "der Plan rechnet mehr Zeit pro Thema ein. Merkst du, dass du in der "
-             "Praxis deutlich länger brauchst als geplant, hier erhöhen. "
-             "1.0 = reine Formel ohne Korrektur. Technisch: PLAN_TIME_FACTOR")
+    st.caption("Wie realistisch die KI-Gliederung die Lernzeit schätzt. Sobald genug "
+               "echte Pomodoro-Zeiten an erledigten Lernplan-Blöcken vorliegen (Seite "
+               "📈 Fortschritt → „Plan vs. Realität“), ersetzt ein selbstlernender "
+               "Faktor den Wert unten automatisch – er bleibt aber der Startwert und "
+               "das manuelle Sicherheitsnetz.")
+    pl1, pl2, pl3 = st.columns(3)
+    with pl1:
+        neu["PLAN_TIME_FACTOR"] = st.slider(
+            "Zeit-Korrekturfaktor", min_value=0.5, max_value=3.0,
+            value=float(settings.PLAN_TIME_FACTOR), step=0.1, key="cfg_PLAN_TIME_FACTOR",
+            help="Die Formel schätzt Lese- + Übungszeit auf Basis von Vokabel-Lernrate "
+                 "(siehe docs/LERNPLAN_FORSCHUNG.md) - für technischen/prozeduralen "
+                 "Stoff (Rechnen, Algorithmen, Modelle) meist zu optimistisch. Höher = "
+                 "der Plan rechnet mehr Zeit pro Thema ein. 1.0 = reine Formel ohne "
+                 "Korrektur. Technisch: PLAN_TIME_FACTOR")
+    with pl2:
+        neu["PLAN_REVIEW_SEC_PER_CARD"] = st.number_input(
+            "Dauer je Karteikarte (Sek.)", min_value=5.0, max_value=120.0,
+            value=float(settings.PLAN_REVIEW_SEC_PER_CARD), step=5.0,
+            key="cfg_PLAN_REVIEW_SEC_PER_CARD",
+            help="Grobe Dauer einer Karteikarten-Wiederholung. Der Lernplan reserviert "
+                 "damit täglich Zeit für fällige Wiederholungen, bevor neuer Stoff "
+                 "eingeplant wird. Technisch: PLAN_REVIEW_SEC_PER_CARD")
+    with pl3:
+        neu["PLAN_REVIEW_MAX_SHARE"] = st.slider(
+            "Max. Anteil fürs Wiederholen", min_value=0.0, max_value=0.9,
+            value=float(settings.PLAN_REVIEW_MAX_SHARE), step=0.05,
+            key="cfg_PLAN_REVIEW_MAX_SHARE",
+            help="Deckelt, wie viel vom Tagesbudget fällige Wiederholungen höchstens "
+                 "belegen dürfen – ein Wiederholungs-Stau soll den Neustoff-Teil des "
+                 "Plans nicht komplett verdrängen. Technisch: PLAN_REVIEW_MAX_SHARE")
 
     st.divider()
 
@@ -1207,7 +1228,7 @@ _BEREICHE = {
                          "RETRIEVAL_DEDUP"],
     "🔌 Modell-Ladeverhalten": ["PREWARM_ON_START", "OLLAMA_KEEP_ALIVE_MINUTES"],
     "🧠 Modelle": ["LLM_MODEL", "LLM_MODEL_FAST", "LLM_MODEL_AUTHOR", "EMBED_MODEL", "RERANKER_MODEL"],
-    "📋 Lernplan": ["PLAN_TIME_FACTOR"],
+    "📋 Lernplan": ["PLAN_TIME_FACTOR", "PLAN_REVIEW_SEC_PER_CARD", "PLAN_REVIEW_MAX_SHARE"],
     "📊 Evaluation": ["EVAL_SAMPLE_SIZE", "EVAL_QUESTIONS_PER_CHUNK"],
 }
 

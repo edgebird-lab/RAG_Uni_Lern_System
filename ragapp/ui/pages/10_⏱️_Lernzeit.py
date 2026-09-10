@@ -132,21 +132,32 @@ if not _running:
             st.rerun()
 
 elif st.session_state.get("pomo_running"):
-    def _log_work_block(end_ts: float) -> None:
+    def _log_work_block(end_ts: float, completed: bool) -> None:
+        """``completed=True``: die Arbeitsphase ist normal abgelaufen (voller
+        Countdown) - nur DANN gilt ein verlinkter Lernplan-Block als erledigt.
+        Ein Abbruch (``completed=False``) protokolliert die echte investierte
+        Zeit trotzdem (sie zaehlt fuer Lernzeit-Statistik + Kalibrierung), markiert
+        den Block aber NICHT als fertig - sonst wuerde schon eine 2-Minuten-
+        Anlern-Sitzung einen 25-Minuten-Block als erledigt zeigen (Logik-Luecke:
+        vor dieser Korrektur wurde JEDER Abbruch faelschlich als 'fertig'
+        gewertet)."""
         start = st.session_state["pomo_phase_start"]
         dur = end_ts - start
         if dur >= 5:   # winzige Fehlstarts nicht loggen
             manifest.log_study_session(
                 subject=st.session_state.get("pomo_subject"), mode="pomodoro",
                 started_at=start, ended_at=end_ts, duration_sec=round(dur))
-            # Aus einem Lernplan-Block gestartet? -> den Block ehrlich als erledigt
-            # markieren (echte Zeit erfasst, kein blosses Haekchen).
+            # Aus einem Lernplan-Block gestartet? -> die echte Zeit immer auf den
+            # Block buchen (Grundlage der Zeitkalibrierung), aber nur bei einer
+            # NATUERLICH abgelaufenen Arbeitsphase auch als erledigt markieren.
             _block_id = st.session_state.get("pomo_plan_block_id")
             if _block_id:
-                manifest.set_block_done(_block_id, True, via="pomodoro")
-                _linked_block = manifest.get_plan_block(_block_id)
-                if _linked_block:
-                    manifest.sync_plan_status(_linked_block["plan_id"])
+                manifest.add_block_actual_min(_block_id, round(dur / 60))
+                if completed:
+                    manifest.set_block_done(_block_id, True, via="pomodoro")
+                    _linked_block = manifest.get_plan_block(_block_id)
+                    if _linked_block:
+                        manifest.sync_plan_status(_linked_block["plan_id"])
 
     def _pomo_reset() -> None:
         for k in list(st.session_state.keys()):
@@ -172,7 +183,7 @@ elif st.session_state.get("pomo_running"):
             st.caption(f"Fach: {_subj_txt} · Block {st.session_state['pomo_cycle'] + 1}")
             if st.button("⏹️ Abbrechen", key="pomo_cancel"):
                 if phase == "work":
-                    _log_work_block(now)
+                    _log_work_block(now, completed=False)
                 _pomo_reset()
                 st.rerun()
             return
@@ -181,7 +192,7 @@ elif st.session_state.get("pomo_running"):
         if phase == "work":
             if not st.session_state.get("pomo_logged"):
                 _log_work_block(st.session_state["pomo_phase_start"]
-                               + st.session_state["pomo_phase_len"])
+                               + st.session_state["pomo_phase_len"], completed=True)
                 st.session_state["pomo_logged"] = True
                 st.session_state["pomo_cycle"] += 1
             st.success(f"✅ Arbeitsblock fertig! {st.session_state['pomo_work_min']} Min "

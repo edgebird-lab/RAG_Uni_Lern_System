@@ -264,10 +264,26 @@ class Settings:
     # (Algorithmen, Rechenverfahren, Modelle) ist damit nicht vergleichbar - dort
     # kostet WIRKLICHES Verstehen+Ueben (Aufgaben rechnen, Fehlversuche, spaeteres
     # Wiederholen bis zur Klausurreife) deutlich mehr Zeit als reines Abfragen.
-    # Ohne Korrektur faellt der Plan spuerbar zu optimistisch aus. 1.5 ist ein
-    # Startwert (kein Forschungswert) - in Einstellungen -> Lernplan pro Erfahrung
-    # nachjustierbar (siehe docs/LERNPLAN_FORSCHUNG.md, Abschnitt "Grenzen").
+    # Ohne Korrektur faellt der Plan spuerbar zu optimistisch aus. Multiplikator
+    # auf die GESAMTE Formel-Schaetzung (Lese- + Uebungszeit). 1.5 ist der
+    # STATISCHE Startwert (kein Forschungswert) - sobald genug echte Pomodoro-
+    # Messungen an erledigten Lernplan-Bloecken vorliegen, ersetzt der
+    # selbstlernende Faktor aus manifest.time_calibration() diesen Wert
+    # automatisch (siehe study_plan.py:time_factor_info). In Einstellungen ->
+    # Lernplan trotzdem manuell nachjustierbar (siehe docs/LERNPLAN_FORSCHUNG.md).
     PLAN_TIME_FACTOR: float = 1.5
+    # Grobe Dauer EINER Karteikarten-Wiederholung (Sekunden) - Erfahrungswert
+    # (Lesen der Frage, Erinnern, Aufdecken, Bewerten), keine eigene Studie.
+    # Reserviert im Lernplan taeglich Zeit fuer faellige SM-2-Wiederholungen,
+    # BEVOR neuer Stoff eingeplant wird (siehe study_plan.py:build_schedule) -
+    # sonst waere der Tagesplan zu optimistisch, weil er die parallel laufende
+    # Wiederholungslast ignoriert.
+    PLAN_REVIEW_SEC_PER_CARD: float = 25.0
+    # Deckel: faellige Wiederholungen duerfen hoechstens diesen Anteil des
+    # Tagesbudgets belegen - ein Wiederholungs-Stau soll den Neustoff-Teil des
+    # Plans nicht komplett verdraengen (dann lieber ehrlich weniger Puffer als
+    # tagelang NULL Fortschritt beim neuen Stoff).
+    PLAN_REVIEW_MAX_SHARE: float = 0.5
     PLAN_MAX_DAILY_FOCUS_MIN: int = 240    # nachhaltige Tagesobergrenze hochfokussierten Lernens (Forschung: 3-4h optimal, Qualitaet faellt ab ~4-5h)
     PLAN_BLOCK_MIN: int = 25               # Groesse eines Lernblocks (= 1 Pomodoro-Arbeitsblock)
     PLAN_MAX_OUTLINE_SECTIONS: int = 15    # Obergrenze fuer die KI-Gliederung (Uebersichtlichkeit)

@@ -13,13 +13,14 @@ Wunschplan zu erfinden, der nicht in die verfuegbare Zeit passt.
 from __future__ import annotations
 
 import math
+import re
 import time
 from datetime import date, timedelta
 from typing import Optional
 
 from ragapp.config import settings
 from ragapp.llm import get_llm
-from ragapp import manifest
+from ragapp import analytics, manifest
 from ragapp.retrieval.vectorstore import get_vectorstore
 from ragapp.ingestion.summarize import _sections_from_chunks
 
@@ -165,15 +166,55 @@ def estimate_outline_eta_seconds(doc_ids: list[str], model: Optional[str] = None
                 + total_chars / 1000.0 * settings.PLAN_ETA_SEC_PER_1000_CHARS)
 
 
-def estimate_minutes(chars: int) -> int:
+# Grobe Dichte-Heuristik fuer "rechenlastigen" Text: Zahlen + gaengige Mathe-/
+# Algorithmus-Symbole. Bewusst SPRACHNEUTRAL (keine Woerterliste) - eine
+# Woerterliste veraltet und deckt nie alle Faecher ab, Zahlendichte schon.
+_TECHNICAL_MARKER_RE = re.compile(r"[0-9]+([.,][0-9]+)?|[=+\-*/^%<>≤≥≈∑∫√±]")
+
+
+def _content_multiplier(text: str) -> float:
+    """Zusaetzlicher, lokaler Zeitaufschlag fuer rechen-/formellastige Abschnitte
+    (Algorithmen, Statistik, Formeln) gegenueber Fliesstext - reines Uebungs-
+    Umblaettern reicht dort nicht, es muss gerechnet/angewendet werden. Erfah-
+    rungswert (keine Studie), gedeckelt auf max. +40 %. Auf denselben Text
+    angewendet wie die Zeichenzahl der Zeitschaetzung (siehe generate_outline)."""
+    if not text:
+        return 1.0
+    n = len(text)
+    if n < 50:
+        return 1.0
+    markers = len(_TECHNICAL_MARKER_RE.findall(text))
+    density = markers / n * 100.0   # Marker je 100 Zeichen
+    return 1.0 + min(0.4, density / 3.0 * 0.4)
+
+
+def time_factor_info(subject: Optional[str] = None) -> dict:
+    """Welcher Zeit-Korrekturfaktor gerade greift und woher er stammt - fuer
+    Transparenz in der Oberflaeche (Lernplan/Fortschritt). Kaskade: fachspe-
+    zifische Kalibrierung (am praezisesten) -> fachuebergreifende Kalibrierung
+    -> statischer Standardwert aus config.py (siehe manifest.time_calibration)."""
+    if subject:
+        f = manifest.time_calibration(subject=subject)
+        if f is not None:
+            return {"factor": f, "source": "subject"}
+    f = manifest.time_calibration(subject=None)
+    if f is not None:
+        return {"factor": f, "source": "global"}
+    return {"factor": settings.PLAN_TIME_FACTOR, "source": "default"}
+
+
+def estimate_minutes(chars: int, subject: Optional[str] = None,
+                     content_multiplier: float = 1.0) -> int:
     """Formel-basierte Zeitschaetzung (Minuten) aus Zeichenzahl - siehe
-    docs/LERNPLAN_FORSCHUNG.md fuer Herleitung + Quellen. PLAN_TIME_FACTOR
-    korrigiert den aus Vokabel-Lernrate abgeleiteten Uebungsanteil auf
-    technisches/prozedurales Lernen hoch (siehe Kommentar in config.py)."""
+    docs/LERNPLAN_FORSCHUNG.md fuer Herleitung + Quellen. Das Ergebnis der reinen
+    Formel wird mit dem Zeit-Korrekturfaktor (kalibriert oder statisch, siehe
+    ``time_factor_info``) und einem lokalen Inhalts-Aufschlag fuer rechenlastige
+    Abschnitte (siehe ``_content_multiplier``) skaliert."""
     reading_min = chars / settings.PLAN_CHARS_PER_PAGE * (60.0 / settings.PLAN_PAGES_PER_HOUR)
     concepts = chars / settings.PLAN_CHARS_PER_CONCEPT
-    practice_min = concepts * (60.0 / settings.PLAN_ITEMS_PER_HOUR) * settings.PLAN_TIME_FACTOR
-    return max(5, round(reading_min + practice_min))
+    practice_min = concepts * (60.0 / settings.PLAN_ITEMS_PER_HOUR)
+    factor = time_factor_info(subject)["factor"] * max(1.0, content_multiplier)
+    return max(5, round((reading_min + practice_min) * factor))
 
 
 def _repair_outline(data: object, n: int) -> "list[dict] | None":
@@ -264,9 +305,12 @@ def generate_outline(doc_ids: list[str], subject: Optional[str],
 
     out = []
     for s in sections:
-        chars = sum(len(capped[i][2]) for i in s["indices"] if 0 <= i < len(capped))
+        bodies = [capped[i][2] for i in s["indices"] if 0 <= i < len(capped)]
+        chars = sum(len(b) for b in bodies)
+        cm = _content_multiplier("\n".join(bodies))
         out.append({"title": s["title"], "summary": s.get("summary") or "",
-                    "est_chars": chars, "est_minutes": estimate_minutes(chars)})
+                    "est_chars": chars,
+                    "est_minutes": estimate_minutes(chars, subject, cm)})
     return out
 
 
@@ -280,30 +324,71 @@ def parse_iso_date(s: Optional[str]) -> Optional[date]:
         return None
 
 
+_REVIEW_FORECAST_DAYS = 120   # Horizont fuer die Wiederholungs-Reservierung (siehe unten)
+
+
+def _review_reservation_by_day(subject: Optional[str], effective_daily: int) -> dict[str, int]:
+    """Pro Tag (ISO-Datum) reservierte Minuten fuer faellige SM-2-Wiederholungen,
+    aus der bestehenden Faelligkeits-Prognose (``analytics.due_forecast``) und
+    einer groben Dauer/Karte (PLAN_REVIEW_SEC_PER_CARD). Gedeckelt auf
+    PLAN_REVIEW_MAX_SHARE des Tagesbudgets, damit ein Wiederholungs-Stau den
+    Neustoff-Teil des Plans nicht komplett verdraengt. Ohne Fach (mehrere
+    Faecher/keine Auswahl) wird nichts reserviert - die Prognose ist sonst nicht
+    eindeutig einem Plan zuzuordnen."""
+    if not subject or effective_daily <= 0:
+        return {}
+    cap_share = max(0.0, min(0.9, float(settings.PLAN_REVIEW_MAX_SHARE)))
+    sec_per_card = max(1.0, float(settings.PLAN_REVIEW_SEC_PER_CARD))
+    cap_min = effective_daily * cap_share
+    out: dict[str, int] = {}
+    for f in analytics.due_forecast(_REVIEW_FORECAST_DAYS, subject):
+        review_min = f["faellig"] * sec_per_card / 60.0
+        out[f["tag"]] = round(min(review_min, cap_min))
+    return out
+
+
 def build_schedule(sections: list[dict], daily_minutes: int,
-                   deadline: Optional[str], start: Optional[date] = None) -> dict:
+                   deadline: Optional[str], start: Optional[date] = None,
+                   subject: Optional[str] = None) -> dict:
     """Verteilt die Abschnitte (mit ``section_id`` + ``est_minutes``) auf Tage in
     PLAN_BLOCK_MIN-Portionen (verteiltes statt massiertes Lernen). Das taegliche
     Zeitbudget wird auf PLAN_MAX_DAILY_FOCUS_MIN gedeckelt, selbst wenn der Nutzer
-    mehr angibt (siehe docs/LERNPLAN_FORSCHUNG.md). Reicht ein gesetztes Zieldatum
-    nicht, werden nur so viele Bloecke erzeugt, wie bis dahin passen - der Rest
-    wird als ``shortfall_minutes`` ehrlich ausgewiesen statt stillschweigend
-    ueber das Zieldatum hinausgeplant.
+    mehr angibt (siehe docs/LERNPLAN_FORSCHUNG.md). Faellige Karteikarten-
+    Wiederholungen (SM-2) belegen echte Zeit, BEVOR neuer Stoff drankommt - ohne
+    das waere der Tagesplan zu optimistisch, weil er die parallel laufende
+    Wiederholungslast ignoriert (siehe ``_review_reservation_by_day``). Reicht
+    ein gesetztes Zieldatum trotzdem nicht, werden nur so viele Bloecke erzeugt,
+    wie bis dahin passen - der Rest wird als ``shortfall_minutes`` ehrlich
+    ausgewiesen statt stillschweigend ueber das Zieldatum hinausgeplant.
 
     Rueckgabe: {blocks, effective_daily_min, capped_daily, total_minutes,
-    days_needed_total, shortfall_minutes, deadline_days}."""
+    days_needed_total, shortfall_minutes, deadline_days, review_minutes_reserved}."""
     start = start or date.today()
     effective_daily = min(int(daily_minutes), settings.PLAN_MAX_DAILY_FOCUS_MIN)
     capped = effective_daily < int(daily_minutes)
     block_min = max(5, int(settings.PLAN_BLOCK_MIN))
     total_minutes = sum(int(s.get("est_minutes") or 0) for s in sections)
 
+    if effective_daily <= 0:   # entartete Konfiguration - nichts planbar, ehrlich melden
+        return {
+            "blocks": [], "effective_daily_min": 0, "capped_daily": capped,
+            "total_minutes": total_minutes, "days_needed_total": 0,
+            "shortfall_minutes": total_minutes, "deadline_days": None,
+            "review_minutes_reserved": 0,
+        }
+
+    review_by_day = _review_reservation_by_day(subject, effective_daily)
+
+    def _day_budget(d: date) -> int:
+        return max(0, effective_daily - review_by_day.get(d.isoformat(), 0))
+
     deadline_date = parse_iso_date(deadline)
     deadline_days = None
     capacity_minutes = None
     if deadline_date:
         deadline_days = max(1, (deadline_date - start).days + 1)
-        capacity_minutes = deadline_days * effective_daily
+        capacity_minutes = sum(_day_budget(start + timedelta(days=i))
+                               for i in range(deadline_days))
 
     shortfall_minutes = (0 if capacity_minutes is None
                          else max(0, total_minutes - capacity_minutes))
@@ -311,13 +396,20 @@ def build_schedule(sections: list[dict], daily_minutes: int,
 
     blocks: list[dict] = []
     cur_date = start
-    remaining_today = effective_daily
+    remaining_today = _day_budget(cur_date)
+    review_reserved_total = review_by_day.get(cur_date.isoformat(), 0)
+    seen_days = {cur_date.isoformat()}
     for s in sections:
         remaining_section = int(s.get("est_minutes") or 0)
         while remaining_section > 0 and budget_left > 0:
             if remaining_today <= 0:
                 cur_date = cur_date + timedelta(days=1)
-                remaining_today = effective_daily
+                remaining_today = _day_budget(cur_date)
+                iso = cur_date.isoformat()
+                if iso not in seen_days:
+                    seen_days.add(iso)
+                    review_reserved_total += review_by_day.get(iso, 0)
+                continue   # Tag kann trotz Reservierung 0 Minuten frei haben -> pruefen
             take = min(block_min, remaining_section, remaining_today, budget_left)
             blocks.append({"section_id": s.get("section_id"),
                            "planned_date": cur_date.isoformat(), "planned_min": take})
@@ -332,4 +424,5 @@ def build_schedule(sections: list[dict], daily_minutes: int,
         "blocks": blocks, "effective_daily_min": effective_daily, "capped_daily": capped,
         "total_minutes": total_minutes, "days_needed_total": days_needed_total,
         "shortfall_minutes": shortfall_minutes, "deadline_days": deadline_days,
+        "review_minutes_reserved": review_reserved_total,
     }

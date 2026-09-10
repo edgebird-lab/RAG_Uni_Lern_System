@@ -228,7 +228,10 @@ CREATE TABLE IF NOT EXISTS study_plan_blocks (
     planned_date  TEXT NOT NULL,    -- ISO-Datum
     planned_min   INTEGER NOT NULL,
     done          INTEGER DEFAULT 0,
-    done_via      TEXT              -- 'pomodoro' (echte Zeit erfasst) | 'manual' | NULL
+    done_via      TEXT,             -- 'pomodoro' (echte Zeit erfasst) | 'manual' | NULL
+    actual_min    INTEGER           -- ECHTE, per Pomodoro gemessene Minuten (NULL = keine
+                                     -- Messung, z. B. manuell abgehakt) - Grundlage der
+                                     -- selbstlernenden Zeitkalibrierung (time_calibration)
 );
 CREATE INDEX IF NOT EXISTS idx_plan_blocks_plan ON study_plan_blocks(plan_id);
 CREATE INDEX IF NOT EXISTS idx_plan_blocks_date ON study_plan_blocks(planned_date);
@@ -309,6 +312,8 @@ def init_db() -> None:
             bcols = {r["name"] for r in conn.execute("PRAGMA table_info(study_plan_blocks)")}
             if "done_via" not in bcols:
                 conn.execute("ALTER TABLE study_plan_blocks ADD COLUMN done_via TEXT")
+            if "actual_min" not in bcols:
+                conn.execute("ALTER TABLE study_plan_blocks ADD COLUMN actual_min INTEGER")
         except Exception:  # noqa: BLE001
             _log.warning("Additive Migration study_plan_blocks uebersprungen", exc_info=True)
 
@@ -1476,6 +1481,76 @@ def get_plan_block(block_id: str) -> Optional[dict]:
     with _connect() as conn:
         r = conn.execute("SELECT * FROM study_plan_blocks WHERE block_id=?", (block_id,)).fetchone()
         return dict(r) if r else None
+
+
+def add_block_actual_min(block_id: str, minutes: int) -> None:
+    """Addiert ECHTE (per Pomodoro gemessene) Minuten auf einen Lernplan-Block -
+    unabhaengig davon, ob der Block dadurch schon fertig ist (siehe Lernzeit-Seite:
+    ein Block kann mehrere Arbeitsphasen brauchen, auch abgebrochene zaehlen die
+    tatsaechlich investierte Zeit). Grundlage von ``time_calibration``."""
+    minutes = int(minutes)
+    if minutes <= 0:
+        return
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE study_plan_blocks SET actual_min = COALESCE(actual_min,0) + ? "
+            "WHERE block_id=?", (minutes, block_id))
+
+
+def time_calibration(subject: Optional[str] = None, min_samples: int = 5) -> Optional[float]:
+    """Faktor 'echte Minuten / geplante Minuten' aus ECHTEN Pomodoro-Messungen an
+    ERLEDIGTEN Lernplan-Bloecken. ``None``, wenn (noch) zu wenige brauchbare
+    Messungen vorliegen - dann greift der statische PLAN_TIME_FACTOR aus
+    config.py (siehe study_plan.py:time_factor_info). Einzelne Ausreisser (z. B.
+    ein vergessener, weiterlaufender Timer) werden verworfen; das Ergebnis bleibt
+    auf ein plausibles Band [0.4, 4.0] begrenzt, damit ein einzelner kaputter
+    Messwert die Schaetzung nicht verzerrt. Nur ERLEDIGTE Bloecke (``done=1``)
+    zaehlen - ein noch offener Block (z. B. nach einer abgebrochenen ersten
+    Pomodoro-Runde) hat erst EINEN TEIL seiner Zeit gemeldet; ihn schon jetzt
+    einzurechnen wuerde die tatsaechliche Dauer systematisch unterschaetzen."""
+    sql = ("SELECT b.planned_min AS planned, b.actual_min AS actual "
+           "FROM study_plan_blocks b JOIN study_plans p ON p.plan_id=b.plan_id "
+           "WHERE b.done=1 AND b.actual_min IS NOT NULL AND b.planned_min>0")
+    args: list = []
+    if subject:
+        sql += " AND p.subject=?"
+        args.append(subject)
+    with _connect() as conn:
+        rows = conn.execute(sql, args).fetchall()
+    usable = [(r["planned"], r["actual"]) for r in rows
+             if r["actual"] and 0 < r["actual"] <= r["planned"] * 8]
+    if len(usable) < max(1, min_samples):
+        return None
+    planned_sum = sum(p for p, _ in usable)
+    actual_sum = sum(a for _, a in usable)
+    if planned_sum <= 0:
+        return None
+    return max(0.4, min(4.0, actual_sum / planned_sum))
+
+
+def plan_time_totals(subject: Optional[str] = None) -> dict:
+    """Aggregiert ERLEDIGTE Lernplan-Bloecke: geplante vs. tatsaechlich (per
+    Pomodoro) gemessene Minuten - Grundlage der Anzeige 'Plan vs. Realitaet'
+    (Seite Fortschritt). Getrennt nach Bloecken MIT echter Zeitmessung (fliessen
+    in ``time_calibration`` ein) und ohne (manuell abgehakt, z. B. Programmier-
+    aufgaben ohne Timer)."""
+    sql = ("SELECT b.planned_min AS planned, b.actual_min AS actual "
+           "FROM study_plan_blocks b JOIN study_plans p ON p.plan_id=b.plan_id "
+           "WHERE b.done=1")
+    args: list = []
+    if subject:
+        sql += " AND p.subject=?"
+        args.append(subject)
+    with _connect() as conn:
+        rows = conn.execute(sql, args).fetchall()
+    measured = [r for r in rows if r["actual"] is not None]
+    return {
+        "planned_total": sum(r["planned"] for r in rows),
+        "measured_blocks": len(measured),
+        "manual_blocks": len(rows) - len(measured),
+        "planned_for_measured": sum(r["planned"] for r in measured),
+        "actual_for_measured": sum(r["actual"] for r in measured),
+    }
 
 
 def list_plan_blocks_detailed(plan_id: Optional[str] = None,

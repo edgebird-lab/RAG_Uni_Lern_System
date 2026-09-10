@@ -34,12 +34,20 @@ h1 {font-weight: 750; letter-spacing:-0.5px;}
 
 with st.spinner("Fortschritt wird geladen ..."):
     import pandas as pd
-    from ragapp import analytics, planner, manifest, backup, sync as _sync
+    from ragapp import analytics, planner, manifest, backup, study_plan, sync as _sync
     from ragapp.config import settings, SUBJECT_LABELS
 
 
 def _fach(code: str) -> str:
     return SUBJECT_LABELS.get(code, code)
+
+
+def _fmt_min(m: int) -> str:
+    m = int(m)
+    if m < 60:
+        return f"{m} Min"
+    h, r = divmod(m, 60)
+    return f"{h} Std {r} Min" if r else f"{h} Std"
 
 
 st.caption("Dein objektiver Lernstand aus den echten Wiederholungen – damit du "
@@ -198,6 +206,43 @@ with mcol2:
                          "Mastery %", min_value=0, max_value=100, format="%d %%")})
     else:
         st.caption("Noch keine Themendaten.")
+
+st.divider()
+
+# --------------------------------------------------------------------------- #
+# Plan vs. Realität (selbstlernender Zeit-Korrekturfaktor des Lernplans)
+# --------------------------------------------------------------------------- #
+st.subheader("⏱️ Plan vs. Realität")
+st.caption("Vergleicht die vom Lernplan geschätzte Zeit mit der tatsächlich per "
+           "Pomodoro-Timer erfassten Zeit – Grundlage des selbstlernenden "
+           "Zeit-Korrekturfaktors (siehe Seite 📋 Lernplan).")
+_pt = manifest.plan_time_totals(subject)
+_tf = study_plan.time_factor_info(subject)
+_tf_src = {"subject": f"kalibriert für {_fach(subject)}" if subject else "kalibriert",
+          "global": "kalibriert, alle Fächer",
+          "default": "Standardwert"}.get(_tf["source"], "Standardwert")
+pfc1, pfc2, pfc3 = st.columns(3)
+pfc1.metric("Zeit-Korrekturfaktor", f'{_tf["factor"]:.2f}×', help=(
+    f"Quelle: {_tf_src}. 1.0× = reine Formel ohne Aufschlag. Wird automatisch "
+    "genauer, je mehr erledigte Lernplan-Blöcke mit echter Pomodoro-Zeit "
+    "vorliegen. Manuell einstellbar unter ⚙️ Einstellungen → 📋 Lernplan."))
+if _pt["measured_blocks"] > 0 and _pt["planned_for_measured"] > 0:
+    _ratio = _pt["actual_for_measured"] / _pt["planned_for_measured"]
+    pfc2.metric("Geplant → real (gemessen)",
+               f'{_fmt_min(_pt["planned_for_measured"])} → {_fmt_min(_pt["actual_for_measured"])}',
+               delta=f"{_ratio:.1f}×", delta_color="off",
+               help=f'{_pt["measured_blocks"]} erledigte(r) Lernplan-Block(e) mit echter '
+                    "Pomodoro-Zeitmessung (über „🍅 Pomodoro“ auf der Lernplan-Seite gestartet).")
+else:
+    pfc2.metric("Geplant → real (gemessen)", "–",
+               help="Noch keine per Pomodoro erfasste Block-Zeit. Starte Lernplan-Blöcke "
+                    "über „🍅 Pomodoro“ statt nur abzuhaken, damit echte Zeit erfasst wird.")
+pfc3.metric("Manuell abgehakt", _pt["manual_blocks"],
+           help="Erledigte Blöcke ohne echte Zeitmessung (Haken ohne Timer, z. B. bei "
+                "Programmieraufgaben) – fließen nicht in die Kalibrierung ein.")
+if _pt["measured_blocks"] < 5:
+    st.caption(f"Noch zu wenige Messungen ({_pt['measured_blocks']}/5) für einen eigenen "
+              "kalibrierten Faktor – bis dahin gilt der Standard-/manuelle Wert.")
 
 st.divider()
 

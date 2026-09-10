@@ -75,6 +75,20 @@ def _plan_label(p: dict) -> str:
     return f"{p['title']}  ·  {_fach(p['subject'])}  ·  {p['status']}"
 
 
+_TF_SOURCE_TXT = {
+    "subject": "aus deinen echten Pomodoro-Zeiten für dieses Fach kalibriert",
+    "global": "aus deinen echten Pomodoro-Zeiten (alle Fächer) kalibriert",
+    "default": "Standardwert (noch zu wenige echte Zeitmessungen)",
+}
+
+
+def _time_factor_caption(subject: "str | None") -> str:
+    _tf = study_plan.time_factor_info(subject)
+    return (f"Zeit-Korrekturfaktor: **{_tf['factor']:.2f}×** "
+           f"({_TF_SOURCE_TXT.get(_tf['source'], 'Standardwert')}, "
+           "einstellbar unter ⚙️ Einstellungen → 📋 Lernplan).")
+
+
 _STATUS_META = {
     "draft": ("📝 Entwurf", "#94a3b8"),
     "active": ("🟢 Aktiv", "#2563eb"),
@@ -235,6 +249,7 @@ if _active_plan_id is None:
         _eta_hint = (" – mit „Schnell“ oft deutlich weniger" if _new_model is None else "")
         st.caption(f"Geschätzte Wartezeit: {_eta_txt} (grober Richtwert, hängt stark "
                    f"von deiner Hardware ab{_eta_hint}).")
+        st.caption(_time_factor_caption(_new_subject))
 
     if st.button("🧠 Gliederung erzeugen", type="primary", disabled=not _new_doc_names):
         doc_ids = [_subj_docs[n] for n in _new_doc_names]
@@ -349,6 +364,7 @@ _regen_model = settings.LLM_MODEL_FAST if "Schnell" in _regen_model_choice else 
 _regen_eta = study_plan.estimate_outline_eta_seconds(_plan["doc_ids"], model=_regen_model)
 st.caption(f"Geschätzte Wartezeit: ~{_regen_eta // 60} Min" if _regen_eta >= 90
           else f"Geschätzte Wartezeit: ~{_regen_eta} Sek.")
+st.caption(_time_factor_caption(_plan["subject"]))
 
 if st.button("🔄 Gliederung neu erzeugen", key=f"splan_regen_{_active_plan_id}"):
     with st.spinner("KI erstellt die Gliederung neu … das kann je nach Umfang und "
@@ -424,12 +440,18 @@ else:
     # immer sichtbar, nicht nur direkt nach einem Klick auf "Plan berechnen".
     _preview = study_plan.build_schedule(
         [{"section_id": s["section_id"], "est_minutes": s["est_minutes"]} for s in _sections],
-        daily_minutes=_plan["daily_minutes"], deadline=_plan.get("deadline"))
+        daily_minutes=_plan["daily_minutes"], deadline=_plan.get("deadline"),
+        subject=_plan["subject"])
     if _preview["capped_daily"]:
         st.caption(
             f"⏱️ {_plan['daily_minutes']} Min/Tag sind mehr, als nachhaltig hochfokussiert "
             f"lernbar ist – der Plan rechnet realistisch mit "
             f"**{_preview['effective_daily_min']} Min/Tag** (siehe Forschung oben).")
+    if _preview["review_minutes_reserved"] > 0:
+        st.caption(
+            f"🔁 Zusätzlich sind **{_fmt_min(_preview['review_minutes_reserved'])}** für "
+            "fällige Karteikarten-Wiederholungen reserviert (aus der Fälligkeits-Prognose) "
+            "– die belegen echte Zeit, bevor neuer Stoff drankommt.")
     if _preview["shortfall_minutes"] > 0:
         st.warning(
             f"⚠️ Ehrlich gesagt: Bis zum Zieldatum passen nur "

@@ -28,7 +28,7 @@ Geschätzte Zeit   = Lesezeit + Übungszeit   (siehe ragapp/study_plan.py:estima
 Effektive Tageszeit = min(vom Nutzer angegebene Minuten/Tag, PLAN_MAX_DAILY_FOCUS_MIN)
 ```
 
-### Erfahrungskorrektur: `PLAN_TIME_FACTOR` (Standard 1.5)
+### Erfahrungskorrektur: `PLAN_TIME_FACTOR` (Standard 1.5) – jetzt selbstlernend
 
 `PLAN_ITEMS_PER_HOUR` stammt aus Forschung zu **Vokabel-/Fakten-Lernen** –
 isolierten, atomaren Items, die im Wesentlichen nur erkannt/abgerufen werden
@@ -40,12 +40,41 @@ Abfrage-Takt aus der Vokabel-Studie. Ohne Korrektur fällt der Plan dadurch
 spürbar zu optimistisch aus (in der Praxis beobachtet, v. a. bei Fächern wie
 Algorithmen/Statistik).
 
-`PLAN_TIME_FACTOR` ist deshalb ein **einstellbarer** Multiplikator auf die
-Übungszeit (Einstellungen → 📋 Lernplan), kein weiterer Forschungswert. 1.0
-= reine Formel, höher = mehr eingeplante Zeit pro Thema. Der Startwert 1.5
-ist eine bewusst vorsichtige Annahme; nach ein paar echten Lernplänen lohnt
-es sich, ihn anhand der tatsächlich gebrauchten Zeit (Seite ⏱️ Lernzeit)
-nachzujustieren.
+`PLAN_TIME_FACTOR` (Einstellungen → 📋 Lernplan) ist der **statische Startwert**
+für diesen Multiplikator auf die GESAMTE Zeitschätzung (Lese- + Übungszeit) –
+kein Forschungswert, sondern eine bewusst vorsichtige Annahme. Sobald genug
+echte Messungen vorliegen, übernimmt ein **selbstlernender** Faktor:
+
+- Jeder über „🍅 Pomodoro" gestartete und **normal abgelaufene** Lernplan-Block
+  bucht seine echte Dauer auf den Block (``manifest.add_block_actual_min``).
+  Ein Abbruch bucht die Zeit ebenfalls (sie zählt fürs Lerntempo), markiert den
+  Block aber **nicht** als erledigt – sonst würde schon eine 2-Minuten-Sitzung
+  einen 25-Minuten-Block als fertig zeigen.
+- Ab 5 solcher Messungen berechnet ``manifest.time_calibration`` den Faktor
+  „echte Minuten / geplante Minuten" (zuerst fachspezifisch, sonst
+  fachübergreifend), begrenzt auf ein plausibles Band [0.4, 4.0] gegen
+  Ausreißer (z. B. ein vergessener, weiterlaufender Timer).
+- Diese Kalibrierung **ersetzt** `PLAN_TIME_FACTOR` automatisch für zukünftige
+  Schätzungen (siehe ``study_plan.py:time_factor_info``) – sichtbar auf der
+  Lernplan-Seite (Faktor + Quelle) und unter 📈 Fortschritt → „Plan vs.
+  Realität" (geplante vs. tatsächliche Zeit, Anzahl Messungen).
+
+Zusätzlich bekommt jeder Gliederungs-Abschnitt einen **lokalen** Aufschlag
+(``study_plan.py:_content_multiplier``, max. +40 %), wenn sein Text auffällig
+viele Zahlen/Formelzeichen enthält (rechenlastiger Stoff wie Statistik oder
+Algorithmen-Komplexität) – ebenfalls ein Erfahrungswert, keine Studie.
+
+### Wiederholungen (SM-2) belegen echte Zeit im Plan
+
+Der Tagesplan reservierte bislang nur Zeit für NEUEN Stoff und ignorierte, dass
+an jedem Tag zusätzlich fällige Karteikarten-Wiederholungen anstehen – der Plan
+wirkte dadurch optimistischer, als der Tag tatsächlich hergibt. Jetzt zieht
+``build_schedule`` aus der bestehenden Fälligkeits-Prognose
+(``analytics.due_forecast``) pro Tag eine grobe Zeitreservierung ab
+(`PLAN_REVIEW_SEC_PER_CARD` je fälliger Karte), **bevor** neuer Stoff verplant
+wird – gedeckelt auf `PLAN_REVIEW_MAX_SHARE` des Tagesbudgets, damit ein
+Wiederholungs-Stau den Neustoff-Teil nicht komplett verdrängt. Die reservierte
+Zeit wird auf der Lernplan-Seite ausgewiesen.
 
 Der Plan wird in `PLAN_BLOCK_MIN`-Portionen über die verfügbaren Tage verteilt.
 Reicht die Zeit bis zu einem gesetzten Zieldatum nicht aus, meldet das System den
@@ -56,5 +85,6 @@ fehlenden Umfang **explizit** (keine stillschweigende Kürzung) – siehe
 
 Das ist eine grobe, Zeichen-basierte Schätzung – keine individuelle Diagnostik.
 Tatsächliches Lerntempo hängt stark von Vorwissen, Fach und Person ab. Die Werte
-sind über `ragapp/config.py` anpassbar, falls sie sich in der Praxis als zu
-optimistisch oder zu konservativ erweisen.
+sind über `ragapp/config.py` bzw. Einstellungen → 📋 Lernplan anpassbar, falls
+sie sich in der Praxis als zu optimistisch oder zu konservativ erweisen – oder
+sie kalibrieren sich mit der Zeit von selbst (siehe oben).
