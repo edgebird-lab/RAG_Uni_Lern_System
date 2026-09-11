@@ -187,6 +187,100 @@ with _hero_l:
 with _hero_r:
     render_mascot(_theme["accent"], pose="cheer", animation="wave")
 
+# --------------------------------------------------------------------------- #
+# "Heute"-Briefing: das Wichtigste des Tages auf einen Blick, statt es sich aus
+# fuenf Seiten (Lernen/Fortschritt/Lernplan/Organisation/Lernzeit) zusammen-
+# suchen zu muessen. Nutzt dieselbe planner.today_snapshot()-Funktion wie
+# Organisation's "Heute im Blick" (siehe dort) - damit laufen die Zahlen nie
+# auseinander. Rein informativ/optional: schlaegt fehl -> Karte wird einfach
+# uebersprungen, blockiert nie den Rest der Seite.
+# --------------------------------------------------------------------------- #
+try:
+    import datetime as _dt
+    from html import escape as _html_escape
+    from ragapp import planner
+    from ragapp.config import SUBJECT_LABELS
+
+    _snap = planner.today_snapshot()
+except Exception:  # noqa: BLE001
+    _snap = None
+
+if _snap:
+    _WOCHENTAGE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag",
+                   "Samstag", "Sonntag"]
+    _today = _dt.date.today()
+
+    with card("heute"):
+        st.markdown(f"#### 🌞 Heute · {_WOCHENTAGE[_today.weekday()]}, "
+                    f"{_today.strftime('%d.%m.%Y')}")
+
+        _chips: list[str] = []
+        if _snap["due_cards"]:
+            _chips.append(f"🎴 {_snap['due_cards']} Karten fällig")
+        if _snap["leeches"]:
+            _chips.append(f"🐛 {_snap['leeches']} Problemkarten")
+        if _snap["next_exam"] and _snap["days_to_exam"] is not None:
+            _ex_subj = _html_escape(SUBJECT_LABELS.get(
+                _snap["next_exam"]["subject"], _snap["next_exam"]["subject"]))
+            _chips.append(f"📝 {_ex_subj}: {planner.humanize_days(_snap['days_to_exam'])}")
+        if _snap["overdue_tasks"]:
+            _chips.append(f"⚠️ {len(_snap['overdue_tasks'])} überfällige Aufgabe(n)")
+        if _snap["due_today_tasks"]:
+            _chips.append(f"✅ {len(_snap['due_today_tasks'])} Aufgabe(n) heute fällig")
+        if _snap["study_min_today"]:
+            _chips.append(f"⏱️ {_snap['study_min_today']} Min heute gelernt")
+
+        if _chips:
+            st.markdown(
+                '<div class="rag-heute-chips">'
+                + "".join(f'<span class="rag-heute-chip">{c}</span>' for c in _chips)
+                + "</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.caption("Für heute liegt nichts Dringendes an – gute Gelegenheit, "
+                        "freiwillig etwas zu wiederholen.")
+
+        _rows: list[str] = []
+        for _s in _snap["today_classes"]:
+            _room = f" ({_html_escape(_s['room'])})" if _s.get("room") else ""
+            _cls_subj = _html_escape(SUBJECT_LABELS.get(_s["subject"], _s["subject"]))
+            _rows.append(f"🗓️ {_s['start_time']}–{_s['end_time']} {_cls_subj}{_room}")
+        for _b in _snap["plan_blocks_today"]:
+            _mark = "✅" if _b["done"] else "📋"
+            _sec_title = _html_escape(_b["section_title"] or "Abschnitt")
+            _plan_title = _html_escape(_b["plan_title"])
+            _rows.append(f"{_mark} {_sec_title} ({_plan_title}, {_b['planned_min']} Min)")
+        if _rows:
+            st.markdown(f'<div class="rag-heute-row">{" · ".join(_rows)}</div>',
+                        unsafe_allow_html=True)
+
+        # CTA: springt zur Seite, die heute am meisten weiterhilft - fällige
+        # Karten zuerst (staerkster FSRS-Hebel), dann offene Aufgaben, dann der
+        # Lernplan, sonst das Fach mit der hoechsten Prioritaet (siehe
+        # planner.all_priorities()). Zielpfade kommen bewusst aus PAGE_REGISTRY
+        # (die "einzige Quelle der Wahrheit", siehe Modul-Docstring von
+        # _style.py) statt als eigene String-Literale - damit ein spaeter
+        # umbenannter Dateiname nicht still zwei Stellen auseinanderlaufen laesst.
+        _target = {p["key"]: p["target"] for p in PAGE_REGISTRY}
+        if _snap["due_cards"]:
+            _cta_label, _cta_target = "▶ Jetzt lernen", _target["lernen"]
+        elif _snap["overdue_tasks"] or _snap["due_today_tasks"]:
+            _cta_label, _cta_target = "🗂️ Aufgaben ansehen", _target["organisation"]
+        elif _snap["plan_blocks_today"] and _snap["plan_done_today"] < _snap["plan_min_today"]:
+            _cta_label, _cta_target = "📋 Lernplan ansehen", _target["lernplan"]
+        elif _snap["top_priority"]:
+            _tp_subj = SUBJECT_LABELS.get(_snap["top_priority"]["subject"],
+                                          _snap["top_priority"]["subject"])
+            _cta_label = f"🎯 {_tp_subj} vertiefen"
+            _cta_target = _target["lernen"]
+        else:
+            _cta_label, _cta_target = None, None
+
+        if _cta_label:
+            if st.button(_cta_label, key="heute_cta", type="primary"):
+                st.switch_page(_cta_target)
+
 with st.spinner("Wird geladen ..."):
     from ragapp import manifest
 

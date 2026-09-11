@@ -10,7 +10,6 @@ Seite "Fortschritt" (dort mit Gewicht/ECTS fuer die Lern-Priorisierung).
 from __future__ import annotations
 
 import sys
-import time
 import pathlib
 from datetime import date
 
@@ -45,7 +44,6 @@ with st.spinner("Organisation wird geladen ..."):
 
 _WOCHENTAGE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
 _today = date.today()
-_today_iso = _today.isoformat()
 _today_wd = _today.weekday()
 
 
@@ -193,19 +191,18 @@ _known_subjects = sorted(
 with card("heute"):
     st.subheader("📊 Heute im Blick")
 
-    _today_classes = sorted(
-        [s for s in manifest.list_timetable() if int(s["weekday"]) == _today_wd],
-        key=lambda s: s["start_time"])
-    _open_tasks = manifest.list_tasks(include_done=False)
-    _overdue = [t for t in _open_tasks if t.get("due_date") and t["due_date"] < _today_iso]
-    _due_today = [t for t in _open_tasks if t.get("due_date") == _today_iso]
-    _next_exam = next((e for e in manifest.list_exams()
-                       if e.get("exam_date") and e["exam_date"] >= _today_iso), None)
-    _today_start_ts = time.mktime(_today.timetuple())
-    _study_min_today = round(manifest.study_time_total(since=_today_start_ts) / 60)
-    _plan_blocks_today = manifest.list_plan_blocks_detailed(date=_today_iso)
-    _plan_min_today = sum(b["planned_min"] for b in _plan_blocks_today)
-    _plan_done_today = sum(b["planned_min"] for b in _plan_blocks_today if b["done"])
+    # Gemeinsame Grundlage mit dem "Heute"-Block auf der Startseite (siehe
+    # planner.today_snapshot) - dieselbe Funktion, damit die Zahlen nie
+    # auseinanderlaufen.
+    _snap = planner.today_snapshot()
+    _today_classes = _snap["today_classes"]
+    _overdue = _snap["overdue_tasks"]
+    _due_today = _snap["due_today_tasks"]
+    _next_exam = _snap["next_exam"]
+    _study_min_today = _snap["study_min_today"]
+    _plan_blocks_today = _snap["plan_blocks_today"]
+    _plan_min_today = _snap["plan_min_today"]
+    _plan_done_today = _snap["plan_done_today"]
 
     d1, d2, d3, d4, d5, d6 = st.columns(6)
     d1.metric("Heute Vorlesungen", len(_today_classes))

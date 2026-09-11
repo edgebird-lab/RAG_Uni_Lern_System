@@ -73,6 +73,52 @@ def all_priorities() -> list[dict]:
     return out
 
 
+def today_snapshot() -> dict:
+    """Fasst alles zusammen, was fuer 'heute' relevant ist - EINE Stelle statt
+    fuenf verstreuter Seiten (Lernen/Fortschritt/Lernplan/Organisation/
+    Lernzeit rechnen sonst alle mit denselben Daten, aber getrennt
+    voneinander). Grundlage fuer "Heute im Blick" (Organisation) UND den
+    Briefing-Block auf der Startseite - beide nutzen bewusst dieselbe
+    Funktion, damit die Zahlen nie auseinanderlaufen."""
+    today = date.today()
+    today_iso = today.isoformat()
+    today_wd = today.weekday()
+    today_start_ts = time.mktime(today.timetuple())
+
+    today_classes = sorted(
+        [s for s in manifest.list_timetable() if int(s["weekday"]) == today_wd],
+        key=lambda s: s["start_time"])
+    open_tasks = manifest.list_tasks(include_done=False)
+    overdue_tasks = [t for t in open_tasks if t.get("due_date") and t["due_date"] < today_iso]
+    due_today_tasks = [t for t in open_tasks if t.get("due_date") == today_iso]
+    next_exam = next((e for e in manifest.list_exams()
+                      if e.get("exam_date") and e["exam_date"] >= today_iso), None)
+    study_min_today = round(manifest.study_time_total(since=today_start_ts) / 60)
+    plan_blocks_today = manifest.list_plan_blocks_detailed(date=today_iso)
+    plan_min_today = sum(b["planned_min"] for b in plan_blocks_today)
+    plan_done_today = sum(b["planned_min"] for b in plan_blocks_today if b["done"])
+
+    ov = analytics.overview(None)
+    prios = all_priorities()
+
+    return {
+        "today_iso": today_iso,
+        "today_classes": today_classes,
+        "overdue_tasks": overdue_tasks,
+        "due_today_tasks": due_today_tasks,
+        "next_exam": next_exam,
+        "days_to_exam": days_to_exam(next_exam["exam_date"]) if next_exam else None,
+        "study_min_today": study_min_today,
+        "plan_blocks_today": plan_blocks_today,
+        "plan_min_today": plan_min_today,
+        "plan_done_today": plan_done_today,
+        "due_cards": ov["due"],
+        "leeches": ov["leeches"],
+        "total_cards": ov["total"],
+        "top_priority": prios[0] if prios else None,
+    }
+
+
 def phase_round(limit: int = 20, cram: bool = False,
                 per_subject_cap: Optional[int] = None) -> list[dict]:
     """Faecheruebergreifende Pruefungsphasen-Runde: zieht faellige Karten je Fach und

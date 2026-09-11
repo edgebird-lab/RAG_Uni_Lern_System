@@ -278,6 +278,16 @@ div[class*="st-key-card_"] {{
 html.rag-dark .rag-bubble {{background:#0f2440; border-color:rgba(231,237,245,.16);}}
 html.rag-dark .rag-bubble::after {{background:#0f2440; border-color:rgba(231,237,245,.16);}}
 
+/* "Heute"-Briefing auf der Startseite (siehe planner.today_snapshot()) - Chips
+   fassen das Wichtigste des Tages auf einen Blick zusammen. */
+.rag-heute-chips {{display:flex; flex-wrap:wrap; gap:8px; margin:.5rem 0 .7rem;}}
+.rag-heute-chip {{
+  font-size:.86rem; font-weight:600; padding:5px 12px; border-radius:999px;
+  background:{soft}; border:1.5px solid {accent}55; color:#2b2036; white-space:nowrap;
+}}
+html.rag-dark .rag-heute-chip {{background:#132b4d; border-color:{accent}66; color:#e7edf5;}}
+.rag-heute-row {{font-size:.88rem; opacity:.85; margin:.15rem 0;}}
+
 /* Lernmaskottchen (siehe ragapp.ui._mascot) - Grundgeruest + drei
    Bewegungs-Varianten (float/wave/run, je nach Pose der Seite) plus
    Augen-Ausdruck (Blinzeln/Zwinkern/schlaefrig) und Pupillen-Tracking. */
