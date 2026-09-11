@@ -2,9 +2,11 @@
 RAG-Lernsystem: Seite „Audio-Overview" (Vorlesen mit der eigenen Stimme)
 ==========================================================================
 Erzeugt aus den gewählten Dokumenten ein gesprochen klingendes Erklär-Skript
-und vertont es mit der eigenen, geklonten Stimme (XTTS-v2, siehe
+UND vertont es mit der eigenen, geklonten Stimme (XTTS-v2, siehe
 ``ragapp/audio_overview.py`` und docs/STIMME_AUFNEHMEN.md) - bewusst KEINE
-generische KI-Stimme.
+generische KI-Stimme. Alternativ laesst sich ein Skript auch komplett selbst
+schreiben (keine Dokumente/KI noetig) und ein bestehendes Skript laesst sich
+bearbeiten und NUR neu vertonen, ohne die KI-Generierung erneut anzustossen.
 """
 from __future__ import annotations
 
@@ -33,12 +35,15 @@ h1 {font-weight: 750; letter-spacing:-0.5px;}
 """, unsafe_allow_html=True)
 
 st.caption("Lässt deine Dokumente als gesprochenes Erklär-Skript zusammenfassen und vertont "
-           "es mit deiner eigenen (geklonten) Stimme - keine generische KI-Stimme.")
+           "es mit deiner eigenen (geklonten) Stimme - keine generische KI-Stimme. Skripte "
+           "lassen sich auch selbst schreiben oder im Nachgang bearbeiten.")
 
 with st.spinner("Audio-Overview wird geladen ..."):
     from ragapp import manifest, audio_overview
     from ragapp.config import settings, SUBJECT_LABELS, PROJECT_ROOT, AUDIO_DIR
     from ragapp.llm import list_installed_models
+
+_KEIN_FACH = "— Kein Fach —"
 
 
 def _fach(code: "str | None") -> str:
@@ -90,11 +95,6 @@ _all_docs = [dict(d) for d in manifest.list_documents()
             if d["use_rag"] and d["num_chunks"] > 0]
 _subjects_with_docs = sorted({d["subject"] for d in _all_docs if d["subject"]})
 
-if not _subjects_with_docs:
-    st.info("Noch keine indexierten Dokumente (im RAG) vorhanden. Gehe zu "
-            "**📥 Ingestion**, um welche hinzuzufügen.")
-    st.stop()
-
 _overviews = manifest.list_audio_overviews()
 _ov_by_id = {o["overview_id"]: o for o in _overviews}
 
@@ -118,46 +118,92 @@ _active_id = st.session_state.get("audio_choice")
 st.divider()
 
 # --------------------------------------------------------------------------- #
-# Neues Audio-Overview
+# Neues Audio-Overview: aus Dokumenten (KI) ODER selbst geschrieben
 # --------------------------------------------------------------------------- #
 if _active_id is None:
     st.markdown("##### Neues Audio-Overview anlegen")
-    nc1, nc2 = st.columns(2)
-    with nc1:
-        _new_subject = st.selectbox("Fach", _subjects_with_docs, format_func=_fach,
-                                    key="audio_new_subject")
-    with nc2:
-        if st.session_state.get("_audio_title_for_subject") != _new_subject:
-            st.session_state["audio_new_title"] = f"Audio-Overview {_fach(_new_subject)}"
-            st.session_state["_audio_title_for_subject"] = _new_subject
-        _new_title = st.text_input("Titel", key="audio_new_title")
+    _mode = st.radio(
+        "Woher kommt der Text?",
+        ["🤖 Aus Dokumenten generieren lassen", "✍️ Eigenes Skript schreiben"],
+        horizontal=True, key="audio_create_mode",
+        help="Eigenes Skript: kein Dokument/keine KI nötig - direkt Text eingeben und "
+             "mit deiner Stimme vorlesen lassen.")
 
-    _subj_docs = {d["filename"]: d["doc_id"] for d in _all_docs if d["subject"] == _new_subject}
-    _new_doc_names = st.multiselect("Dokument(e)", list(_subj_docs.keys()), key="audio_new_docs")
-    st.caption("Das Skript deckt den Inhalt vollständig ab (Abschnitt für Abschnitt) - "
-               "Erzeugungsdauer UND Audiolänge wachsen deshalb mit der Menge an "
-               "gewählten Dokumenten. Für ein kürzeres Overview lieber gezielt einzelne "
-               "Dokumente statt eines ganzen Fachs wählen.")
+    if _mode.startswith("🤖"):
+        if not _subjects_with_docs:
+            st.info("Noch keine indexierten Dokumente (im RAG) vorhanden. Gehe zu "
+                    "**📥 Ingestion**, um welche hinzuzufügen - oder nutze oben "
+                    "„✍️ Eigenes Skript schreiben“, das braucht keine Dokumente.")
+            st.stop()
 
-    _new_model = _model_picker("audio_new_model")
+        nc1, nc2 = st.columns(2)
+        with nc1:
+            _new_subject = st.selectbox(
+                "Fach (optional)", [None] + _subjects_with_docs,
+                format_func=lambda s: _KEIN_FACH if s is None else _fach(s),
+                key="audio_new_subject",
+                help="Nur zum Filtern der Dokumentliste unten und zur Anzeige - "
+                     "nicht zwingend nötig.")
+        with nc2:
+            if st.session_state.get("_audio_title_for_subject") != _new_subject:
+                st.session_state["audio_new_title"] = (
+                    f"Audio-Overview {_fach(_new_subject)}" if _new_subject
+                    else "Audio-Overview")
+                st.session_state["_audio_title_for_subject"] = _new_subject
+            _new_title = st.text_input("Titel", key="audio_new_title")
 
-    if st.button("🎧 Audio-Overview erstellen", type="primary", disabled=not _new_doc_names):
-        _doc_ids = [_subj_docs[n] for n in _new_doc_names]
-        with st.spinner("KI schreibt das Skript und vertont es mit deiner Stimme … "
-                        "das kann je nach Umfang und Hardware einige Minuten dauern."):
-            try:
-                _new_oid, _new_warning = audio_overview.create_and_save_audio_overview(
-                    _doc_ids, _new_subject,
-                    _new_title or f"Audio-Overview {_fach(_new_subject)}", model=_new_model)
-            except audio_overview.AudioOverviewError as exc:
-                st.error(str(exc))
-                st.stop()
-        if _new_warning:
-            st.session_state["_audio_gen_warning"] = _new_warning
-        else:
-            st.success("Audio-Overview erstellt.")
-        st.session_state["_audio_pending_choice"] = _new_oid
-        st.rerun()
+        _subj_docs = {d["filename"]: d["doc_id"] for d in _all_docs
+                      if _new_subject is None or d["subject"] == _new_subject}
+        _new_doc_names = st.multiselect("Dokument(e)", list(_subj_docs.keys()),
+                                        key="audio_new_docs")
+        st.caption("Das Skript deckt den Inhalt vollständig ab (Abschnitt für Abschnitt) - "
+                   "Erzeugungsdauer UND Audiolänge wachsen deshalb mit der Menge an "
+                   "gewählten Dokumenten. Für ein kürzeres Overview lieber gezielt einzelne "
+                   "Dokumente statt eines ganzen Fachs wählen.")
+
+        _new_model = _model_picker("audio_new_model")
+
+        if st.button("🎧 Audio-Overview erstellen", type="primary", disabled=not _new_doc_names):
+            _doc_ids = [_subj_docs[n] for n in _new_doc_names]
+            with st.spinner("KI schreibt das Skript und vertont es mit deiner Stimme … "
+                            "das kann je nach Umfang und Hardware einige Minuten dauern."):
+                try:
+                    _new_oid, _new_warning = audio_overview.create_and_save_audio_overview(
+                        _doc_ids, _new_subject,
+                        _new_title or f"Audio-Overview {_fach(_new_subject)}", model=_new_model)
+                except audio_overview.AudioOverviewError as exc:
+                    st.error(str(exc))
+                    st.stop()
+            if _new_warning:
+                st.session_state["_audio_gen_warning"] = _new_warning
+            else:
+                st.success("Audio-Overview erstellt.")
+            st.session_state["_audio_pending_choice"] = _new_oid
+            st.rerun()
+
+    else:
+        _man_subject = st.selectbox(
+            "Fach (optional)", [None] + sorted(SUBJECT_LABELS.keys() | set(_subjects_with_docs)),
+            format_func=lambda s: _KEIN_FACH if s is None else _fach(s), key="audio_manual_subject")
+        _man_title = st.text_input("Titel", value="Meine Sprachnotiz", key="audio_manual_title")
+        _man_script = st.text_area(
+            "Skript-Text", height=280, key="audio_manual_script",
+            placeholder="Schreib hier deinen eigenen Text - wird 1:1 mit deiner Stimme "
+                        "vorgelesen, ganz ohne KI-Generierung oder Dokumente.")
+        st.caption(f"{len(_man_script)} Zeichen. Kein Dokument nötig - der Text wird direkt "
+                   "vertont.")
+
+        if st.button("🎧 Audio erzeugen", type="primary", disabled=not _man_script.strip()):
+            with st.spinner("Vertone deinen Text mit deiner Stimme …"):
+                try:
+                    _new_oid = audio_overview.create_manual_audio_overview(
+                        _man_script, _man_title or "Meine Sprachnotiz", subject=_man_subject)
+                except audio_overview.AudioOverviewError as exc:
+                    st.error(str(exc))
+                    st.stop()
+            st.success("Audio erstellt.")
+            st.session_state["_audio_pending_choice"] = _new_oid
+            st.rerun()
     st.stop()
 
 # --------------------------------------------------------------------------- #
@@ -169,6 +215,7 @@ if _active is None:
     st.rerun()
 
 _audio_path = AUDIO_DIR / _active["audio_path"]
+_has_source_docs = bool(_active["doc_ids"])
 
 with card("player"):
     hh1, hh2 = st.columns([3, 1])
@@ -176,8 +223,9 @@ with card("player"):
         st.markdown(f"##### {_active['title']}")
         st.caption(_fach(_active["subject"]))
     with hh2:
+        _doc_label = f"{len(_active['doc_ids'])} Dokument(e)" if _has_source_docs else "✍️ Eigenes Skript"
         st.markdown(f"<div style='text-align:right;padding-top:6px;font-size:.8rem;opacity:.7'>"
-                   f"{len(_active['doc_ids'])} Dokument(e)</div>", unsafe_allow_html=True)
+                   f"{_doc_label}</div>", unsafe_allow_html=True)
 
     _gen_warning = st.session_state.pop("_audio_gen_warning", None)
     if _gen_warning:
@@ -192,32 +240,57 @@ with card("player"):
                            file_name=f"{_active['title']}.wav", mime="audio/wav",
                            use_container_width=True)
 
-    with st.expander("📝 Sprech-Skript (Text)"):
-        st.write(_active["script_text"])
+    st.markdown("##### 📝 Skript bearbeiten")
+    st.caption("Text kürzen, falsche Angaben rausnehmen oder frei umschreiben - „Speichern & "
+               "nur Audio neu erzeugen“ vertont GENAU diesen Text neu, ohne die KI erneut zu "
+               "bemühen (schnell, kein neuer Durchlauf durch die Dokumente).")
+    _edit_key = f"audio_script_edit_{_active_id}"
+    st.text_area("Skript-Text", value=_active["script_text"], height=280, key=_edit_key)
 
-    with st.expander("⚙️ Neu generieren & Löschen"):
-        _regen_model = _model_picker(f"audio_regen_model_{_active_id}")
-        if st.button("🔄 Neu erzeugen (Skript + Stimme)", key=f"audio_regen_{_active_id}"):
-            with st.spinner("KI schreibt das Skript neu und vertont es … das kann je nach "
-                            "Umfang und Hardware einige Minuten dauern."):
-                try:
-                    _script, _regen_warning = audio_overview.generate_overview_script(
-                        _active["doc_ids"], _active["subject"], model=_regen_model)
-                    audio_overview.synthesize_speech(_script, _ref_path, _audio_path)
-                except audio_overview.AudioOverviewError as exc:
-                    st.error(str(exc))
-                    st.stop()
-                finally:
-                    audio_overview.unload_tts_model()
-            manifest.update_audio_overview(
-                _active_id, script_text=_script,
-                model=_regen_model or settings.author_model())
-            if _regen_warning:
-                st.session_state["_audio_gen_warning"] = _regen_warning
-            else:
-                st.success("Neu erzeugt.")
-            st.rerun()
-        if st.button("🗑️ Audio-Overview löschen", key=f"audio_delete_{_active_id}"):
+    ec1, ec2 = st.columns([1, 1])
+    if ec1.button("💾 Speichern & nur Audio neu erzeugen", key=f"audio_resynth_{_active_id}",
+                 type="primary", use_container_width=True):
+        _edited = st.session_state[_edit_key]
+        with st.spinner("Vertone den (bearbeiteten) Text neu …"):
+            try:
+                audio_overview.resynthesize_audio_overview(_active_id, _edited)
+            except audio_overview.AudioOverviewError as exc:
+                st.error(str(exc))
+                st.stop()
+        st.success("Audio neu erzeugt.")
+        st.rerun()
+
+    if _has_source_docs:
+        with ec2:
+            with st.popover("🔄 Stattdessen komplett neu von der KI schreiben lassen",
+                            use_container_width=True):
+                st.caption("Verwirft den aktuellen (auch den von dir bearbeiteten) Text und "
+                          "lässt die KI aus den ursprünglichen Dokumenten ein komplett neues "
+                          "Skript schreiben.")
+                _regen_model = _model_picker(f"audio_regen_model_{_active_id}")
+                if st.button("Neu von der KI schreiben lassen", key=f"audio_regen_{_active_id}"):
+                    with st.spinner("KI schreibt das Skript neu und vertont es … das kann je "
+                                    "nach Umfang und Hardware einige Minuten dauern."):
+                        try:
+                            _script, _regen_warning = audio_overview.generate_overview_script(
+                                _active["doc_ids"], _active["subject"], model=_regen_model)
+                            audio_overview.synthesize_speech(_script, _ref_path, _audio_path)
+                        except audio_overview.AudioOverviewError as exc:
+                            st.error(str(exc))
+                            st.stop()
+                        finally:
+                            audio_overview.unload_tts_model()
+                    manifest.update_audio_overview(
+                        _active_id, script_text=_script,
+                        model=_regen_model or settings.author_model())
+                    if _regen_warning:
+                        st.session_state["_audio_gen_warning"] = _regen_warning
+                    else:
+                        st.success("Neu erzeugt.")
+                    st.rerun()
+
+    with st.expander("🗑️ Löschen"):
+        if st.button("Audio-Overview löschen", key=f"audio_delete_{_active_id}"):
             manifest.delete_audio_overview(_active_id)
             st.session_state["_audio_pending_choice"] = None
             st.success("Gelöscht.")

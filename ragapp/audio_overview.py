@@ -280,30 +280,84 @@ def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
         raise AudioOverviewError(f"Sprachsynthese fehlgeschlagen: {exc}") from exc
 
 
-def create_and_save_audio_overview(
-    doc_ids: list[str], subject: Optional[str], title: str, *, model: Optional[str] = None,
-) -> tuple[str, Optional[str]]:
-    """Generiert Skript + Audio und speichert beides. Gibt ``(overview_id,
-    warning)`` zurück (siehe ``generate_overview_script`` für ``warning``)."""
+def _require_reference_wav() -> Path:
     ref_path = PROJECT_ROOT / settings.AUDIO_REFERENCE_WAV
     if not ref_path.is_file():
         raise AudioOverviewError(
             "Noch keine Stimm-Referenz vorhanden. Nimm zuerst deine Stimme auf "
             "(siehe docs/STIMME_AUFNEHMEN.md) und lege sie unter "
             f"{settings.AUDIO_REFERENCE_WAV} ab.")
+    return ref_path
 
-    script, warning = generate_overview_script(doc_ids, subject, model=model)
 
+def _synthesize_and_persist(script_text: str, title: str, subject: Optional[str],
+                            doc_ids: list[str], model: Optional[str]) -> str:
+    """Gemeinsamer Kern von ``create_and_save_audio_overview`` (KI-generiertes
+    Skript) und ``create_manual_audio_overview`` (selbst geschriebenes Skript):
+    Referenz prüfen, vertonen, neuen Eintrag anlegen. Gibt die neue
+    ``overview_id`` zurück."""
+    ref_path = _require_reference_wav()
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
     overview_id = uuid.uuid4().hex[:16]
     audio_filename = f"{overview_id}.wav"
     try:
-        synthesize_speech(script, ref_path, AUDIO_DIR / audio_filename)
+        synthesize_speech(script_text, ref_path, AUDIO_DIR / audio_filename)
     finally:
         unload_tts_model()
 
-    used_model = model or settings.author_model()
     manifest.create_audio_overview(
-        title=title, subject=subject, doc_ids=doc_ids, script_text=script,
-        audio_path=audio_filename, model=used_model, overview_id=overview_id)
+        title=title, subject=subject, doc_ids=doc_ids, script_text=script_text,
+        audio_path=audio_filename, model=model, overview_id=overview_id)
+    return overview_id
+
+
+def create_and_save_audio_overview(
+    doc_ids: list[str], subject: Optional[str], title: str, *, model: Optional[str] = None,
+) -> tuple[str, Optional[str]]:
+    """Generiert das Skript per KI aus den gewählten Dokumenten und vertont
+    es. Gibt ``(overview_id, warning)`` zurück (siehe ``generate_overview_script``
+    für ``warning``). ``subject`` ist rein informativ (Filter/Anzeige) - ``None``
+    ist erlaubt, ``doc_ids`` darf hier NICHT leer sein (sonst gibt es nichts,
+    woraus ein Skript entstehen könnte - für ein Skript ohne Quelldokumente
+    siehe ``create_manual_audio_overview``)."""
+    _require_reference_wav()   # frueh pruefen, BEVOR die (teure) Skript-Generierung laeuft
+    script, warning = generate_overview_script(doc_ids, subject, model=model)
+    used_model = model or settings.author_model()
+    overview_id = _synthesize_and_persist(script, title, subject, doc_ids, used_model)
     return overview_id, warning
+
+
+def create_manual_audio_overview(script_text: str, title: str,
+                                 subject: Optional[str] = None) -> str:
+    """Vertont ein SELBST GESCHRIEBENES Skript (kein LLM-Aufruf, keine
+    Quelldokumente nötig) - für schnelle Sprachnotizen in der eigenen Stimme,
+    ganz ohne vorheriges Hochladen/Kategorisieren von Dokumenten. ``doc_ids``
+    ist dabei immer leer (nichts zu verlinken); ``subject`` bleibt optional."""
+    script_text = (script_text or "").strip()
+    if not script_text:
+        raise AudioOverviewError("Bitte zuerst einen Skript-Text eingeben.")
+    return _synthesize_and_persist(script_text, title, subject, [], model=None)
+
+
+def resynthesize_audio_overview(overview_id: str, script_text: str) -> None:
+    """Vertont ein VORHANDENES Audio-Overview NEU, OHNE das Skript per KI neu
+    zu schreiben - für manuelle Korrekturen (kürzen, falsche Fakten
+    rausnehmen, Formulierung ändern), die man selbst im Text vornimmt, statt
+    die komplette (teure, minutenlange) KI-Generierung erneut anzustoßen.
+    Überschreibt die vorhandene Audiodatei unter derselben ID/demselben
+    Dateinamen und aktualisiert nur ``script_text`` in der DB."""
+    script_text = (script_text or "").strip()
+    if not script_text:
+        raise AudioOverviewError("Der Skript-Text ist leer.")
+    row = manifest.get_audio_overview(overview_id)
+    if row is None:
+        raise AudioOverviewError("Dieses Audio-Overview wurde nicht gefunden (evtl. gelöscht).")
+
+    ref_path = _require_reference_wav()
+    audio_path = AUDIO_DIR / row["audio_path"]
+    try:
+        synthesize_speech(script_text, ref_path, audio_path)
+    finally:
+        unload_tts_model()
+
+    manifest.update_audio_overview(overview_id, script_text=script_text)
