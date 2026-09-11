@@ -499,10 +499,16 @@ def _transition_html(accent: str, soft: str) -> str:
 
 # --------------------------------------------------------------------------- #
 # Dark-Mode-Umschalter: kleiner runder Button, oben rechts im ECHTEN Elternfenster
-# (nicht nur im Chat/dieser Seite) - 3 Zustaende (Auto/Hell/Dunkel), persistiert in
-# localStorage, wirkt SOFORT ohne Streamlit-Rerun (reiner Client-Toggle, setzt die
-# Klasse "rag-dark"/"rag-light" direkt auf <html>). Bei "Auto" hoert ein
-# matchMedia-Listener live auf OS-Aenderungen. Bewusst UNBEDINGT (nicht nur bei
+# (nicht nur im Chat/dieser Seite), persistiert in localStorage, wirkt SOFORT ohne
+# Streamlit-Rerun (reiner Client-Toggle, setzt die Klasse "rag-dark"/"rag-light"
+# direkt auf <html>). Bewusst NUR 2 Klick-Zustaende (Hell/Dunkel) statt 3
+# (Auto/Hell/Dunkel) - ein Nutzer-Report zeigte: bei OS-Einstellung "Hell" sah ein
+# Klick von Auto auf Hell OPTISCH GAR NICHTS anders aus (beides rendert hell), was
+# wie ein kaputter Button wirkte, obwohl der Klick technisch funktionierte. Jeder
+# Klick wechselt jetzt IMMER sichtbar zwischen Hell und Dunkel, ausgehend vom
+# aktuell TATSAECHLICH dargestellten Zustand (bei noch nie geklickt: OS-Praeferenz
+# per matchMedia). "Auto" bleibt nur der stille Ausgangszustand vor dem ersten
+# Klick, kein eigener Zyklus-Schritt mehr. Bewusst UNBEDINGT (nicht nur bei
 # Seitenwechsel) injiziert, weil Idempotenz billig ist und so auch nach einem
 # reinen Widget-Rerun garantiert der richtige Zustand steht.
 # --------------------------------------------------------------------------- #
@@ -516,33 +522,37 @@ def _theme_toggle_html() -> str:
     var KEY = 'rag-theme';
     var mql = window.parent.matchMedia ? window.parent.matchMedia('(prefers-color-scheme: dark)') : null;
 
-    function label(mode) {
-      return mode === 'dark' ? '🌙' : (mode === 'light' ? '☀️' : '🌗');
+    // "auto"/nichts gespeichert -> loest zur tatsaechlichen OS-Praeferenz auf.
+    // Nach dem ERSTEN Klick ist der gespeicherte Wert immer 'light' oder 'dark'.
+    function effective(saved) {
+      if (saved === 'light' || saved === 'dark') { return saved; }
+      return (mql && mql.matches) ? 'dark' : 'light';
     }
-    function title(mode) {
-      return 'Darstellung: ' + (mode === 'dark' ? 'Dunkel' : (mode === 'light' ? 'Hell' : 'Automatisch'));
+    function label(effMode) { return effMode === 'dark' ? '🌙' : '☀️'; }
+    function title(effMode) {
+      return 'Darstellung: ' + (effMode === 'dark' ? 'Dunkel' : 'Hell') +
+             ' (Klick zum Umschalten)';
     }
-    function apply(mode) {
+    function apply(effMode) {
       root.classList.remove('rag-dark', 'rag-light');
-      if (mode === 'dark') { root.classList.add('rag-dark'); }
-      else if (mode === 'light') { root.classList.add('rag-light'); }
-      else if (mql && mql.matches) { root.classList.add('rag-dark'); }
+      root.classList.add(effMode === 'dark' ? 'rag-dark' : 'rag-light');
     }
 
-    var saved = localStorage.getItem(KEY) || 'auto';
-    apply(saved);
+    var saved = localStorage.getItem(KEY);
+    apply(effective(saved));
 
     if (mql && !mql._ragBound) {
       mql._ragBound = true;
       mql.addEventListener('change', function() {
-        if ((localStorage.getItem(KEY) || 'auto') === 'auto') { apply('auto'); }
+        // nur nachziehen, wenn der Nutzer NIE manuell geklickt hat
+        if (!localStorage.getItem(KEY)) { apply(effective(null)); }
       });
     }
 
     function refreshLabel(el) {
-      var cur = localStorage.getItem(KEY) || 'auto';
-      el.textContent = label(cur);
-      el.title = title(cur);
+      var eff = effective(localStorage.getItem(KEY));
+      el.textContent = label(eff);
+      el.title = title(eff);
     }
 
     var btn = doc.getElementById('rag-theme-toggle');
@@ -584,8 +594,8 @@ def _theme_toggle_html() -> str:
       doc.addEventListener('click', function(e) {
         var target = e.target && e.target.closest ? e.target.closest('#rag-theme-toggle') : null;
         if (!target) { return; }
-        var cur = localStorage.getItem(KEY) || 'auto';
-        var next = cur === 'auto' ? 'light' : (cur === 'light' ? 'dark' : 'auto');
+        var curEff = effective(localStorage.getItem(KEY));
+        var next = curEff === 'dark' ? 'light' : 'dark';
         localStorage.setItem(KEY, next);
         apply(next);
         refreshLabel(target);
@@ -700,9 +710,15 @@ def apply_page_style(page_key: str, *, show_nav: bool = True) -> dict:
 
     # Kleines Ecken-Maskottchen mit seiner Pose (siehe ragapp.ui._mascot.POSES) -
     # NICHT auf Home, das zeigt bereits sein eigenes, grosses Hero-Maskottchen.
+    # Auf Home stattdessen eine evtl. von der VORHERIGEN Seite noch vorhandene
+    # Instanz aktiv entfernen (sie haengt direkt an document.body, siehe
+    # render_mascot_corner-Docstring - ein Seitenwechsel zu Home raeumt sie
+    # sonst nie weg, weil Home render_mascot_corner() selbst nie aufruft).
+    from ragapp.ui._mascot import render_mascot_corner, remove_mascot_corner, pose_for
     if page_key != "home":
-        from ragapp.ui._mascot import render_mascot_corner, pose_for
         _pose, _anim, _prop = pose_for(page_key)
         render_mascot_corner(accent, pose=_pose, animation=_anim, prop=_prop)
+    else:
+        remove_mascot_corner()
 
     return theme

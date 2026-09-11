@@ -215,6 +215,26 @@ def render_mascot_corner(accent: str, *, pose: str = "idle", animation: str = "f
     components.html(_pupil_tracking_html(), height=0)
 
 
+def remove_mascot_corner() -> None:
+    """Entfernt ein vorhandenes Ecken-Maskottchen wieder (Home hat sein
+    eigenes, grosses Hero-Maskottchen statt des kleinen Ecken-Maskottchens -
+    ohne das hier wuerde beim Wechsel von einer ANDEREN Seite zu Home die
+    dort injizierte ``document.body``-Instanz einfach stehen bleiben, weil
+    Home ``render_mascot_corner()`` selbst nie aufruft)."""
+    import streamlit.components.v1 as components
+    components.html("""
+<script>
+(function() {
+  try {
+    var doc = window.parent.document;
+    var old = doc.getElementById('rag-mascot-corner-wrap');
+    if (old) { old.remove(); }
+  } catch (e) {}
+})();
+</script>
+""", height=0)
+
+
 def _pupil_tracking_html() -> str:
     """Kleines Skript (per components.html, wie das schon etablierte Muster
     fuer den Theme-Toggle/Seitenuebergang): laesst BEIDE Pupillen dezent dem
