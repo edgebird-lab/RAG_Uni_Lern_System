@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import sys
 import pathlib
+import time
 
 _p = pathlib.Path(__file__).resolve()
 for _anc in _p.parents:
@@ -48,6 +49,45 @@ _KEIN_FACH = "— Kein Fach —"
 
 def _fach(code: "str | None") -> str:
     return SUBJECT_LABELS.get(code, code) if code else "–"
+
+
+def _fmt_dauer(sekunden: float) -> str:
+    """Kurze, lesbare Dauer ('2 Min 15 Sek' / '45 Sek')."""
+    s = max(0, int(round(sekunden)))
+    m, s = divmod(s, 60)
+    if m and s:
+        return f"{m} Min {s} Sek"
+    if m:
+        return f"{m} Min"
+    return f"{s} Sek"
+
+
+def _progress_tracker(bar, caption, label: str):
+    """Gibt eine ``on_progress``-Funktion zurück (siehe
+    ``audio_overview.ProgressCallback``), die einen ``st.progress``-Balken und
+    eine Restzeit-Schätzung live nachführt. Die Schätzung basiert auf der
+    BISHERIGEN Durchschnittsdauer pro Einheit (Abschnitt/Satz) - ungenau beim
+    allerersten Aufruf, wird aber mit jeder weiteren Einheit genauer. Der
+    Timer startet erst beim ERSTEN Aufruf (nicht schon beim Erzeugen dieser
+    Funktion) - wichtig, weil z. B. die Vertonungs-Anzeige schon vor der
+    KI-Skripterzeugung aufgebaut wird und sonst deren Wartezeit mitzählen
+    würde."""
+    state = {"start": None}
+
+    def _cb(done: int, total: int, unit_label: str) -> None:
+        if state["start"] is None:
+            state["start"] = time.time()
+        elapsed = time.time() - state["start"]
+        bar.progress(min(done / total, 1.0) if total else 0.0)
+        if done >= total and total:
+            caption.caption(f"✅ {label} fertig ({_fmt_dauer(elapsed)}).")
+        elif done > 0 and total:
+            avg = elapsed / done
+            remaining = avg * (total - done)
+            caption.caption(f"⏳ {label}: {done}/{total} · noch ca. {_fmt_dauer(remaining)}")
+        else:
+            caption.caption(f"⏳ {label}: wird vorbereitet …")
+    return _cb
 
 
 def _model_picker(key: str) -> "str | None":
@@ -166,15 +206,21 @@ if _active_id is None:
 
         if st.button("🎧 Audio-Overview erstellen", type="primary", disabled=not _new_doc_names):
             _doc_ids = [_subj_docs[n] for n in _new_doc_names]
-            with st.spinner("KI schreibt das Skript und vertont es mit deiner Stimme … "
-                            "das kann je nach Umfang und Hardware einige Minuten dauern."):
-                try:
-                    _new_oid, _new_warning = audio_overview.create_and_save_audio_overview(
-                        _doc_ids, _new_subject,
-                        _new_title or f"Audio-Overview {_fach(_new_subject)}", model=_new_model)
-                except audio_overview.AudioOverviewError as exc:
-                    st.error(str(exc))
-                    st.stop()
+            st.caption("📝 Skript schreiben")
+            _script_bar = st.progress(0.0)
+            _script_cap = st.empty()
+            st.caption("🎙️ Vertonung")
+            _audio_bar = st.progress(0.0)
+            _audio_cap = st.empty()
+            try:
+                _new_oid, _new_warning = audio_overview.create_and_save_audio_overview(
+                    _doc_ids, _new_subject,
+                    _new_title or f"Audio-Overview {_fach(_new_subject)}", model=_new_model,
+                    on_script_progress=_progress_tracker(_script_bar, _script_cap, "Skript"),
+                    on_audio_progress=_progress_tracker(_audio_bar, _audio_cap, "Vertonung"))
+            except audio_overview.AudioOverviewError as exc:
+                st.error(str(exc))
+                st.stop()
             if _new_warning:
                 st.session_state["_audio_gen_warning"] = _new_warning
             else:
@@ -195,13 +241,15 @@ if _active_id is None:
                    "vertont.")
 
         if st.button("🎧 Audio erzeugen", type="primary", disabled=not _man_script.strip()):
-            with st.spinner("Vertone deinen Text mit deiner Stimme …"):
-                try:
-                    _new_oid = audio_overview.create_manual_audio_overview(
-                        _man_script, _man_title or "Meine Sprachnotiz", subject=_man_subject)
-                except audio_overview.AudioOverviewError as exc:
-                    st.error(str(exc))
-                    st.stop()
+            _audio_bar = st.progress(0.0)
+            _audio_cap = st.empty()
+            try:
+                _new_oid = audio_overview.create_manual_audio_overview(
+                    _man_script, _man_title or "Meine Sprachnotiz", subject=_man_subject,
+                    on_progress=_progress_tracker(_audio_bar, _audio_cap, "Vertonung"))
+            except audio_overview.AudioOverviewError as exc:
+                st.error(str(exc))
+                st.stop()
             st.success("Audio erstellt.")
             st.session_state["_audio_pending_choice"] = _new_oid
             st.rerun()
@@ -252,12 +300,15 @@ with card("player"):
     if ec1.button("💾 Speichern & nur Audio neu erzeugen", key=f"audio_resynth_{_active_id}",
                  type="primary", use_container_width=True):
         _edited = st.session_state[_edit_key]
-        with st.spinner("Vertone den (bearbeiteten) Text neu …"):
-            try:
-                audio_overview.resynthesize_audio_overview(_active_id, _edited)
-            except audio_overview.AudioOverviewError as exc:
-                st.error(str(exc))
-                st.stop()
+        _audio_bar = st.progress(0.0)
+        _audio_cap = st.empty()
+        try:
+            audio_overview.resynthesize_audio_overview(
+                _active_id, _edited,
+                on_progress=_progress_tracker(_audio_bar, _audio_cap, "Vertonung"))
+        except audio_overview.AudioOverviewError as exc:
+            st.error(str(exc))
+            st.stop()
         st.success("Audio neu erzeugt.")
         st.rerun()
 
@@ -270,17 +321,24 @@ with card("player"):
                           "Skript schreiben.")
                 _regen_model = _model_picker(f"audio_regen_model_{_active_id}")
                 if st.button("Neu von der KI schreiben lassen", key=f"audio_regen_{_active_id}"):
-                    with st.spinner("KI schreibt das Skript neu und vertont es … das kann je "
-                                    "nach Umfang und Hardware einige Minuten dauern."):
-                        try:
-                            _script, _regen_warning = audio_overview.generate_overview_script(
-                                _active["doc_ids"], _active["subject"], model=_regen_model)
-                            audio_overview.synthesize_speech(_script, _ref_path, _audio_path)
-                        except audio_overview.AudioOverviewError as exc:
-                            st.error(str(exc))
-                            st.stop()
-                        finally:
-                            audio_overview.unload_tts_model()
+                    st.caption("📝 Skript schreiben")
+                    _rscript_bar = st.progress(0.0)
+                    _rscript_cap = st.empty()
+                    st.caption("🎙️ Vertonung")
+                    _raudio_bar = st.progress(0.0)
+                    _raudio_cap = st.empty()
+                    try:
+                        _script, _regen_warning = audio_overview.generate_overview_script(
+                            _active["doc_ids"], _active["subject"], model=_regen_model,
+                            on_progress=_progress_tracker(_rscript_bar, _rscript_cap, "Skript"))
+                        audio_overview.synthesize_speech(
+                            _script, _ref_path, _audio_path,
+                            on_progress=_progress_tracker(_raudio_bar, _raudio_cap, "Vertonung"))
+                    except audio_overview.AudioOverviewError as exc:
+                        st.error(str(exc))
+                        st.stop()
+                    finally:
+                        audio_overview.unload_tts_model()
                     manifest.update_audio_overview(
                         _active_id, script_text=_script,
                         model=_regen_model or settings.author_model())

@@ -48,7 +48,13 @@ from __future__ import annotations
 import time
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
+
+ProgressCallback = Optional[Callable[[int, int, str], None]]
+"""Wird nach jeder abgeschlossenen Einheit aufgerufen: ``(fertig, gesamt,
+kurze_beschriftung)`` - z. B. ``(3, 8, "Abschnitt 3")`` oder ``(12, 40, "Satz
+12")``. Rein informativ, KEIN Rueckgabewert erwartet; Aufrufer (UI) nutzt das
+fuer Fortschrittsbalken + Restzeit-Schaetzung."""
 
 from ragapp.config import settings, PROJECT_ROOT, AUDIO_DIR
 from ragapp.llm import get_llm
@@ -140,12 +146,16 @@ def _narrate_section(llm_obj, label: str, title: str, body: str) -> tuple[str, b
 
 
 def generate_overview_script(doc_ids: list[str], subject: Optional[str],
-                             *, model: Optional[str] = None) -> tuple[str, Optional[str]]:
+                             *, model: Optional[str] = None,
+                             on_progress: ProgressCallback = None) -> tuple[str, Optional[str]]:
     """Erzeugt das Sprech-Skript ABSCHNITTSWEISE (siehe Moduldoc für die
     Begründung) und hängt die Ergebnisse zusammen. Gibt ``(script, warning)``
     zurück - ``warning`` ist ``None`` im Normalfall, sonst ein Klartext-
     Hinweis (Abschnitt(e) am Token-Budget abgeschnitten und/oder das
-    Gesamt-Skript am Sicherheitsnetz gekappt)."""
+    Gesamt-Skript am Sicherheitsnetz gekappt). ``on_progress`` (optional):
+    siehe ``ProgressCallback`` - je Abschnitt EIN Aufruf, auch bei
+    übersprungenen/fehlgeschlagenen (damit ein Fortschrittsbalken nicht
+    stehen bleibt, wenn z. B. viele kurze Abschnitte übersprungen werden)."""
     granular = _granular_sections(doc_ids)
     if not granular:
         raise AudioOverviewError(
@@ -155,18 +165,25 @@ def generate_overview_script(doc_ids: list[str], subject: Optional[str],
     used_model = model or settings.author_model()
     llm_obj = get_llm(used_model)
     hard_cap = int(settings.AUDIO_MAX_SCRIPT_CHARS)
+    total = len(granular)
 
     parts: list[str] = []
     any_truncated = False
     total_len = 0
     hit_hard_cap = False
-    for label, title, body in granular:
+    for i, (label, title, body) in enumerate(granular):
         if len(body.strip()) < _MIN_SECTION_CHARS:
+            if on_progress:
+                on_progress(i + 1, total, title)
             continue
         try:
             piece, truncated = _narrate_section(llm_obj, label, title, body)
         except Exception:  # noqa: BLE001 - ein fehlgeschlagener Abschnitt darf den Rest nicht kippen
+            if on_progress:
+                on_progress(i + 1, total, title)
             continue
+        if on_progress:
+            on_progress(i + 1, total, title)
         any_truncated = any_truncated or truncated
         if not piece:
             continue
@@ -300,14 +317,16 @@ def _concat_with_pauses(chunks: list, pause_samples: int):
 
 
 def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
-                      output_path: "str | Path", *, language: Optional[str] = None) -> None:
+                      output_path: "str | Path", *, language: Optional[str] = None,
+                      on_progress: ProgressCallback = None) -> None:
     """Synthetisiert ``script_text`` in der Stimme aus ``reference_wav_path``
     und schreibt sie nach ``output_path``. Vertont SATZWEISE (siehe Moduldoc -
     ein Aufruf mit dem kompletten Skript auf einmal klang in echten Tests
     unnatuerlich gehetzt) und fuegt zwischen den Saetzen selbst eine feste
     Pause ein. Wirft ``AudioOverviewError``, wenn nicht genug freier VRAM da
     ist (siehe ``_prepare_vram_for_tts``) oder kein vertonbarer Text uebrig
-    bleibt."""
+    bleibt. ``on_progress`` (optional): siehe ``ProgressCallback`` - ein
+    Aufruf je fertig vertontem Satz."""
     sentences = _split_sentences(script_text)
     if not sentences:
         raise AudioOverviewError("Kein vertonbarer Text (nach Satzerkennung leer).")
@@ -319,9 +338,10 @@ def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
 
     import torchaudio
     lang = language or settings.AUDIO_LANGUAGE
+    total = len(sentences)
     chunks = []
     try:
-        for sentence in sentences:
+        for i, sentence in enumerate(sentences):
             wav = model.generate(
                 sentence, language_id=lang, audio_prompt_path=str(reference_wav_path),
                 exaggeration=settings.AUDIO_TTS_EXAGGERATION,
@@ -330,6 +350,8 @@ def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
                 repetition_penalty=settings.AUDIO_TTS_REPETITION_PENALTY,
                 min_p=settings.AUDIO_TTS_MIN_P, top_p=settings.AUDIO_TTS_TOP_P)
             chunks.append(wav)
+            if on_progress:
+                on_progress(i + 1, total, sentence[:40])
     except Exception as exc:  # noqa: BLE001
         raise AudioOverviewError(f"Sprachsynthese fehlgeschlagen: {exc}") from exc
 
@@ -349,7 +371,8 @@ def _require_reference_wav() -> Path:
 
 
 def _synthesize_and_persist(script_text: str, title: str, subject: Optional[str],
-                            doc_ids: list[str], model: Optional[str]) -> str:
+                            doc_ids: list[str], model: Optional[str], *,
+                            on_progress: ProgressCallback = None) -> str:
     """Gemeinsamer Kern von ``create_and_save_audio_overview`` (KI-generiertes
     Skript) und ``create_manual_audio_overview`` (selbst geschriebenes Skript):
     Referenz prüfen, vertonen, neuen Eintrag anlegen. Gibt die neue
@@ -359,7 +382,8 @@ def _synthesize_and_persist(script_text: str, title: str, subject: Optional[str]
     overview_id = uuid.uuid4().hex[:16]
     audio_filename = f"{overview_id}.wav"
     try:
-        synthesize_speech(script_text, ref_path, AUDIO_DIR / audio_filename)
+        synthesize_speech(script_text, ref_path, AUDIO_DIR / audio_filename,
+                          on_progress=on_progress)
     finally:
         unload_tts_model()
 
@@ -371,22 +395,27 @@ def _synthesize_and_persist(script_text: str, title: str, subject: Optional[str]
 
 def create_and_save_audio_overview(
     doc_ids: list[str], subject: Optional[str], title: str, *, model: Optional[str] = None,
+    on_script_progress: ProgressCallback = None, on_audio_progress: ProgressCallback = None,
 ) -> tuple[str, Optional[str]]:
     """Generiert das Skript per KI aus den gewählten Dokumenten und vertont
     es. Gibt ``(overview_id, warning)`` zurück (siehe ``generate_overview_script``
     für ``warning``). ``subject`` ist rein informativ (Filter/Anzeige) - ``None``
     ist erlaubt, ``doc_ids`` darf hier NICHT leer sein (sonst gibt es nichts,
     woraus ein Skript entstehen könnte - für ein Skript ohne Quelldokumente
-    siehe ``create_manual_audio_overview``)."""
+    siehe ``create_manual_audio_overview``). ``on_script_progress``/
+    ``on_audio_progress`` (optional): siehe ``ProgressCallback`` - getrennt
+    fuer die beiden Phasen (Skript schreiben, dann vertonen)."""
     _require_reference_wav()   # frueh pruefen, BEVOR die (teure) Skript-Generierung laeuft
-    script, warning = generate_overview_script(doc_ids, subject, model=model)
+    script, warning = generate_overview_script(doc_ids, subject, model=model,
+                                               on_progress=on_script_progress)
     used_model = model or settings.author_model()
-    overview_id = _synthesize_and_persist(script, title, subject, doc_ids, used_model)
+    overview_id = _synthesize_and_persist(script, title, subject, doc_ids, used_model,
+                                          on_progress=on_audio_progress)
     return overview_id, warning
 
 
-def create_manual_audio_overview(script_text: str, title: str,
-                                 subject: Optional[str] = None) -> str:
+def create_manual_audio_overview(script_text: str, title: str, subject: Optional[str] = None,
+                                 *, on_progress: ProgressCallback = None) -> str:
     """Vertont ein SELBST GESCHRIEBENES Skript (kein LLM-Aufruf, keine
     Quelldokumente nötig) - für schnelle Sprachnotizen in der eigenen Stimme,
     ganz ohne vorheriges Hochladen/Kategorisieren von Dokumenten. ``doc_ids``
@@ -394,10 +423,12 @@ def create_manual_audio_overview(script_text: str, title: str,
     script_text = (script_text or "").strip()
     if not script_text:
         raise AudioOverviewError("Bitte zuerst einen Skript-Text eingeben.")
-    return _synthesize_and_persist(script_text, title, subject, [], model=None)
+    return _synthesize_and_persist(script_text, title, subject, [], model=None,
+                                   on_progress=on_progress)
 
 
-def resynthesize_audio_overview(overview_id: str, script_text: str) -> None:
+def resynthesize_audio_overview(overview_id: str, script_text: str, *,
+                                on_progress: ProgressCallback = None) -> None:
     """Vertont ein VORHANDENES Audio-Overview NEU, OHNE das Skript per KI neu
     zu schreiben - für manuelle Korrekturen (kürzen, falsche Fakten
     rausnehmen, Formulierung ändern), die man selbst im Text vornimmt, statt
@@ -414,7 +445,7 @@ def resynthesize_audio_overview(overview_id: str, script_text: str) -> None:
     ref_path = _require_reference_wav()
     audio_path = AUDIO_DIR / row["audio_path"]
     try:
-        synthesize_speech(script_text, ref_path, audio_path)
+        synthesize_speech(script_text, ref_path, audio_path, on_progress=on_progress)
     finally:
         unload_tts_model()
 

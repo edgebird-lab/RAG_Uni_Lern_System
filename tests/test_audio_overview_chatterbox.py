@@ -177,6 +177,22 @@ def test_synthesize_speech_kein_vram_wirft_error_ohne_zu_vertonen(synth_env):
     assert env.generate_calls == []
 
 
+def test_synthesize_speech_ruft_on_progress_je_satz_auf(synth_env):
+    env = synth_env(sentences=["Satz eins.", "Satz zwei.", "Satz drei."])
+    calls = []
+    env.synthesize_speech("Satz eins. Satz zwei. Satz drei.", "ref.wav",
+                          str(env.tmp_path / "out.wav"),
+                          on_progress=lambda done, total, label: calls.append((done, total, label)))
+    assert calls == [(1, 3, "Satz eins."), (2, 3, "Satz zwei."), (3, 3, "Satz drei.")]
+
+
+def test_synthesize_speech_ohne_on_progress_funktioniert_weiterhin(synth_env):
+    env = synth_env()
+    out_path = env.tmp_path / "out.wav"
+    env.synthesize_speech("Satz eins. Satz zwei.", "ref.wav", str(out_path))
+    assert out_path.is_file()
+
+
 def test_synthesize_speech_keine_saetze_wirft_error_vor_vram_check(synth_env):
     env = synth_env(sentences=[], vram_ok=False)
     with pytest.raises(RuntimeError, match="vertonbar"):

@@ -107,6 +107,21 @@ def test_generate_script_erfolgsfall_haengt_abschnitte_zusammen(generate_script_
     assert "Zweiter Abschnitt Text." in script
 
 
+def test_generate_script_ruft_on_progress_je_abschnitt_auf_auch_bei_uebersprungenen(
+        generate_script_funcs):
+    llm = _FakeLLM(["Normaler Abschnitt mit genug Inhalt.", "Guter zweiter Abschnitt hier."])
+    calls = []
+    f = generate_script_funcs(llm=llm, sections=[
+        ("doc.pdf", "Zu kurz", "kurz"),   # unter _MIN_SECTION_CHARS -> uebersprungen
+        ("doc.pdf", "Normal 1", "Ausreichend langer Quelltext fuer Abschnitt eins. " * 5),
+        ("doc.pdf", "Normal 2", "Ausreichend langer Quelltext fuer Abschnitt zwei. " * 5),
+    ])
+    script, _ = f(["doc1"], "DSA",
+                  on_progress=lambda done, total, label: calls.append((done, total, label)))
+    assert calls == [(1, 3, "Zu kurz"), (2, 3, "Normal 1"), (3, 3, "Normal 2")]
+    assert "Normaler Abschnitt" in script
+
+
 def test_generate_script_keine_abschnitte_wirft_error(generate_script_funcs):
     llm = _FakeLLM([])
     f = generate_script_funcs(llm=llm, sections=[])

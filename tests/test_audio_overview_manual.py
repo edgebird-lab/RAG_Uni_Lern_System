@@ -55,7 +55,8 @@ def audio_funcs(load_functions, ragapp_dir, tmp_path):
         manifest_obj = manifest_obj or _FakeManifest()
         synth_calls = []
 
-        def _fake_synthesize_speech(script_text, reference_wav_path, output_path, language=None):
+        def _fake_synthesize_speech(script_text, reference_wav_path, output_path, language=None,
+                                    on_progress=None):
             synth_calls.append({
                 "script_text": script_text, "reference_wav_path": str(reference_wav_path),
                 "output_path": str(output_path),
@@ -63,7 +64,7 @@ def audio_funcs(load_functions, ragapp_dir, tmp_path):
             if synth_raises:
                 raise synth_raises
 
-        def _fake_generate_overview_script(doc_ids, subject, model=None):
+        def _fake_generate_overview_script(doc_ids, subject, model=None, on_progress=None):
             return generate_script_result
 
         funcs = load_functions(
