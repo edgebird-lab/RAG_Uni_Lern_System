@@ -350,7 +350,7 @@ CREATE TABLE IF NOT EXISTS mindmaps (
 CREATE INDEX IF NOT EXISTS idx_mindmaps_subject ON mindmaps(subject);
 
 -- Audio-Overviews: gesprochenes Erklaer-Skript (LLM) + damit synthetisierte
--- WAV-Datei (XTTS-v2, geklonte Nutzerstimme - siehe ragapp/audio_overview.py).
+-- WAV-Datei (Chatterbox Multilingual, geklonte Nutzerstimme - siehe ragapp/audio_overview.py).
 -- Skript-TEXT liegt in der DB (klein, durchsuchbar); die Audio-Datei selbst
 -- liegt unter data/audio_overviews/ - nur der Pfad wird referenziert (wie
 -- source_path bei documents), Audiodaten gehoeren nicht in SQLite-TEXT/BLOB.

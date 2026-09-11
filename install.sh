@@ -9,15 +9,16 @@
 #    3. Erstellt die virtuelle Umgebung (.venv) und aktualisiert pip
 #    4. Installiert PyTorch passend (NVIDIA -> CUDA/Default, AMD-Linux -> ROCm,
 #       macOS -> Default/MPS, sonst -> CPU)
-#    5. Installiert die restlichen Abhaengigkeiten (requirements.txt)
-#    6. Richtet Ollama ein:
+#    5. Installiert chatterbox-tts (Audio-Overview-TTS, --no-deps)
+#    6. Installiert die restlichen Abhaengigkeiten (requirements.txt)
+#    7. Richtet Ollama ein:
 #         - Linux (NVIDIA/AMD/keine): curl -fsSL https://ollama.com/install.sh | sh
 #         - macOS: Hinweis auf ollama.com/download
 #         - Intel-Linux: IPEX-LLM "Ollama Portable" (Ubuntu-Paket)
 #       und zieht das Embedding-Modell bge-m3
-#    7. Misst die Hardware und waehlt/laedt/testet das passende LLM
+#    8. Misst die Hardware und waehlt/laedt/testet das passende LLM
 #         (ragapp.scripts.cli recommend --set --test)
-#    8. Erfolgsmeldung + Start-Hinweis
+#    9. Erfolgsmeldung + Start-Hinweis
 #
 #  Das Skript ist idempotent. Aufruf:   bash install.sh
 #
@@ -149,22 +150,24 @@ info "pip / setuptools / wheel aktualisieren ..."
 
 # ---- 4) torch + torchvision + torchaudio ------------------------------------ #
 # torch = Reranker + Audio-Overview-TTS; torchvision = easyocr (OCR); torchaudio =
-# Audio-Overview-TTS (XTTS-v2, siehe ragapp/audio_overview.py). ALLE drei aus dem
-# GLEICHEN Index installieren - sonst zieht ein spaeteres Paket (easyocr/coqui-tts)
-# eine unpassende (CUDA-)torch nach und ueberschreibt die GPU-Variante (z. B. ROCm).
+# Audio-Overview-TTS (Chatterbox Multilingual, siehe ragapp/audio_overview.py). ALLE
+# drei aus dem GLEICHEN Index installieren - sonst zieht ein spaeteres Paket
+# (easyocr/chatterbox-tts) eine unpassende (CUDA-)torch nach und ueberschreibt die
+# GPU-Variante (z. B. ROCm).
 #
-# Versionsbereich (Ro1): torch/torchvision waren bisher voellig ungepinnt. Jetzt eine
-# konservative OBERGRENZE (torch<3 / torchvision<1 / torchaudio<3) - das blockt einen
-# kuenftigen, potenziell brechenden Major-Release, aendert aber HEUTE nichts an der
-# Aufloesung und bricht insbesondere die ROCm-Index-Installation NICHT (dort ist die
-# neueste passende Version ohnehin < der Grenze). Bewusst KEIN harter ==-Pin, da die
-# verfuegbaren Versionen je Index (cpu / rocm6.0 / default) unterschiedlich sind.
-# Bekannt-gute, getestete Referenz auf diesem Rechner: torch 2.4.1+rocm6.0 /
-# torchvision 0.19.1+rocm6.0 / torchaudio 2.4.1+rocm6.0
+# Untergrenze 2.6 (Chatterbox braucht mindestens das), Obergrenze <3 als
+# konservativer Schutz vor einem kuenftigen, potenziell brechenden Major-Release.
+# Bewusst KEIN harter ==-Pin, da die verfuegbaren Versionen je Index
+# (cpu / rocm6.x / default) unterschiedlich sind.
+# Bekannt-gute, getestete Referenz auf diesem Rechner (RX 7900 XTX, gfx1100):
+# torch 2.7.1+rocm6.3 / torchvision 0.22.1+rocm6.3 / torchaudio 2.7.1+rocm6.3 -
+# der rocm6.0-Index (fruehere Referenz) bietet nur torch bis 2.4.1, das fuer
+# Chatterbox zu alt ist; auf AELTEREN AMD-Karten (vor RDNA3) kann rocm6.3 ggf.
+# Probleme machen - dann manuell auf einen passenden aelteren ROCm-Index pinnen.
 # (fuer volle Reproduzierbarkeit ggf. exakt auf die eigene Version pinnen).
-TORCH_SPEC="torch<3"
+TORCH_SPEC="torch>=2.6,<3"
 TV_SPEC="torchvision<1"
-TA_SPEC="torchaudio<3"
+TA_SPEC="torchaudio>=2.6,<3"
 step "PyTorch (+ torchvision fuer OCR, torchaudio fuer Audio-Overview) installieren"
 if "$VENV_PY" -c "import torch, torchvision, torchaudio" >/dev/null 2>&1; then
     ok "torch + torchvision + torchaudio bereits installiert - uebersprungen."
@@ -174,8 +177,8 @@ else
             info "Installiere torch + torchvision + torchaudio (CUDA/Default-Index) ..."
             "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" "$TA_SPEC" ;;
         amd)
-            info "Installiere torch + torchvision + torchaudio (ROCm 6.0-Index) ..."
-            if ! "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" "$TA_SPEC" --index-url https://download.pytorch.org/whl/rocm6.0; then
+            info "Installiere torch + torchvision + torchaudio (ROCm 6.3-Index) ..."
+            if ! "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" "$TA_SPEC" --index-url https://download.pytorch.org/whl/rocm6.3; then
                 warn "ROCm-torch fehlgeschlagen - fallback auf CPU-Build."
                 "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" "$TA_SPEC" --index-url https://download.pytorch.org/whl/cpu
             fi ;;
@@ -189,12 +192,32 @@ else
     ok "torch + torchvision + torchaudio installiert."
 fi
 
-# ---- 5) requirements ------------------------------------------------------- #
+# ---- 5) chatterbox-tts (Audio-Overview-TTS) --------------------------------- #
+# Bewusst NICHT Teil von requirements.txt und bewusst --no-deps: das Paket pinnt
+# torch==2.6.0/torchaudio==2.6.0/gradio==6.8.0 exakt und wuerde sonst die oben
+# passend zur GPU installierte Torch-Version wieder ueberschreiben (gradio = eigene
+# Web-UI, brauchen wir nicht). Die tatsaechlich benoetigten (torch-freien)
+# Abhaengigkeiten stehen regulaer in requirements.txt.
+step "chatterbox-tts installieren (ohne die eigenen torch/gradio-Vorgaben)"
+"$VENV_PY" -m pip install "chatterbox-tts==0.1.7" --no-deps
+ok "chatterbox-tts installiert."
+
+# chatterbox-tts' Wasserzeichen-Abhaengigkeit "resemble-perth" importiert intern
+# noch das alte "pkg_resources" (aus setuptools) - das WIRD MIT setuptools>=81
+# ENTFERNT (der Import scheitert dann still, siehe perth/__init__.py try/except,
+# und XTTS... aeh Chatterbox laedt gar nicht erst, TypeError beim Watermarker).
+# Deshalb setuptools bewusst UNTER 81 halten, obwohl ganz oben die neueste Version
+# installiert wurde.
+step "setuptools auf eine Version mit pkg_resources begrenzen (fuer resemble-perth)"
+"$VENV_PY" -m pip install "setuptools<81" -q
+ok "setuptools angepasst."
+
+# ---- 6) requirements ------------------------------------------------------- #
 step "Abhaengigkeiten installieren (requirements.txt)"
 "$VENV_PY" -m pip install -r requirements.txt
 ok "Alle Python-Abhaengigkeiten installiert."
 
-# ---- 6) Ollama ------------------------------------------------------------- #
+# ---- 7) Ollama ------------------------------------------------------------- #
 step "Ollama einrichten"
 IPEX_STARTED=0
 if [ "$GPU_VENDOR" = "intel" ] && [ "$OS" = "Linux" ]; then
@@ -284,7 +307,7 @@ else
     ollama pull bge-m3 || warn "bge-m3-Pull fehlgeschlagen (spaeter wiederholbar)."
 fi
 
-# ---- 7) recommend ---------------------------------------------------------- #
+# ---- 8) recommend ---------------------------------------------------------- #
 if [ "${SKIP_RECOMMEND:-0}" = "1" ]; then
     step "Modell-Empfehlung uebersprungen (SKIP_RECOMMEND=1)"
 else
@@ -297,7 +320,7 @@ else
     fi
 fi
 
-# ---- 7b) OCR-Vision-Modell fuer Handschrift/Scans sicherstellen ------------- #
+# ---- 8b) OCR-Vision-Modell fuer Handschrift/Scans sicherstellen ------------- #
 # Handschrift-/Scan-PDFs werden per kleinem Vision-LLM gelesen (viel besser als
 # klassisches OCR, das dabei Kauderwelsch liefert). Ist schon ein vision-faehiges
 # Modell da (z. B. ein Gemma-Antwortmodell), wird es genutzt; sonst ziehen wir ein
@@ -313,14 +336,14 @@ if [ "${SKIP_OCR_MODEL:-0}" != "1" ]; then
     fi
 fi
 
-# ---- 8) Temporaeren IPEX-Server beenden (fuer den Alltag startet ihn start.sh) #
+# ---- 9) Temporaeren IPEX-Server beenden (fuer den Alltag startet ihn start.sh) #
 if [ "$IPEX_STARTED" = "1" ] && [ -f "$ROOT/.ipex-ollama.pid" ]; then
     info "Beende temporaeren IPEX-Server (fuer den Alltag startet ihn start.sh)."
     kill "$(cat "$ROOT/.ipex-ollama.pid")" >/dev/null 2>&1 || true
     rm -f "$ROOT/.ipex-ollama.pid"
 fi
 
-# ---- 9) cloudflared fuer 'Von unterwegs' (Cloudflare-Tunnel, Linux) --------- #
+# ---- 10) cloudflared fuer 'Von unterwegs' (Cloudflare-Tunnel, Linux) --------- #
 if [ "$OS" = "Linux" ]; then
     if command -v cloudflared >/dev/null 2>&1 || [ -x "$HOME/.local/bin/cloudflared" ]; then
         ok "cloudflared bereits vorhanden (fuer Zugriff von unterwegs)."
@@ -341,7 +364,7 @@ if [ "$OS" = "Linux" ]; then
     fi
 fi
 
-# ---- 10) Desktop-/Menue-Starter (Linux) ------------------------------------ #
+# ---- 11) Desktop-/Menue-Starter (Linux) ------------------------------------ #
 if [ "$OS" = "Linux" ]; then
     step "Desktop-/Menue-Starter anlegen (Icon)"
     APP_DIR="$HOME/.local/share/applications"

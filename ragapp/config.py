@@ -427,10 +427,26 @@ class Settings:
     # ------------------------------------------------------------------ #
     # Audio-Overview (Vertonung mit der eigenen, geklonten Stimme)
     # ------------------------------------------------------------------ #
-    # XTTS-v2 (Coqui, community-gepflegter Fork "coqui-tts") - deckt Deutsch ab,
-    # braucht nur ~4 GB VRAM, klont schon ab wenigen Sekunden Referenzaudio.
-    # Siehe docs/STIMME_AUFNEHMEN.md fuer die Aufnahme-Anleitung.
-    AUDIO_TTS_MODEL: str = "tts_models/multilingual/multi-dataset/xtts_v2"
+    # Chatterbox Multilingual (Resemble AI, MIT-Lizenz) - deckt Deutsch nativ
+    # und mit guter Qualitaet ab, braucht ~6-8 GB VRAM, klont ab wenigen
+    # Sekunden Referenzaudio. Siehe docs/STIMME_AUFNEHMEN.md fuer die
+    # Aufnahme-Anleitung.
+    #
+    # War urspruenglich XTTS-v2 (Coqui) - ausgetauscht, weil XTTS-v2
+    # autoregressiv Token fuer Token generiert und dabei selbst entscheiden
+    # muss, wann ein Satz fertig ist. Genau bei dieser Stopp-Entscheidung
+    # "verlief" es sich gelegentlich (Rauschen/Gebrabbel an Satzgrenzen) - ein
+    # in der coqui-tts-Community seit Jahren bekanntes, nie geloestes Problem
+    # (u. a. coqui-ai/TTS#3236/#3254/#3407). Mehrere Tuning-/Nachbearbeitungs-
+    # Versuche (Temperatur/Pausenlaenge, dann eine Silero-VAD-basierte
+    # Saeuberung) haben das Symptom bestenfalls verschoben, nicht behoben -
+    # die VAD-Nachbearbeitung hat sogar echte Sprache mit-zerschnitten
+    # ("abgehackt" laut Nutzer-Test) und wurde wieder rueckgaengig gemacht.
+    # Chatterbox hat eine eingebaute Absicherung (AlignmentStreamAnalyzer),
+    # die genau solche Aussetzer WAEHREND der Generierung erkennt und sauber
+    # abbricht, statt sie hoerbar werden zu lassen - in echten Testlaeufen mit
+    # der eigenen Referenzstimme mehrfach live beobachtet (Log-Zeilen wie
+    # "Detected 2x repetition..."/"forcing EOS token...").
     AUDIO_LANGUAGE: str = "de"
     # Fester Pfad, IMMER frisch eingelesen (kein Zwischenspeichern der Stimme) -
     # der Nutzer kann die Datei jederzeit durch eine neue Aufnahme ersetzen,
@@ -447,40 +463,29 @@ class Settings:
     # und verhindert eine Laufzeit-Explosion (40000 Zeichen ~ 40 Min Audio bei
     # durchschnittlichem Sprechtempo).
     AUDIO_MAX_SCRIPT_CHARS: int = 40000
-    # Sprechtempo/Klangqualitaet-Tuning, ueber ⚙️ Einstellungen -> Audio-
-    # Overview einstellbar. Recherche direkt im installierten coqui-tts-Paket
-    # (nicht in der - teils veralteten - Doku): XTTS-v2s eigene Defaults sind
-    # Temperatur 0.85 (recht "kreativ" -> anfaelliger fuer Aussetzer/seltsame
-    # Laute) und eine feste, private Stille von 417ms NACH JEDEM per pysbd
-    # erkannten Satz (TTS.utils.synthesizer.PAD_SILENCE_SAMPLES) - bei kurzen,
-    # gesprochen wirkenden Saetzen summiert sich das zu langen, mechanischen
-    # Pausen. AUDIO_TTS_SPEED nutzt XTTS' eigenen speed-Parameter (Zeitdehnung
-    # der GPT-Latents VOR dem Vocoder) - kein Pitch-Shift wie bei simplem
-    # Schneller-Abspielen.
-    AUDIO_TTS_SPEED: float = 1.1
-    AUDIO_TTS_TEMPERATURE: float = 0.7
-    AUDIO_TTS_REPETITION_PENALTY: float = 4.0
+    # Chatterbox wird SATZWEISE aufgerufen (siehe audio_overview.py) - in
+    # echten Testlaeufen deutlich sauberer als ein Aufruf mit dem kompletten
+    # Skript auf einmal (unnatuerlich schnelles/gehetztes Ergebnis; Chatterbox
+    # ist wie die meisten TTS-Modelle fuer einzelne Saetze/Abschnitte optimiert,
+    # nicht fuer sehr lange Texte am Stueck). WIR fuegen die Pause zwischen den
+    # Saetzen selbst ein (echte Stille, feste Laenge) statt uns auf das Modell
+    # zu verlassen - robuster als XTTS' Ansatz, der eine private Konstante im
+    # Paket ueberschreiben musste.
     AUDIO_TTS_PAUSE_MS: int = 250
-    # Wie viel von der Referenzaufnahme fuer die Stimm-Konditionierung genutzt
-    # wird. XTTS-v2s eigene Defaults nutzen nur die ERSTEN 10 Sekunden
-    # (max_ref_len) fuer die Sprecher-Latents, selbst wenn die Referenz viel
-    # laenger ist (siehe TTS.tts.configs.xtts_config.XttsConfig) - bei einer
-    # mehrminuetigen sauberen Aufnahme blieb der Rest bisher ungenutzt. Mehr
-    # (in gpt_cond_chunk_len-Stuecke gehackte, gemittelte) Referenz verbessert
-    # laut Coqui-Doku die Stabilitaet der Klonstimme. Selten manuell noetig,
-    # deshalb nicht auf der Einstellungen-Seite, aber ueber data/config.json
-    # ueberschreibbar.
-    AUDIO_TTS_GPT_COND_LEN: int = 24
-    AUDIO_TTS_GPT_COND_CHUNK_LEN: int = 6
-    AUDIO_TTS_MAX_REF_LEN: int = 30
-    # Sicherheitsnetz gegen ein bekanntes XTTS-v2-Artefakt: gelegentlich (nicht
-    # zuverlaessig durch Temperatur/Repetition-Penalty allein vermeidbar, in
-    # einem echten Testlauf gemessen) erzeugt das Modell einen mehrsekuendigen
-    # "toten" Abschnitt mitten im Skript, typischerweise bei kurzen/isolierten
-    # Saetzen. Alles, was laenger als AUDIO_TTS_MAX_GAP_MS still ist, wird nach
-    # der Synthese auf AUDIO_TTS_PAUSE_MS gekappt (siehe _cap_long_silences) -
-    # normale Satzpausen bleiben unangetastet.
-    AUDIO_TTS_MAX_GAP_MS: int = 900
+    # Chatterbox-eigene Erzeugungsparameter (Bibliotheks-Standardwerte
+    # uebernommen, siehe ChatterboxMultilingualTTS.generate) - in echten
+    # Testlaeufen mit der eigenen Referenzstimme verifiziert, bewusst NICHT
+    # blind "verbessert" wie beim vorherigen XTTS-Tuning. exaggeration/
+    # cfg_weight steuern die Ausdrucksstaerke (Werte >1.5 laut Community
+    # anfaelliger fuer Artefakte); repetition_penalty unterdrueckt
+    # Wiederholungsschleifen; temperature/min_p/top_p steuern die
+    # Sampling-Variation.
+    AUDIO_TTS_EXAGGERATION: float = 0.5
+    AUDIO_TTS_CFG_WEIGHT: float = 0.5
+    AUDIO_TTS_TEMPERATURE: float = 0.8
+    AUDIO_TTS_REPETITION_PENALTY: float = 2.0
+    AUDIO_TTS_MIN_P: float = 0.05
+    AUDIO_TTS_TOP_P: float = 1.0
 
     # ------------------------------------------------------------------ #
     # Evaluation

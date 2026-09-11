@@ -9,13 +9,14 @@
    2. Erkennt die GPU grob (NVIDIA / AMD / Intel / keine)
    3. Erstellt die virtuelle Umgebung (.venv) und aktualisiert pip
    4. Installiert PyTorch passend (NVIDIA -> CUDA/Default, sonst CPU)
-   5. Installiert die restlichen Abhaengigkeiten (requirements.txt)
-   6. Richtet Ollama ein:
+   5. Installiert chatterbox-tts (Audio-Overview-TTS, --no-deps)
+   6. Installiert die restlichen Abhaengigkeiten (requirements.txt)
+   7. Richtet Ollama ein:
         - NVIDIA/AMD/keine -> Standard-Ollama (ollama.com), zieht bge-m3
         - Intel            -> IPEX-LLM "Ollama Portable Zip" (SYCL), zieht bge-m3
-   7. Misst die Hardware und waehlt/laedt/testet das passende LLM
+   8. Misst die Hardware und waehlt/laedt/testet das passende LLM
         (ragapp.scripts.cli recommend --set --test)
-   8. Gibt eine Erfolgsmeldung + Start-Hinweis aus
+   9. Gibt eine Erfolgsmeldung + Start-Hinweis aus
 
  Das Skript ist idempotent: mehrfaches Ausfuehren richtet nichts an.
  Aufruf:   Rechtsklick -> "Mit PowerShell ausfuehren"
@@ -248,29 +249,47 @@ try {
 
     # ---- 4) torch + torchaudio ---------------------------------------------- #
     # torch wird fuer den Cross-Encoder-Reranker UND das Audio-Overview-TTS
-    # (XTTS-v2, siehe ragapp/audio_overview.py) gebraucht, torchaudio nur fuers
-    # TTS - beide laufen bewusst auf der CPU (langsamer, aber deutlich
-    # zuverlaessiger auf Windows als ein GPU-Build). Darum ueberall der
-    # schlanke CPU-Build statt des CUDA-Builds.
+    # (Chatterbox Multilingual, siehe ragapp/audio_overview.py) gebraucht,
+    # torchaudio nur fuers TTS - beide laufen bewusst auf der CPU (langsamer,
+    # aber deutlich zuverlaessiger auf Windows als ein GPU-Build). Darum
+    # ueberall der schlanke CPU-Build statt des CUDA-Builds.
     Write-Step "PyTorch + torchaudio installieren (Reranker + Audio-Overview, laeuft auf der CPU)"
     & $VenvPy -c "import torch, torchaudio" 1>$null 2>$null
     if ($LASTEXITCODE -eq 0) {
         Write-Ok "torch + torchaudio sind bereits installiert - uebersprungen."
     } else {
         Write-Info "Installiere torch + torchaudio (schlanker CPU-Build) ..."
-        # Ro1: konservative Obergrenze (torch<3 / torchaudio<3) - blockt einen kuenftigen
-        # brechenden Major-Release, aendert die Aufloesung heute aber nicht (CPU-Index
-        # liefert 2.x).
-        Invoke-Native -File $VenvPy -Arguments @('-m','pip','install','torch<3','torchaudio<3','--index-url','https://download.pytorch.org/whl/cpu') -What "torch + torchaudio (CPU)"
+        # Untergrenze 2.6 (Chatterbox braucht mindestens das), Obergrenze <3 als
+        # konservativer Schutz vor einem kuenftigen, brechenden Major-Release.
+        Invoke-Native -File $VenvPy -Arguments @('-m','pip','install','torch>=2.6,<3','torchaudio>=2.6,<3','--index-url','https://download.pytorch.org/whl/cpu') -What "torch + torchaudio (CPU)"
         Write-Ok "torch + torchaudio installiert."
     }
 
-    # ---- 5) requirements --------------------------------------------------- #
+    # ---- 5) chatterbox-tts (Audio-Overview-TTS) ----------------------------- #
+    # Bewusst NICHT Teil von requirements.txt und bewusst --no-deps: das Paket
+    # pinnt torch==2.6.0/torchaudio==2.6.0/gradio==6.8.0 exakt und wuerde sonst
+    # die oben installierte CPU-Torch wieder ueberschreiben (gradio = eigene
+    # Web-UI, brauchen wir nicht). Die tatsaechlich benoetigten (torch-freien)
+    # Abhaengigkeiten stehen regulaer in requirements.txt.
+    Write-Step "chatterbox-tts installieren (ohne die eigenen torch/gradio-Vorgaben)"
+    Invoke-Native -File $VenvPy -Arguments @('-m','pip','install','chatterbox-tts==0.1.7','--no-deps') -What "chatterbox-tts"
+    Write-Ok "chatterbox-tts installiert."
+
+    # chatterbox-tts' Wasserzeichen-Abhaengigkeit "resemble-perth" importiert
+    # intern noch das alte "pkg_resources" (aus setuptools) - das entfaellt
+    # still ab setuptools>=81 (try/except ImportError in perth/__init__.py
+    # faengt es ab), wodurch Chatterbox erst beim Laden mit einem kryptischen
+    # "TypeError: 'NoneType' object is not callable" crasht.
+    Write-Step "setuptools auf eine Version mit pkg_resources begrenzen (fuer resemble-perth)"
+    Invoke-Native -File $VenvPy -Arguments @('-m','pip','install','setuptools<81','-q') -What "setuptools-Anpassung"
+    Write-Ok "setuptools angepasst."
+
+    # ---- 6) requirements --------------------------------------------------- #
     Write-Step "Abhaengigkeiten installieren (requirements.txt)"
     Invoke-Native -File $VenvPy -Arguments @('-m','pip','install','-r','requirements.txt') -What "requirements.txt"
     Write-Ok "Alle Python-Abhaengigkeiten installiert."
 
-    # ---- 6) Ollama --------------------------------------------------------- #
+    # ---- 7) Ollama --------------------------------------------------------- #
     Write-Step "Ollama einrichten"
     if ($vendor -eq 'intel') {
         # ---------------- Intel: IPEX-LLM Ollama Portable Zip --------------- #
@@ -371,7 +390,7 @@ try {
         catch { Write-Warn2 $_.Exception.Message }
     }
 
-    # ---- 7) recommend: Hardware messen, Modell waehlen/laden/testen -------- #
+    # ---- 8) recommend: Hardware messen, Modell waehlen/laden/testen -------- #
     if ($SkipRecommend) {
         Write-Step "Modell-Empfehlung uebersprungen (-SkipRecommend)"
     } else {
@@ -387,7 +406,7 @@ try {
         }
     }
 
-    # ---- 7b) OCR-Vision-Modell fuer Handschrift/Scans sicherstellen -------- #
+    # ---- 8b) OCR-Vision-Modell fuer Handschrift/Scans sicherstellen -------- #
     # Handschrift-/Scan-PDFs werden per kleinem Vision-LLM gelesen (viel besser
     # als klassisches OCR). Ist schon ein vision-faehiges Modell da (z. B. ein
     # Gemma-Antwortmodell), wird es genutzt; sonst ziehen wir ein kleines,
@@ -404,7 +423,7 @@ try {
         }
     }
 
-    # ---- 8) IPEX-Server (falls von uns gestartet) wieder beenden ----------- #
+    # ---- 9) IPEX-Server (falls von uns gestartet) wieder beenden ----------- #
     if ($ipexProc -and -not $ipexProc.HasExited) {
         Write-Info "Beende temporaeren IPEX-Server (fuer den Alltag startet ihn Start.bat)."
         try { Stop-Process -Id $ipexProc.Id -Force -ErrorAction SilentlyContinue } catch {}

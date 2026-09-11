@@ -1038,34 +1038,33 @@ with st.form("einstellungen"):
 
     # ------------------------------------------------------------------ #
     st.subheader("🎧 Audio-Overview (Sprachsynthese)")
-    st.caption("Tempo, Pausenlänge und Stabilität der vorgelesenen Audio-Overviews. "
-               "Wirkt erst bei der nächsten Erzeugung/Neuvertonung.")
+    st.caption("Pausenlänge und Ausdruck der vorgelesenen Audio-Overviews (Chatterbox "
+               "Multilingual). Wirkt erst bei der nächsten Erzeugung/Neuvertonung.")
     a1, a2, a3 = st.columns(3)
     with a1:
-        neu["AUDIO_TTS_SPEED"] = st.slider(
-            "Sprechtempo", min_value=0.8, max_value=1.3,
-            value=float(settings.AUDIO_TTS_SPEED), step=0.05, key="cfg_AUDIO_TTS_SPEED",
-            help="1.0 = normales Tempo der Stimme. Höher = schneller - dehnt/staucht "
-                 "die erzeugten Sprachsegmente vor der letzten Stufe (kein simples "
-                 "Schneller-Abspielen, also keine höhere Stimme dabei). "
-                 "Technisch: AUDIO_TTS_SPEED")
-    with a2:
         neu["AUDIO_TTS_PAUSE_MS"] = st.slider(
             "Pause zwischen Sätzen (ms)", min_value=50, max_value=600,
             value=int(settings.AUDIO_TTS_PAUSE_MS), step=25, key="cfg_AUDIO_TTS_PAUSE_MS",
-            help="Das Sprachmodell fügt nach jedem erkannten Satz eine feste Pause ein "
-                 "(Standard des Modells: ~417ms, oft zu lang für kurze, locker "
-                 "gesprochene Sätze). Niedriger = zügigeres Vorlesen. "
+            help="Jeder Satz wird einzeln vertont - dazwischen fügen wir diese feste "
+                 "Stille selbst ein. Niedriger = zügigeres Vorlesen. "
                  "Technisch: AUDIO_TTS_PAUSE_MS")
+    with a2:
+        neu["AUDIO_TTS_EXAGGERATION"] = st.slider(
+            "Ausdrucksstärke", min_value=0.2, max_value=1.5,
+            value=float(settings.AUDIO_TTS_EXAGGERATION), step=0.05,
+            key="cfg_AUDIO_TTS_EXAGGERATION",
+            help="Wie stark betont/emotional vorgelesen wird. Werte über 1.5 gelten "
+                 "als anfälliger für Aussetzer. Technisch: AUDIO_TTS_EXAGGERATION "
+                 "(Bibliotheks-Standard: 0.5)")
     with a3:
         neu["AUDIO_TTS_TEMPERATURE"] = st.slider(
-            "Stabilität ↔ Ausdruck", min_value=0.3, max_value=1.0,
+            "Stabilität ↔ Ausdruck", min_value=0.3, max_value=1.2,
             value=float(settings.AUDIO_TTS_TEMPERATURE), step=0.05,
             key="cfg_AUDIO_TTS_TEMPERATURE",
             help="Niedriger = ruhiger/stabiler, seltener Versprecher oder komische "
                  "Laute, aber etwas monotoner. Höher = abwechslungsreicher betont, "
                  "aber anfälliger für Aussetzer. Technisch: AUDIO_TTS_TEMPERATURE "
-                 "(Modell-Standard: 0.85)")
+                 "(Bibliotheks-Standard: 0.8)")
 
     st.divider()
 

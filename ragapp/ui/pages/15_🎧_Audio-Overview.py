@@ -2,8 +2,8 @@
 RAG-Lernsystem: Seite „Audio-Overview" (Vorlesen mit der eigenen Stimme)
 ==========================================================================
 Erzeugt aus den gewählten Dokumenten ein gesprochen klingendes Erklär-Skript
-UND vertont es mit der eigenen, geklonten Stimme (XTTS-v2, siehe
-``ragapp/audio_overview.py`` und docs/STIMME_AUFNEHMEN.md) - bewusst KEINE
+UND vertont es mit der eigenen, geklonten Stimme (Chatterbox Multilingual,
+siehe ``ragapp/audio_overview.py`` und docs/STIMME_AUFNEHMEN.md) - bewusst KEINE
 generische KI-Stimme. Alternativ laesst sich ein Skript auch komplett selbst
 schreiben (keine Dokumente/KI noetig) und ein bestehendes Skript laesst sich
 bearbeiten und NUR neu vertonen, ohne die KI-Generierung erneut anzustossen.
@@ -52,15 +52,16 @@ def _fach(code: "str | None") -> str:
 
 def _model_picker(key: str) -> "str | None":
     """Modellwahl fürs Sprech-Skript (nicht die Sprachsynthese selbst - dort
-    gibt es nur XTTS-v2) - gleiches Gründlich/Schnell-Muster wie bei
-    Mindmap/Lernplan/Übungsaufgaben."""
+    gibt es nur Chatterbox Multilingual) - gleiches Gründlich/Schnell-Muster
+    wie bei Mindmap/Lernplan/Übungsaufgaben."""
     _author = settings.author_model()
     _fast = settings.LLM_MODEL_FAST
     _installed = list_installed_models() or []
     _options = [f"🎯 Gründlich ({_author})", f"⚡ Schnell ({_fast})"] + sorted(
         m for m in _installed if m not in (_author, _fast))
     _choice = st.selectbox("Modell fürs Skript", _options, key=key,
-                           help="Nur für den Text - die Stimme kommt immer aus XTTS-v2.")
+                           help="Nur für den Text - die Stimme kommt immer aus Chatterbox "
+                                "Multilingual.")
     if _choice.startswith("🎯 Gründlich"):
         return None
     if _choice.startswith("⚡ Schnell"):

@@ -3,7 +3,7 @@ Audio-Overview: gesprochenes Erklaer-Skript, vertont mit der eigenen Stimme
 ============================================================================
 Erzeugt aus den bereits indexierten Abschnitten gewaehlter Dokumente EIN
 zusammenhaengendes, gesprochen klingendes Erklaer-Skript und vertont es mit
-XTTS-v2 (Coqui, community-Fork "coqui-tts"), geklont aus einer eigenen
+Chatterbox Multilingual (Resemble AI, MIT-Lizenz), geklont aus einer eigenen
 Sprachaufnahme des Nutzers (siehe docs/STIMME_AUFNEHMEN.md) statt einer
 generischen KI-Stimme.
 
@@ -25,19 +25,28 @@ waechst dadurch natuerlich mit der Dokumentgroesse, exakt wie
 schon vormacht. ``_AUDIO_SCRIPT_HARD_CAP`` bleibt als reines Sicherheitsnetz
 gegen eine Laufzeit-Explosion bei SEHR vielen/grossen Dokumenten auf einmal.
 
-Sprachqualitaet/-tempo (``settings.AUDIO_TTS_*``, siehe ragapp/config.py):
-XTTS-v2s eigene Defaults (Temperatur 0.85, nur die ersten 10s der Referenz
-genutzt, 417ms feste Stille nach JEDEM Satz) wurden direkt im installierten
-coqui-tts-Paket nachgelesen (nicht in der - teils veralteten - Doku) und auf
-stabilere/natuerlichere Werte gesetzt, siehe Kommentare in ``config.py`` und
-``_apply_pause_length`` unten fuer die Details.
+TTS-Engine-Wechsel (XTTS-v2 -> Chatterbox Multilingual), Begruendung siehe
+Audio-Overview-Settings-Block in ``ragapp/config.py``: XTTS-v2 generiert
+autoregressiv (Token fuer Token) und "verlief" sich dabei gelegentlich an
+Satzgrenzen (Rauschen/Gebrabbel) - ein in der coqui-tts-Community seit Jahren
+bekanntes, nie geloestes Problem. Mehrere Tuning-/Nachbearbeitungsversuche
+haben das nur verschoben, nicht behoben (eine Silero-VAD-basierte
+Nachbearbeitung hat sogar echte Sprache mit-zerschnitten und wurde wieder
+rueckgaengig gemacht). Chatterbox hat eine eingebaute Absicherung
+(AlignmentStreamAnalyzer), die Aussetzer WAEHREND der Generierung erkennt und
+sauber abbricht - in echten Tests mit der eigenen Referenzstimme mehrfach live
+beobachtet. Vertont wird SATZWEISE (``_split_sentences``/pysbd) statt den
+kompletten Skript-Text auf einmal zu uebergeben - ein Testlauf mit dem
+kompletten Text klang unnatuerlich gehetzt (Chatterbox ist wie die meisten
+TTS-Modelle fuer einzelne Saetze/Abschnitte optimiert, nicht fuer sehr lange
+Texte am Stueck). Die Pause zwischen den Saetzen fuegen WIR selbst ein
+(``_concat_with_pauses``, echte Stille fester Laenge) statt uns auf
+modellinterne Pausenbehandlung zu verlassen.
 """
 from __future__ import annotations
 
-import array
 import time
 import uuid
-import wave
 from pathlib import Path
 from typing import Optional
 
@@ -189,16 +198,20 @@ def generate_overview_script(doc_ids: list[str], subject: Optional[str],
 
 
 # --------------------------------------------------------------------------- #
-# Sprachsynthese (XTTS-v2) - lazy geladenes Modul-Singleton, explizit entladbar
+# Sprachsynthese (Chatterbox Multilingual) - lazy geladenes Modul-Singleton,
+# explizit entladbar. SATZWEISE aufgerufen (siehe synthesize_speech) - WIR
+# fuegen die Pausen zwischen den Saetzen selbst ein (echte Stille), statt uns
+# auf modellinterne Pausenbehandlung zu verlassen.
 # --------------------------------------------------------------------------- #
-_TTS_ESTIMATED_VRAM_GB = 4.0   # gemessen: ~3.65 GB waehrend des Ladens, siehe Plan
+_TTS_ESTIMATED_VRAM_GB = 7.0   # gemessen: ~6.5 GB waehrend Laden+Generieren
 _tts_singleton = None
+_segmenter_singleton = None
 
 
 def _prepare_vram_for_tts() -> tuple[bool, str]:
     """Gleiche Vorsicht wie beim Vision-OCR-Gate
     (``ragapp/ingestion/loaders.py::_vision_ocr_prepare``): eigene Ollama-
-    Modelle abraeumen, dann pruefen, ob XTTS-v2 + Puffer WIRKLICH in den
+    Modelle abraeumen, dann pruefen, ob Chatterbox + Puffer WIRKLICH in den
     freien VRAM passt - Ollama kennt den von einer zweiten GPU-App belegten
     VRAM nicht und wuerde sonst ueberbuchen (GPU-Hang-Risiko)."""
     from ragapp import hardware
@@ -227,37 +240,15 @@ def _prepare_vram_for_tts() -> tuple[bool, str]:
 def _get_tts():
     global _tts_singleton
     if _tts_singleton is None:
-        import os
         import torch
-
-        # transformers >=5 entfernte isin_mps_friendly, das XTTS-v2 (coqui-tts)
-        # noch importiert - der MPS-Sonderfall (Apple Silicon) betrifft uns auf
-        # ROCm/CUDA/CPU nicht, ein einfacher Shim reicht (ergaenzt NUR die
-        # fehlende Funktion, ueberschreibt nichts Bestehendes). Downgrade von
-        # transformers waere die Alternative gewesen, haette aber den
-        # Cross-Encoder-Reranker riskiert (sentence-transformers braucht die
-        # aktuelle Version) - siehe Commit-Historie/Plan.
-        import transformers.pytorch_utils as _ptu
-        if not hasattr(_ptu, "isin_mps_friendly"):
-            def _isin_mps_friendly(elements, test_elements):
-                return torch.isin(elements, test_elements)
-            _ptu.isin_mps_friendly = _isin_mps_friendly
-
-        # XTTS-v2 fragt beim ALLERERSTEN Download interaktiv nach Zustimmung zur
-        # Coqui Public Model License (CPML) - in einem Streamlit-Callback gibt es
-        # kein Terminal, das antworten koennte (haenge sonst endlos). Der Nutzer
-        # hat der CPML-Nutzung (nicht-kommerziell, private App) bereits im
-        # Audio-Overview-Plan zugestimmt.
-        os.environ.setdefault("COQUI_TOS_AGREED", "1")
-
-        from TTS.api import TTS
+        from chatterbox.mtl_tts import ChatterboxMultilingualTTS
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        _tts_singleton = TTS(settings.AUDIO_TTS_MODEL).to(device)
+        _tts_singleton = ChatterboxMultilingualTTS.from_pretrained(device=device)
     return _tts_singleton
 
 
 def unload_tts_model() -> None:
-    """Gibt den VRAM wieder frei - XTTS-v2 kennt kein Ollama-artiges
+    """Gibt den VRAM wieder frei - Chatterbox kennt kein Ollama-artiges
     ``keep_alive``, deshalb explizit nach jeder Generierung aufgerufen (siehe
     ``create_and_save_audio_overview``)."""
     global _tts_singleton
@@ -272,120 +263,79 @@ def unload_tts_model() -> None:
             pass
 
 
-# XTTS-v2 gibt Audio immer mit 24kHz aus (siehe Xtts.inference-Docstring
-# "Sample rate is 24kHz" im installierten Paket) - fest, nicht konfigurierbar.
-_XTTS_OUTPUT_SAMPLE_RATE = 24000
+def _get_segmenter():
+    """pysbd-Segmentierer (Satzgrenzenerkennung, z. B. "Dr. Müller" wird NICHT
+    faelschlich als Satzende erkannt) - lazy, da der Import selbst guenstig
+    ist, aber pysbd-Objekterzeugung ein bisschen Regelwerk laedt."""
+    global _segmenter_singleton
+    if _segmenter_singleton is None:
+        import pysbd
+        _segmenter_singleton = pysbd.Segmenter(language="de", clean=False)
+    return _segmenter_singleton
 
 
-def _pause_ms_to_samples(pause_ms: float) -> int:
-    """Reine Umrechnung (kein TTS-Import - separat gehalten, damit sie ohne
-    schwere Abhaengigkeiten testbar ist)."""
-    return max(0, int(_XTTS_OUTPUT_SAMPLE_RATE * pause_ms / 1000))
+def _split_sentences(text: str) -> list[str]:
+    """Reine Logik (nutzt den bereits geladenen Segmenter) - eigene Funktion,
+    damit sie unabhaengig vom pysbd-Objekt getestet werden kann."""
+    return [s.strip() for s in _get_segmenter().segment(text) if s.strip()]
 
 
-def _apply_pause_length(pause_ms: float) -> None:
-    """coqui-tts' ``Synthesizer.tts()`` splittet den Text per pysbd in Saetze,
-    vertont sie EINZELN und haengt nach JEDEM Satz eine fest einprogrammierte
-    Stille an (Modul-Konstante ``PAD_SILENCE_SAMPLES``, Standard 10000
-    Samples @ 24kHz = ~417ms) - unabhaengig davon, wie kurz der Satz war.
-    Bei unserem gesprochen-lockeren Skriptstil (viele kurze Saetze) summiert
-    sich das zu auffaellig langen, immer gleich langen Pausen zwischen JEDEM
-    Satz. Dafuer gibt es keinen oeffentlichen Parameter - die Konstante wird
-    bei jedem ``tts()``-Aufruf frisch vom Modul gelesen, ein direktes
-    Ueberschreiben reicht also (kein Neuladen noetig)."""
-    import TTS.utils.synthesizer as _synth_mod
-    _synth_mod.PAD_SILENCE_SAMPLES = _pause_ms_to_samples(pause_ms)
-
-
-def _cap_long_silences(wav_path: "str | Path", *, max_gap_ms: float, cap_ms: float,
-                       window_ms: float = 20, threshold_rms: float = 300) -> int:
-    """Kappt STILLE-LAeUFE, die laenger als ``max_gap_ms`` sind, auf ``cap_ms``
-    (behaelt die ersten ``cap_ms`` der Stille statt sie ersatzlos zu
-    entfernen - bleibt eine normale, kurze Pause statt eines harten Schnitts).
-    Normale, kuerzere Satzpausen bleiben unangetastet. Reines
-    ``wave``/``array`` (Stdlib) statt ffmpeg - kein zusaetzlicher externer
-    Prozess/Abhaengigkeit fuer ein Kernfeature noetig. Nur Mono/16-bit
-    unterstuetzt (XTTS-v2s Ausgabe ist immer so) - andere Formate werden
-    uebersprungen statt geraten. Gibt die Anzahl gekappter Stellen zurueck."""
-    with wave.open(str(wav_path), "rb") as w:
-        ch, sw, fr, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
-        raw = w.readframes(n)
-    if sw != 2 or ch != 1:
-        return 0
-
-    samples = array.array("h")
-    samples.frombytes(raw)
-    win = max(1, int(fr * window_ms / 1000))
-    max_gap_win = max(1, round(max_gap_ms / window_ms))
-    cap_win = max(0, round(cap_ms / window_ms))
-    total_windows = len(samples) // win
-    if total_windows == 0:
-        return 0
-
-    def _window_rms(i: int) -> float:
-        chunk = samples[i * win:(i + 1) * win]
-        return (sum(s * s for s in chunk) / len(chunk)) ** 0.5 if chunk else 0.0
-
-    quiet = [_window_rms(i) < threshold_rms for i in range(total_windows)]
-
-    out = array.array("h")
-    cursor = 0
-    cuts = 0
-    i = 0
-    while i < total_windows:
-        if quiet[i]:
-            j = i
-            while j < total_windows and quiet[j]:
-                j += 1
-            if j - i > max_gap_win:
-                run_start = i * win
-                out.extend(samples[cursor:run_start])
-                out.extend(samples[run_start:run_start + cap_win * win])
-                cursor = j * win
-                cuts += 1
-            i = j
-        else:
-            i += 1
-    out.extend(samples[cursor:])
-
-    if cuts:
-        with wave.open(str(wav_path), "wb") as w:
-            w.setnchannels(ch)
-            w.setsampwidth(sw)
-            w.setframerate(fr)
-            w.writeframes(out.tobytes())
-    return cuts
+def _concat_with_pauses(chunks: list, pause_samples: int):
+    """Haengt die pro Satz erzeugten Audio-Tensoren zusammen und fuegt
+    dazwischen ECHTE Stille fester Laenge ein (WIR bestimmen die Pausenlaenge
+    direkt, statt uns wie bei XTTS auf eine modellinterne, nur per Hack
+    ueberschreibbare Konstante zu verlassen). Reine Tensor-Arithmetik (kein
+    Modell-Aufruf) - fuer Tests separat gehalten."""
+    import torch
+    if not chunks:
+        raise AudioOverviewError("Keine Audio-Abschnitte erzeugt.")
+    if pause_samples <= 0 or len(chunks) == 1:
+        return torch.cat(chunks, dim=-1)
+    pad = torch.zeros(1, pause_samples, dtype=chunks[0].dtype)
+    parts = [chunks[0]]
+    for chunk in chunks[1:]:
+        parts.append(pad)
+        parts.append(chunk)
+    return torch.cat(parts, dim=-1)
 
 
 def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
                       output_path: "str | Path", *, language: Optional[str] = None) -> None:
     """Synthetisiert ``script_text`` in der Stimme aus ``reference_wav_path``
-    und schreibt sie nach ``output_path``. Wirft ``AudioOverviewError``, wenn
-    nicht genug freier VRAM da ist (siehe ``_prepare_vram_for_tts``)."""
+    und schreibt sie nach ``output_path``. Vertont SATZWEISE (siehe Moduldoc -
+    ein Aufruf mit dem kompletten Skript auf einmal klang in echten Tests
+    unnatuerlich gehetzt) und fuegt zwischen den Saetzen selbst eine feste
+    Pause ein. Wirft ``AudioOverviewError``, wenn nicht genug freier VRAM da
+    ist (siehe ``_prepare_vram_for_tts``) oder kein vertonbarer Text uebrig
+    bleibt."""
+    sentences = _split_sentences(script_text)
+    if not sentences:
+        raise AudioOverviewError("Kein vertonbarer Text (nach Satzerkennung leer).")
+
     ok, msg = _prepare_vram_for_tts()
     if not ok:
         raise AudioOverviewError(msg)
-    tts = _get_tts()
-    _apply_pause_length(settings.AUDIO_TTS_PAUSE_MS)
+    model = _get_tts()
+
+    import torchaudio
+    lang = language or settings.AUDIO_LANGUAGE
+    chunks = []
     try:
-        tts.tts_to_file(
-            text=script_text, speaker_wav=str(reference_wav_path),
-            language=language or settings.AUDIO_LANGUAGE, file_path=str(output_path),
-            speed=settings.AUDIO_TTS_SPEED,
-            temperature=settings.AUDIO_TTS_TEMPERATURE,
-            repetition_penalty=settings.AUDIO_TTS_REPETITION_PENALTY,
-            gpt_cond_len=settings.AUDIO_TTS_GPT_COND_LEN,
-            gpt_cond_chunk_len=settings.AUDIO_TTS_GPT_COND_CHUNK_LEN,
-            max_ref_len=settings.AUDIO_TTS_MAX_REF_LEN)
+        for sentence in sentences:
+            wav = model.generate(
+                sentence, language_id=lang, audio_prompt_path=str(reference_wav_path),
+                exaggeration=settings.AUDIO_TTS_EXAGGERATION,
+                cfg_weight=settings.AUDIO_TTS_CFG_WEIGHT,
+                temperature=settings.AUDIO_TTS_TEMPERATURE,
+                repetition_penalty=settings.AUDIO_TTS_REPETITION_PENALTY,
+                min_p=settings.AUDIO_TTS_MIN_P, top_p=settings.AUDIO_TTS_TOP_P)
+            chunks.append(wav)
     except Exception as exc:  # noqa: BLE001
         raise AudioOverviewError(f"Sprachsynthese fehlgeschlagen: {exc}") from exc
 
-    try:
-        _cap_long_silences(
-            output_path, max_gap_ms=settings.AUDIO_TTS_MAX_GAP_MS,
-            cap_ms=settings.AUDIO_TTS_PAUSE_MS)
-    except Exception:  # noqa: BLE001 - reine Nachbearbeitung, darf eine fertige Audiodatei nicht kippen
-        pass
+    pause_samples = int(model.sr * settings.AUDIO_TTS_PAUSE_MS / 1000)
+    full_wav = _concat_with_pauses(chunks, pause_samples)
+    torchaudio.save(str(output_path), full_wav, model.sr)
 
 
 def _require_reference_wav() -> Path:

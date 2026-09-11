@@ -11,7 +11,7 @@
 # gefunden wird. Getestete Referenz (dieser Rechner, ROCm/Linux, Python 3.12):
 #   langchain 1.3.x / -core 1.4.x / -community 0.4.x / langgraph 1.2.x,
 #   chromadb 1.5.x, streamlit 1.59.x, numpy 2.5.x, pandas 3.0.x,
-#   sentence-transformers 5.6.x, easyocr 1.7.x, plotly 6.9.x, coqui-tts 0.27.x.
+#   sentence-transformers 5.6.x, easyocr 1.7.x, plotly 6.9.x, chatterbox-tts 0.1.7.
 # Fuer volle Reproduzierbarkeit koennen diese exakt (== / Hash-Pinning) gepinnt
 # werden; die Obergrenzen sind der konservative, nicht-brechende Kompromiss.
 # ============================================================================
@@ -47,13 +47,42 @@ sentence-transformers>=3.0.0,<6.0
 # torch-Version nach und ueberschreibt die GPU-Variante.
 easyocr>=1.7.0,<2.0
 
-# --- Audio-Overview: Sprachsynthese mit der eigenen (geklonten) Stimme (XTTS-v2) ---
-# coqui-tts = aktiv gepflegter Community-Fork (idiap/coqui-ai-TTS) des seit 2024
-# unmaintained coqui-ai/TTS - gleicher Import-Pfad (TTS.api.TTS). Braucht torch UND
-# torchaudio aus demselben (in install.sh vorab installierten) Index wie oben.
-# HINWEIS: XTTS-v2-Modellgewichte stehen unter der Coqui Public Model License
-# (nicht-kommerziell) - fuer eine private, nicht verkaufte Nutzung uneingeschraenkt ok.
-coqui-tts>=0.27.0,<0.28.0
+# --- Audio-Overview: Sprachsynthese mit der eigenen (geklonten) Stimme ---
+# Chatterbox Multilingual (Resemble AI, MIT-Lizenz) - loest XTTS-v2/coqui-tts ab,
+# siehe ragapp/config.py (Audio-Overview-Settings-Block) fuer die ausfuehrliche
+# Begruendung: eine eingebaute Absicherung (AlignmentStreamAnalyzer) erkennt
+# Aussetzer/Rauschen WAEHREND der Generierung und bricht sauber ab, statt sie
+# hoerbar werden zu lassen - genau das Artefakt, das XTTS-v2 nie los wurde.
+#
+# WICHTIG: "chatterbox-tts" selbst steht bewusst NICHT hier, sondern wird in
+# install.sh SEPARAT mit --no-deps installiert - das Paket pinnt sonst zwingend
+# torch==2.6.0/torchaudio==2.6.0/gradio==6.8.0 exakt und wuerde beim Aufloesen
+# dieser Datei die separat (aus dem ROCm-Index) installierte Torch-Version wieder
+# ueberschreiben (gradio = eigene Web-UI, brauchen wir nicht, wir rufen die
+# Python-API direkt auf). Die Zeilen unten sind NUR die uebrigen (torch-freien)
+# Abhaengigkeiten, in den von chatterbox-tts 0.1.7 vorgegebenen Versionen -
+# NICHT numpy (dessen Version bestimmen andere Pakete wie chromadb; chatterbox
+# lief in echten Tests trotz eigener numpy<2.0-Empfehlung auch mit numpy 2.x
+# einwandfrei).
+librosa==0.11.0
+s3tokenizer
+transformers==5.2.0
+diffusers==0.29.0
+resemble-perth>=1.0.0
+conformer==0.3.2
+safetensors==0.5.3
+spacy-pkuseg
+pykakasi==2.3.0
+pyloudnorm
+omegaconf
+# resemble-perth importiert intern noch das alte "pkg_resources" (aus
+# setuptools) - das entfaellt still ab setuptools>=81 (try/except ImportError
+# in perth/__init__.py faengt es ab), wodurch Chatterbox erst beim Laden mit
+# einem kryptischen "TypeError: 'NoneType' object is not callable" crasht.
+setuptools<81
+# Satzgrenzenerkennung fuer die satzweise Vertonung (ragapp/audio_overview.py) -
+# erkennt z. B. "Dr. Müller" nicht faelschlich als Satzende.
+pysbd>=0.3.4,<0.4
 
 # --- Weboberfläche ---
 streamlit>=1.38.0,<2.0
