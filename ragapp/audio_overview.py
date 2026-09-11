@@ -24,11 +24,20 @@ waechst dadurch natuerlich mit der Dokumentgroesse, exakt wie
 ``ragapp/ingestion/summarize.py`` es fuer die (dort: Markdown-)Zusammenfassung
 schon vormacht. ``_AUDIO_SCRIPT_HARD_CAP`` bleibt als reines Sicherheitsnetz
 gegen eine Laufzeit-Explosion bei SEHR vielen/grossen Dokumenten auf einmal.
+
+Sprachqualitaet/-tempo (``settings.AUDIO_TTS_*``, siehe ragapp/config.py):
+XTTS-v2s eigene Defaults (Temperatur 0.85, nur die ersten 10s der Referenz
+genutzt, 417ms feste Stille nach JEDEM Satz) wurden direkt im installierten
+coqui-tts-Paket nachgelesen (nicht in der - teils veralteten - Doku) und auf
+stabilere/natuerlichere Werte gesetzt, siehe Kommentare in ``config.py`` und
+``_apply_pause_length`` unten fuer die Details.
 """
 from __future__ import annotations
 
+import array
 import time
 import uuid
+import wave
 from pathlib import Path
 from typing import Optional
 
@@ -263,6 +272,91 @@ def unload_tts_model() -> None:
             pass
 
 
+# XTTS-v2 gibt Audio immer mit 24kHz aus (siehe Xtts.inference-Docstring
+# "Sample rate is 24kHz" im installierten Paket) - fest, nicht konfigurierbar.
+_XTTS_OUTPUT_SAMPLE_RATE = 24000
+
+
+def _pause_ms_to_samples(pause_ms: float) -> int:
+    """Reine Umrechnung (kein TTS-Import - separat gehalten, damit sie ohne
+    schwere Abhaengigkeiten testbar ist)."""
+    return max(0, int(_XTTS_OUTPUT_SAMPLE_RATE * pause_ms / 1000))
+
+
+def _apply_pause_length(pause_ms: float) -> None:
+    """coqui-tts' ``Synthesizer.tts()`` splittet den Text per pysbd in Saetze,
+    vertont sie EINZELN und haengt nach JEDEM Satz eine fest einprogrammierte
+    Stille an (Modul-Konstante ``PAD_SILENCE_SAMPLES``, Standard 10000
+    Samples @ 24kHz = ~417ms) - unabhaengig davon, wie kurz der Satz war.
+    Bei unserem gesprochen-lockeren Skriptstil (viele kurze Saetze) summiert
+    sich das zu auffaellig langen, immer gleich langen Pausen zwischen JEDEM
+    Satz. Dafuer gibt es keinen oeffentlichen Parameter - die Konstante wird
+    bei jedem ``tts()``-Aufruf frisch vom Modul gelesen, ein direktes
+    Ueberschreiben reicht also (kein Neuladen noetig)."""
+    import TTS.utils.synthesizer as _synth_mod
+    _synth_mod.PAD_SILENCE_SAMPLES = _pause_ms_to_samples(pause_ms)
+
+
+def _cap_long_silences(wav_path: "str | Path", *, max_gap_ms: float, cap_ms: float,
+                       window_ms: float = 20, threshold_rms: float = 300) -> int:
+    """Kappt STILLE-LAeUFE, die laenger als ``max_gap_ms`` sind, auf ``cap_ms``
+    (behaelt die ersten ``cap_ms`` der Stille statt sie ersatzlos zu
+    entfernen - bleibt eine normale, kurze Pause statt eines harten Schnitts).
+    Normale, kuerzere Satzpausen bleiben unangetastet. Reines
+    ``wave``/``array`` (Stdlib) statt ffmpeg - kein zusaetzlicher externer
+    Prozess/Abhaengigkeit fuer ein Kernfeature noetig. Nur Mono/16-bit
+    unterstuetzt (XTTS-v2s Ausgabe ist immer so) - andere Formate werden
+    uebersprungen statt geraten. Gibt die Anzahl gekappter Stellen zurueck."""
+    with wave.open(str(wav_path), "rb") as w:
+        ch, sw, fr, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
+        raw = w.readframes(n)
+    if sw != 2 or ch != 1:
+        return 0
+
+    samples = array.array("h")
+    samples.frombytes(raw)
+    win = max(1, int(fr * window_ms / 1000))
+    max_gap_win = max(1, round(max_gap_ms / window_ms))
+    cap_win = max(0, round(cap_ms / window_ms))
+    total_windows = len(samples) // win
+    if total_windows == 0:
+        return 0
+
+    def _window_rms(i: int) -> float:
+        chunk = samples[i * win:(i + 1) * win]
+        return (sum(s * s for s in chunk) / len(chunk)) ** 0.5 if chunk else 0.0
+
+    quiet = [_window_rms(i) < threshold_rms for i in range(total_windows)]
+
+    out = array.array("h")
+    cursor = 0
+    cuts = 0
+    i = 0
+    while i < total_windows:
+        if quiet[i]:
+            j = i
+            while j < total_windows and quiet[j]:
+                j += 1
+            if j - i > max_gap_win:
+                run_start = i * win
+                out.extend(samples[cursor:run_start])
+                out.extend(samples[run_start:run_start + cap_win * win])
+                cursor = j * win
+                cuts += 1
+            i = j
+        else:
+            i += 1
+    out.extend(samples[cursor:])
+
+    if cuts:
+        with wave.open(str(wav_path), "wb") as w:
+            w.setnchannels(ch)
+            w.setsampwidth(sw)
+            w.setframerate(fr)
+            w.writeframes(out.tobytes())
+    return cuts
+
+
 def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
                       output_path: "str | Path", *, language: Optional[str] = None) -> None:
     """Synthetisiert ``script_text`` in der Stimme aus ``reference_wav_path``
@@ -272,12 +366,26 @@ def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
     if not ok:
         raise AudioOverviewError(msg)
     tts = _get_tts()
+    _apply_pause_length(settings.AUDIO_TTS_PAUSE_MS)
     try:
         tts.tts_to_file(
             text=script_text, speaker_wav=str(reference_wav_path),
-            language=language or settings.AUDIO_LANGUAGE, file_path=str(output_path))
+            language=language or settings.AUDIO_LANGUAGE, file_path=str(output_path),
+            speed=settings.AUDIO_TTS_SPEED,
+            temperature=settings.AUDIO_TTS_TEMPERATURE,
+            repetition_penalty=settings.AUDIO_TTS_REPETITION_PENALTY,
+            gpt_cond_len=settings.AUDIO_TTS_GPT_COND_LEN,
+            gpt_cond_chunk_len=settings.AUDIO_TTS_GPT_COND_CHUNK_LEN,
+            max_ref_len=settings.AUDIO_TTS_MAX_REF_LEN)
     except Exception as exc:  # noqa: BLE001
         raise AudioOverviewError(f"Sprachsynthese fehlgeschlagen: {exc}") from exc
+
+    try:
+        _cap_long_silences(
+            output_path, max_gap_ms=settings.AUDIO_TTS_MAX_GAP_MS,
+            cap_ms=settings.AUDIO_TTS_PAUSE_MS)
+    except Exception:  # noqa: BLE001 - reine Nachbearbeitung, darf eine fertige Audiodatei nicht kippen
+        pass
 
 
 def _require_reference_wav() -> Path:

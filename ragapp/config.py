@@ -447,6 +447,40 @@ class Settings:
     # und verhindert eine Laufzeit-Explosion (40000 Zeichen ~ 40 Min Audio bei
     # durchschnittlichem Sprechtempo).
     AUDIO_MAX_SCRIPT_CHARS: int = 40000
+    # Sprechtempo/Klangqualitaet-Tuning, ueber ⚙️ Einstellungen -> Audio-
+    # Overview einstellbar. Recherche direkt im installierten coqui-tts-Paket
+    # (nicht in der - teils veralteten - Doku): XTTS-v2s eigene Defaults sind
+    # Temperatur 0.85 (recht "kreativ" -> anfaelliger fuer Aussetzer/seltsame
+    # Laute) und eine feste, private Stille von 417ms NACH JEDEM per pysbd
+    # erkannten Satz (TTS.utils.synthesizer.PAD_SILENCE_SAMPLES) - bei kurzen,
+    # gesprochen wirkenden Saetzen summiert sich das zu langen, mechanischen
+    # Pausen. AUDIO_TTS_SPEED nutzt XTTS' eigenen speed-Parameter (Zeitdehnung
+    # der GPT-Latents VOR dem Vocoder) - kein Pitch-Shift wie bei simplem
+    # Schneller-Abspielen.
+    AUDIO_TTS_SPEED: float = 1.1
+    AUDIO_TTS_TEMPERATURE: float = 0.7
+    AUDIO_TTS_REPETITION_PENALTY: float = 4.0
+    AUDIO_TTS_PAUSE_MS: int = 250
+    # Wie viel von der Referenzaufnahme fuer die Stimm-Konditionierung genutzt
+    # wird. XTTS-v2s eigene Defaults nutzen nur die ERSTEN 10 Sekunden
+    # (max_ref_len) fuer die Sprecher-Latents, selbst wenn die Referenz viel
+    # laenger ist (siehe TTS.tts.configs.xtts_config.XttsConfig) - bei einer
+    # mehrminuetigen sauberen Aufnahme blieb der Rest bisher ungenutzt. Mehr
+    # (in gpt_cond_chunk_len-Stuecke gehackte, gemittelte) Referenz verbessert
+    # laut Coqui-Doku die Stabilitaet der Klonstimme. Selten manuell noetig,
+    # deshalb nicht auf der Einstellungen-Seite, aber ueber data/config.json
+    # ueberschreibbar.
+    AUDIO_TTS_GPT_COND_LEN: int = 24
+    AUDIO_TTS_GPT_COND_CHUNK_LEN: int = 6
+    AUDIO_TTS_MAX_REF_LEN: int = 30
+    # Sicherheitsnetz gegen ein bekanntes XTTS-v2-Artefakt: gelegentlich (nicht
+    # zuverlaessig durch Temperatur/Repetition-Penalty allein vermeidbar, in
+    # einem echten Testlauf gemessen) erzeugt das Modell einen mehrsekuendigen
+    # "toten" Abschnitt mitten im Skript, typischerweise bei kurzen/isolierten
+    # Saetzen. Alles, was laenger als AUDIO_TTS_MAX_GAP_MS still ist, wird nach
+    # der Synthese auf AUDIO_TTS_PAUSE_MS gekappt (siehe _cap_long_silences) -
+    # normale Satzpausen bleiben unangetastet.
+    AUDIO_TTS_MAX_GAP_MS: int = 900
 
     # ------------------------------------------------------------------ #
     # Evaluation
