@@ -381,9 +381,14 @@ div[class*="st-key-tile_"] button p {{
 }}
 
 /* Dark-Mode-Umschalter (siehe _theme_toggle_html()) - schwebender runder
-   Button oben rechts, ausserhalb des Streamlit-Baums direkt an <body>. */
+   Button oben rechts, ausserhalb des Streamlit-Baums direkt an <body>.
+   z-index MUSS ueber Streamlits eigenem (immer im DOM vorhandenem, auch ohne
+   offenen Dialog) stDialog-Portal-Wrapper liegen (dort per Playwright
+   gemessen: z-index 1000059, volle Viewport-Flaeche, pointer-events:auto -
+   faengt sonst JEDEN Klick ab, obwohl visuell nichts zu sehen ist) - daher
+   bewusst der maximal moegliche CSS-z-index statt nur "hoch genug fuer jetzt". */
 #rag-theme-toggle {{
-  position:fixed; top:14px; right:18px; z-index:1000000;
+  position:fixed; top:14px; right:18px; z-index:2147483647;
   width:42px; height:42px; border-radius:50%;
   border:1px solid {soft}; background:#ffffff; cursor:pointer;
   font-size:1.15rem; line-height:1; display:flex; align-items:center; justify-content:center;
@@ -534,24 +539,58 @@ def _theme_toggle_html() -> str:
       });
     }
 
+    function refreshLabel(el) {
+      var cur = localStorage.getItem(KEY) || 'auto';
+      el.textContent = label(cur);
+      el.title = title(cur);
+    }
+
     var btn = doc.getElementById('rag-theme-toggle');
     if (!btn) {
       btn = doc.createElement('button');
       btn.id = 'rag-theme-toggle';
       btn.setAttribute('aria-label', 'Darstellung wechseln');
       doc.body.appendChild(btn);
-      btn.addEventListener('click', function() {
+    }
+    refreshLabel(btn);
+
+    // Streamlit markiert bei einer Seiten-Navigation offenbar zeitweise ALLE
+    // direkten Kinder von <body> (auch von uns injizierte, die es gar nicht
+    // kennt) mit dem "inert"-Attribut - ein inert-Element ist fuer den
+    // Browser komplett nicht mehr klickbar/fokussierbar, auch wenn es
+    // sichtbar bleibt. Sofort zuruecksetzen UND dauerhaft gegenhalten
+    // (MutationObserver + Interval-Sicherheitsnetz), falls Streamlit es
+    // erneut setzt (Timing zwischen dessen Uebergangs-Logik und diesem
+    // Skript ist nicht garantiert).
+    if (btn.inert) { btn.inert = false; }
+    if (!btn._ragInertGuard) {
+      btn._ragInertGuard = true;
+      try {
+        new MutationObserver(function() {
+          if (btn.inert) { btn.inert = false; }
+        }).observe(btn, {attributes: true, attributeFilter: ['inert']});
+      } catch (e) {}
+      setInterval(function() { if (btn.inert) { btn.inert = false; } }, 200);
+    }
+
+    // Klick per DELEGATION auf `doc` (einmalig gebunden) statt direkt auf den
+    // Button: robuster als ein Listener direkt am Button, falls Streamlit den
+    // Button-Knoten selbst zwischenzeitlich neu rendert/ersetzt (beobachtet:
+    // vereinzelt reagierte ein direkt gebundener Klick auf bestimmten Seiten
+    // nach einer Navigation nicht, obwohl Element/inert/z-index unauffaellig
+    // waren) - `doc` selbst bleibt ueber die gesamte Sitzung stabil.
+    if (!doc.__ragThemeClickBound) {
+      doc.__ragThemeClickBound = true;
+      doc.addEventListener('click', function(e) {
+        var target = e.target && e.target.closest ? e.target.closest('#rag-theme-toggle') : null;
+        if (!target) { return; }
         var cur = localStorage.getItem(KEY) || 'auto';
         var next = cur === 'auto' ? 'light' : (cur === 'light' ? 'dark' : 'auto');
         localStorage.setItem(KEY, next);
         apply(next);
-        btn.textContent = label(next);
-        btn.title = title(next);
-      });
+        refreshLabel(target);
+      }, true);
     }
-    var cur2 = localStorage.getItem(KEY) || 'auto';
-    btn.textContent = label(cur2);
-    btn.title = title(cur2);
   } catch (e) {}
 })();
 </script>
