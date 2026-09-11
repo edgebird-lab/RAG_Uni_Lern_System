@@ -348,6 +348,24 @@ CREATE TABLE IF NOT EXISTS mindmaps (
     updated_at  REAL
 );
 CREATE INDEX IF NOT EXISTS idx_mindmaps_subject ON mindmaps(subject);
+
+-- Audio-Overviews: gesprochenes Erklaer-Skript (LLM) + damit synthetisierte
+-- WAV-Datei (XTTS-v2, geklonte Nutzerstimme - siehe ragapp/audio_overview.py).
+-- Skript-TEXT liegt in der DB (klein, durchsuchbar); die Audio-Datei selbst
+-- liegt unter data/audio_overviews/ - nur der Pfad wird referenziert (wie
+-- source_path bei documents), Audiodaten gehoeren nicht in SQLite-TEXT/BLOB.
+CREATE TABLE IF NOT EXISTS audio_overviews (
+    overview_id TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
+    subject     TEXT,
+    doc_ids     TEXT,             -- JSON-Liste gewaehlter Dokument-IDs
+    script_text TEXT NOT NULL,
+    audio_path  TEXT NOT NULL,    -- relativ zu AUDIO_DIR
+    model       TEXT,
+    created_at  REAL,
+    updated_at  REAL
+);
+CREATE INDEX IF NOT EXISTS idx_audio_overviews_subject ON audio_overviews(subject);
 """
 
 
@@ -2083,6 +2101,97 @@ def update_mindmap(mindmap_id: str, **fields: Any) -> None:
 def delete_mindmap(mindmap_id: str) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM mindmaps WHERE mindmap_id=?", (mindmap_id,))
+
+
+# --------------------------------------------------------------------------- #
+# Audio-Overviews (siehe _SCHEMA-Kommentar oben) - gleiches Muster wie Mindmaps,
+# zusaetzlich mit einer Datei auf der Platte (Audio gehoert nicht in SQLite).
+# --------------------------------------------------------------------------- #
+
+def create_audio_overview(*, title: str, subject: Optional[str], doc_ids: list[str],
+                          script_text: str, audio_path: str,
+                          model: Optional[str] = None, overview_id: Optional[str] = None) -> str:
+    """``overview_id`` optional vorgeben, damit die WAV-Datei VOR dem DB-Insert
+    schon unter der endgueltigen ID abgelegt werden kann (audio_overview.py -
+    sonst muesste die Datei nach dem Insert umbenannt werden, um zum
+    autogenerierten Schluessel zu passen)."""
+    now = time.time()
+    oid = overview_id or uuid.uuid4().hex[:16]
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO audio_overviews (overview_id, title, subject, doc_ids, "
+            "script_text, audio_path, model, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (oid, title.strip(), subject, json.dumps(doc_ids), script_text,
+             audio_path, model, now, now),
+        )
+    return oid
+
+
+def _decode_audio_overview(row: dict) -> dict:
+    d = dict(row)
+    try:
+        d["doc_ids"] = json.loads(d.get("doc_ids") or "[]")
+    except Exception:  # noqa: BLE001
+        d["doc_ids"] = []
+    return d
+
+
+def get_audio_overview(overview_id: str) -> Optional[dict]:
+    with _connect() as conn:
+        r = conn.execute(
+            "SELECT * FROM audio_overviews WHERE overview_id=?", (overview_id,)).fetchone()
+    return _decode_audio_overview(r) if r else None
+
+
+def update_audio_overview(overview_id: str, **fields: Any) -> None:
+    """Aktualisiert einzelne Felder (z. B. ``script_text``/``model`` nach
+    'Neu generieren') - gleiches Muster wie ``update_mindmap``. Bewusst KEIN
+    ``create_audio_overview`` mit vorhandener ``overview_id`` fuer diesen
+    Zweck: das waere ein reines ``INSERT`` und wuerde an der PRIMARY-KEY-
+    Kollision scheitern statt die Zeile zu aktualisieren."""
+    valid = {"title", "subject", "doc_ids", "script_text", "audio_path", "model"}
+    sets = []
+    args = []
+    for k in fields:
+        if k not in valid:
+            continue
+        sets.append(f"{k}=?")
+        args.append(json.dumps(fields[k]) if k == "doc_ids" else fields[k])
+    if not sets:
+        return
+    args += [time.time(), overview_id]
+    with _connect() as conn:
+        conn.execute(f"UPDATE audio_overviews SET {','.join(sets)}, updated_at=? "
+                    "WHERE overview_id=?", args)
+
+
+def list_audio_overviews(subject: Optional[str] = None) -> list[dict]:
+    sql = "SELECT * FROM audio_overviews WHERE 1=1"
+    args: list = []
+    if subject:
+        sql += " AND subject=?"; args.append(subject)
+    sql += " ORDER BY created_at DESC"
+    with _connect() as conn:
+        rows = conn.execute(sql, args).fetchall()
+    return [_decode_audio_overview(r) for r in rows]
+
+
+def delete_audio_overview(overview_id: str) -> None:
+    """Loescht den DB-Eintrag UND die zugehoerige WAV-Datei (anders als bei
+    Mindmaps, wo alles in der DB liegt - Audio ist eine echte Datei unter
+    AUDIO_DIR, die sonst verwaist zurueckbliebe)."""
+    row = get_audio_overview(overview_id)
+    with _connect() as conn:
+        conn.execute("DELETE FROM audio_overviews WHERE overview_id=?", (overview_id,))
+    if row and row.get("audio_path"):
+        from ragapp.config import AUDIO_DIR
+        p = AUDIO_DIR / row["audio_path"]
+        if p.is_file():
+            try:
+                p.unlink()
+            except OSError:
+                pass
 
 
 # Ro7: KEINE Initialisierung mehr als Import-Nebenwirkung. Schema/Migrationen

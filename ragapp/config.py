@@ -71,6 +71,8 @@ SHUTDOWN_SENTINEL = DATA_DIR / ".shutdown"              # Signal zum sauberen Be
 OPEN_WINDOW_FILE = DATA_DIR / ".open_window"            # Signal: zweites App-Fenster oeffnen (Button -> Starter)
 UI_RESTART_FILE = DATA_DIR / ".restart_ui"             # Modus-Wechsel aus der App (Inhalt: "local"/"network"/"tunnel")
 UI_MODE_FILE = DATA_DIR / ".mode"                      # aktueller Zugriffsmodus (der Starter schreibt ihn)
+VOICE_DIR = DATA_DIR / "voice"                          # eigene Stimm-Referenzaufnahme (Audio-Overview)
+AUDIO_DIR = DATA_DIR / "audio_overviews"                # erzeugte Audio-Overview-WAVs
 
 for _p in (DATA_DIR, CHROMA_DIR, BM25_DIR, EVAL_DIR, LOG_DIR, INBOX_DIR):
     _p.mkdir(parents=True, exist_ok=True)
@@ -421,6 +423,27 @@ class Settings:
     # fuer die Begruendung) - eigenes Zeichen-Budget, da Mindmap-Prompts durch
     # die Baum-/Link-Struktur laenger als reine Gliederungs-Prompts sind.
     MINDMAP_PROMPT_BUDGET_CHARS: int = 9000
+
+    # ------------------------------------------------------------------ #
+    # Audio-Overview (Vertonung mit der eigenen, geklonten Stimme)
+    # ------------------------------------------------------------------ #
+    # XTTS-v2 (Coqui, community-gepflegter Fork "coqui-tts") - deckt Deutsch ab,
+    # braucht nur ~4 GB VRAM, klont schon ab wenigen Sekunden Referenzaudio.
+    # Siehe docs/STIMME_AUFNEHMEN.md fuer die Aufnahme-Anleitung.
+    AUDIO_TTS_MODEL: str = "tts_models/multilingual/multi-dataset/xtts_v2"
+    AUDIO_LANGUAGE: str = "de"
+    # Fester Pfad, IMMER frisch eingelesen (kein Zwischenspeichern der Stimme) -
+    # der Nutzer kann die Datei jederzeit durch eine neue Aufnahme ersetzen,
+    # die naechste Generierung nutzt automatisch die neue Version.
+    AUDIO_REFERENCE_WAV: str = "data/voice/reference.wav"
+    # Wie viel Puffer (GB) zusaetzlich zum geschaetzten Modellbedarf frei sein
+    # muss, bevor XTTS-v2 geladen wird (gleiche Vorsicht wie beim Vision-OCR-
+    # Gate, siehe ragapp/ingestion/loaders.py::_vision_ocr_prepare).
+    AUDIO_VRAM_HEADROOM_GB: float = 2.0
+    AUDIO_MAX_SCRIPT_CHARS: int = 6000     # Deckel fuers generierte Sprech-Skript
+    # Wie MINDMAP_PROMPT_BUDGET_CHARS/PLAN_PROMPT_BUDGET_CHARS - eigenes Budget,
+    # da Skript-Prompts anders lang sind als Gliederungs-/Mindmap-Prompts.
+    AUDIO_PROMPT_BUDGET_CHARS: int = 9000
 
     # ------------------------------------------------------------------ #
     # Evaluation

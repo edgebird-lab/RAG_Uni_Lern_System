@@ -53,6 +53,11 @@ _PROPS = {
     "star": ('<g transform="translate(150,140)">'
              '<path d="M15 0 L19 11 L31 11 L21 18 L25 30 L15 22 L5 30 L9 18 L-1 11 L11 11 Z" '
              'fill="#F6C453" stroke="{ink}" stroke-width="2"/></g>'),
+    "mic": ('<g transform="translate(156,136)">'
+            '<rect x="6" y="0" width="14" height="22" rx="7" fill="white" stroke="{ink}" stroke-width="2.5"/>'
+            '<path d="M0 16 a13 13 0 0 0 26 0" fill="none" stroke="{ink}" stroke-width="2.5" stroke-linecap="round"/>'
+            '<line x1="13" y1="29" x2="13" y2="35" stroke="{ink}" stroke-width="2.5"/>'
+            '<line x1="6" y1="35" x2="20" y2="35" stroke="{ink}" stroke-width="2.5" stroke-linecap="round"/></g>'),
 }
 
 # Seite -> (Pose fuer Mund/Arme, Animationsklasse, Requisit). Nur Seiten mit
@@ -75,6 +80,7 @@ POSES: dict[str, tuple[str, str, "str | None"]] = {
     "organisation":    ("idle", "float", "clock"),
     "evaluation":      ("focused", "float", None),
     "einstellungen":   ("idle", "float", None),
+    "audio":           ("cheer", "float", "mic"),
 }
 
 
