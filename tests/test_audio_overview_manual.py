@@ -70,7 +70,7 @@ def audio_funcs(load_functions, ragapp_dir, tmp_path):
         funcs = load_functions(
             ragapp_dir / "audio_overview.py",
             ["create_manual_audio_overview", "resynthesize_audio_overview",
-             "create_and_save_audio_overview", "_synthesize_and_persist",
+             "create_and_save_audio_overview", "synthesize_and_save_overview",
              "_require_reference_wav"],
             {
                 "settings": settings,
@@ -209,3 +209,35 @@ def test_create_and_save_erfolgsfall(audio_funcs):
     assert warning is None
     assert env.manifest.create_calls[0]["doc_ids"] == ["doc1"]
     assert env.manifest.create_calls[0]["script_text"] == "Generiertes Skript."
+
+
+# --------------------------------------------------------------------------- #
+# synthesize_and_save_overview: der zweite Schritt des UI-Ablaufs "erst Skript
+# prüfen/bearbeiten, dann vertonen" - wird von der Seite DIREKT aufgerufen
+# (nicht nur intern von create_and_save_audio_overview/create_manual_audio_
+# overview), muss also auch für sich allein die richtigen Felder speichern,
+# insbesondere die vom Nutzer VOR diesem Aufruf noch bearbeiteten doc_ids/
+# Skript-Text unveraendert durchreichen.
+# --------------------------------------------------------------------------- #
+
+def test_synthesize_and_save_overview_speichert_bearbeitetes_skript_mit_doc_ids(audio_funcs):
+    env = audio_funcs()
+    _write_reference(env.tmp_path)
+    oid = env.synthesize_and_save_overview(
+        "Vom Nutzer korrigierter Skript-Text.", "Titel", "DSA", ["doc1", "doc2"], "mein-modell")
+    assert len(env.synth_calls) == 1
+    assert env.synth_calls[0]["script_text"] == "Vom Nutzer korrigierter Skript-Text."
+    assert len(env.manifest.create_calls) == 1
+    call = env.manifest.create_calls[0]
+    assert call["doc_ids"] == ["doc1", "doc2"]
+    assert call["subject"] == "DSA"
+    assert call["model"] == "mein-modell"
+    assert call["script_text"] == "Vom Nutzer korrigierter Skript-Text."
+    assert call["overview_id"] == oid
+
+
+def test_synthesize_and_save_overview_ohne_referenzstimme_wirft_error(audio_funcs):
+    env = audio_funcs()  # keine reference.wav
+    with pytest.raises(RuntimeError, match="Stimm-Referenz"):
+        env.synthesize_and_save_overview("Text.", "Titel", None, ["doc1"], None)
+    assert env.synth_calls == []

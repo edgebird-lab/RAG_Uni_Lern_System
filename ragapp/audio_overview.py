@@ -370,13 +370,18 @@ def _require_reference_wav() -> Path:
     return ref_path
 
 
-def _synthesize_and_persist(script_text: str, title: str, subject: Optional[str],
-                            doc_ids: list[str], model: Optional[str], *,
-                            on_progress: ProgressCallback = None) -> str:
-    """Gemeinsamer Kern von ``create_and_save_audio_overview`` (KI-generiertes
-    Skript) und ``create_manual_audio_overview`` (selbst geschriebenes Skript):
-    Referenz prüfen, vertonen, neuen Eintrag anlegen. Gibt die neue
-    ``overview_id`` zurück."""
+def synthesize_and_save_overview(script_text: str, title: str, subject: Optional[str],
+                                 doc_ids: list[str], model: Optional[str], *,
+                                 on_progress: ProgressCallback = None) -> str:
+    """Vertont ein FERTIGES Skript (KI-generiert und ggf. von Hand nachbearbeitet,
+    selbst geschrieben, oder ein Wiederholungsversuch) und legt einen neuen
+    Eintrag an. Gemeinsamer Kern von ``create_and_save_audio_overview``,
+    ``create_manual_audio_overview`` UND dem zweistufigen "erst Skript prüfen,
+    dann vertonen"-Ablauf der UI-Seite (bewusst öffentlich, nicht mehr nur
+    intern genutzt - siehe dort: Skript wird zwischen den beiden Schritten im
+    Session-State gehalten, damit der Nutzer es vor der teuren Vertonung noch
+    bearbeiten kann). Referenz prüfen, vertonen, neuen Eintrag anlegen. Gibt
+    die neue ``overview_id`` zurück."""
     ref_path = _require_reference_wav()
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
     overview_id = uuid.uuid4().hex[:16]
@@ -397,9 +402,15 @@ def create_and_save_audio_overview(
     doc_ids: list[str], subject: Optional[str], title: str, *, model: Optional[str] = None,
     on_script_progress: ProgressCallback = None, on_audio_progress: ProgressCallback = None,
 ) -> tuple[str, Optional[str]]:
-    """Generiert das Skript per KI aus den gewählten Dokumenten und vertont
-    es. Gibt ``(overview_id, warning)`` zurück (siehe ``generate_overview_script``
-    für ``warning``). ``subject`` ist rein informativ (Filter/Anzeige) - ``None``
+    """Generiert das Skript per KI aus den gewählten Dokumenten und vertont es
+    DIREKT IM SELBEN Aufruf, OHNE Gelegenheit, das Skript vorher zu prüfen/zu
+    bearbeiten - die UI-Seite nutzt stattdessen standardmäßig den zweistufigen
+    Ablauf (``generate_overview_script`` zum Anzeigen/Bearbeiten, danach erst
+    ``synthesize_and_save_overview``), damit ein Skript-Fehler nicht erst nach
+    der (mehrminütigen) Vertonung auffällt. Diese Funktion bleibt als
+    einstufige Kurzform erhalten (z. B. für Automatisierung/Skripte). Gibt
+    ``(overview_id, warning)`` zurück (siehe ``generate_overview_script`` für
+    ``warning``). ``subject`` ist rein informativ (Filter/Anzeige) - ``None``
     ist erlaubt, ``doc_ids`` darf hier NICHT leer sein (sonst gibt es nichts,
     woraus ein Skript entstehen könnte - für ein Skript ohne Quelldokumente
     siehe ``create_manual_audio_overview``). ``on_script_progress``/
@@ -409,8 +420,8 @@ def create_and_save_audio_overview(
     script, warning = generate_overview_script(doc_ids, subject, model=model,
                                                on_progress=on_script_progress)
     used_model = model or settings.author_model()
-    overview_id = _synthesize_and_persist(script, title, subject, doc_ids, used_model,
-                                          on_progress=on_audio_progress)
+    overview_id = synthesize_and_save_overview(script, title, subject, doc_ids, used_model,
+                                               on_progress=on_audio_progress)
     return overview_id, warning
 
 
@@ -423,8 +434,8 @@ def create_manual_audio_overview(script_text: str, title: str, subject: Optional
     script_text = (script_text or "").strip()
     if not script_text:
         raise AudioOverviewError("Bitte zuerst einen Skript-Text eingeben.")
-    return _synthesize_and_persist(script_text, title, subject, [], model=None,
-                                   on_progress=on_progress)
+    return synthesize_and_save_overview(script_text, title, subject, [], model=None,
+                                        on_progress=on_progress)
 
 
 def resynthesize_audio_overview(overview_id: str, script_text: str, *,
