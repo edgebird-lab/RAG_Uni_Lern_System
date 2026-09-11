@@ -473,13 +473,15 @@ class Settings:
     AUDIO_TTS_GPT_COND_LEN: int = 24
     AUDIO_TTS_GPT_COND_CHUNK_LEN: int = 6
     AUDIO_TTS_MAX_REF_LEN: int = 30
-    # Sicherheitsnetz gegen ein bekanntes XTTS-v2-Artefakt: gelegentlich (nicht
-    # zuverlaessig durch Temperatur/Repetition-Penalty allein vermeidbar, in
-    # einem echten Testlauf gemessen) erzeugt das Modell einen mehrsekuendigen
-    # "toten" Abschnitt mitten im Skript, typischerweise bei kurzen/isolierten
-    # Saetzen. Alles, was laenger als AUDIO_TTS_MAX_GAP_MS still ist, wird nach
-    # der Synthese auf AUDIO_TTS_PAUSE_MS gekappt (siehe _cap_long_silences) -
-    # normale Satzpausen bleiben unangetastet.
+    # Nachbearbeitung gegen ein bekanntes, in der coqui-tts-Community
+    # dokumentiertes XTTS-v2-Artefakt (Rauschen/Gebrabbel an Satzgrenzen, auch
+    # bei Temperatur-/Repetition-Penalty-Tuning nicht zuverlaessig vermeidbar):
+    # Silero VAD (echter Sprache/Nicht-Sprache-Klassifikator) ersetzt alles
+    # ausserhalb erkannter Sprache durch echte Stille (siehe
+    # audio_overview._clean_audio_gaps) - AUDIO_TTS_MAX_GAP_MS ist dabei die
+    # Obergrenze, auf die eine so erkannte Luecke gekappt wird, falls sie
+    # laenger ist (normale, kurze Satzpausen bleiben in ihrer natuerlichen
+    # Laenge, nur der INHALT wird gesaeubert).
     AUDIO_TTS_MAX_GAP_MS: int = 900
 
     # ------------------------------------------------------------------ #

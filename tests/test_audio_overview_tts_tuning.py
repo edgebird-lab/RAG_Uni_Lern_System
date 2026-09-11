@@ -6,19 +6,22 @@
 - ``synthesize_speech``: reicht die Tuning-Parameter (speed/temperature/
   repetition_penalty/gpt_cond_*) tatsächlich an ``tts.tts_to_file`` durch,
   statt sie nur in ``settings`` liegen zu lassen.
-- ``_cap_long_silences``: Nachbearbeitungs-Sicherheitsnetz gegen ein reales,
-  in einem End-to-End-Testlauf gemessenes XTTS-v2-Artefakt (gelegentliche
-  mehrsekündige "tote" Passagen mitten im Skript) - kappt lange Stille-Läufe,
-  lässt normale kurze Satzpausen unangetastet.
+- ``_apply_fade``/``_rebuild_from_speech_regions``: die reine Logik hinter
+  ``_clean_audio_gaps`` (Nachbearbeitung gegen ein bekanntes, in der
+  coqui-tts-Community dokumentiertes XTTS-v2-Artefakt: hörbares Rauschen/
+  Gebrabbel an Satzgrenzen UND Klick-Geräusche an Schnittstellen) - OHNE den
+  eigentlichen Silero-VAD-Aufruf, der echte Sprache in echten Audiodaten
+  braucht und deshalb nur per echtem End-to-End-Test sinnvoll verifizierbar
+  ist (siehe Commit-Beschreibung für den realen Vorher-Nachher-Vergleich).
 
-Isoliert geladen - ``_apply_pause_length``/``_get_tts`` werden hier gefaked,
-damit KEIN echter TTS/transformers-Import ausgelöst wird (das würde ohne den
-isin_mps_friendly-Shim aus ``_get_tts`` fehlschlagen und wäre für einen
-reinen Kwargs-Durchreich-Test ohnehin unnötig langsam). ``_cap_long_silences``
-braucht dagegen nur ``wave``/``array`` (Stdlib) - kein TTS-Import nötig."""
+Isoliert geladen - ``_apply_pause_length``/``_get_tts``/``_clean_audio_gaps``
+werden hier gefaked, damit KEIN echter TTS/transformers-Import ausgelöst wird
+(das würde ohne den isin_mps_friendly-Shim aus ``_get_tts`` fehlschlagen und
+wäre für einen reinen Kwargs-Durchreich-Test ohnehin unnötig langsam).
+``_apply_fade``/``_rebuild_from_speech_regions`` brauchen dagegen nur
+``array`` (Stdlib) - kein TTS/Torch-Import nötig."""
 import array
 import types
-import wave
 
 import pytest
 
@@ -28,6 +31,7 @@ def _fake_settings(**overrides):
         AUDIO_LANGUAGE="de", AUDIO_TTS_SPEED=1.1, AUDIO_TTS_TEMPERATURE=0.7,
         AUDIO_TTS_REPETITION_PENALTY=4.0, AUDIO_TTS_PAUSE_MS=250,
         AUDIO_TTS_GPT_COND_LEN=24, AUDIO_TTS_GPT_COND_CHUNK_LEN=6, AUDIO_TTS_MAX_REF_LEN=30,
+        AUDIO_TTS_MAX_GAP_MS=900,
     )
     base.update(overrides)
     return types.SimpleNamespace(**base)
@@ -71,6 +75,7 @@ def synth_env(load_functions, ragapp_dir):
         settings_obj = settings_obj or _fake_settings()
         pause_calls = []
         tts_to_file_calls = []
+        clean_calls = []
 
         class _FakeTTS:
             def tts_to_file(self, **kwargs):
@@ -83,14 +88,15 @@ def synth_env(load_functions, ragapp_dir):
                 "_prepare_vram_for_tts": lambda: (vram_ok, "" if vram_ok else "kein VRAM"),
                 "_get_tts": lambda: _FakeTTS(),
                 "_apply_pause_length": lambda ms: pause_calls.append(ms),
-                "_cap_long_silences": lambda *a, **kw: 0,  # eigene Tests unten
+                "_clean_audio_gaps": lambda *a, **kw: clean_calls.append(kw) or 0,  # eigene Tests unten
                 "AudioOverviewError": RuntimeError,
                 "Optional": None,
                 "Path": __import__("pathlib").Path,
             },
         )
         return types.SimpleNamespace(
-            **funcs, pause_calls=pause_calls, tts_to_file_calls=tts_to_file_calls)
+            **funcs, pause_calls=pause_calls, tts_to_file_calls=tts_to_file_calls,
+            clean_calls=clean_calls)
     return _make
 
 
@@ -109,17 +115,19 @@ def test_synthesize_speech_reicht_tuning_parameter_durch(synth_env):
     assert call["max_ref_len"] == 30
     assert call["text"] == "Text."
     assert call["language"] == "de"
+    assert env.clean_calls == [{"max_pause_ms": 900}]
 
 
 def test_synthesize_speech_nutzt_geaenderte_settings(synth_env):
     settings_obj = _fake_settings(AUDIO_TTS_SPEED=1.25, AUDIO_TTS_PAUSE_MS=100,
-                                  AUDIO_TTS_TEMPERATURE=0.5)
+                                  AUDIO_TTS_TEMPERATURE=0.5, AUDIO_TTS_MAX_GAP_MS=600)
     env = synth_env(settings_obj=settings_obj)
     env.synthesize_speech("Text.", "ref.wav", "out.wav")
 
     assert env.pause_calls == [100]
     assert env.tts_to_file_calls[0]["speed"] == 1.25
     assert env.tts_to_file_calls[0]["temperature"] == 0.5
+    assert env.clean_calls == [{"max_pause_ms": 600}]
 
 
 def test_synthesize_speech_kein_vram_wirft_error_ohne_zu_vertonen(synth_env):
@@ -128,78 +136,108 @@ def test_synthesize_speech_kein_vram_wirft_error_ohne_zu_vertonen(synth_env):
         env.synthesize_speech("Text.", "ref.wav", "out.wav")
     assert env.tts_to_file_calls == []
     assert env.pause_calls == []
+    assert env.clean_calls == []
 
 
 # --------------------------------------------------------------------------- #
-# _cap_long_silences
+# _apply_fade
 # --------------------------------------------------------------------------- #
 
 @pytest.fixture
-def cap_fn(load_functions, ragapp_dir):
+def fade_fn(load_functions, ragapp_dir):
     return load_functions(
-        ragapp_dir / "audio_overview.py", ["_cap_long_silences"],
-        {"wave": wave, "array": array},
-    )["_cap_long_silences"]
+        ragapp_dir / "audio_overview.py", ["_apply_fade"], {"array": array},
+    )["_apply_fade"]
 
 
-def _make_wav(path, segments, fr=8000):
-    """``segments``: Liste (kind, ms) mit kind 'ton' oder 'stille'. Baut eine
-    mono 16-bit-WAV, wie sie XTTS-v2 auch ausgibt (nur andere Samplerate,
-    fürs schnelle Testen)."""
-    samples = array.array("h")
-    for kind, ms in segments:
-        n = int(fr * ms / 1000)
-        if kind == "stille":
-            samples.extend([0] * n)
-        else:
-            samples.extend([8000 if i % 2 == 0 else -8000 for i in range(n)])
-    with wave.open(str(path), "wb") as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(fr)
-        w.writeframes(samples.tobytes())
+def test_apply_fade_rampt_erste_und_letzte_samples_herunter(fade_fn):
+    chunk = array.array("h", [1000] * 40)
+    out = fade_fn(chunk, 10)
+    assert out[0] == 0                 # erstes Sample: Fade startet bei 0
+    assert 0 < out[5] < 1000           # mittendrin in der Rampe
+    assert out[10] == 1000             # Rampe fertig, voller Pegel
+    assert out[-1] == 0                # letztes Sample: Fade endet bei 0
+    assert out[-11] == 1000            # kurz vor der End-Rampe: noch voller Pegel
 
 
-def _wav_duration_ms(path) -> float:
-    with wave.open(str(path), "rb") as w:
-        return 1000.0 * w.getnframes() / w.getframerate()
+def test_apply_fade_null_laenge_laesst_unveraendert(fade_fn):
+    chunk = array.array("h", [500, -500, 500, -500])
+    out = fade_fn(chunk, 0)
+    assert list(out) == list(chunk)
 
 
-def test_cap_long_silences_kappt_lange_luecke(cap_fn, tmp_path):
-    p = tmp_path / "long_gap.wav"
-    _make_wav(p, [("ton", 300), ("stille", 2000), ("ton", 300)])
-    cuts = cap_fn(p, max_gap_ms=900, cap_ms=300)
-    assert cuts == 1
-    # 300 Ton + 300 gekappte Stille + 300 Ton = 900ms (statt urspruenglich 2600ms)
-    assert _wav_duration_ms(p) == pytest.approx(900, abs=40)
+def test_apply_fade_laenger_als_chunk_wird_gekappt(fade_fn):
+    # Fade-Länge > halbe Chunk-Länge -> darf nicht crashen/über die Mitte hinausgehen
+    chunk = array.array("h", [1000] * 6)
+    out = fade_fn(chunk, 100)
+    assert len(out) == 6
+    assert out[0] == 0
+    assert out[-1] == 0
 
 
-def test_cap_long_silences_laesst_kurze_pausen_unangetastet(cap_fn, tmp_path):
-    p = tmp_path / "short_gap.wav"
-    _make_wav(p, [("ton", 300), ("stille", 400), ("ton", 300)])
-    original_ms = _wav_duration_ms(p)
-    cuts = cap_fn(p, max_gap_ms=900, cap_ms=300)
-    assert cuts == 0
-    assert _wav_duration_ms(p) == pytest.approx(original_ms, abs=5)
+# --------------------------------------------------------------------------- #
+# _rebuild_from_speech_regions
+# --------------------------------------------------------------------------- #
+
+@pytest.fixture
+def rebuild_fn(load_functions, ragapp_dir):
+    funcs = load_functions(
+        ragapp_dir / "audio_overview.py",
+        ["_rebuild_from_speech_regions", "_apply_fade"], {"array": array},
+    )
+    return funcs["_rebuild_from_speech_regions"]
 
 
-def test_cap_long_silences_mehrere_luecken_werden_alle_gekappt(cap_fn, tmp_path):
-    p = tmp_path / "multi_gap.wav"
-    _make_wav(p, [("ton", 200), ("stille", 1500), ("ton", 200),
-                 ("stille", 1500), ("ton", 200)])
-    cuts = cap_fn(p, max_gap_ms=900, cap_ms=250)
-    assert cuts == 2
-    assert _wav_duration_ms(p) == pytest.approx(200 * 3 + 250 * 2, abs=60)
+def _tone(n, amp=1000):
+    return array.array("h", [amp if i % 2 == 0 else -amp for i in range(n)])
 
 
-def test_cap_long_silences_stereo_wird_uebersprungen(cap_fn, tmp_path):
-    p = tmp_path / "stereo.wav"
-    with wave.open(str(p), "wb") as w:
-        w.setnchannels(2)
-        w.setsampwidth(2)
-        w.setframerate(8000)
-        w.writeframes(array.array("h", [0] * 8000 * 2 * 3).tobytes())  # 3s Stille, stereo
-    original_ms = _wav_duration_ms(p)
-    cuts = cap_fn(p, max_gap_ms=900, cap_ms=250)
-    assert cuts == 0
-    assert _wav_duration_ms(p) == pytest.approx(original_ms, abs=1)
+def test_rebuild_ersetzt_luecken_durch_stille_und_behaelt_sprache(rebuild_fn):
+    fr = 8000
+    # "Rauschen"/Nicht-Sprache zwischen zwei Sprachabschnitten - simuliert durch
+    # Ton AUSSERHALB der als Sprache markierten Regionen (0-800, 1600-2400).
+    samples = _tone(2400, amp=1000)
+    out, gaps = rebuild_fn(samples, fr, [(0, 800), (1600, 2400)],
+                           max_pause_ms=1000, fade_ms=0)
+    assert gaps == 1
+    # die Luecke (800-1600, 800 Samples = 100ms) ist jetzt echte Stille:
+    gap_region = out[800:1600]
+    assert all(s == 0 for s in gap_region)
+    assert len(out) == len(samples)
+
+
+def test_rebuild_kappt_zu_lange_luecken(rebuild_fn):
+    fr = 8000
+    samples = _tone(800) + array.array("h", [0] * 8000) + _tone(800)   # 1s "Rauschen"-Luecke
+    out, gaps = rebuild_fn(samples, fr, [(0, 800), (8800, 9600)],
+                           max_pause_ms=200, fade_ms=0)
+    assert gaps == 1
+    # 200ms gekappt statt der vollen 1000ms Original-Luecke
+    assert len(out) == pytest.approx(800 + 1600 + 800, abs=10)
+
+
+def test_rebuild_keine_sprachregionen_laesst_original_unveraendert(rebuild_fn):
+    samples = _tone(500)
+    out, gaps = rebuild_fn(samples, 8000, [], max_pause_ms=500)
+    assert gaps == 0
+    assert out is samples   # bewusst: nichts tun statt zu raten
+
+
+def test_rebuild_fade_wird_an_sprachraendern_angewendet(rebuild_fn):
+    fr = 8000
+    samples = _tone(800, amp=1000)
+    out, gaps = rebuild_fn(samples, fr, [(0, 800)], max_pause_ms=500, fade_ms=10)
+    assert out[0] == 0          # Fade-in am Anfang der Sprachregion
+    assert out[-1] == 0         # Fade-out am Ende
+
+
+def test_rebuild_mehrere_luecken_werden_alle_gesaeubert(rebuild_fn):
+    fr = 8000
+    rauschen = _tone(400, amp=1000)
+    sprache = _tone(400, amp=1000)
+    samples = sprache + rauschen + sprache + rauschen + sprache
+    speech_regions = [(0, 400), (800, 1200), (1600, 2000)]
+    out, gaps = rebuild_fn(samples, fr, speech_regions, max_pause_ms=1000, fade_ms=0)
+    assert gaps == 2
+    assert all(s == 0 for s in out[400:800])
+    assert all(s == 0 for s in out[1200:1600])

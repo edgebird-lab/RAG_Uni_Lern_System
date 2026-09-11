@@ -31,6 +31,22 @@ genutzt, 417ms feste Stille nach JEDEM Satz) wurden direkt im installierten
 coqui-tts-Paket nachgelesen (nicht in der - teils veralteten - Doku) und auf
 stabilere/natuerlichere Werte gesetzt, siehe Kommentare in ``config.py`` und
 ``_apply_pause_length`` unten fuer die Details.
+
+Bekanntes XTTS-v2-Artefakt ("Rauschen/Geraeusche zwischen Saetzen, obwohl
+nichts vorgelesen wird" - Nutzer-Report; in der coqui-tts-Community
+mehrfach dokumentiert, u. a. coqui-ai/TTS#3236/#3254 "breathing noise...
+mostly after a comma or full stop" und #3407 "...pop...pop.. between every
+sentence", nie offiziell von den Maintainern geloest): zwei unabhaengige
+Ursachen, beide mit eigenem Fix in ``_clean_audio_gaps``/``_apply_fade``
+unten. (1) Das Modell erzeugt manchmal ECHTEN Ton (Atmen/Gebrabbel, nicht
+Stille) an Satzgrenzen - eine reine Lautstaerke-Schwelle wuerde das NICHT
+erkennen, da echte Energie da ist. Silero VAD (echter, auf Sprache/
+Nicht-Sprache trainierter Klassifikator, MIT-Lizenz, Modellgewichte im
+pip-Paket, kein Internet noetig) ersetzt alles ausserhalb erkannter Sprache
+durch echte Stille. (2) Jede Schnittstelle (die eigene Modell-Pause UND
+unsere Nachbearbeitung) kann einen abrupten Amplituden-Sprung = hoerbaren
+Klick erzeugen - ein kurzer Fade an jedem Sprachabschnitts-Rand verhindert
+das.
 """
 from __future__ import annotations
 
@@ -297,64 +313,126 @@ def _apply_pause_length(pause_ms: float) -> None:
     _synth_mod.PAD_SILENCE_SAMPLES = _pause_ms_to_samples(pause_ms)
 
 
-def _cap_long_silences(wav_path: "str | Path", *, max_gap_ms: float, cap_ms: float,
-                       window_ms: float = 20, threshold_rms: float = 300) -> int:
-    """Kappt STILLE-LAeUFE, die laenger als ``max_gap_ms`` sind, auf ``cap_ms``
-    (behaelt die ersten ``cap_ms`` der Stille statt sie ersatzlos zu
-    entfernen - bleibt eine normale, kurze Pause statt eines harten Schnitts).
-    Normale, kuerzere Satzpausen bleiben unangetastet. Reines
-    ``wave``/``array`` (Stdlib) statt ffmpeg - kein zusaetzlicher externer
-    Prozess/Abhaengigkeit fuer ein Kernfeature noetig. Nur Mono/16-bit
-    unterstuetzt (XTTS-v2s Ausgabe ist immer so) - andere Formate werden
-    uebersprungen statt geraten. Gibt die Anzahl gekappter Stellen zurueck."""
+def _apply_fade(chunk: "array.array", fade_len: int) -> "array.array":
+    """Kurzer linearer Ein-/Ausblendevorgang an den Raendern eines
+    Audio-Abschnitts. Ohne das entsteht an jeder Schnittstelle (egal ob die
+    Original-Modellpause oder unsere eigene Nachbearbeitung unten den
+    Schnitt setzt) ein abrupter Sprung auf/von digitaler Stille - genau DAS
+    ist als kurzes Klick-/Knack-Geraeusch hoerbar (in der coqui-tts-Community
+    dokumentiert, siehe Moduldoc: "...pop...pop.. between every sentence")."""
+    n = len(chunk)
+    fade_len = min(fade_len, n // 2)
+    if fade_len <= 0:
+        return array.array("h", chunk)
+    out = array.array("h", chunk)
+    for i in range(fade_len):
+        g = i / fade_len
+        out[i] = int(out[i] * g)
+        out[n - 1 - i] = int(out[n - 1 - i] * g)
+    return out
+
+
+def _rebuild_from_speech_regions(samples: "array.array", fr: int,
+                                 speech_regions: list[tuple[int, int]], *,
+                                 max_pause_ms: float, fade_ms: float = 8) -> tuple["array.array", int]:
+    """Reine Logik OHNE VAD/Torch-Aufruf (siehe ``_clean_audio_gaps`` fuer den
+    Aufrufer) - separat gehalten, damit sie ohne die schweren Abhaengigkeiten
+    testbar ist. Baut das Audio aus den als SPRACHE erkannten Bereichen neu
+    zusammen: alles AUSSERHALB wird durch echte Stille ersetzt (faengt
+    hoerbares Rauschen/Gebrabbel zwischen Saetzen ab) und auf ``max_pause_ms``
+    gekappt, falls laenger. Jeder Sprachbereich bekommt einen Fade an den
+    Raendern (siehe ``_apply_fade``). Gibt ``(samples, anzahl_luecken)``
+    zurueck - ``anzahl_luecken`` ist 0, wenn nichts zu tun war (keine Sprache
+    erkannt -> Original unveraendert lassen, lieber nichts tun als raten)."""
+    if not speech_regions:
+        return samples, 0
+    max_gap = max(0, int(fr * max_pause_ms / 1000))
+    fade_len = max(0, int(fr * fade_ms / 1000))
+    n_samples = len(samples)
+
+    out = array.array("h")
+    cursor = 0
+    gaps = 0
+    for start, end in speech_regions:
+        start = max(0, min(start, n_samples))
+        end = max(start, min(end, n_samples))
+        gap = start - cursor
+        if gap > 0:
+            out.extend([0] * min(gap, max_gap))
+            gaps += 1
+        out.extend(_apply_fade(samples[start:end], fade_len))
+        cursor = end
+    trailing = n_samples - cursor
+    if trailing > 0:
+        out.extend([0] * min(trailing, max_gap))
+        gaps += 1
+    return out, gaps
+
+
+_vad_singleton = None
+_VAD_SAMPLE_RATE = 16000   # Silero VAD unterstuetzt nur 8000/16000 Hz
+
+
+def _get_vad_model():
+    global _vad_singleton
+    if _vad_singleton is None:
+        from silero_vad import load_silero_vad
+        _vad_singleton = load_silero_vad()
+    return _vad_singleton
+
+
+def _clean_audio_gaps(wav_path: "str | Path", *, max_pause_ms: float,
+                      speech_pad_ms: float = 80, fade_ms: float = 8) -> int:
+    """Ersetzt alles ausserhalb von per Silero VAD erkannter Sprache durch
+    echte Stille und kappt zu lange Pausen (siehe ``_rebuild_from_speech_
+    regions``). Silero VAD ist ein echter, auf Sprache/Nicht-Sprache
+    TRAINIERTER Klassifikator (MIT-Lizenz, Modellgewichte im pip-Paket
+    enthalten, ~11MB, KEIN Internet zur Laufzeit noetig, laeuft auf der CPU -
+    beeinflusst also nicht das sorgfaeltig budgetierte GPU-VRAM fuer XTTS-v2)
+    - anders als eine reine Lautstaerke-Schwelle erkennt er auch Rauschen/
+    Gebrabbel mit echter Energie zuverlaessig als Nicht-Sprache (ein
+    dokumentiertes XTTS-v2-Artefakt, siehe Moduldoc). Nur Mono/16-bit
+    unterstuetzt (XTTS-v2s Ausgabe ist immer so). Gibt die Anzahl der
+    (jetzt stillen) Luecken zurueck."""
     with wave.open(str(wav_path), "rb") as w:
         ch, sw, fr, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
         raw = w.readframes(n)
-    if sw != 2 or ch != 1:
+    if sw != 2 or ch != 1 or n == 0:
         return 0
 
     samples = array.array("h")
     samples.frombytes(raw)
-    win = max(1, int(fr * window_ms / 1000))
-    max_gap_win = max(1, round(max_gap_ms / window_ms))
-    cap_win = max(0, round(cap_ms / window_ms))
-    total_windows = len(samples) // win
-    if total_windows == 0:
+
+    import torch
+    import torchaudio
+    from silero_vad import get_speech_timestamps
+
+    audio = torch.frombuffer(samples, dtype=torch.int16).float() / 32768.0
+    audio_vad = (torchaudio.functional.resample(audio, fr, _VAD_SAMPLE_RATE)
+                if fr != _VAD_SAMPLE_RATE else audio)
+    raw_speech = get_speech_timestamps(audio_vad, _get_vad_model(), sampling_rate=_VAD_SAMPLE_RATE)
+    if not raw_speech:
         return 0
 
-    def _window_rms(i: int) -> float:
-        chunk = samples[i * win:(i + 1) * win]
-        return (sum(s * s for s in chunk) / len(chunk)) ** 0.5 if chunk else 0.0
-
-    quiet = [_window_rms(i) < threshold_rms for i in range(total_windows)]
-
-    out = array.array("h")
-    cursor = 0
-    cuts = 0
-    i = 0
-    while i < total_windows:
-        if quiet[i]:
-            j = i
-            while j < total_windows and quiet[j]:
-                j += 1
-            if j - i > max_gap_win:
-                run_start = i * win
-                out.extend(samples[cursor:run_start])
-                out.extend(samples[run_start:run_start + cap_win * win])
-                cursor = j * win
-                cuts += 1
-            i = j
+    scale = fr / _VAD_SAMPLE_RATE
+    pad = int(fr * speech_pad_ms / 1000)
+    regions = [(max(0, int(seg["start"] * scale) - pad),
+               min(len(samples), int(seg["end"] * scale) + pad)) for seg in raw_speech]
+    merged: list[tuple[int, int]] = []
+    for start, end in regions:
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
         else:
-            i += 1
-    out.extend(samples[cursor:])
+            merged.append((start, end))
 
-    if cuts:
+    out, gaps = _rebuild_from_speech_regions(samples, fr, merged, max_pause_ms=max_pause_ms)
+    if gaps:
         with wave.open(str(wav_path), "wb") as w:
             w.setnchannels(ch)
             w.setsampwidth(sw)
             w.setframerate(fr)
             w.writeframes(out.tobytes())
-    return cuts
+    return gaps
 
 
 def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
@@ -381,9 +459,7 @@ def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
         raise AudioOverviewError(f"Sprachsynthese fehlgeschlagen: {exc}") from exc
 
     try:
-        _cap_long_silences(
-            output_path, max_gap_ms=settings.AUDIO_TTS_MAX_GAP_MS,
-            cap_ms=settings.AUDIO_TTS_PAUSE_MS)
+        _clean_audio_gaps(output_path, max_pause_ms=settings.AUDIO_TTS_MAX_GAP_MS)
     except Exception:  # noqa: BLE001 - reine Nachbearbeitung, darf eine fertige Audiodatei nicht kippen
         pass
 

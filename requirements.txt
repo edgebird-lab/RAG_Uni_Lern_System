@@ -54,6 +54,13 @@ easyocr>=1.7.0,<2.0
 # HINWEIS: XTTS-v2-Modellgewichte stehen unter der Coqui Public Model License
 # (nicht-kommerziell) - fuer eine private, nicht verkaufte Nutzung uneingeschraenkt ok.
 coqui-tts>=0.27.0,<0.28.0
+# silero-vad: erkennt Sprache vs. Nicht-Sprache (echter trainierter Klassifikator,
+# nicht nur eine Lautstaerke-Schwelle) - saeubert die erzeugten Audio-Overviews von
+# einem bekannten, in der coqui-tts-Community dokumentierten XTTS-v2-Artefakt
+# (Atem-/Rauschgeraeusche zwischen Saetzen). MIT-Lizenz, Modellgewichte (~11MB) im
+# pip-Paket enthalten - kein Internet zur Laufzeit noetig, braucht nur torch/
+# torchaudio (oben ohnehin vorhanden).
+silero-vad>=6.0.0,<7.0
 
 # --- Weboberfläche ---
 streamlit>=1.38.0,<2.0
