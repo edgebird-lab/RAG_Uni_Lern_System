@@ -256,6 +256,7 @@ with st.expander("🗂️ Stapel verwalten (Fach → Dokument → Thema → Kart
             key="dk_docs",
             help="Bei mehreren Uploads: Stapel pro Dokument. Bei einem Dokument "
                  "weiter unten nach Themen/TOC filtern.",
+            placeholder="Alle",
         )
         _doc_ids_arg = _sel_docs or None
 
@@ -264,6 +265,7 @@ with st.expander("🗂️ Stapel verwalten (Fach → Dokument → Thema → Kart
             "4. Themen / Inhaltsverzeichnis (optional)",
             _topics_here,
             key="dk_topics",
+            placeholder="Alle",
             help="Abschnitte aus deinen Unterlagen (location/header). "
                  "Ideal, wenn nur ein Dokument indexiert ist.",
         )
@@ -434,7 +436,8 @@ with st.expander("📋 Karten & Fragen verwalten (auswählen, bearbeiten, lösch
         subject=_mv_subj_arg,
         doc_ids=None if _mv_doc == "Alle" else [_mv_doc],
     )
-    _mv_topic = st.multiselect("Thema filtern", _mv_topics, key="mv_topics")
+    _mv_topic = st.multiselect("Thema filtern", _mv_topics, key="mv_topics",
+                               placeholder="Alle")
     if _mv_doc != "Alle" or _mv_topic:
         _mv_rows = manifest.find_cards(
             subject=_mv_subj_arg,
@@ -607,7 +610,7 @@ if not st.session_state.get(ACTIVE):
     _decks_here = manifest.list_decks(subj)
     _deck_opts = list(_decks_here) + ["— ohne Stapel —"]
     _deck_pick = st.multiselect(
-        "Stapel (leer = alle)", _deck_opts,
+        "Stapel (leer = alle)", _deck_opts, placeholder="Alle",
         help="Wähle gezielt einzelne Stapel – z. B. 2 von 5 Themen eines Fachs. "
              "Leer lassen = alle Karten des Fachs.")
     decks = None

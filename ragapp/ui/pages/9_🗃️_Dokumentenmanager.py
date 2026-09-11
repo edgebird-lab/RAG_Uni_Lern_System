@@ -159,9 +159,11 @@ _tags_present = manifest.all_document_tags()
 with card("filter"):
     f1, f2, f3, f4, f5 = st.columns([1, 1, 1, 1.2, 0.9])
     with f1:
-        _subj_filter = st.multiselect("Fach", _subjects_present, format_func=_fach)
+        _subj_filter = st.multiselect("Fach", _subjects_present, format_func=_fach,
+                                      placeholder="Alle")
     with f2:
-        _tag_filter = st.multiselect("Kategorie", _tags_present) if _tags_present else []
+        _tag_filter = st.multiselect(
+            "Kategorie", _tags_present, placeholder="Alle") if _tags_present else []
     with f3:
         _rag_filter = st.selectbox("RAG-Status", ["Alle", "Nur im RAG", "Nur archiviert"])
     with f4:
@@ -221,7 +223,12 @@ with tab_kacheln:
                         with st.container(height=120, border=False):
                             _preview = get_text_preview(d)
                             if _preview:
-                                st.markdown(_preview) if _ftype == "md" else st.text(_preview)
+                                # Als Klartext, NICHT gerendertes Markdown: eine
+                                # "#"-Überschrift am Dateianfang wuerde sonst als
+                                # grosse fette Zeile dargestellt und die kleine
+                                # Vorschau-Kachel sprengen (Zeilenumbruch mitten
+                                # im Wort, siehe App-Rundgang-Review).
+                                st.text(_preview)
                             else:
                                 st.caption("(kein Text)")
                     else:

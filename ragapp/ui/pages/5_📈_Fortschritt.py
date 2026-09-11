@@ -102,6 +102,10 @@ with card("kennzahlen"):
                delta=f'{_ampel} {_goal["due"]} fällig', delta_color="off",
                help="Heute geübte Wiederholungen vs. Tagesziel · Ampel = Backlog "
                     "(🟢 im Griff, 🟡 viel, 🔴 sehr viel fällig).")
+    if ov["reviews_7d"] == 0:
+        st.caption("💡 Noch keine Wiederholung in den letzten 7 Tagen – die Zahlen oben "
+                   "sind noch nicht aussagekräftig. Starte auf **🎓 Lernen** deine erste "
+                   "Lernrunde, dann füllen sie sich mit echten Werten.")
 
 # --------------------------------------------------------------------------- #
 # Klausurtermine + Prioritaet

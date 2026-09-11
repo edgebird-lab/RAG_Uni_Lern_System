@@ -78,7 +78,8 @@ if EXAM not in st.session_state:
     with card("aufbau"):
         st.subheader("Probeklausur zusammenstellen")
         c1, c2, c3 = st.columns(3)
-        _fs = c1.multiselect("Fächer (leer = alle)", subjects, format_func=_fach)
+        _fs = c1.multiselect("Fächer (leer = alle)", subjects, format_func=_fach,
+                            placeholder="Alle")
         n = c2.number_input("Aufgaben", min_value=3, max_value=40, value=10, step=1)
         minutes = c3.number_input("Zeitlimit (Min.)", min_value=5, max_value=240, value=30, step=5)
         st.caption("Die Aufgaben werden aus deinen fälligen und – falls nötig – den schwächsten "

@@ -89,7 +89,7 @@ with st.expander("➕ Neue Übungsaufgabe generieren",
                                                   if did in _prefill_doc_ids]
     with gc2:
         _g_doc_names = st.multiselect("Dokument(e)", list(_subj_docs.keys()),
-                                      key="practice_gen_docs")
+                                      key="practice_gen_docs", placeholder="Auswählen …")
     _g_topic = st.text_input("Thema (optional, engt den Stoff ein)", key="practice_gen_topic")
 
     gc3, gc4 = st.columns(2)

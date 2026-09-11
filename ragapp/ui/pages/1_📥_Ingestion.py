@@ -341,7 +341,8 @@ with card("anreicherung"):
     }
     _sel_docs = st.multiselect(
         "Dateien auswählen (leer = alle passenden)", list(_doc_label.keys()),
-        help="Gezielt nur diese Dateien anreichern. Leer lassen = alle (nach Priorität).")
+        help="Gezielt nur diese Dateien anreichern. Leer lassen = alle (nach Priorität).",
+        placeholder="Alle")
     _doc_ids = [_doc_label[k] for k in _sel_docs] or None
 
     col_a, col_b, col_c = st.columns(3)
@@ -501,7 +502,8 @@ with card("dokumente"):
             f"[{d['subject']}] {d['filename']}  ·  {d['num_chunks']} Chunks, {d['num_questions']} Fragen": d["doc_id"]
             for d in _docs
         }
-        _del_sel = st.multiselect("Dokument(e) auswählen", list(_doc_label.keys()))
+        _del_sel = st.multiselect("Dokument(e) auswählen", list(_doc_label.keys()),
+                                  placeholder="Auswählen …")
         if st.button("🗑️ Ausgewählte Dokumente löschen", type="secondary",
                      disabled=not _del_sel):
             fehler = 0
@@ -551,7 +553,8 @@ with card("dokumente"):
             if not _q_docs:
                 st.info("Kein Dokument hat aktuell Fragen.")
             else:
-                _sel_qdocs = st.multiselect("Dokument(e)", list(_q_docs.keys()))
+                _sel_qdocs = st.multiselect("Dokument(e)", list(_q_docs.keys()),
+                                            placeholder="Auswählen …")
                 if st.button("🧹 Fragen der gewählten Dokumente löschen",
                              disabled=not _sel_qdocs):
                     for lbl in _sel_qdocs:

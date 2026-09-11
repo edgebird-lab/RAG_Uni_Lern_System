@@ -108,6 +108,48 @@ st.markdown(
 )
 
 # --------------------------------------------------------------------------- #
+# Sprungmarken: die Seite ist lang (17 Abschnitte) - Streamlit vergibt an jede
+# st.subheader()-Überschrift automatisch eine Anker-ID aus dem sichtbaren Text
+# (z. B. "Erkannte Hardware" -> "erkannte-hardware"), diese Chips verlinken
+# nur direkt dorthin, ohne die Abschnitte selbst anzufassen.
+# --------------------------------------------------------------------------- #
+with st.expander("📑 Inhalt (Sprungmarken)"):
+    st.markdown(
+        """
+<style>
+.settings-toc {display:flex; flex-wrap:wrap; gap:6px;}
+.settings-toc a {
+  font-size:.82rem; padding:4px 10px; border-radius:999px;
+  background:var(--rag-soft, #f3f0fa); border:1px solid rgba(0,0,0,.08);
+  text-decoration:none; color:inherit; white-space:nowrap;
+}
+.settings-toc a:hover {filter:brightness(0.95);}
+html.rag-dark .settings-toc a {background:#132b4d !important; border-color:#1e3a5f !important;}
+</style>
+<div class="settings-toc">
+<a href="#erkannte-hardware">🖥️ Hardware</a>
+<a href="#empfohlene-modelle-fuer-deinen-pc">⭐ Empfohlene Modelle</a>
+<a href="#antwort-modell-waehlen-and-herunterladen">💬 Antwort-Modell</a>
+<a href="#autoren-modell-fuer-die-stapel-erzeugung">✍️ Autoren-Modell</a>
+<a href="#handschrift-scan-modell-ocr">📝 OCR</a>
+<a href="#such-embedding-modell">🔎 Embedding</a>
+<a href="#suche-retrieval">🔎 Suche</a>
+<a href="#textabschnitte-chunking">✂️ Chunking</a>
+<a href="#antwort-and-schutz-vor-erfindungen">💬 Antwort &amp; Schutz</a>
+<a href="#doppelte-aussortieren-deduplizierung">🧹 Dedup</a>
+<a href="#modell-ladeverhalten">🔌 Ladeverhalten</a>
+<a href="#modelle">🧠 Modelle</a>
+<a href="#lernplan">📋 Lernplan</a>
+<a href="#audio-overview-sprachsynthese">🎧 Audio-Overview</a>
+<a href="#evaluation-qualitaetsmessung">📊 Evaluation</a>
+<a href="#uni-sparmodus">🎓 Uni-Modus</a>
+<a href="#zuruecksetzen">↺ Zurücksetzen</a>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+# --------------------------------------------------------------------------- #
 # Hardware- & Modell-Auswahl (mit Benchmark)
 # --------------------------------------------------------------------------- #
 st.header("🖥️ Hardware & Modell-Auswahl")

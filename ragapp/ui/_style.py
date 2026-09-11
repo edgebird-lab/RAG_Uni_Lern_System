@@ -608,6 +608,48 @@ def _theme_toggle_html() -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Uebersetzt die wenigen fest verdrahteten englischen Strings, die Streamlit
+# selbst (nicht ueber unseren Code) ausgibt - z. B. der Datei-Upload-Button
+# ("Upload"/"500MB per file"), fuer die es keinen deutschen Parameter gibt.
+# Per MutationObserver dauerhaft nachgefuehrt (nicht nur einmalig), da
+# Streamlit den Dropzone-Inhalt bei jedem Rerun neu rendert. Absichtlich als
+# EIGENE, erweiterbare Stelle angelegt - weitere fest verdrahtete englische
+# Reste landen hier, statt verstreut an vielen Seiten gepatcht zu werden.
+# --------------------------------------------------------------------------- #
+def _i18n_patch_html() -> str:
+    return """
+<script>
+(function() {
+  try {
+    var doc = window.parent.document;
+
+    function patchOnce() {
+      doc.querySelectorAll('[data-testid="stFileUploaderDropzone"]').forEach(function(dz) {
+        var label = dz.querySelector('[data-testid="stBaseButton-secondary"] [data-testid="stMarkdownContainer"]');
+        if (label && label.textContent.trim() === 'Upload') { label.textContent = 'Hochladen'; }
+        var instr = dz.querySelector('[data-testid="stFileUploaderDropzoneInstructions"]');
+        if (instr) {
+          Array.from(instr.querySelectorAll('span')).forEach(function(span) {
+            if (span.textContent.indexOf('per file') !== -1) {
+              span.textContent = span.textContent.replace('per file', 'pro Datei');
+            }
+          });
+        }
+      });
+    }
+
+    patchOnce();
+    if (!doc.__ragI18nBound) {
+      doc.__ragI18nBound = true;
+      new MutationObserver(patchOnce).observe(doc.body, {childList: true, subtree: true});
+    }
+  } catch (e) {}
+})();
+</script>
+"""
+
+
+# --------------------------------------------------------------------------- #
 # Hamburger-Kurzwahl (Sidebar-Popover): Home + die 3 meistgenutzten Seiten.
 # Ergaenzt die Sidebar, ersetzt sie nicht - require_pin()'s "Zweites Fenster"/
 # "App beenden"-Buttons bleiben unangetastet (siehe _auth.py).
@@ -697,6 +739,7 @@ def apply_page_style(page_key: str, *, show_nav: bool = True) -> dict:
     # idempotent) - garantiert den richtigen Hell/Dunkel-Zustand auch direkt
     # nach einem reinen Widget-Rerun (siehe _theme_toggle_html Docstring).
     components.html(_theme_toggle_html(), height=0)
+    components.html(_i18n_patch_html(), height=0)
 
     # Uebergangs-Animation NUR bei echter Seiten-Navigation abspielen (nicht
     # bei jedem Widget-Rerun innerhalb derselben Seite - siehe _transition_html

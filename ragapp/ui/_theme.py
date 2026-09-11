@@ -102,6 +102,26 @@ html.rag-dark [data-baseweb="popover"], html.rag-dark [data-baseweb="menu"], htm
     background-color:#0f2440 !important;}
 html.rag-dark [data-baseweb="menu"] *, html.rag-dark [role="option"]{color:#e7edf5 !important;}
 html.rag-dark [data-baseweb="tag"]{background-color:#1e3a5f !important; color:#e7edf5 !important;}
+/* Seit einem Streamlit-Versionssprung bauen Selectbox/Multiselect/Zahlenfeld
+   NICHT mehr auf BaseWeb auf, sondern auf react-aria-components (Attribut
+   "data-rac", Klassen wie "react-aria-ComboBox") - die obigen [data-baseweb=…]
+   Regeln laufen fuer diese Widgets seitdem ins Leere und liessen sie im Dark
+   Mode als helle Box stehen. ":has()" grenzt gezielt auf Combobox-Wrapper ein
+   (nicht auf andere role="group"-Widgets wie Radio-/Checkbox-Gruppen).
+   Gemessen: TESTID-Namen (z. B. "stNumberInputContainer") sind stabil,
+   die "st-emotion-cache-…"-Klassen daneben sind es NICHT (Build-Hashes). */
+html.rag-dark [role="group"][data-rac]:has(input[role="combobox"]){
+    background-color:#0f2440 !important; color:#e7edf5 !important;
+    border-color:#1e3a5f !important;}
+html.rag-dark [data-testid="stNumberInputContainer"],
+html.rag-dark [data-testid="stTextInputRootElement"],
+html.rag-dark [data-testid="stTextAreaRootElement"]{
+    background-color:#0f2440 !important; border-color:#1e3a5f !important;}
+html.rag-dark [data-testid="stNumberInputStepDown"], html.rag-dark [data-testid="stNumberInputStepUp"],
+html.rag-dark [data-testid="stElementToolbarButtonContainer"]{
+    background-color:#132b4d !important; color:#e7edf5 !important;}
+html.rag-dark [data-testid*="Tooltip"], html.rag-dark [data-testid*="stHelp"]{
+    background-color:#0f2440 !important; color:#e7edf5 !important;}
 
 /* --- Code (inline + Bloecke) --------------------------------------------- */
 html.rag-dark code, html.rag-dark kbd{background-color:#0f2440 !important; color:#f0a8a8 !important;}
@@ -123,9 +143,15 @@ html.rag-dark .stButton > button, html.rag-dark .stDownloadButton > button,
 html.rag-dark .stFormSubmitButton > button, html.rag-dark button[kind="secondary"]{
     background-color:#132b4d !important; color:#e7edf5 !important;
     border:1px solid #1e3a5f !important;}
-html.rag-dark button[kind="primary"], html.rag-dark button[kind="primaryFormSubmit"]{
-    background-color:#4A45C4 !important; color:#ffffff !important;
-    border-color:#4A45C4 !important;}
+html.rag-dark button[kind="primary"], html.rag-dark button[kind="primaryFormSubmit"],
+html.rag-dark [data-testid="stBaseButton-primary"], html.rag-dark [data-testid="stBaseButton-primaryFormSubmit"]{
+    /* Gleiches Korallrot wie im Hell-Modus (Streamlits Standard-primaryColor
+       #FF4B4B, hier ungesetzt gelassen) - vorher stand hier ein unabhaengiges
+       Blau-Violett (#4A45C4), das nichts mit der sonstigen Korall-/Rosa-
+       Markenfarbe der App zu tun hatte und im Dark Mode wie ein Fremdkoerper
+       wirkte. */
+    background-color:#FF4B4B !important; color:#ffffff !important;
+    border-color:#FF4B4B !important;}
 
 /* --- Dokumenten-/Quellen-Viewer (eigene HTML-Bausteine) ------------------ */
 html.rag-dark .source-card{background:linear-gradient(135deg,#0f2440 0%,#0a1930 100%) !important;

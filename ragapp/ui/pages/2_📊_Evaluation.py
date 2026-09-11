@@ -83,6 +83,8 @@ st.markdown(
     "(mittlerer reziproker Rang).</span>",
     unsafe_allow_html=True,
 )
+st.caption("🛠️ Werkzeug für dich als Betreiber:in der App - misst/verbessert die "
+          "Such-Qualität selbst, keine Lernfunktion für den Alltag.")
 
 # Ergebnis des letzten Laufs über Reruns hinweg sichtbar halten
 if "eval_report" not in st.session_state:

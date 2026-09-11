@@ -136,7 +136,8 @@ if _active_id is None:
         _new_title = st.text_input("Titel", key="mm_new_title")
 
     _subj_docs = {d["filename"]: d["doc_id"] for d in _all_docs if d["subject"] == _new_subject}
-    _new_doc_names = st.multiselect("Dokument(e)", list(_subj_docs.keys()), key="mm_new_docs")
+    _new_doc_names = st.multiselect("Dokument(e)", list(_subj_docs.keys()), key="mm_new_docs",
+                                    placeholder="Auswählen …")
 
     _new_model = _model_picker("mm_new_model")
 

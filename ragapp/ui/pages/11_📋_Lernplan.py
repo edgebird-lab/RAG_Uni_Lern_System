@@ -225,7 +225,7 @@ if _active_plan_id is None:
         st.session_state["splan_new_docs"] = [n for n, did in _subj_docs.items()
                                               if did in _prefill_doc_ids]
     _new_doc_names = st.multiselect("Dokument(e)", list(_subj_docs.keys()),
-                                    key="splan_new_docs")
+                                    key="splan_new_docs", placeholder="Auswählen …")
 
     tc1, tc2, tc3 = st.columns(3)
     with tc1:
