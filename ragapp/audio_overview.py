@@ -45,6 +45,7 @@ modellinterne Pausenbehandlung zu verlassen.
 """
 from __future__ import annotations
 
+import re
 import time
 import uuid
 from pathlib import Path
@@ -297,6 +298,177 @@ def _split_sentences(text: str) -> list[str]:
     return [s.strip() for s in _get_segmenter().segment(text) if s.strip()]
 
 
+def _keep_case(replacement: str):
+    """Gibt eine ``re.sub``-Ersetzungsfunktion zurueck, die die Gross-
+    /Kleinschreibung des ersten Buchstabens der Fundstelle auf ``replacement``
+    uebertraegt (z. B. "Booten" am Satzanfang -> "Buhten", nicht "buhten")."""
+    def _sub(match: "re.Match[str]") -> str:
+        if match.group(0)[:1].isupper():
+            return replacement[:1].upper() + replacement[1:]
+        return replacement
+    return _sub
+
+
+# Chatterbox liest Text nach den STANDARD-Ausspracheregeln der Zielsprache -
+# bei Abkuerzungen und (v. a. englischen) Lehnwoertern, die davon abweichend
+# ausgesprochen werden, kommt dabei die falsche Aussprache raus (konkret
+# beobachtet: "SSH" wird nur als "S" vorgelesen statt buchstabiert; "booten"
+# wie das deutsche Wort "Boot" mit langem O statt mit langem U wie im
+# englischen Original "boot"). Fix: VOR der Vertonung (NICHT im angezeigten/
+# bearbeitbaren Skript, siehe ``_apply_pronunciation_fixes``-Aufruf in
+# ``synthesize_speech``) durch eine Schreibweise ersetzen, die bei normaler
+# deutscher Lesart bereits die richtige Aussprache ergibt. Nur Eintraege
+# aufnehmen, die per Hoerprobe geprueft wurden (bei generierter Sprache lassen
+# sich Ausspracheprobleme nicht zuverlaessig per Text-Heuristik vorhersagen) -
+# neue Eintraege bei Bedarf hier ergaenzen, nicht raten. Bewusst als exakte
+# Wortformen statt Teilstring-Ersetzung (z. B. "boot" als Teilstring wuerde
+# auch das eigenstaendige deutsche Wort "Boot"/"Boote" treffen, das schon
+# richtig ausgesprochen wird).
+# Case-insensitive-Eintraege nutzen _keep_case, damit z. B. "Booten" am
+# Satzanfang nicht zum kleingeschriebenen "buhten" wird. "SSH" laeuft
+# BEWUSST auch case-insensitive: in echten Skripten taucht das z. B. als
+# Kommandozeilen-Argument klein auf ("systemctl status ssh") - die
+# gesprochene Buchstabierung soll trotzdem greifen. _keep_case veraendert
+# hier nichts an der Gross-/Kleinschreibung der Ersetzung selbst (die bleibt
+# immer "Es-Es-Ha"), nur ein per Definition immer grossgeschriebenes
+# Akronym haette dafuer keinen eigenen Mechanismus gebraucht.
+_PRONUNCIATION_FIXES = [
+    (re.compile(r"\bSSH\b", re.IGNORECASE), "Es-Es-Ha"),
+    (re.compile(r"\bbooten\b", re.IGNORECASE), "buhten"),
+    (re.compile(r"\bbootet\b", re.IGNORECASE), "buhtet"),
+    (re.compile(r"\bbootete\b", re.IGNORECASE), "buhtete"),
+    (re.compile(r"\bgebootet\b", re.IGNORECASE), "gebuhtet"),
+    (re.compile(r"\bbootbar\b", re.IGNORECASE), "buhtbar"),
+]
+
+
+# Dateipfade/URLs sind KEINE Ausspracheratefrage wie einzelne Akroynme oben -
+# ein Schraegstrich oder Punkt in Fliesstext hat schlicht keine sinnvolle
+# Lesart, egal welches TTS-Modell dahintersteckt (Skripte in diesem
+# Lernsystem enthalten haeufig Pfade/Dateinamen aus IT-Kursmaterial, siehe
+# Nutzer-Report). Deshalb hier strukturell statt per Woerterbuch geloest:
+# "/var/log/auth.log" -> "Slash var Slash log Slash auth dot log". Nutzer-
+# Vorgabe: "/" und "." werden MITGESPROCHEN ("Slash"/"dot", nicht
+# "Schraegstrich"/"Punkt") - so verbalisieren IT-Leute Pfade tatsaechlich,
+# ein stilles Aneinanderreihen der Wortteile (fruehere Version dieser
+# Funktion) verschluckt Informationen, die fuers Verstehen des Pfads noetig
+# sind. Ein rein kosmetischer ABSCHLIESSENDER Slash (z. B. bei "/var/log/"
+# als Verzeichnisangabe ohne Dateiname) traegt dagegen keine Information und
+# wird deshalb VOR der Ersetzung entfernt, damit kein bedeutungsloses
+# "Slash" vor dem naechsten Wort haengen bleibt. Erkennt echte Pfade (mit
+# "/") UND alleinstehende Dateinamen mit bekannter Endung (z. B. "auth.log"
+# ohne Pfadangabe) - die Endungsliste bei Bedarf um weitere erweitern,
+# sobald neue auftauchen.
+_PATH_PATTERN = re.compile(
+    r"~?(?:/[\w\-]+(?:\.[\w\-]+)*)+/?"
+    r"|\b[a-zA-Z][\w\-]*\.(?:log|service|timer|socket|conf|cfg|ini|sh|py|txt|json|ya?ml)\b"
+)
+
+
+def _speakify_path(match: "re.Match[str]") -> str:
+    """Baut einen erkannten Pfad/Dateinamen in gesprochene Form um: "/" wird
+    zu "Slash", "." zu "dot", "-" bleibt stumme Worttrennung (siehe
+    ``_PATH_PATTERN``-Kommentar zur Begruendung). Ein fuehrendes "~" und ein
+    rein kosmetischer abschliessender "/" werden verworfen."""
+    raw = match.group(0).lstrip("~").rstrip("/")
+    raw = raw.replace("/", " Slash ").replace(".", " dot ").replace("-", " ")
+    return " ".join(raw.split())
+
+
+# URLs liest man mit gesprochenem "dot" statt den Punkt zu verschlucken
+# (dieselbe Nutzer-Vorgabe wie bei Dateipfaden, siehe ``_PATH_PATTERN``) -
+# nur bekannte TLDs, damit z. B. Versionsnummern wie "3.5" nicht faelschlich
+# matchen.
+_DOMAIN_PATTERN = re.compile(r"\b[\w-]+(?:\.[\w-]+)*\.(?:com|org|io|net|de|edu|gov|co)\b")
+
+
+def _speakify_domain(match: "re.Match[str]") -> str:
+    """Ersetzt jeden Punkt einer erkannten Domain durch gesprochenes " dot "
+    (z. B. "gtfobins.github.io" -> "gtfobins dot github dot io")."""
+    return " dot ".join(match.group(0).split("."))
+
+
+# Eine Endung OHNE vorangehenden Dateinamen (z. B. "die .service Endung" beim
+# Erklaeren von systemd-Unit-Typen) faellt NICHT unter obiges Pfad-Muster
+# (das verlangt mindestens einen Buchstaben vor dem Punkt) - hier sagt man
+# den Punkt beim Vorlesen bewusst MIT ("dot service"), anders als bei einem
+# vollen Pfad/Dateinamen, weil gerade die Endung selbst der Lehrinhalt ist.
+# Negative Lookbehind verhindert Ueberschneidung mit "auth.log" & Co. (dort
+# steht ein Buchstabe direkt vor dem Punkt).
+_BARE_SUFFIX_PATTERN = re.compile(
+    r"(?<![\w.])\.(?:log|service|timer|socket|conf|cfg|ini|sh|py|txt|json|ya?ml)\b"
+)
+
+
+def _speakify_suffix(match: "re.Match[str]") -> str:
+    """Macht aus einer alleinstehenden Endung wie ".service" ein gesprochenes
+    "dot service" (siehe ``_BARE_SUFFIX_PATTERN``)."""
+    return "dot " + match.group(0)[1:]
+
+
+def _apply_pronunciation_fixes(text: str) -> str:
+    """Wendet zuerst die strukturellen Pfad-/Domain-/Endungs-Fixes an (siehe
+    ``_PATH_PATTERN``/``_DOMAIN_PATTERN``/``_BARE_SUFFIX_PATTERN``), danach
+    ``_PRONUNCIATION_FIXES`` der Reihe nach - reine Textersetzung, laeuft VOR
+    der Satzsegmentierung (siehe ``synthesize_speech``), damit falsch
+    ausgesprochene Abkuerzungen/Lehnwoerter/Pfade im vertonten Audio korrekt
+    klingen, OHNE das im UI angezeigte/bearbeitbare Skript zu veraendern.
+    Case-insensitive Eintraege aus ``_PRONUNCIATION_FIXES`` werden ueber
+    ``_keep_case`` gross-/kleinschreibungserhaltend ersetzt (siehe dort)."""
+    text = _DOMAIN_PATTERN.sub(_speakify_domain, text)
+    text = _BARE_SUFFIX_PATTERN.sub(_speakify_suffix, text)
+    text = _PATH_PATTERN.sub(_speakify_path, text)
+    for pattern, replacement in _PRONUNCIATION_FIXES:
+        if pattern.flags & re.IGNORECASE:
+            text = pattern.sub(_keep_case(replacement), text)
+        else:
+            text = pattern.sub(replacement, text)
+    return text
+
+
+# Heuristik fuer die manuelle Skript-Pruefung in der UI (siehe
+# ragapp/ui/pages/15_*Audio-Overview.py) - AUSDRUECKLICH kein Ersatz fuer
+# obige bestaetigte Fixes und KEIN Woerterbuch-Abgleich: Deutsch klebt
+# Komposita beliebig zusammen ("Ausfuehrungsumgebung", "Prozesslandschaft"),
+# ein Duden-Diff wuerde davon massenhaft harmlose Woerter faelschlich
+# markieren. Stattdessen genau die Muster, die sich in echten Kurs-Skripten
+# bisher als riskant gezeigt haben: kurze GROSSBUCHSTABEN-Kuerzel (SSH, PID,
+# BSD, ...), Akronym-Praefix + Kleinbuchstaben-Endung (GTFOBins), eingebettetes
+# CamelCase (ExecStart, WantedBy) und vokallose Kurzwoerter (ps, cd, ln - im
+# Deutschen ohne Vokal keine normale Silbe). Nur ein VORSCHLAG zum
+# Gegenhoeren, kein automatischer Fix - siehe Modul-weite Begruendung oben:
+# ob ein TTS-Modell ein Wort falsch ausspricht, kann letztlich nur das
+# Anhoeren zeigen, keine Textanalyse.
+_CANDIDATE_PATTERN = re.compile(
+    r"\b[A-ZÄÖÜ]{2,}[a-zäöüß]*\b"                          # SSH, PID, GTFOBins
+    r"|\b[A-ZÄÖÜ][a-zäöüß]+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß]*\b"     # ExecStart, WantedBy
+)
+_CANDIDATE_SHORT_WORD = re.compile(r"\b[a-zA-ZÄÖÜäöüß]{2,3}\b")
+_VOWELS = set("aeiouyäöü")
+
+
+def find_pronunciation_candidates(text: str) -> list[str]:
+    """Liefert (in Reihenfolge des ersten Auftauchens, ohne Duplikate) die
+    Woerter aus ``text``, die MOEGLICHERWEISE falsch ausgesprochen werden
+    (siehe Kommentar oben) - reine Vorschlagsliste fuers manuelle Pruefen,
+    kein automatischer Fix. Woerter, die bereits ueber
+    ``_PRONUNCIATION_FIXES`` automatisch korrigiert werden (z. B. "SSH",
+    "booten"), tauchen HIER NICHT auf, da fuer die schon eine bestaetigte
+    Loesung existiert - sonst waere die Liste bei jedem Skript wieder voll
+    mit laengst geklaerten Faellen."""
+    seen: dict[str, None] = {}
+    for match in _CANDIDATE_PATTERN.finditer(text):
+        seen.setdefault(match.group(0), None)
+    for word in _CANDIDATE_SHORT_WORD.findall(text):
+        if not any(c in _VOWELS for c in word.lower()):
+            seen.setdefault(word, None)
+
+    def _already_fixed(word: str) -> bool:
+        return any(pattern.fullmatch(word) for pattern, _ in _PRONUNCIATION_FIXES)
+
+    return [w for w in seen if not _already_fixed(w)]
+
+
 def _concat_with_pauses(chunks: list, pause_samples: int):
     """Haengt die pro Satz erzeugten Audio-Tensoren zusammen und fuegt
     dazwischen ECHTE Stille fester Laenge ein (WIR bestimmen die Pausenlaenge
@@ -323,11 +495,14 @@ def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
     und schreibt sie nach ``output_path``. Vertont SATZWEISE (siehe Moduldoc -
     ein Aufruf mit dem kompletten Skript auf einmal klang in echten Tests
     unnatuerlich gehetzt) und fuegt zwischen den Saetzen selbst eine feste
-    Pause ein. Wirft ``AudioOverviewError``, wenn nicht genug freier VRAM da
-    ist (siehe ``_prepare_vram_for_tts``) oder kein vertonbarer Text uebrig
-    bleibt. ``on_progress`` (optional): siehe ``ProgressCallback`` - ein
-    Aufruf je fertig vertontem Satz."""
-    sentences = _split_sentences(script_text)
+    Pause ein. Wendet vorher ``_apply_pronunciation_fixes`` an (Ausspracheko-
+    rrekturen fuer bekannte Abkuerzungen/Lehnwoerter, siehe dort) - wirkt NUR
+    auf das erzeugte Audio, NICHT auf ``script_text`` selbst/das im UI
+    angezeigte Skript. Wirft ``AudioOverviewError``, wenn nicht genug freier
+    VRAM da ist (siehe ``_prepare_vram_for_tts``) oder kein vertonbarer Text
+    uebrig bleibt. ``on_progress`` (optional): siehe ``ProgressCallback`` -
+    ein Aufruf je fertig vertontem Satz."""
+    sentences = _split_sentences(_apply_pronunciation_fixes(script_text))
     if not sentences:
         raise AudioOverviewError("Kein vertonbarer Text (nach Satzerkennung leer).")
 
@@ -341,9 +516,27 @@ def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
     total = len(sentences)
     chunks = []
     try:
+        # Referenzstimme EINMAL pro Aufruf einbetten (Laden+Resample der Referenz-
+        # WAV per librosa plus Voice-Encoder/S3Gen-Embedding), statt bei JEDEM Satz
+        # neu: model.generate(..., audio_prompt_path=...) liest dieselbe Datei sonst
+        # pro Satz erneut ein und rechnet die (identische) Einbettung neu - fuer ein
+        # Ergebnis, das sich innerhalb dieses einen Skripts nie aendert. Real
+        # gemessen (isoliert, RX 7900 XTX): ~0.26s pro Wiederholung -> bei 60
+        # Saetzen ca. 15s gespart, kostenlos und ohne Qualitaetsaenderung. Das ist
+        # NICHT die Erklaerung fuer "fuehlt sich nach CPU an" (das GPU-Sampling
+        # selbst lief in einem echten Test bereits mit 96% GPU-Auslastung, siehe
+        # rocm-smi waehrend echter Generierung) - der eigentliche Zeitbedarf kommt
+        # von bis zu 1000 sequenziellen Sampling-Schritten PRO SATZ, nacheinander
+        # statt gebuendelt ueber mehrere Saetze. Trotzdem ein echter, risikofreier
+        # Gewinn, deshalb behalten. model.generate() bekommt bewusst KEINEN
+        # audio_prompt_path mehr und nutzt dadurch die bereits vorbereiteten
+        # Bedingungen (siehe ChatterboxMultilingualTTS.generate: audio_prompt_path
+        # nur gesetzt -> prepare_conditionals erneut aufrufen).
+        model.prepare_conditionals(str(reference_wav_path),
+                                   exaggeration=settings.AUDIO_TTS_EXAGGERATION)
         for i, sentence in enumerate(sentences):
             wav = model.generate(
-                sentence, language_id=lang, audio_prompt_path=str(reference_wav_path),
+                sentence, language_id=lang,
                 exaggeration=settings.AUDIO_TTS_EXAGGERATION,
                 cfg_weight=settings.AUDIO_TTS_CFG_WEIGHT,
                 temperature=settings.AUDIO_TTS_TEMPERATURE,

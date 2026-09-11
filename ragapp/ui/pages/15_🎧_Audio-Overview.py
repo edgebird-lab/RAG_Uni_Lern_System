@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import sys
 import pathlib
+import re
 import time
+import html
 
 _p = pathlib.Path(__file__).resolve()
 for _anc in _p.parents:
@@ -92,6 +94,35 @@ def _progress_tracker(bar, caption, label: str):
         else:
             caption.caption(f"⏳ {label}: wird vorbereitet …")
     return _cb
+
+
+def _render_pronunciation_hints(text: str) -> None:
+    """Zeigt (falls vorhanden) einen aufklappbaren Kasten mit Woertern, die
+    laut ``audio_overview.find_pronunciation_candidates`` MOEGLICHERWEISE
+    falsch ausgesprochen werden - reiner Vorschlag zum Gegenhoeren, kein
+    automatischer Fix (siehe dort). ``st.text_area`` kann selbst keine
+    einzelnen Woerter einfaerben, deshalb eine SEPARATE, nur lesbare
+    Vorschau via ``st.markdown``/HTML statt echter Inline-Hervorhebung in
+    der Editier-Box selbst - Aenderungen macht der Nutzer weiterhin oben in
+    der normalen Textbox. Klappt standardmaessig zu, damit ein Skript ohne
+    Treffer nicht unnoetig Platz braucht."""
+    _candidates = audio_overview.find_pronunciation_candidates(text)
+    if not _candidates:
+        return
+    _escaped = html.escape(text)
+    _pattern = re.compile(
+        r"\b(?:" + "|".join(re.escape(w) for w in sorted(_candidates, key=len, reverse=True))
+        + r")\b")
+    _highlighted = _pattern.sub(lambda m: f"<mark>{m.group(0)}</mark>", _escaped)
+    _highlighted = _highlighted.replace("\n", "<br>")
+    with st.expander(f"🔍 {len(_candidates)} möglicherweise falsch ausgesprochene(s) "
+                     "Wort/Wörter - zum Gegenhören"):
+        st.caption("Nur ein Vorschlag (kurze GROSSBUCHSTABEN-Kürzel, CamelCase-Begriffe, "
+                   "vokallose Kurzwörter wie „ps“) - keine Garantie und kein automatischer "
+                   "Fix. Anhören, und was wirklich falsch klingt oben im Text von Hand "
+                   "anpassen.")
+        st.markdown(f'<div style="line-height:1.6">{_highlighted}</div>',
+                   unsafe_allow_html=True)
 
 
 def _model_picker(key: str) -> "str | None":
@@ -247,6 +278,7 @@ if _active_id is None:
             st.text_area("Skript-Text", value=_draft["script"], height=320, key=_draft_key)
             st.caption(f"{len(st.session_state[_draft_key])} Zeichen · {_fach(_draft['subject'])} "
                       f"· {len(_draft['doc_ids'])} Dokument(e)")
+            _render_pronunciation_hints(st.session_state[_draft_key])
 
             dc1, dc2 = st.columns([1, 1])
             if dc1.button("🎙️ Jetzt vertonen", type="primary", use_container_width=True,
@@ -283,6 +315,7 @@ if _active_id is None:
                         "vorgelesen, ganz ohne KI-Generierung oder Dokumente.")
         st.caption(f"{len(_man_script)} Zeichen. Kein Dokument nötig - der Text wird direkt "
                    "vertont.")
+        _render_pronunciation_hints(_man_script)
 
         if st.button("🎧 Audio erzeugen", type="primary", disabled=not _man_script.strip()):
             _audio_bar = st.progress(0.0)
@@ -350,6 +383,7 @@ with card("player"):
     if _pending_regen is not None:
         st.session_state[_edit_key] = _pending_regen
     st.text_area("Skript-Text", value=_active["script_text"], height=280, key=_edit_key)
+    _render_pronunciation_hints(st.session_state[_edit_key])
 
     ec1, ec2 = st.columns([1, 1])
     if ec1.button("💾 Speichern & nur Audio neu erzeugen", key=f"audio_resynth_{_active_id}",

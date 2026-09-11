@@ -109,9 +109,13 @@ def synth_env(load_functions, ragapp_dir, tmp_path):
         settings_obj = settings_obj or _fake_settings()
         sentences = sentences if sentences is not None else ["Satz eins.", "Satz zwei."]
         generate_calls = []
+        prepare_calls = []
 
         class _FakeModel:
             sr = 24000
+
+            def prepare_conditionals(self, wav_fpath, exaggeration=0.5):
+                prepare_calls.append({"wav_fpath": wav_fpath, "exaggeration": exaggeration})
 
             def generate(self, text, **kwargs):
                 generate_calls.append({"text": text, **kwargs})
@@ -119,7 +123,8 @@ def synth_env(load_functions, ragapp_dir, tmp_path):
 
         funcs = load_functions(
             ragapp_dir / "audio_overview.py",
-            ["synthesize_speech", "_concat_with_pauses"],
+            ["synthesize_speech", "_concat_with_pauses", "_apply_pronunciation_fixes",
+             "_keep_case", "_speakify_path", "_speakify_domain", "_speakify_suffix"],
             {
                 "settings": settings_obj,
                 "_prepare_vram_for_tts": lambda: (vram_ok, "" if vram_ok else "kein VRAM"),
@@ -128,10 +133,14 @@ def synth_env(load_functions, ragapp_dir, tmp_path):
                 "AudioOverviewError": RuntimeError,
                 "Optional": None,
                 "Path": __import__("pathlib").Path,
+                "re": __import__("re"),
             },
+            const_names=["_PRONUNCIATION_FIXES", "_PATH_PATTERN", "_DOMAIN_PATTERN",
+                         "_BARE_SUFFIX_PATTERN"],
         )
         return types.SimpleNamespace(
-            **funcs, generate_calls=generate_calls, tmp_path=tmp_path)
+            **funcs, generate_calls=generate_calls, prepare_calls=prepare_calls,
+            tmp_path=tmp_path)
     return _make
 
 
@@ -143,7 +152,7 @@ def test_synthesize_speech_ruft_modell_pro_satz_auf_und_schreibt_datei(synth_env
     assert len(env.generate_calls) == 2
     call = env.generate_calls[0]
     assert call["text"] == "Satz eins."
-    assert call["audio_prompt_path"] == "ref.wav"
+    assert "audio_prompt_path" not in call
     assert call["language_id"] == "de"
     assert call["exaggeration"] == 0.5
     assert call["cfg_weight"] == 0.5
@@ -152,6 +161,21 @@ def test_synthesize_speech_ruft_modell_pro_satz_auf_und_schreibt_datei(synth_env
     assert call["min_p"] == 0.05
     assert call["top_p"] == 1.0
     assert out_path.is_file()
+
+
+def test_synthesize_speech_bereitet_referenz_nur_einmal_pro_aufruf_vor(synth_env):
+    """Die Referenzstimme darf nicht pro Satz neu geladen/eingebettet werden
+    (CPU-lastiges Laden+Resample per librosa plus Voice-Encoder-Forward) - das
+    war der eigentliche Grund fuer die gefuehlte "laeuft ja auf der CPU"-
+    Traegheit, obwohl das GPU-Sampling selbst schon auf der GPU lief."""
+    env = synth_env(sentences=["Satz eins.", "Satz zwei.", "Satz drei."])
+    env.synthesize_speech("Satz eins. Satz zwei. Satz drei.", "ref.wav",
+                          str(env.tmp_path / "out.wav"))
+    assert len(env.prepare_calls) == 1
+    assert env.prepare_calls[0]["wav_fpath"] == "ref.wav"
+    assert env.prepare_calls[0]["exaggeration"] == 0.5
+    assert len(env.generate_calls) == 3
+    assert all("audio_prompt_path" not in c for c in env.generate_calls)
 
 
 def test_synthesize_speech_nutzt_geaenderte_settings(synth_env):
@@ -207,6 +231,6 @@ def test_synthesize_speech_modellfehler_wird_zu_audiooverviewerror(synth_env):
         raise ValueError("boom")
 
     env.synthesize_speech.__globals__["_get_tts"] = lambda: types.SimpleNamespace(
-        sr=24000, generate=_boom)
+        sr=24000, generate=_boom, prepare_conditionals=lambda *a, **kw: None)
     with pytest.raises(RuntimeError):
         env.synthesize_speech("Satz eins.", "ref.wav", str(env.tmp_path / "out.wav"))
