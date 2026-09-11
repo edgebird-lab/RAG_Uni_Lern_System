@@ -134,6 +134,10 @@ if _active_id is None:
 
     _subj_docs = {d["filename"]: d["doc_id"] for d in _all_docs if d["subject"] == _new_subject}
     _new_doc_names = st.multiselect("Dokument(e)", list(_subj_docs.keys()), key="audio_new_docs")
+    st.caption("Das Skript deckt den Inhalt vollständig ab (Abschnitt für Abschnitt) - "
+               "Erzeugungsdauer UND Audiolänge wachsen deshalb mit der Menge an "
+               "gewählten Dokumenten. Für ein kürzeres Overview lieber gezielt einzelne "
+               "Dokumente statt eines ganzen Fachs wählen.")
 
     _new_model = _model_picker("audio_new_model")
 

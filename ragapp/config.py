@@ -440,10 +440,13 @@ class Settings:
     # muss, bevor XTTS-v2 geladen wird (gleiche Vorsicht wie beim Vision-OCR-
     # Gate, siehe ragapp/ingestion/loaders.py::_vision_ocr_prepare).
     AUDIO_VRAM_HEADROOM_GB: float = 2.0
-    AUDIO_MAX_SCRIPT_CHARS: int = 6000     # Deckel fuers generierte Sprech-Skript
-    # Wie MINDMAP_PROMPT_BUDGET_CHARS/PLAN_PROMPT_BUDGET_CHARS - eigenes Budget,
-    # da Skript-Prompts anders lang sind als Gliederungs-/Mindmap-Prompts.
-    AUDIO_PROMPT_BUDGET_CHARS: int = 9000
+    # Sicherheitsnetz, NICHT die normale Ziel-Laenge: das Skript entsteht
+    # ABSCHNITTSWEISE (ein LLM-Aufruf je Abschnitt, siehe audio_overview.py)
+    # und waechst dadurch natuerlich mit der Dokumentgroesse - dieser Deckel
+    # greift nur, wenn SEHR viele/lange Dokumente auf einmal gewaehlt werden,
+    # und verhindert eine Laufzeit-Explosion (40000 Zeichen ~ 40 Min Audio bei
+    # durchschnittlichem Sprechtempo).
+    AUDIO_MAX_SCRIPT_CHARS: int = 40000
 
     # ------------------------------------------------------------------ #
     # Evaluation
