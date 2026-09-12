@@ -207,3 +207,33 @@ def bar_chart(labels: list, values: list, *, color: str = "#61C9A8", height: int
      style="display:block;overflow:visible;">{''.join(bars)}</svg>
 </div>
 """
+
+
+def sparkline(values: list, *, color: str = "#61C9A8", height: int = 32) -> str:
+    """Kompakte Balken-Sparkline OHNE Achsen/Beschriftung/Gitterlinien - zum
+    direkten Einbetten unter eine ``st.metric()``-Kennzahl (z. B. "Streak"),
+    damit die nackte Zahl auch auf einen Blick zeigt, WIE sie zustande kam.
+    Reine Verlaufsandeutung, keine exakte Ablesbarkeit noetig - dafuer gibt es
+    die grossen Trend-Charts (``line_chart``/``bar_chart``) weiter unten auf
+    der Seite. ``None``-Werte werden wie bei ``bar_chart`` als 0 gezeichnet
+    (ehrlich fuer Zaehlwerte wie "Wiederholungen an diesem Tag")."""
+    values = [0 if v is None else v for v in values]
+    n = len(values)
+    if n == 0:
+        return ""
+    vmax = max(values, default=0) or 1.0
+    vw = 200
+    gap = vw / n * 0.25
+    bw = vw / n - gap
+    bars = []
+    for i, v in enumerate(values):
+        bh = max(2.0, height * v / vmax)
+        x = i * (bw + gap) + gap / 2
+        y = height - bh
+        bars.append(
+            f'<rect x="{x:.1f}" y="{y:.1f}" width="{bw:.1f}" height="{bh:.1f}" '
+            f'rx="{min(4, bw / 2):.1f}" fill="{color}" opacity=".85"/>')
+    return f"""
+<svg viewBox="0 0 {vw} {height}" width="100%" height="{height}" preserveAspectRatio="none"
+     style="display:block;overflow:visible;">{''.join(bars)}</svg>
+"""

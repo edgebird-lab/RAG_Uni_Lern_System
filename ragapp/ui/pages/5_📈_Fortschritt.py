@@ -84,6 +84,13 @@ with card("kennzahlen"):
               help=f'Anteil Karten mit ≥ {settings.MASTERY_TARGET_REPS} Wiederholungen in Folge.')
     c3.metric("Fällig", ov["due"], help="Jetzt zur Wiederholung anstehend.")
     c4.metric("Streak", f'{ov["streak"]} 🔥', help="Zusammenhängende Lerntage.")
+    # Kleine Sparkline direkt unter der nackten Streak-Zahl: zeigt auf einen
+    # Blick, WIE die Zahl zustande kam (an welchen der letzten 7 Tage
+    # tatsächlich geübt wurde), statt nur ein isoliertes "2 🔥" hinzuwerfen.
+    _last7 = analytics.retention_trend(7, subject)
+    c4.markdown(_charts.sparkline([d["wiederholungen"] for d in _last7],
+                                  color=_theme["accent"], height=28),
+               unsafe_allow_html=True)
     acc = "–" if ov["accuracy_7d"] is None else f'{ov["accuracy_7d"]} %'
     c5.metric("Treffer (7 T.)", acc,
               help=f'Anteil „gewusst" der letzten 7 Tage · {ov["reviews_7d"]} Wiederholungen.')

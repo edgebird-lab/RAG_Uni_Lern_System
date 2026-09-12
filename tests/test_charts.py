@@ -1,7 +1,7 @@
 """Tests fuer ragapp.ui._charts (reine SVG-Bausteine, keine Streamlit-Abhaengigkeit)."""
 from __future__ import annotations
 
-from ragapp.ui._charts import line_chart, bar_chart, _pick_label_indices
+from ragapp.ui._charts import line_chart, bar_chart, sparkline, _pick_label_indices
 
 
 def test_line_chart_rendert_svg_mit_pfad_und_punkten():
@@ -60,3 +60,34 @@ def test_pick_label_indices_liefert_nie_zwei_benachbarte_indizes():
 def test_pick_label_indices_enthaelt_immer_den_letzten_index():
     for n in range(9, 40):
         assert (n - 1) in _pick_label_indices(n, max_labels=8)
+
+
+# --------------------------------------------------------------------------- #
+# sparkline - kompakte Balken OHNE Achsen/Beschriftung, fuers Einbetten unter
+# einer st.metric()-Kennzahl (z. B. "Streak" auf der Fortschritt-Seite)
+# --------------------------------------------------------------------------- #
+
+def test_sparkline_rendert_einen_balken_je_wert():
+    svg = sparkline([1, 3, 0, 2, 5, 0, 1])
+    assert svg.count("<rect") == 7
+
+
+def test_sparkline_hat_keine_achsen_oder_beschriftungen():
+    svg = sparkline([1, 2, 3])
+    assert "<text" not in svg
+    assert "gridline" not in svg.lower()
+
+
+def test_sparkline_none_werte_werden_als_null_gezeichnet_nicht_uebersprungen():
+    svg = sparkline([2, None, 4])
+    assert svg.count("<rect") == 3
+
+
+def test_sparkline_leere_liste_gibt_leeren_string_ohne_absturz():
+    assert sparkline([]) == ""
+
+
+def test_sparkline_alle_werte_null_stuerzt_nicht_ab_durch_division():
+    # vmax waere 0 - darf nicht durch 0 teilen
+    svg = sparkline([0, 0, 0])
+    assert svg.count("<rect") == 3

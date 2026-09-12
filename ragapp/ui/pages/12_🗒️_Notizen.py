@@ -144,17 +144,21 @@ with col_list:
         # die Notiz tatsaechlich geloescht wurde (manifest.get_note liefert dann None).
 
         if not _notes:
+            # KEIN leerer st.container(height=480) mehr, wenn es nichts zu
+            # zeigen gibt - wirkte sonst wie ein verwaistes, kaputtes Element
+            # (grosse leere Flaeche unter dem Hinweistext).
             st.caption("Noch keine Notizen für diese Filterung." if (_subj_arg or _f_search)
                       else "Noch keine Notizen – leg oben die erste an.")
-        with st.container(height=480):
-            for n in _notes:
-                _label = ("📌 " if n["pinned"] else "") + (n["title"] or "(ohne Titel)")
-                _meta = _fach(n["subject"]) + (f" · {n['collection']}" if n.get("collection") else "")
-                _active = st.session_state.get("notiz_choice") == n["note_id"]
-                if st.button(f"{'▶️ ' if _active else ''}{_label}", key=f"notiz_pick_{n['note_id']}",
-                            use_container_width=True, help=_meta):
-                    st.session_state["_notiz_pending_choice"] = n["note_id"]
-                    st.rerun()
+        else:
+            with st.container(height=480):
+                for n in _notes:
+                    _label = ("📌 " if n["pinned"] else "") + (n["title"] or "(ohne Titel)")
+                    _meta = _fach(n["subject"]) + (f" · {n['collection']}" if n.get("collection") else "")
+                    _active = st.session_state.get("notiz_choice") == n["note_id"]
+                    if st.button(f"{'▶️ ' if _active else ''}{_label}", key=f"notiz_pick_{n['note_id']}",
+                                use_container_width=True, help=_meta):
+                        st.session_state["_notiz_pending_choice"] = n["note_id"]
+                        st.rerun()
 
 # --------------------------------------------------------------------------- #
 # Rechte Spalte: Editor

@@ -204,10 +204,14 @@ with card("heute"):
     _plan_min_today = _snap["plan_min_today"]
     _plan_done_today = _snap["plan_done_today"]
 
-    d1, d2, d3, d4, d5, d6 = st.columns(6)
+    # Zwei Reihen zu je drei Spalten statt sechs nebeneinander - bei sechs
+    # Spalten wurde "Heute Vorlesungen" (und "Nächste Klausur: <Fach>" bei
+    # langen Fachnamen) auf normaler Desktop-Breite abgeschnitten.
+    d1, d2, d3 = st.columns(3)
     d1.metric("Heute Vorlesungen", len(_today_classes))
     d2.metric("Fällig heute", len(_due_today))
     d3.metric("Überfällig", len(_overdue))
+    d4, d5, d6 = st.columns(3)
     d4.metric("Lernzeit heute", f"{_study_min_today} Min")
     d5.metric("Lernplan heute", f"{_plan_done_today}/{_plan_min_today} Min"
              if _plan_blocks_today else "–")
