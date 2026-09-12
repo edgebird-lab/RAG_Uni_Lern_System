@@ -683,6 +683,8 @@ if not st.session_state.get(ACTIVE):
                     st.session_state[REVEAL] = False
                     st.session_state[TALLY] = {"gewusst": 0, "halb": 0, "nicht": 0}
                     st.session_state["_study_combo"] = 0
+                    st.session_state["_study_combo_best"] = 0
+                    st.session_state["_study_leech_cleared"] = 0
                     st.session_state[ROUND] = len(_pk)
                     st.session_state["_study_mode"] = _mode_map[_mode_lbl]
                     st.rerun()
@@ -713,6 +715,8 @@ if not st.session_state.get(ACTIVE):
                 st.session_state[REVEAL] = False
                 st.session_state[TALLY] = {"gewusst": 0, "halb": 0, "nicht": 0}
                 st.session_state["_study_combo"] = 0
+                st.session_state["_study_combo_best"] = 0
+                st.session_state["_study_leech_cleared"] = 0
                 st.session_state[ROUND] = len(karten)
                 st.session_state["_study_mode"] = _mode_map[_mode_lbl]
                 st.rerun()
@@ -725,10 +729,32 @@ else:
         # Runde fertig
         beantwortet = sum(tally.values())
         st.success(f"🎉 Runde geschafft! **{beantwortet}** Karten geübt.")
-        m1, m2, m3 = st.columns(3)
+        _combo_best = st.session_state.get("_study_combo_best", 0)
+        m1, m2, m3, m4 = st.columns(4)
         m1.metric("✅ Gewusst", tally["gewusst"])
         m2.metric("🟡 Halb", tally["halb"])
         m3.metric("❌ Nicht", tally["nicht"])
+        if _combo_best >= 2:
+            m4.metric("🔥 Beste Serie", _combo_best)
+
+        # Errungenschaften direkt HIER pruefen (nicht erst beim naechsten
+        # Fortschritt-Besuch) - der eigentliche Feiermoment ist JETZT, direkt
+        # nach der Runde, nicht Minuten/Tage spaeter auf einer anderen Seite.
+        # Der Kontext traegt rundeninterne, nirgends persistierte Werte fuer
+        # die beiden rundenbasierten Errungenschaften (siehe achievements.py).
+        try:
+            from ragapp import achievements as _achievements
+            _round_newly = _achievements.check_and_unlock(context={
+                "round_total": beantwortet, "round_gewusst": tally["gewusst"],
+                "leech_cleared": st.session_state.get("_study_leech_cleared", 0),
+            })
+        except Exception:  # noqa: BLE001
+            _round_newly = []
+        if _round_newly:
+            st.balloons()
+            for _na in _round_newly:
+                st.success(f"**Neu freigeschaltet:** {_na.icon} {_na.title} – {_na.description}")
+
         b1, b2 = st.columns(2)
         if b1.button("🔁 Neue Runde", use_container_width=True):
             for k in (Q, ACTIVE, REVEAL, TALLY, ROUND):
@@ -748,7 +774,12 @@ else:
     _tt = _fach_label(karte.get("subject") or "")
     _topic = karte.get("topic")
     _capc, _stopc = st.columns([3, 1])
-    _capc.caption(f"📚 {_tt}" + (f" · {_topic}" if _topic else ""))
+    _combo_now = st.session_state.get("_study_combo", 0)
+    # Kombo bleibt waehrend der GANZEN Runde sichtbar (nicht nur im kurzen
+    # Toast direkt nach der Bewertung) - erst ab 2 in Folge, damit nicht schon
+    # die allererste Karte einer neuen Serie eine Anzeige bekommt.
+    _combo_suffix = f"  ·  🔥 {_combo_now}x in Folge" if _combo_now >= 2 else ""
+    _capc.caption(f"📚 {_tt}" + (f" · {_topic}" if _topic else "") + _combo_suffix)
     # Runde JEDERZEIT beenden bzw. Fach/Stapel wechseln (z. B. nach 5 Karten oder wenn
     # das Tagesziel erreicht ist). Schon bewertete Karten sind bereits gespeichert.
     if _stopc.button("⏹ Beenden", use_container_width=True,
@@ -914,6 +945,8 @@ else:
             if rating == study.GEWUSST:
                 _combo = st.session_state.get("_study_combo", 0) + 1
                 st.session_state["_study_combo"] = _combo
+                st.session_state["_study_combo_best"] = max(
+                    st.session_state.get("_study_combo_best", 0), _combo)
                 if _combo >= 3 and _combo % 3 == 0:
                     st.toast(f"🔥 {_combo}x in Folge gewusst!", icon="🔥")
                 else:
@@ -921,6 +954,13 @@ else:
             else:
                 st.session_state["_study_combo"] = 0
                 st.toast(f"Nächste Wiederholung: {study.humanize_due(nxt['due'])}")
+            # Fuer die Errungenschaft "leech_buster" (siehe ragapp/achievements.py):
+            # zaehlt, wie viele Dauerpatzer in DIESER Runde nicht mehr mit
+            # "Nicht gewusst" bewertet wurden - also wirklich Fortschritt statt
+            # nur erneutem Scheitern an derselben Karte.
+            if karte.get("lapses", 0) >= settings.LEECH_LAPSES_THRESHOLD and rating >= study.HALB:
+                st.session_state["_study_leech_cleared"] = (
+                    st.session_state.get("_study_leech_cleared", 0) + 1)
             t = st.session_state[TALLY]
             t["gewusst" if rating == study.GEWUSST else
               "halb" if rating == study.HALB else "nicht"] += 1

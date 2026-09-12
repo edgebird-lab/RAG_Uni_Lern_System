@@ -90,3 +90,83 @@ def test_check_and_unlock_erste_notiz(isolated_db):
     manifest.create_note(title="Test", subject="mathe", body="Inhalt")
     newly = achievements.check_and_unlock()
     assert any(a.id == "first_note" for a in newly)
+
+
+def test_night_owl_ist_als_versteckt_markiert(isolated_db):
+    night_owl = next(a for a in achievements.catalog() if a.id == "night_owl")
+    assert night_owl.hidden is True
+
+
+def test_cards_100_hat_ehrlichen_fortschritt(isolated_db):
+    now = time.time()
+    for _ in range(37):
+        _log_review("mathe", now)
+    cards_100 = next(a for a in achievements.catalog() if a.id == "cards_100")
+    cur, tgt = cards_100.progress()
+    assert (cur, tgt) == (37, 100)
+
+
+def test_achievements_ohne_progress_liefern_none():
+    plan_done = next(a for a in achievements.catalog() if a.id == "plan_done")
+    assert plan_done.progress is None
+
+
+def test_perfect_round_schaltet_nur_mit_passendem_kontext_frei(isolated_db):
+    ohne_kontext = achievements.check_and_unlock()
+    assert not any(a.id == "perfect_round" for a in ohne_kontext)
+    mit_kontext = achievements.check_and_unlock(
+        context={"round_total": 10, "round_gewusst": 10})
+    assert any(a.id == "perfect_round" for a in mit_kontext)
+
+
+def test_perfect_round_schaltet_nicht_frei_wenn_nicht_alles_gewusst(isolated_db):
+    newly = achievements.check_and_unlock(
+        context={"round_total": 10, "round_gewusst": 9})
+    assert not any(a.id == "perfect_round" for a in newly)
+
+
+def test_perfect_round_schaltet_nicht_frei_unter_10_karten(isolated_db):
+    newly = achievements.check_and_unlock(
+        context={"round_total": 5, "round_gewusst": 5})
+    assert not any(a.id == "perfect_round" for a in newly)
+
+
+def test_leech_buster_schaltet_frei_ab_fuenf_bereinigten_dauerpatzern(isolated_db):
+    newly = achievements.check_and_unlock(context={"leech_cleared": 5})
+    assert any(a.id == "leech_buster" for a in newly)
+
+
+def test_leech_buster_schaltet_nicht_frei_unter_fuenf(isolated_db):
+    newly = achievements.check_and_unlock(context={"leech_cleared": 4})
+    assert not any(a.id == "leech_buster" for a in newly)
+
+
+def test_nearest_locked_ist_leer_ohne_fortschritt(isolated_db):
+    assert achievements.nearest_locked() is None
+
+
+def test_nearest_locked_findet_naechstliegende_ueber_schwelle(isolated_db):
+    now = time.time()
+    for _ in range(80):
+        _log_review("mathe", now)
+    nudge = achievements.nearest_locked(min_pct=70.0)
+    assert nudge is not None
+    assert nudge["id"] == "cards_100"
+    assert nudge["current"] == 80
+    assert nudge["target"] == 100
+
+
+def test_nearest_locked_ignoriert_bereits_freigeschaltete(isolated_db):
+    now = time.time()
+    for _ in range(100):
+        _log_review("mathe", now)
+    achievements.check_and_unlock()  # schaltet cards_100 frei
+    nudge = achievements.nearest_locked(min_pct=0.0)
+    assert nudge is None or nudge["id"] != "cards_100"
+
+
+def test_nearest_locked_ignoriert_versteckte_errungenschaften(isolated_db):
+    # night_owl hat kein progress() -> kann per Definition nie als nudge
+    # auftauchen, unabhaengig vom hidden-Flag; dieser Test dokumentiert das.
+    night_owl = next(a for a in achievements.catalog() if a.id == "night_owl")
+    assert night_owl.progress is None

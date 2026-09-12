@@ -31,6 +31,7 @@ _MOUTHS = {
     "cheer": '<path d="M 92 150 Q 110 172 128 150 Q 110 166 92 150 Z" fill="{ink}"/>',
     "sleepy": '<path d="M 100 154 Q 110 154 120 154" fill="none" stroke="{ink}" stroke-width="3.2" stroke-linecap="round"/>',
     "focused": '<ellipse cx="110" cy="154" rx="6" ry="5" fill="{ink}"/>',
+    "worried": '<path d="M 96 158 Q 110 148 124 158" fill="none" stroke="{ink}" stroke-width="3.2" stroke-linecap="round"/>',
 }
 
 # Requisiten (optional, reines Deko-Element rechts neben dem Koerper).
@@ -87,6 +88,34 @@ POSES: dict[str, tuple[str, str, "str | None"]] = {
 
 def pose_for(page_key: str) -> tuple[str, str, "str | None"]:
     return POSES.get(page_key, ("idle", "float", None))
+
+
+# Ab so vielen Problemkarten wirkt das grosse Home-Maskottchen besorgt statt
+# neutral-froehlich (siehe home_mood()) - bewusst HOEHER als der Schwellwert,
+# ab dem der "🐛 Problemkarten"-Chip ueberhaupt erscheint (der zeigt schon ab
+# 1 Karte an), damit die Mimik erst bei einem wirklich spuerbaren Rueckstau
+# reagiert statt bei jeder einzelnen liegen gebliebenen Karte.
+_HOME_WORRIED_LEECH_THRESHOLD = 5
+
+
+def home_mood(snapshot: "dict | None", *, celebrate: bool = False) -> tuple[str, str, "str | None"]:
+    """Bestimmt Pose/Animation/Requisit des GROSSEN Home-Maskottchens aus dem
+    aktuellen Lernstand (``planner.today_snapshot()``) statt einer fest
+    verdrahteten Pose - macht die Figur zu einem echten Feedback-Element
+    statt reiner Deko (vorher: IMMER "cheer"/"wave", egal was gerade los
+    ist). Prioritaet: eine frisch freigeschaltete Errungenschaft (``celebrate``)
+    schlaegt alles - das ist der einzige Moment, der uneingeschraenkte Freude
+    verdient; danach ein akut reissender Streak (die Mimik soll dieselbe
+    Verlustaversion zeigen wie die Textwarnung, siehe Home); danach ein
+    spuerbarer Leech-Rueckstau; sonst der freundliche Standard-Gruss."""
+    if celebrate:
+        return ("cheer", "wave", "star")
+    if snapshot:
+        if snapshot.get("streak_at_risk"):
+            return ("worried", "float", None)
+        if (snapshot.get("leeches") or 0) >= _HOME_WORRIED_LEECH_THRESHOLD:
+            return ("worried", "float", None)
+    return ("cheer", "wave", None)
 
 
 def mascot_svg(accent: str, *, size: int = 200, ink: str = "#2b2036",

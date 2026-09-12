@@ -161,9 +161,23 @@ with card("errungenschaften"):
             _when = time.strftime("%d.%m.%Y", time.localtime(_unlocked_map[_ach.id]))
             _col.markdown(f"**{_ach.icon} {_ach.title}**")
             _col.caption(f"{_ach.description}\n\nFreigeschaltet am {_when}.")
+        elif _ach.hidden:
+            # Ueberraschungs-Errungenschaft: Titel/Beschreibung bleiben bis
+            # zum Freischalten bewusst verborgen (siehe achievements.py).
+            _col.markdown("**❓ Geheime Errungenschaft**")
+            _col.caption("Wird erst beim Freischalten verraten.")
         else:
             _col.markdown(f"**🔒 {_ach.title}**")
             _col.caption(_ach.description)
+            if _ach.progress is not None:
+                try:
+                    _cur, _tgt = _ach.progress()
+                    _pct = min(100.0, 100.0 * _cur / _tgt) if _tgt else 0.0
+                    _col.markdown(_charts.progress_bar(_pct, color=_theme["accent"]),
+                                 unsafe_allow_html=True)
+                    _col.caption(f"{_cur:g} / {_tgt:g}")
+                except Exception:  # noqa: BLE001 - Fortschrittsanzeige ist ein Bonus
+                    pass
     _n_done = len(_unlocked_map)
     st.caption(f"{_n_done} / {len(_catalog)} freigeschaltet.")
 

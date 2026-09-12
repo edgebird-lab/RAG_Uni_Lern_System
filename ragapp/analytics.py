@@ -53,6 +53,34 @@ def _subj_clause(subject: Optional[str], col: str = "subject") -> tuple[str, lis
     return (f" AND {col}=?", [subject]) if subject else ("", [])
 
 
+def has_night_owl_review() -> bool:
+    """Mindestens eine Wiederholung zwischen 00:00 und 04:59 Uhr (lokale Zeit) -
+    bewusst eine "Ueberraschungs"-Errungenschaft (siehe ragapp/achievements.py,
+    ``hidden=True``): kein Ziel, das man aktiv verfolgen soll, sondern ein
+    kleiner Fund fuer die, die es sowieso schon mal spaet gemacht haben."""
+    with _conn() as c:
+        rows = c.execute("SELECT reviewed_at FROM review_log").fetchall()
+    return any(0 <= time.localtime(r["reviewed_at"]).tm_hour < 5
+              for r in rows if r["reviewed_at"])
+
+
+def has_full_weekend_study() -> bool:
+    """Gab es JE ein Wochenende (Samstag UND der direkt folgende Sonntag) mit
+    je mindestens einer Wiederholung? Wochenenden sind erfahrungsgemaess die
+    groesste Bruchstelle eines taeglichen Streaks - dieses Achievement
+    belohnt gezielt das Gegenteil (Konsistenz statt nur Dauer), siehe
+    Errungenschaft "weekend_study" in ragapp/achievements.py."""
+    import datetime
+    with _conn() as c:
+        rows = c.execute("SELECT DISTINCT reviewed_at FROM review_log").fetchall()
+    days = {_day_key(r["reviewed_at"]) for r in rows if r["reviewed_at"]}
+    for d in days:
+        dt = datetime.date.fromisoformat(d)
+        if dt.weekday() == 5 and (dt + datetime.timedelta(days=1)).isoformat() in days:
+            return True
+    return False
+
+
 def total_reviews_count(subject: Optional[str] = None) -> int:
     """Wiederholungen INSGESAMT (nicht nur die letzten 7 Tage wie in
     ``overview()``) - Grundlage der Errungenschaften "100/1000 Wiederholungen"

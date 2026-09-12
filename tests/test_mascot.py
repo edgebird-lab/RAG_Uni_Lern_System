@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from ragapp.ui._mascot import mascot_svg, pose_for, POSES, _MOUTHS, _PROPS
+from ragapp.ui._mascot import mascot_svg, pose_for, home_mood, POSES, _MOUTHS, _PROPS
 
 
 def _inner_svg(html: str) -> str:
@@ -55,3 +55,24 @@ def test_idle_und_cheer_posen_zwinkern_nur_links_nicht_rechts():
         html = mascot_svg("#FF8FA3", pose=pose)
         assert 'class="ragm-eye-l ragm-wink-loop"' in html
         assert 'class="ragm-eye-r ragm-blink"' in html
+
+
+def test_home_mood_feiert_bei_neuer_errungenschaft_vor_allem_anderen():
+    assert home_mood({"streak_at_risk": True, "leeches": 20}, celebrate=True) == \
+        ("cheer", "wave", "star")
+
+
+def test_home_mood_ist_besorgt_bei_reissendem_streak():
+    assert home_mood({"streak_at_risk": True, "leeches": 0}) == ("worried", "float", None)
+
+
+def test_home_mood_ist_besorgt_bei_vielen_problemkarten():
+    assert home_mood({"streak_at_risk": False, "leeches": 5}) == ("worried", "float", None)
+
+
+def test_home_mood_ignoriert_wenige_problemkarten():
+    assert home_mood({"streak_at_risk": False, "leeches": 4}) == ("cheer", "wave", None)
+
+
+def test_home_mood_ohne_snapshot_ist_neutral_froehlich():
+    assert home_mood(None) == ("cheer", "wave", None)

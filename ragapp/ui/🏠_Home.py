@@ -176,24 +176,16 @@ _components.html(
 # --------------------------------------------------------------------------- #
 from ragapp.ui._style import (apply_page_style, PAGE_REGISTRY, render_nav_tile,
                                render_hero_title, card, speech_bubble)
-from ragapp.ui._mascot import render_mascot
+from ragapp.ui._mascot import render_mascot, home_mood
 _theme = apply_page_style("home")
 
-_hero_l, _hero_r = st.columns([3, 1])
-with _hero_l:
-    render_hero_title("Willkommen zurück 👋", accent=_theme["accent"])
-    speech_bubble("Wähle unten einen Bereich – oder nutze das ☰-Menü links für die Kurzwahl.",
-                  icon="✨")
-with _hero_r:
-    render_mascot(_theme["accent"], pose="cheer", animation="wave")
-
 # --------------------------------------------------------------------------- #
-# "Heute"-Briefing: das Wichtigste des Tages auf einen Blick, statt es sich aus
-# fuenf Seiten (Lernen/Fortschritt/Lernplan/Organisation/Lernzeit) zusammen-
-# suchen zu muessen. Nutzt dieselbe planner.today_snapshot()-Funktion wie
-# Organisation's "Heute im Blick" (siehe dort) - damit laufen die Zahlen nie
-# auseinander. Rein informativ/optional: schlaegt fehl -> Karte wird einfach
-# uebersprungen, blockiert nie den Rest der Seite.
+# Lernstand VOR dem Maskottchen laden: seine Pose soll den aktuellen Stand
+# widerspiegeln (siehe home_mood()) statt fest "cheer" zu sein - und eine neu
+# freigeschaltete Errungenschaft (ragapp/achievements.py) verdient den
+# staerksten Jubel-Moment der ganzen Seite (Balloons + Cheer-Pose), nicht nur
+# eine stille Zeile auf Fortschritt. Beides rein informativ/optional: schlaegt
+# etwas fehl, faellt die Seite einfach auf den neutralen Standard zurueck.
 # --------------------------------------------------------------------------- #
 try:
     import datetime as _dt
@@ -205,6 +197,46 @@ try:
 except Exception:  # noqa: BLE001
     _snap = None
 
+try:
+    from ragapp import achievements as _achievements
+    _newly_unlocked = _achievements.check_and_unlock()
+except Exception:  # noqa: BLE001
+    _achievements = None
+    _newly_unlocked = []
+
+_hero_l, _hero_r = st.columns([3, 1])
+with _hero_l:
+    render_hero_title("Willkommen zurück 👋", accent=_theme["accent"])
+    speech_bubble("Wähle unten einen Bereich – oder nutze das ☰-Menü links für die Kurzwahl.",
+                  icon="✨")
+with _hero_r:
+    _mood_pose, _mood_anim, _mood_prop = home_mood(_snap, celebrate=bool(_newly_unlocked))
+    render_mascot(_theme["accent"], pose=_mood_pose, animation=_mood_anim, prop=_mood_prop)
+
+if _newly_unlocked:
+    st.balloons()
+    for _na in _newly_unlocked:
+        st.success(f"**Neu freigeschaltet:** {_na.icon} {_na.title} – {_na.description}")
+elif _achievements is not None:
+    # Verlust-/Naeheframing wie die Streak-Warnung unten, nur positiv gewendet:
+    # nur zeigen, wenn wirklich etwas GREIFBAR nah ist (siehe nearest_locked()
+    # Docstring) - sonst nervt eine taegliche Erinnerung an alles, was noch
+    # weit weg ist.
+    _nudge = _achievements.nearest_locked()
+    if _nudge:
+        _left = _nudge["target"] - _nudge["current"]
+        st.info(f"🎯 Noch **{_left:g}** bis {_nudge['icon']} **{_nudge['title']}**!")
+        from ragapp.ui import _charts
+        st.markdown(_charts.progress_bar(_nudge["pct"], color=_theme["accent"]),
+                   unsafe_allow_html=True)
+
+# --------------------------------------------------------------------------- #
+# "Heute"-Briefing: das Wichtigste des Tages auf einen Blick, statt es sich aus
+# fuenf Seiten (Lernen/Fortschritt/Lernplan/Organisation/Lernzeit) zusammen-
+# suchen zu muessen. Nutzt dieselbe planner.today_snapshot()-Funktion wie
+# Organisation's "Heute im Blick" (siehe dort) - damit laufen die Zahlen nie
+# auseinander.
+# --------------------------------------------------------------------------- #
 if _snap:
     _WOCHENTAGE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag",
                    "Samstag", "Sonntag"]
