@@ -183,6 +183,7 @@ with card("viewer"):
     # key= haelt den Auf/Zu-Zustand fest - ohne key faellt der Expander sonst bei
     # JEDEM Rerun (auch nur durch die Modellwahl DARIN) auf zugeklappt zurueck,
     # bevor der Klick auf "neu generieren" erfolgt.
+    _pending_key = f"_mm_pending_regen_{_active_id}"
     with st.expander("⚙️ Neu generieren & Löschen", key=f"mm_regen_expander_{_active_id}"):
         _regen_model = _model_picker(f"mm_regen_model_{_active_id}")
         if st.button("🔄 Mindmap neu generieren", key=f"mm_regen_{_active_id}"):
@@ -194,18 +195,48 @@ with card("viewer"):
                 except mindmap.MindmapError as exc:
                     st.error(str(exc))
                     st.stop()
-            manifest.update_mindmap(_active_id, graph=_new_graph,
-                                    model=_regen_model or settings.author_model())
-            if _regen_warning:
-                st.session_state["_mm_gen_warning"] = _regen_warning
-            else:
-                st.success("Mindmap neu erzeugt.")
+            # NICHT sofort überschreiben - erst zur Vorschau anbieten (siehe
+            # _pending_key unten). Ein misslungener/schlechterer Vorschlag
+            # (z. B. bei einer Quelle ohne erkennbare Kapitelstruktur) darf
+            # die bestehende Mindmap nicht kommentarlos ersetzen.
+            st.session_state[_pending_key] = {
+                "graph": _new_graph, "warning": _regen_warning, "model": _regen_model}
             st.rerun()
         if st.button("🗑️ Mindmap löschen", key=f"mm_delete_{_active_id}"):
             manifest.delete_mindmap(_active_id)
             st.session_state["_mm_pending_choice"] = None
             st.success("Mindmap gelöscht.")
             st.rerun()
+
+    _pending_regen = st.session_state.get(_pending_key)
+    if _pending_regen:
+        _new_nodes = _pending_regen["graph"].get("nodes", [])
+        _new_top = [n.get("title") for n in _new_nodes if not n.get("parent")]
+        with card("regen_preview"):
+            st.markdown("##### 🔄 Neu generierter Vorschlag – übernehmen oder verwerfen?")
+            st.caption(f"Bisher: {len(_graph.get('nodes', []))} Themen  ·  "
+                      f"Neu: {len(_new_nodes)} Themen")
+            if _new_top:
+                st.markdown("**Neue Hauptthemen:** " + ", ".join(_new_top[:10])
+                            + (" …" if len(_new_top) > 10 else ""))
+            if _pending_regen["warning"]:
+                st.warning(_pending_regen["warning"])
+            _pc1, _pc2 = st.columns(2)
+            if _pc1.button("✅ Übernehmen", key=f"mm_regen_apply_{_active_id}", type="primary",
+                           use_container_width=True):
+                manifest.update_mindmap(
+                    _active_id, graph=_pending_regen["graph"],
+                    model=_pending_regen["model"] or settings.author_model())
+                st.session_state.pop(_pending_key, None)
+                st.success("Mindmap aktualisiert.")
+                st.rerun()
+            if _pc2.button("❌ Verwerfen", key=f"mm_regen_discard_{_active_id}",
+                           use_container_width=True):
+                st.session_state.pop(_pending_key, None)
+                st.info("Verworfen – die bisherige Mindmap bleibt erhalten.")
+                st.rerun()
+            st.caption("Die aktuell gespeicherte Mindmap (unten) bleibt bis zur "
+                      "Entscheidung unverändert sichtbar.")
 
     _gen_warning = st.session_state.pop("_mm_gen_warning", None)
     if _gen_warning:
