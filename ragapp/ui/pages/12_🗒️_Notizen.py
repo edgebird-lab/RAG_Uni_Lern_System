@@ -27,7 +27,7 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp.ui._loading import page_boot
+from ragapp.ui._loading import page_boot, skeleton
 page_boot("🗒️ Notizen", page_title="Notizen", icon="🗒️", layout="wide", accent="notizen")
 
 from ragapp.ui._style import card
@@ -46,7 +46,7 @@ st.caption("Deine eigenen Gedanken, Fragen und Merksätze – im Unterschied zu 
            "anderen in dieser App NICHT KI-generiert. Optional an ein Fach, ein "
            "Dokument oder eine Sammlung geheftet.")
 
-with st.spinner("Notizen werden geladen ..."):
+with skeleton("Notizen werden geladen ..."):
     from ragapp import manifest
     from ragapp.config import SUBJECT_LABELS
 

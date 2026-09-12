@@ -19,7 +19,7 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp.ui._loading import page_boot
+from ragapp.ui._loading import page_boot, skeleton
 page_boot("🧮 Übungsaufgaben", page_title="Übungsaufgaben", icon="🧮", layout="wide",
          accent="uebungsaufgaben")
 
@@ -38,7 +38,7 @@ st.caption("Mehrschrittige Rechenaufgaben und Anwendungsszenarien mit Musterlös
            "aus deinen indexierten Dokumenten - mit progressiven Hinweisen statt "
            "sofortiger Lösung.")
 
-with st.spinner("Übungsaufgaben werden geladen ..."):
+with skeleton("Übungsaufgaben werden geladen ..."):
     from ragapp import manifest, practice_gen
     from ragapp.config import settings, SUBJECT_LABELS
 

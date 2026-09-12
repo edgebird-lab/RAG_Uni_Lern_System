@@ -215,6 +215,8 @@ with _hero_r:
 
 if _newly_unlocked:
     st.balloons()
+    from ragapp.ui._style import celebration_effects_html as _celebration_effects_html
+    _components.html(_celebration_effects_html(), height=0)
     for _na in _newly_unlocked:
         st.success(f"**Neu freigeschaltet:** {_na.icon} {_na.title} – {_na.description}")
 elif _achievements is not None:
@@ -338,7 +340,8 @@ if _snap:
             if st.button(_cta_label, key="heute_cta", type="primary"):
                 st.switch_page(_cta_target)
 
-with st.spinner("Wird geladen ..."):
+from ragapp.ui._loading import skeleton
+with skeleton("Wird geladen ..."):
     from ragapp import manifest
 
 try:
@@ -361,9 +364,46 @@ except Exception:  # noqa: BLE001 - Statistik ist ein Bonus, nie blockierend
 # --------------------------------------------------------------------------- #
 with card("suche"):
     st.markdown("#### 🔎 Überall suchen")
+    st.caption("Tipp: **Strg/Cmd+K** springt von jeder Seite aus direkt hierher.")
     _search_q = st.text_input(
         "Notizen, Chats und Zusammenfassungen durchsuchen", key="global_search_query",
         placeholder="z. B. FSRS, Docker, Schnittmenge …", label_visibility="collapsed")
+    # Sprungziel von Strg/Cmd+K auf einer ANDEREN Seite (siehe
+    # _style._command_palette_shortcut_html): das dort gesetzte sessionStorage-
+    # Flag zeigt an, dass GERADE deswegen navigiert wurde - einmalig
+    # fokussieren und das Flag sofort loeschen, sonst stiehlt ein spaeterer
+    # Rerun auf dieser Seite (z. B. beim Tippen selbst) staendig erneut den
+    # Fokus. Unconditional injiziert (billig) statt an einen Query-Parameter
+    # gekoppelt, der aus dem sandboxed Iframe heraus nicht sicher zu setzen
+    # waere (siehe Docstring von _command_palette_shortcut_html).
+    _components.html("""
+<script>
+(function() {
+  try {
+    var win = window.parent;
+    if (win.sessionStorage.getItem('ragFocusSearch') !== '1') { return; }
+    win.sessionStorage.removeItem('ragFocusSearch');
+    var doc = win.document;
+    // Kurz nach der Navigation kann das Eingabefeld noch nicht im DOM stehen
+    // (Streamlit rendert asynchron nach) - deshalb kurz nachfassen statt nur
+    // einmalig zu pruefen, statt einer festen Wartezeit, die mal zu kurz und
+    // mal unnoetig lang waere.
+    var tries = 0;
+    var iv = win.setInterval(function() {
+      tries++;
+      var input = doc.querySelector('input[aria-label*="Notizen, Chats und Zusammenfassungen"]');
+      if (input) {
+        input.scrollIntoView({block: 'center'});
+        input.focus();
+        win.clearInterval(iv);
+      } else if (tries > 20) {
+        win.clearInterval(iv);
+      }
+    }, 150);
+  } catch (e) {}
+})();
+</script>
+""", height=0)
     if _search_q and len(_search_q.strip()) >= 2:
         from ragapp import search as _search
         from ragapp.config import PROJECT_ROOT as _PROJECT_ROOT

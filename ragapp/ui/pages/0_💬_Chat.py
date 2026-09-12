@@ -24,7 +24,7 @@ for _anc in _p.parents:
 import streamlit as st
 import streamlit.components.v1 as _components
 
-from ragapp.ui._loading import page_boot
+from ragapp.ui._loading import page_boot, skeleton
 page_boot("Frag deine Zusammenfassungen", page_title="Chat", icon="💬",
           layout="wide", accent="chat")
 
@@ -86,7 +86,7 @@ _LERN_SPRUECHE = [
 # Seitenspezifische ragapp-Importe erst JETZT - unter einem Ladehinweis, damit beim
 # ersten (kalten) Laden ein Spinner statt eines weissen Bereichs erscheint. Der
 # import im with-Block bindet modulweit -> alle spaeteren Verwendungen unveraendert.
-with st.spinner("Chat wird geladen ..."):
+with skeleton("Chat wird geladen ..."):
     from ragapp.config import settings, SUBJECT_LABELS, PROJECT_ROOT
     from ragapp import manifest
 

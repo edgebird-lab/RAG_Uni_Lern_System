@@ -12,8 +12,11 @@ from ragapp.ui._style import (
     PAGE_REGISTRY,
     PAGE_THEMES,
     TECHNICAL_PAGE_KEYS,
+    _command_palette_shortcut_html,
     _doodle_layer,
     _technical_override_css,
+    celebration_effects_html,
+    combo_pulse_html,
     theme_for,
 )
 
@@ -52,6 +55,37 @@ def test_doodle_layer_bleibt_fuer_normale_seiten_unveraendert():
     html = _doodle_layer(theme["accent"], theme["soft"])
     assert "rag-doodle" in html
     assert theme["accent"] in html
+
+
+# --------------------------------------------------------------------------- #
+# Gamification-Vertiefung: Sound/Vibration + Befehlspaletten-Sprungziel -
+# reine String-Erzeugung, kein Streamlit-Rendering noetig (siehe Docstrings
+# der jeweiligen Funktion fuer die Produktentscheidung dahinter).
+# --------------------------------------------------------------------------- #
+def test_celebration_effects_html_enthaelt_ton_und_vibration():
+    html = celebration_effects_html()
+    assert "<script>" in html and "</script>" in html
+    assert "AudioContext" in html
+    assert "vibrate" in html
+
+
+def test_combo_pulse_html_enthaelt_nur_vibration_keinen_ton():
+    html = combo_pulse_html()
+    assert "vibrate" in html
+    assert "AudioContext" not in html
+
+
+def test_command_palette_shortcut_html_reagiert_auf_strg_oder_cmd_k():
+    html = _command_palette_shortcut_html()
+    assert "ctrlKey" in html and "metaKey" in html
+    assert "'k'" in html
+    assert "ragFocusSearch" in html
+    # Regression: KEINE direkte Navigation (location.href=/location.assign)
+    # aus dem sandboxed Iframe (siehe Docstring - wird vom Browser verweigert),
+    # sondern ein echter Link-Klick (location.href darf als reiner LESE-Zugriff
+    # vorkommen, z. B. als Basis-URL fuer new URL(...)).
+    assert "location.href =" not in html and "location.assign" not in html
+    assert ".click()" in html
 
 
 # --------------------------------------------------------------------------- #

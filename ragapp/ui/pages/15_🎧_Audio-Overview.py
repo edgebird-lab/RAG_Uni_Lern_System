@@ -39,7 +39,7 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp.ui._loading import page_boot
+from ragapp.ui._loading import page_boot, skeleton
 page_boot("🎧 Audio-Overview", page_title="Audio-Overview", icon="🎧", layout="wide",
          accent="audio")
 
@@ -56,7 +56,7 @@ st.caption("Lässt deine Dokumente als gesprochenes Erklär-Skript zusammenfasse
            "es mit deiner eigenen (geklonten) Stimme - keine generische KI-Stimme. Skripte "
            "lassen sich auch selbst schreiben oder im Nachgang bearbeiten.")
 
-with st.spinner("Audio-Overview wird geladen ..."):
+with skeleton("Audio-Overview wird geladen ..."):
     from ragapp import manifest, audio_overview, audiobook
     from ragapp.config import settings, SUBJECT_LABELS, PROJECT_ROOT, AUDIO_DIR
     from ragapp.llm import list_installed_models

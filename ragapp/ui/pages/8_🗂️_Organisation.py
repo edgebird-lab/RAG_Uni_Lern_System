@@ -21,7 +21,7 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp.ui._loading import page_boot
+from ragapp.ui._loading import page_boot, skeleton
 page_boot("🗂️ Organisation", page_title="Organisation", icon="🗂️", layout="wide",
          accent="organisation")
 
@@ -37,7 +37,7 @@ h1 {font-weight: 750; letter-spacing:-0.5px;}
 st.caption("Stundenplan, Aufgaben/Hausaufgaben und ein Wochen-Dashboard – "
            "organisatorisch, unabhängig von RAG/Chat. Komplett offline, ohne Modell.")
 
-with st.spinner("Organisation wird geladen ..."):
+with skeleton("Organisation wird geladen ..."):
     import pandas as pd
     from ragapp import manifest, planner
     from ragapp.config import SUBJECT_LABELS

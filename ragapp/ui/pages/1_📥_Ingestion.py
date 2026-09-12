@@ -19,7 +19,7 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp.ui._loading import page_boot
+from ragapp.ui._loading import page_boot, skeleton
 page_boot("📥 Dokumente & Ingestion", page_title="Dokumente & Ingestion",
           icon="📥", layout="wide", accent="ingestion")
 
@@ -49,7 +49,7 @@ h1 {font-weight: 750; letter-spacing:-0.5px;}
 """, unsafe_allow_html=True)
 
 # --- Schwere Importe (pandas / ragapp.*) unter Ladeanzeige, NACH dem Kopf --- #
-with st.spinner("Ingestion wird geladen …"):
+with skeleton("Ingestion wird geladen …"):
     import pandas as pd
 
     from ragapp.config import settings, INBOX_DIR, SOURCE_DIR, SUBJECT_LABELS

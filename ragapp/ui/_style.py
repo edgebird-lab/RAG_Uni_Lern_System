@@ -157,6 +157,17 @@ h1, h2, h3, h4, h5, h6 {
   font-family: 'RAG Heading', 'Fredoka', -apple-system, BlinkMacSystemFont,
     'Segoe UI', sans-serif !important;
 }
+/* Die App nutzt Emoji als durchgaengige Icon-Sprache (Navigation, Maskottchen-
+   Requisiten, Errungenschaften) - eine bewusste Stilentscheidung fuer
+   Comic-/Manga-Charme statt eines sterilen SVG-Icon-Sets. Der Nebeneffekt:
+   Emoji rendern je nach Betriebssystem unterschiedlich (manche Schriften
+   zeigen sie ohne diese Regel sogar als schwarz-weisses TEXT-Glyph statt
+   Farbbild). "font-variant-emoji: emoji" erzwingt ueberall die farbige
+   Emoji-Darstellung (CSS Fonts Level 4, in aktuellen Chromium/Firefox
+   unterstuetzt, sonst folgenlos ignoriert) - behebt die groebste
+   Inkonsistenz, OHNE die Emoji-Identitaet der App aufzugeben oder einen
+   zusaetzlichen Font-Download (der die Offline-Faehigkeit gefaehrden wuerde). */
+html, body { font-variant-emoji: emoji; }
 /* Streamlits Icon-Glyphen (Sidebar-Pfeil, Expander-Chevron, Button-Icons wie
    "keyboard_double_arrow_right"/"expand_more") sind KEIN Text, sondern
    Ligaturen der "Material Symbols Rounded"-Iconschrift - ein zu breiter
@@ -433,6 +444,29 @@ html.rag-dark .stFormSubmitButton > button:hover {{
   box-shadow:0 3px 10px rgba(0,0,0,.35);
 }}
 
+/* Skeleton-Ladeplatzhalter (siehe ragapp.ui._loading.skeleton()) - schimmernde
+   graue Balken statt Spinner+Text beim ersten Oeffnen einer Seite. Der
+   Farbverlauf wandert per Keyframe von links nach rechts durch jeden Balken;
+   ``prefers-reduced-motion`` deckelt das auf ein reines, unbewegtes Grau. */
+.rag-skel {{ display:flex; flex-direction:column; gap:10px; margin:.35rem 0 .6rem; }}
+.rag-skel-bar {{
+  height:16px; border-radius:8px; background-color:{soft};
+  background-image:linear-gradient(90deg, {soft} 0%, rgba(255,255,255,.85) 50%, {soft} 100%);
+  background-size:200% 100%;
+  animation:ragSkelShimmer 1.4s ease-in-out infinite;
+}}
+@keyframes ragSkelShimmer {{
+  0% {{ background-position:200% 0; }}
+  100% {{ background-position:-200% 0; }}
+}}
+html.rag-dark .rag-skel-bar {{
+  background-color:#3a3450;
+  background-image:linear-gradient(90deg, #3a3450 0%, #55507a 50%, #3a3450 100%);
+}}
+@media (prefers-reduced-motion: reduce) {{
+  .rag-skel-bar {{ animation:none; background-image:none; }}
+}}
+
 /* Kacheln (Home-Navigation) + wiederverwendbare "weiche Karte" fuer alle
    Seiten - Klick-Ziel ist ein ECHTER st.button in einem st.container(key=...),
    dessen automatisch vergebene CSS-Klasse (".st-key-<key>") wir hier stylen -
@@ -689,6 +723,129 @@ def _theme_toggle_html() -> str:
 """
 
 
+def _command_palette_shortcut_html() -> str:
+    """Strg/Cmd+K springt von JEDER Seite direkt zur "Ueberall suchen"-Box auf
+    Home (ragapp/search.py) - angelehnt an die Befehlspaletten grosser Apps
+    (Notion/Linear/Superhuman), aber der Streamlit-Seitenarchitektur angepasst:
+    kein schwebendes Overlay (das braeuchte eine eigenstaendige, seiten-
+    uebergreifende Komponente), sondern ein echter Sprung zu Home + Auto-Fokus
+    dort. Ist das Suchfeld schon auf der aktuellen Seite (= wir sind schon auf
+    Home), wird nur gescrollt/fokussiert statt neu geladen. Einmalig pro
+    Sitzung gebunden.
+
+    WICHTIG: ``components.html()`` rendert in ein sandboxed Iframe OHNE
+    ``allow-top-navigation`` - ein direktes ``window.parent.location.href = ..``
+    wird darin vom Browser verweigert (getestet: "Unsafe attempt to initiate
+    navigation ... sandboxed"). Deshalb NICHT selbst navigieren, sondern
+    Streamlits eigenen, echten Sidebar-Link zu Home (der schon Teil des NICHT
+    sandboxed Eltern-Dokuments ist) per ``.click()`` ausloesen - das zaehlt als
+    normale Link-Navigation und ist erlaubt. Ein sessionStorage-Flag (reine
+    Speicheroperation, keine Navigation, daher ebenfalls erlaubt) sagt Home
+    hinterher, den Fokus zu setzen (siehe Home.py)."""
+    return """
+<script>
+(function() {
+  try {
+    var win = window.parent;
+    var doc = win.document;
+    if (doc.__ragCmdKBound) { return; }
+    doc.__ragCmdKBound = true;
+    doc.addEventListener('keydown', function(e) {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'k') { return; }
+      var t = e.target;
+      var tag = t && t.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (t && t.isContentEditable)) { return; }
+      e.preventDefault();
+      var input = doc.querySelector('input[aria-label*="Notizen, Chats und Zusammenfassungen"]');
+      if (input) {
+        input.scrollIntoView({block: 'center', behavior: 'smooth'});
+        input.focus();
+        return;
+      }
+      var links = doc.querySelectorAll('a[href]');
+      for (var i = 0; i < links.length; i++) {
+        try {
+          if (new win.URL(links[i].href, win.location.href).pathname === '/') {
+            win.sessionStorage.setItem('ragFocusSearch', '1');
+            links[i].click();
+            break;
+          }
+        } catch (e2) {}
+      }
+    }, true);
+  } catch (e) {}
+})();
+</script>
+"""
+
+
+# --------------------------------------------------------------------------- #
+# Sound/Vibration - BEWUSST sparsam (siehe Docstrings): ein Studien-Tool wird
+# oft in der Bibliothek/im Hoersaal benutzt, wo ein hoerbarer Ton bei JEDER
+# einzelnen Karte stoeren bzw. peinlich sein koennte (anders als bei einer
+# Casual-App wie Duolingo). Deshalb: Ton NUR beim seltenen, echten Meilenstein
+# (Errungenschaft freigeschaltet), Vibration zusaetzlich auch beim haeufigeren,
+# aber stillen/privaten Kombo-Meilenstein (3er-Schritte, siehe Lernen.py).
+# Beides synthetisiert per Web Audio API - kein Audio-Asset noetig, bleibt
+# offlinefaehig. Vibration ist eh geraeuschlos (nur am Handy spuerbar) und
+# daher grosszuegiger einsetzbar als Ton.
+# --------------------------------------------------------------------------- #
+def celebration_effects_html() -> str:
+    """Kurzer, freundlicher Zweiklang (Web Audio API, keine Datei) + stuermischeres
+    Vibrationsmuster - fuer den SELTENEN, echten Feiermoment (Errungenschaft
+    frisch freigeschaltet). Ergaenzt die schon vorhandenen Balloons/den
+    Maskottchen-Jubel um eine hoer-/spuerbare Komponente, statt rein visuell zu
+    bleiben. Nutzt einen auf ``window.parent`` zwischengespeicherten
+    AudioContext (nicht bei jedem Aufruf neu erzeugen - Browser drosseln/warnen
+    sonst)."""
+    return """
+<script>
+(function() {
+  try {
+    var win = window.parent;
+    var Ctx = win.AudioContext || win.webkitAudioContext;
+    if (Ctx) {
+      var ctx = win.__ragAudioCtx || (win.__ragAudioCtx = new Ctx());
+      if (ctx.state === 'suspended') { ctx.resume().catch(function(){}); }
+      var now = ctx.currentTime;
+      [523.25, 659.25, 783.99].forEach(function(freq, i) {
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        var t0 = now + i * 0.09;
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.16, t0 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.3);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(t0); osc.stop(t0 + 0.32);
+      });
+    }
+    if (win.navigator && win.navigator.vibrate) { win.navigator.vibrate([30, 40, 30, 40, 60]); }
+  } catch (e) {}
+})();
+</script>
+"""
+
+
+def combo_pulse_html() -> str:
+    """Ein einzelner, ganz kurzer Vibrations-Puls fuer den Kombo-Meilenstein
+    (jede 3. Karte in Folge "gewusst", siehe Lernen.py) - bewusst OHNE Ton
+    (haeufiger als ein Errungenschaft-Unlock, ein Ton dafuer waere zu viel),
+    aber ein kaum wahrnehmbarer Handy-Puls schadet nicht und gibt der
+    haeufigsten guten Serie trotzdem ein kleines haptisches Echo."""
+    return """
+<script>
+(function() {
+  try {
+    var win = window.parent;
+    if (win.navigator && win.navigator.vibrate) { win.navigator.vibrate(15); }
+  } catch (e) {}
+})();
+</script>
+"""
+
+
 # --------------------------------------------------------------------------- #
 # Uebersetzt die wenigen fest verdrahteten englischen Strings, die Streamlit
 # selbst (nicht ueber unseren Code) ausgibt - z. B. der Datei-Upload-Button
@@ -849,6 +1006,7 @@ def apply_page_style(page_key: str, *, show_nav: bool = True) -> dict:
     # nach einem reinen Widget-Rerun (siehe _theme_toggle_html Docstring).
     components.html(_theme_toggle_html(), height=0)
     components.html(_i18n_patch_html(), height=0)
+    components.html(_command_palette_shortcut_html(), height=0)
 
     # Uebergangs-Animation NUR bei echter Seiten-Navigation abspielen (nicht
     # bei jedem Widget-Rerun innerhalb derselben Seite - siehe _transition_html

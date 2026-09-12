@@ -19,7 +19,7 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp.ui._loading import page_boot
+from ragapp.ui._loading import page_boot, skeleton
 page_boot("🧠 Mindmap", page_title="Mindmap", icon="🧠", layout="wide", accent="mindmap")
 
 from ragapp.ui._style import card
@@ -37,7 +37,7 @@ st.caption("Quellengetreuer Themenbaum aus deinen indexierten Dokumenten - ordne
            "gruppiert nur, was im Inhaltsverzeichnis bereits steht, erfindet keine "
            "neuen Themen.")
 
-with st.spinner("Mindmap wird geladen ..."):
+with skeleton("Mindmap wird geladen ..."):
     from ragapp import manifest, mindmap, mindmap_render
     from ragapp.config import settings, SUBJECT_LABELS
     from ragapp.ui._colors import subject_color

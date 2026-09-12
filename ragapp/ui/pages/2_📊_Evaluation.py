@@ -20,7 +20,7 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp.ui._loading import page_boot
+from ragapp.ui._loading import page_boot, skeleton
 page_boot("📊 Evaluation: Trefferquote", page_title="Evaluation: Trefferquote",
           icon="📊", layout="wide", accent="evaluation")
 
@@ -49,7 +49,7 @@ h1 {font-weight: 750; letter-spacing:-0.5px;}
 </style>
 """, unsafe_allow_html=True)
 
-with st.spinner("Evaluation wird geladen ..."):
+with skeleton("Evaluation wird geladen ..."):
     import pandas as pd
     from ragapp.config import settings
     from ragapp import manifest

@@ -19,7 +19,7 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp.ui._loading import page_boot
+from ragapp.ui._loading import page_boot, skeleton
 page_boot("🗃️ Dokumentenmanager", page_title="Dokumentenmanager", icon="🗃️", layout="wide",
          accent="dokumente")
 
@@ -35,7 +35,7 @@ h1 {font-weight: 750; letter-spacing:-0.5px;}
 st.caption("Alle Dokumente auf einen Blick – ansehen, herunterladen, Kategorien "
            "vergeben. Auch archivierte (nicht im RAG) Dokumente tauchen hier auf.")
 
-with st.spinner("Dokumentenmanager wird geladen ..."):
+with skeleton("Dokumentenmanager wird geladen ..."):
     import pandas as pd
     from ragapp import manifest
     from ragapp.config import SUBJECT_LABELS, PROJECT_ROOT

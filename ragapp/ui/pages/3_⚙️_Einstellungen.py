@@ -20,7 +20,7 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp.ui._loading import page_boot
+from ragapp.ui._loading import page_boot, skeleton
 
 page_boot("⚙️ Einstellungen (Tuning)", page_title="Einstellungen (Tuning)",
           icon="⚙️", layout="wide", accent="einstellungen")
@@ -64,7 +64,7 @@ div[data-testid="stSlider"] [data-testid="stWidgetLabel"] {
 # kein weißer Bildschirm beim Seitenwechsel). Die Importe binden trotz des
 # with-Blocks modulweit, alle späteren Verwendungen funktionieren unverändert.
 # --------------------------------------------------------------------------- #
-with st.spinner("Einstellungen wird geladen ..."):
+with skeleton("Einstellungen wird geladen ..."):
     from ragapp.config import (
         settings, RUNTIME_CONFIG_FILE, Settings, UI_RESTART_FILE, UI_MODE_FILE,
     )

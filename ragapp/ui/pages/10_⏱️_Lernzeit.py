@@ -25,7 +25,7 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp.ui._loading import page_boot
+from ragapp.ui._loading import page_boot, skeleton
 page_boot("⏱️ Lernzeit", page_title="Lernzeit", icon="⏱️", layout="wide", accent="lernzeit")
 
 from ragapp.ui._style import card
@@ -40,7 +40,7 @@ h1 {font-weight: 750; letter-spacing:-0.5px;}
 st.caption("Pomodoro-Timer und freier Zeittracker – zeichnet echte Lernzeit je Fach auf. "
            "Komplett offline, kein Modell nötig.")
 
-with st.spinner("Lernzeit wird geladen ..."):
+with skeleton("Lernzeit wird geladen ..."):
     import pandas as pd
     from ragapp import manifest
     from ragapp.config import SUBJECT_LABELS

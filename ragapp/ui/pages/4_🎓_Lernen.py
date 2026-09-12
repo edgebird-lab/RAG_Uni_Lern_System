@@ -18,8 +18,9 @@ for _anc in _p.parents:
         break
 
 import streamlit as st
+import streamlit.components.v1 as components
 
-from ragapp.ui._loading import page_boot
+from ragapp.ui._loading import page_boot, skeleton
 
 # set_page_config -> PIN-Gate -> Theme -> und rendert SOFORT den Seitentitel,
 # damit beim Seitenwechsel kein weisser Bildschirm entsteht.
@@ -43,7 +44,7 @@ st.caption("Karteikarten aus deinen eigenen Unterlagen – aktives Abfragen mit 
 
 # Schwere Importe/Datenabfragen unter kleinem Ladehinweis; die import-Statements
 # binden im Modulscope, daher funktionieren alle spaeteren Verwendungen unveraendert.
-with st.spinner("Lernen wird geladen ..."):
+with skeleton("Lernen wird geladen ..."):
     import pandas as pd
     from ragapp import manifest, study
     from ragapp.config import settings, SUBJECT_LABELS
@@ -752,6 +753,8 @@ else:
             _round_newly = []
         if _round_newly:
             st.balloons()
+            from ragapp.ui._style import celebration_effects_html as _celebration_effects_html
+            components.html(_celebration_effects_html(), height=0)
             for _na in _round_newly:
                 st.success(f"**Neu freigeschaltet:** {_na.icon} {_na.title} – {_na.description}")
 
@@ -924,7 +927,8 @@ else:
                        "Antworten erzeugen** die KI-Antworten nachziehen.")
             st.markdown(karte.get("back") or "")
         st.write("")
-        st.caption("Wie gut wusstest du es? (**1** Nicht · **2** Halb · **3** Gewusst)")
+        st.caption("Wie gut wusstest du es? (**1** Nicht · **2** Halb · **3** Gewusst · "
+                   "am Handy: Karte ← nicht / gewusst → wischen)")
         _sg = st.session_state.get("_study_suggest")
         if _sg is not None:
             _sgtxt = {study.GEWUSST: "✅ Gewusst", study.HALB: "🟡 Halb",
@@ -949,6 +953,8 @@ else:
                     st.session_state.get("_study_combo_best", 0), _combo)
                 if _combo >= 3 and _combo % 3 == 0:
                     st.toast(f"🔥 {_combo}x in Folge gewusst!", icon="🔥")
+                    from ragapp.ui._style import combo_pulse_html as _combo_pulse_html
+                    components.html(_combo_pulse_html(), height=0)
                 else:
                     st.toast(f"✅ Gewusst! · Nächste Wiederholung: {study.humanize_due(nxt['due'])}")
             else:
@@ -977,9 +983,72 @@ else:
                 st.session_state.pop(_k, None)
             st.rerun()
 
-        if r1.button("1️⃣ Nicht gewusst", use_container_width=True):
+        if r1.button("1️⃣ Nicht gewusst", use_container_width=True, key="rate_nicht"):
             _bewerten(study.NICHT)
-        if r2.button("2️⃣ Halb", use_container_width=True):
+        if r2.button("2️⃣ Halb", use_container_width=True, key="rate_halb"):
             _bewerten(study.HALB)
-        if r3.button("3️⃣ Gewusst", use_container_width=True):
+        if r3.button("3️⃣ Gewusst", use_container_width=True, key="rate_gewusst"):
             _bewerten(study.GEWUSST)
+
+        # Aus der Tastatur-Ziffer im Hinweis oben (siehe Caption "1 Nicht ·
+        # 2 Halb · 3 Gewusst") eine ECHTE Tastenkombination machen, nicht nur
+        # eine Beschriftung - fuer Vielnutzer (wie bei Anki) die Haupt-
+        # Beschleunigung: bewerten ohne die Hand von der Tastatur zu nehmen.
+        # Einmalig auf dem PARENT-Dokument gebunden (siehe _theme_toggle_html-
+        # Kommentar in _style.py: Streamlit macht keinen echten Seiten-Reload,
+        # ein erneutes Binden bei jedem Rerun wuerde denselben Tastendruck
+        # sonst mehrfach ausloesen) - sucht die Buttons bei JEDEM Tastendruck
+        # live per Klasse, dadurch automatisch wirkungslos, wenn gerade keine
+        # Bewertung ansteht (z. B. auf einer anderen Seite oder vor dem
+        # Aufdecken) statt Zustand zwischen Skript und Streamlit abgleichen
+        # zu muessen. Ziffern in einem Text-/Zahlenfeld loesen NICHTS aus.
+        # Zusaetzlich (am Handy): die Karte nach links/rechts wischen bewertet
+        # direkt "Nicht gewusst"/"Gewusst" - wie bei Quizlet/Ankidroid, die
+        # verbreitetste Handy-Geste fuer Karteikarten. "Halb" bleibt bewusst
+        # nur per Tap/Taste 2 erreichbar (eine dritte Wisch-Richtung waere
+        # keine natuerliche Erweiterung eines Links-Rechts-Spektrums mehr,
+        # eher verwirrend als hilfreich). Passiv gebunden (kein preventDefault)
+        # - blockiert normales vertikales Scrollen der Karte nicht.
+        components.html("""
+<script>
+(function() {
+  try {
+    var doc = window.parent.document;
+    function clickByKey(key) {
+      var el = doc.querySelector('.st-key-' + key + ' button');
+      if (el) { el.click(); }
+    }
+    if (!doc.__ragRatingKeysBound) {
+      doc.__ragRatingKeysBound = true;
+      doc.addEventListener('keydown', function(e) {
+        if (e.ctrlKey || e.metaKey || e.altKey) { return; }
+        var t = e.target;
+        var tag = t && t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || (t && t.isContentEditable)) { return; }
+        if (e.key === '1') { clickByKey('rate_nicht'); }
+        else if (e.key === '2') { clickByKey('rate_halb'); }
+        else if (e.key === '3') { clickByKey('rate_gewusst'); }
+      }, true);
+    }
+    if (!doc.__ragSwipeBound) {
+      doc.__ragSwipeBound = true;
+      var sx = null, sy = null, st0 = 0;
+      doc.addEventListener('touchstart', function(e) {
+        var el = e.target && e.target.closest ? e.target.closest('.karte-frage') : null;
+        if (!el || !e.touches || !e.touches.length) { sx = null; return; }
+        sx = e.touches[0].clientX; sy = e.touches[0].clientY; st0 = Date.now();
+      }, {passive: true});
+      doc.addEventListener('touchend', function(e) {
+        if (sx === null || !e.changedTouches || !e.changedTouches.length) { return; }
+        var dx = e.changedTouches[0].clientX - sx;
+        var dy = e.changedTouches[0].clientY - sy;
+        var dt = Date.now() - st0;
+        sx = null;
+        if (dt > 800 || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) { return; }
+        clickByKey(dx > 0 ? 'rate_gewusst' : 'rate_nicht');
+      }, {passive: true});
+    }
+  } catch (e) {}
+})();
+</script>
+""", height=0)

@@ -22,7 +22,7 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp.ui._loading import page_boot
+from ragapp.ui._loading import page_boot, skeleton
 page_boot("📝 Probeklausur", page_title="Probeklausur", icon="📝", layout="wide",
          accent="pruefung")
 
@@ -31,7 +31,7 @@ from ragapp.ui._style import card
 st.markdown("<style>.block-container{padding-top:2rem;max-width:900px;}"
             "h1{font-weight:750;letter-spacing:-.5px;}</style>", unsafe_allow_html=True)
 
-with st.spinner("Probeklausur wird geladen ..."):
+with skeleton("Probeklausur wird geladen ..."):
     from ragapp import manifest, study, planner
     from ragapp.config import settings, SUBJECT_LABELS
 

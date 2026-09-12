@@ -23,7 +23,7 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp.ui._loading import page_boot
+from ragapp.ui._loading import page_boot, skeleton
 page_boot("📚 Semesterplan importieren", page_title="Semesterplan", icon="📚",
          layout="wide", accent="semesterplan")
 
@@ -32,7 +32,7 @@ from ragapp.ui._style import card
 st.markdown("<style>.block-container{padding-top:2rem;max-width:1000px;}"
             "h1{font-weight:750;letter-spacing:-.5px;}</style>", unsafe_allow_html=True)
 
-with st.spinner("Semesterplan-Import wird geladen …"):
+with skeleton("Semesterplan-Import wird geladen …"):
     import pandas as pd
     from ragapp import manifest, syllabus_import
     from ragapp.config import settings, DATA_DIR

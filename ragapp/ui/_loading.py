@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import importlib
 import sys
+from contextlib import contextmanager
+
 import streamlit as st
 
 
@@ -50,6 +52,36 @@ def page_boot(title: str, *, page_title: "str | None" = None,
     apply_page_style(accent or "home")
     if title:
         st.title(title)
+
+
+_SKELETON_WIDTHS = [92, 78, 86, 64]
+
+
+@contextmanager
+def skeleton(text: str = "", *, rows: int = 3):
+    """Ersetzt ``st.spinner()`` fuer den EINEN Moment, den jede Seite beim
+    Oeffnen durchlaeuft (schwere Importe, siehe page_boot()-Docstring): statt
+    eines kleinen Spinner-Icons + Text erscheinen schimmernde graue Balken,
+    die schon ANNAEHERND die Form des gleich folgenden Inhalts andeuten -
+    genau das Muster, das grosse Apps (Spotify, LinkedIn, Notion) statt
+    reiner Spinner nutzen, weil es das Warten weniger leer wirken laesst
+    (kein Layout-Sprung von "Spinner" zu "ploetzlich Inhalt"), auch wenn die
+    tatsaechliche Ladezeit gleich bleibt. Gleiche Ergonomie wie st.spinner:
+    ``with skeleton("Fortschritt wird geladen ..."): import ...``."""
+    ph = st.empty()
+    with ph.container():
+        widths = (_SKELETON_WIDTHS * ((rows // len(_SKELETON_WIDTHS)) + 1))[:rows]
+        bars = "".join(
+            f'<div class="rag-skel-bar" style="width:{w}%;animation-delay:{i * .12:.2f}s"></div>'
+            for i, w in enumerate(widths)
+        )
+        st.markdown(f'<div class="rag-skel">{bars}</div>', unsafe_allow_html=True)
+        if text:
+            st.caption(text)
+    try:
+        yield
+    finally:
+        ph.empty()
 
 
 def lazy_import(spinner_text: str, *module_names: str):

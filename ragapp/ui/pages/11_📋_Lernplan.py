@@ -20,7 +20,7 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp.ui._loading import page_boot
+from ragapp.ui._loading import page_boot, skeleton
 page_boot("📋 Lernplan", page_title="Lernplan", icon="📋", layout="wide", accent="lernplan")
 
 from ragapp.ui._style import card
@@ -51,7 +51,7 @@ st.caption("KI-Gliederung aus deinen Dokumenten + ein realistischer, auf Tage "
            "Forschung zu Lesetempo & Lernrate, nicht geraten "
            "(Herleitung: docs/LERNPLAN_FORSCHUNG.md).")
 
-with st.spinner("Lernplan wird geladen ..."):
+with skeleton("Lernplan wird geladen ..."):
     import html as _html
     import pandas as pd
     from ragapp import manifest, study_plan, planner

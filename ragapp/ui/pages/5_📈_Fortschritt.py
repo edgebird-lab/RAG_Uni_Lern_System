@@ -22,7 +22,7 @@ for _anc in _p.parents:
 
 import streamlit as st
 
-from ragapp.ui._loading import page_boot
+from ragapp.ui._loading import page_boot, skeleton
 page_boot("📈 Fortschritt", page_title="Fortschritt", icon="📈", layout="wide",
          accent="fortschritt")
 
@@ -37,7 +37,7 @@ h1 {font-weight: 750; letter-spacing:-0.5px;}
 </style>
 """, unsafe_allow_html=True)
 
-with st.spinner("Fortschritt wird geladen ..."):
+with skeleton("Fortschritt wird geladen ..."):
     import pandas as pd
     from ragapp import analytics, planner, manifest, backup, study_plan, sync as _sync
     from ragapp import achievements as _achievements
@@ -150,6 +150,9 @@ with card("errungenschaften"):
         st.balloons()
         from ragapp.ui._mascot import render_mascot_corner as _render_mascot_corner
         _render_mascot_corner(_theme["accent"], pose="cheer", animation="wave", prop="star")
+        import streamlit.components.v1 as _components
+        from ragapp.ui._style import celebration_effects_html as _celebration_effects_html
+        _components.html(_celebration_effects_html(), height=0)
         for _na in _newly_unlocked:
             st.success(f"**Neu freigeschaltet:** {_na.icon} {_na.title} – {_na.description}")
     _unlocked_map = manifest.list_unlocked_achievements()
