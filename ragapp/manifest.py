@@ -395,6 +395,22 @@ CREATE TABLE IF NOT EXISTS pronunciation_fixes (
 -- Baut erst AB dem Tag der Einfuehrung eine echte Kurve auf - fuer Tage davor
 -- gibt es bewusst KEINE rueckwirkend rekonstruierten Werte (waere aus dem
 -- heutigen FSRS-Zustand nicht verlaesslich moeglich, siehe analytics.py).
+-- Chat-Sitzungen: dauerhaft gespeicherter Gesprächsverlauf über App-Neustarts
+-- hinweg (vorher nur st.session_state.messages - ging bei jedem Neustart/
+-- Tab-Schließen verloren). Gleiches "Liste/Auswählen/Neu"-Muster wie bei
+-- Mindmaps/Audio-Overviews: eine Sitzung pro Datensatz, die komplette
+-- Nachrichtenliste als JSON - anders als Audio-Overviews OHNE separate Datei,
+-- ein Chatverlauf ist reiner Text, keine große Binärdatei.
+CREATE TABLE IF NOT EXISTS chat_sessions (
+    session_id    TEXT PRIMARY KEY,
+    title         TEXT NOT NULL,
+    subject       TEXT,
+    messages_json TEXT NOT NULL,
+    created_at    REAL,
+    updated_at    REAL
+);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_subject ON chat_sessions(subject);
+
 CREATE TABLE IF NOT EXISTS progress_snapshots (
     day             TEXT NOT NULL,
     subject         TEXT NOT NULL,
@@ -2306,6 +2322,68 @@ def list_pronunciation_fixes() -> dict[str, str]:
 def delete_pronunciation_fix(word: str) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM pronunciation_fixes WHERE word=?", (word,))
+
+
+# --------------------------------------------------------------------------- #
+# Chat-Sitzungen (siehe _SCHEMA-Kommentar oben) - gleiches Muster wie Mindmaps.
+# --------------------------------------------------------------------------- #
+def _decode_chat_session(row: sqlite3.Row) -> dict:
+    d = dict(row)
+    d["messages"] = json.loads(d.pop("messages_json") or "[]")
+    return d
+
+
+def create_chat_session(*, title: str, subject: Optional[str] = None,
+                        messages: Optional[list] = None) -> str:
+    now = time.time()
+    sid = uuid.uuid4().hex[:16]
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO chat_sessions (session_id, title, subject, messages_json, "
+            "created_at, updated_at) VALUES (?,?,?,?,?,?)",
+            (sid, title.strip(), subject, json.dumps(messages or []), now, now),
+        )
+    return sid
+
+
+def get_chat_session(session_id: str) -> Optional[dict]:
+    with _connect() as conn:
+        r = conn.execute(
+            "SELECT * FROM chat_sessions WHERE session_id=?", (session_id,)).fetchone()
+    return _decode_chat_session(r) if r else None
+
+
+def list_chat_sessions() -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM chat_sessions ORDER BY updated_at DESC").fetchall()
+    return [_decode_chat_session(r) for r in rows]
+
+
+def update_chat_session(session_id: str, *, messages: Optional[list] = None,
+                        title: Optional[str] = None) -> None:
+    """Aktualisiert einzelne Felder (typischerweise ``messages`` nach jeder neuen
+    Chat-Runde, oder ``title`` beim Umbenennen)."""
+    sets: list[str] = []
+    args: list = []
+    if messages is not None:
+        sets.append("messages_json=?")
+        args.append(json.dumps(messages))
+    if title is not None:
+        sets.append("title=?")
+        args.append(title.strip())
+    if not sets:
+        return
+    sets.append("updated_at=?")
+    args.append(time.time())
+    args.append(session_id)
+    with _connect() as conn:
+        conn.execute(f"UPDATE chat_sessions SET {', '.join(sets)} WHERE session_id=?", args)
+
+
+def delete_chat_session(session_id: str) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM chat_sessions WHERE session_id=?", (session_id,))
 
 
 # Ro7: KEINE Initialisierung mehr als Import-Nebenwirkung. Schema/Migrationen

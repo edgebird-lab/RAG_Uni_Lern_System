@@ -97,6 +97,52 @@ with st.sidebar:
     st.markdown("### 🎓 Lern-Assistent")
     st.caption(f"Modell: `{settings.LLM_MODEL}` · Embedding: `{settings.EMBED_MODEL}`")
 
+    # --------------------------------------------------------------------- #
+    # Chat-Sitzung wählen: der Verlauf wird jetzt dauerhaft gespeichert (siehe
+    # manifest.chat_sessions) statt nur in st.session_state.messages zu leben,
+    # das bei jedem App-Neustart/Tab-Schließen verloren ging. Gleiches
+    # "Liste/Auswählen/Neu"-Muster wie bei Mindmap/Audio-Overview.
+    # --------------------------------------------------------------------- #
+    _chat_sessions = manifest.list_chat_sessions()
+    _sess_by_id = {s["session_id"]: s for s in _chat_sessions}
+
+    if "_chat_pending_choice" in st.session_state:
+        st.session_state["chat_session_choice"] = st.session_state.pop("_chat_pending_choice")
+    elif st.session_state.get("chat_session_choice") not in ([None] + list(_sess_by_id.keys())):
+        st.session_state["chat_session_choice"] = None
+
+    def _fmt_session_option(sid: "str | None") -> str:
+        if sid is None:
+            return "➕ Neuer Chat"
+        s = _sess_by_id.get(sid)
+        return s["title"] if s else "(gelöscht)"
+
+    st.selectbox("Chat wählen", [None] + list(_sess_by_id.keys()),
+                format_func=_fmt_session_option, key="chat_session_choice")
+    _active_session_id = st.session_state.get("chat_session_choice")
+
+    # Verlauf nur bei einer ECHTEN Auswahländerung neu laden (nicht bei jedem
+    # Rerun waehrend einer laufenden Antwort) - _chat_loaded_session_id merkt
+    # sich, welche Sitzung zuletzt in st.session_state.messages geladen wurde.
+    if st.session_state.get("_chat_loaded_session_id", "__unset__") != _active_session_id:
+        st.session_state["_chat_loaded_session_id"] = _active_session_id
+        _sess = _sess_by_id.get(_active_session_id) if _active_session_id else None
+        st.session_state.messages = list(_sess["messages"]) if _sess else []
+
+    if _active_session_id is not None:
+        with st.expander("⚙️ Chat verwalten", key="chat_manage_expander"):
+            _new_title = st.text_input(
+                "Titel", value=_sess_by_id.get(_active_session_id, {}).get("title", ""),
+                key=f"chat_title_{_active_session_id}")
+            if st.button("💾 Titel speichern", key=f"chat_save_title_{_active_session_id}"):
+                manifest.update_chat_session(_active_session_id, title=_new_title)
+                st.rerun()
+            if st.button("🗑️ Diesen Chat löschen", key=f"chat_delete_{_active_session_id}"):
+                manifest.delete_chat_session(_active_session_id)
+                st.session_state["_chat_pending_choice"] = None
+                st.rerun()
+    st.divider()
+
     # Modell-Status: selbst entscheiden, wann das Antwort-LLM laedt/entladen wird,
     # statt das nur passiv geschehen zu lassen. Rein informativ + zwei Buttons -
     # kein automatisches Verhalten wird dadurch veraendert.
@@ -173,7 +219,10 @@ with st.sidebar:
     show_sources = st.toggle("Quellen anzeigen", value=True)
     st.divider()
     if st.button("🗑️ Verlauf löschen", use_container_width=True):
+        if _active_session_id is not None:
+            manifest.delete_chat_session(_active_session_id)
         st.session_state.messages = []
+        st.session_state["_chat_pending_choice"] = None
         st.rerun()
     st.caption("Seiten links: **Ingestion**, **Evaluation**, **Einstellungen**")
 
@@ -181,9 +230,6 @@ with st.sidebar:
 if stats["chunks"] == 0:
     st.info("Noch keine Dokumente indexiert. Gehe zu **📥 Ingestion** und starte den "
             "Import oder lege Dateien in den Ordner *Zusammenfassungen SoSE26*.")
-
-if "messages" not in st.session_state:
-    st.session_state.messages = []
 
 
 from ragapp.ui import _docviewer
@@ -538,6 +584,23 @@ if prompt:
         "meta": meta,
         "sources": sources,
     })
+
+    # Verlauf dauerhaft speichern (siehe manifest.chat_sessions) - beim ALLER-
+    # ERSTEN gespeicherten Austausch eines neuen Chats wird die Sitzung jetzt
+    # angelegt (Titel aus der ersten Frage), sonst nur aktualisiert. Die
+    # "pending choice" sorgt dafuer, dass die Auswahlbox oben beim NAECHSTEN
+    # Rerun automatisch auf die neue Sitzung zeigt (siehe Muster in
+    # 15_🎧_Audio-Overview.py).
+    if _active_session_id is None:
+        _title = prompt.strip().splitlines()[0][:60] or "Neuer Chat"
+        if len(prompt.strip()) > 60:
+            _title += "…"
+        _new_sid = manifest.create_chat_session(
+            title=_title, subject=subject_filter, messages=st.session_state.messages)
+        st.session_state["_chat_pending_choice"] = _new_sid
+        st.session_state["_chat_loaded_session_id"] = _new_sid
+    else:
+        manifest.update_chat_session(_active_session_id, messages=st.session_state.messages)
 
     # Nach dem Generieren an den ANFANG der Antwort scrollen (mehrfach, um Streamlits
     # Auto-Scroll ans Ende zu ueberstimmen).
