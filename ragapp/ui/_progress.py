@@ -13,10 +13,19 @@ Meldung; der Balken behält seinen letzten Stand.
 Robust gegen wechselnde Zähl-Skalen innerhalb eines Vorgangs (OCR zählt Seiten,
 Embedding zählt Batches): sobald sich `total` ändert oder `done` zurückspringt,
 beginnt eine neue Stufe und die ETA-Uhr wird zurückgesetzt.
+
+``progress_tracker()`` weiter unten ist ein ZWEITER, unabhängiger Baustein für
+Seiten mit dem einfacheren ``(done, total, label)``-Callback-Vertrag
+(``audio_overview.ProgressCallback`` - Audio-Overview, Zusammenfassung) - nutzt
+denselben ``fmt_dauer`` fürs einheitliche Format, aber eigene (zwei getrennte
+Widgets: Balken + Beschriftung statt einem kombinierten ``st.empty()``-Slot),
+weil der Aufrufvertrag ein anderer ist als bei ``ProgressReporter``.
 """
 from __future__ import annotations
 
 import time
+from typing import Callable
+
 import streamlit as st
 
 
@@ -101,3 +110,34 @@ class ProgressReporter:
     def clear(self) -> None:
         self._bar.empty()
         self._frac = 0.0
+
+
+def progress_tracker(bar, caption, label: str) -> Callable[[int, int, str], None]:
+    """Zweiter Fortschritts-Baustein für den EINFACHEREN ``(done, total,
+    unit_label)``-Aufrufvertrag (siehe ``audio_overview.ProgressCallback``) -
+    getrennte Balken-/Beschriftungs-Widgets statt eines kombinierten Slots wie
+    bei ``ProgressReporter``, weil hier IMMER beide Zahlen vorliegen (kein
+    Rückwärtskompat-Fall für reine Textmeldungen nötig). Gibt eine
+    ``on_progress``-Funktion zurück, die einen ``st.progress``-Balken und eine
+    Restzeit-Schätzung live nachführt. Die Schätzung basiert auf der
+    BISHERIGEN Durchschnittsdauer pro Einheit - ungenau beim allerersten
+    Aufruf, wird aber mit jeder weiteren Einheit genauer. Der Timer startet
+    erst beim ERSTEN Aufruf (nicht schon beim Erzeugen dieser Funktion) -
+    wichtig, wenn z. B. eine zweite Anzeige schon vor einer vorausgehenden
+    Phase aufgebaut wird und sonst deren Wartezeit fälschlich mitzählen würde."""
+    state = {"start": None}
+
+    def _cb(done: int, total: int, unit_label: str) -> None:
+        if state["start"] is None:
+            state["start"] = time.time()
+        elapsed = time.time() - state["start"]
+        bar.progress(min(done / total, 1.0) if total else 0.0)
+        if done >= total and total:
+            caption.caption(f"✅ {label} fertig ({fmt_dauer(elapsed)}).")
+        elif done > 0 and total:
+            avg = elapsed / done
+            remaining = avg * (total - done)
+            caption.caption(f"⏳ {label}: {done}/{total} · noch ca. {fmt_dauer(remaining)}")
+        else:
+            caption.caption(f"⏳ {label}: wird vorbereitet …")
+    return _cb

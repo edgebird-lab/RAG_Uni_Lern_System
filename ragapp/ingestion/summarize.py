@@ -244,6 +244,12 @@ def write_summary(
     for i, (title, body) in enumerate(sections, 1):
         if len(body) < _MIN_SECTION_CHARS:
             stats.skipped_short += 1
+            # Auch fuer uebersprungene Abschnitte progress() aufrufen (nicht nur
+            # fuer tatsaechlich zusammengefasste) - sonst bleibt ein daraus
+            # abgeleiteter Fortschrittsbalken bei vielen kurzen Abschnitten
+            # scheinbar haengen, obwohl laengst alles fertig ist.
+            if progress:
+                progress(f"'{title[:40]}' übersprungen (zu kurz) ({i}/{total}) …")
             continue
         if progress:
             progress(f"Zusammenfassung {label}: '{title[:40]}' ({i}/{total}) …")

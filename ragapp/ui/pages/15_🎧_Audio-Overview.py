@@ -29,7 +29,6 @@ from __future__ import annotations
 import sys
 import pathlib
 import re
-import time
 import html
 
 _p = pathlib.Path(__file__).resolve()
@@ -61,51 +60,15 @@ with st.spinner("Audio-Overview wird geladen ..."):
     from ragapp import manifest, audio_overview, audiobook
     from ragapp.config import settings, SUBJECT_LABELS, PROJECT_ROOT, AUDIO_DIR
     from ragapp.llm import list_installed_models
+    # _fmt_dauer/_progress_tracker liegen jetzt gemeinsam mit Zusammenfassung in
+    # ragapp/ui/_progress.py (identisches Muster, zwei driftende Kopien vermieden).
+    from ragapp.ui._progress import fmt_dauer as _fmt_dauer, progress_tracker as _progress_tracker
 
 _KEIN_FACH = "— Kein Fach —"
 
 
 def _fach(code: "str | None") -> str:
     return SUBJECT_LABELS.get(code, code) if code else "–"
-
-
-def _fmt_dauer(sekunden: float) -> str:
-    """Kurze, lesbare Dauer ('2 Min 15 Sek' / '45 Sek')."""
-    s = max(0, int(round(sekunden)))
-    m, s = divmod(s, 60)
-    if m and s:
-        return f"{m} Min {s} Sek"
-    if m:
-        return f"{m} Min"
-    return f"{s} Sek"
-
-
-def _progress_tracker(bar, caption, label: str):
-    """Gibt eine ``on_progress``-Funktion zurück (siehe
-    ``audio_overview.ProgressCallback``), die einen ``st.progress``-Balken und
-    eine Restzeit-Schätzung live nachführt. Die Schätzung basiert auf der
-    BISHERIGEN Durchschnittsdauer pro Einheit (Abschnitt/Satz) - ungenau beim
-    allerersten Aufruf, wird aber mit jeder weiteren Einheit genauer. Der
-    Timer startet erst beim ERSTEN Aufruf (nicht schon beim Erzeugen dieser
-    Funktion) - wichtig, weil z. B. die Vertonungs-Anzeige schon vor der
-    KI-Skripterzeugung aufgebaut wird und sonst deren Wartezeit mitzählen
-    würde."""
-    state = {"start": None}
-
-    def _cb(done: int, total: int, unit_label: str) -> None:
-        if state["start"] is None:
-            state["start"] = time.time()
-        elapsed = time.time() - state["start"]
-        bar.progress(min(done / total, 1.0) if total else 0.0)
-        if done >= total and total:
-            caption.caption(f"✅ {label} fertig ({_fmt_dauer(elapsed)}).")
-        elif done > 0 and total:
-            avg = elapsed / done
-            remaining = avg * (total - done)
-            caption.caption(f"⏳ {label}: {done}/{total} · noch ca. {_fmt_dauer(remaining)}")
-        else:
-            caption.caption(f"⏳ {label}: wird vorbereitet …")
-    return _cb
 
 
 def _render_pronunciation_hints(text: str, *, key_prefix: str) -> None:

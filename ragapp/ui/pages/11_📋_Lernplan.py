@@ -330,7 +330,10 @@ with card("kopf"):
     elif _total_planned_all:
         st.success("✅ Alle Blöcke dieses Plans sind erledigt.")
 
-with st.expander("⚙️ Einstellungen & Löschen"):
+# key= haelt den Auf/Zu-Zustand fest - ohne key faellt der Expander sonst bei
+# JEDEM Rerun (auch nur durch das "Zieldatum setzen"-Haekchen DARIN) auf
+# zugeklappt zurueck, bevor gespeichert wird.
+with st.expander("⚙️ Einstellungen & Löschen", key=f"splan_settings_expander_{_active_plan_id}"):
     ec1, ec2, ec3 = st.columns(3)
     with ec1:
         _edit_daily = st.number_input("Verfügbare Zeit/Tag (Min)", min_value=15, max_value=600,

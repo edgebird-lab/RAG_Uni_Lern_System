@@ -32,6 +32,7 @@ with st.spinner("Zusammenfassung wird geladen …"):
     from ragapp.config import settings, SUBJECT_LABELS
     from ragapp.ingestion import summarize
     from ragapp.ingestion.summarize import SummaryStats
+    from ragapp.ui._progress import progress_tracker
 
 
 def _fach(code: str) -> str:
@@ -66,17 +67,26 @@ with card("quelle"):
     st.caption(f"Autoren-Modell: `{model}`. Das kann je nach Umfang etwas dauern.")
 
     if st.button("📝 Zusammenfassung erzeugen", type="primary", use_container_width=True):
+        _zus_bar = st.progress(0.0)
+        _zus_cap = st.empty()
         status = st.empty()
         stats = SummaryStats()
+        _tracker = progress_tracker(_zus_bar, _zus_cap, "Zusammenfassung")
 
         def _prog(msg: str) -> None:
-            status.info(msg)
+            status.caption(msg)
+            # write_summary() ruft progress() jetzt fuer JEDEN Abschnitt auf -
+            # auch uebersprungene/fehlgeschlagene (siehe Kommentar dort) - daher
+            # ergibt die Summe der Zaehler in `stats` (die write_summary schon
+            # live mitfuehrt) den echten, monoton wachsenden Fortschritt, ohne
+            # den Aufruftext selbst parsen zu muessen.
+            _done = stats.written + stats.failed + stats.skipped_short + stats.skipped_empty
+            _tracker(_done, stats.total_sections or 1, msg[:40])
 
         try:
-            with st.spinner("Erzeuge Zusammenfassung …"):
-                path = summarize.write_summary(
-                    target, mode=mode, progress=_prog, stats_out=stats,
-                )
+            path = summarize.write_summary(
+                target, mode=mode, progress=_prog, stats_out=stats,
+            )
         except ValueError as exc:
             status.warning(str(exc))
         except Exception as exc:                      # noqa: BLE001

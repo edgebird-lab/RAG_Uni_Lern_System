@@ -244,7 +244,11 @@ st.divider()
 with card("stundenplan"):
     st.subheader("🗓️ Stundenplan")
 
-    with st.expander("➕ Neuen Termin hinzufügen"):
+    # key= haelt den Auf/Zu-Zustand fest - ohne key faellt der Expander sonst bei
+    # JEDEM Rerun (auch nur durch die "Fach"-Auswahl DARIN) auf zugeklappt
+    # zurueck, bevor der Rest des Formulars ausgefuellt ist (gleiches Muster wie
+    # beim Ausspracheregeln-Expander in Audio-Overview behoben).
+    with st.expander("➕ Neuen Termin hinzufügen", key="tt_add_expander"):
         tc1, tc2, tc3, tc4 = st.columns(4)
         with tc1:
             _tt_choice = st.selectbox("Fach", _known_subjects + ["(neues Fach …)"], key="tt_new_subject")
@@ -277,7 +281,7 @@ with card("stundenplan"):
         _tt_subjects = sorted({s["subject"] for s in _slots if s.get("subject")})
         _tt_colors = manifest.subject_colors_map()
 
-        with st.expander("🎨 Fach-Farben"):
+        with st.expander("🎨 Fach-Farben", key="tt_colors_expander"):
             st.caption("Jedes Fach hat automatisch eine Farbe; hier lässt sie sich anpassen.")
             _color_cols = st.columns(4)
             _new_colors: dict = {}
@@ -338,7 +342,7 @@ st.divider()
 with card("aufgaben"):
     st.subheader("📝 Aufgaben & Hausaufgaben")
 
-    with st.expander("➕ Neue Aufgabe hinzufügen"):
+    with st.expander("➕ Neue Aufgabe hinzufügen", key="task_add_expander"):
         ac1, ac2, ac3 = st.columns(3)
         with ac1:
             _task_title = st.text_input("Titel", key="task_new_title")

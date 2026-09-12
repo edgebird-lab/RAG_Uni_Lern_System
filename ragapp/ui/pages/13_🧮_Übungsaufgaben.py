@@ -76,8 +76,16 @@ if _prefill and _prefill.get("subject") in _subjects_with_docs:
 # Neue Aufgabe generieren
 # --------------------------------------------------------------------------- #
 _existing_count = manifest.count_practice_problems()
+# key= haelt den Auf/Zu-Zustand fest - ohne key faellt der Expander sonst bei
+# JEDEM Rerun (auch nur durch die "Fach"-Auswahl DARIN) auf zugeklappt zurueck.
+# Das erzwungene Aufklappen beim Prefill aus dem Lernplan (siehe oben) muss
+# dafuer jetzt DIREKT in den Widget-Schluessel schreiben (gleiches "pending"-
+# Muster wie an anderen Stellen der App), statt nur den `expanded`-Parameter zu
+# setzen - der wird bei einem bereits belegten Schluessel sonst ignoriert.
+if st.session_state.pop("_practice_gen_expanded", False):
+    st.session_state["practice_gen_expander"] = True
 with st.expander("➕ Neue Übungsaufgabe generieren",
-                 expanded=st.session_state.pop("_practice_gen_expanded", not _existing_count)):
+                 expanded=not _existing_count, key="practice_gen_expander"):
     gc1, gc2 = st.columns(2)
     with gc1:
         _g_subject = st.selectbox("Fach", _subjects_with_docs, format_func=_fach,
@@ -151,20 +159,25 @@ col_list, col_practice = st.columns([1, 2])
 with col_list:
     with card("liste"):
         if not _problems:
+            # KEIN leerer st.container(height=480) mehr, wenn es nichts zu
+            # zeigen gibt - wirkte sonst wie ein verwaistes, kaputtes Element
+            # (grosse leere Flaeche unter dem Hinweistext, siehe gleicher Fix
+            # bei Notizen).
             st.caption("Noch keine Übungsaufgaben für diese Filterung." if (_subj_arg or _kind_arg)
                       else "Noch keine Übungsaufgaben – oben die erste generieren.")
-        with st.container(height=480):
-            for p in _problems:
-                _label = _KIND_LABEL.get(p["kind"], p["kind"]) + " · " + (
-                    p["topic"] or (p["problem_text"][:40] + "…"
-                                  if len(p["problem_text"]) > 40 else p["problem_text"]))
-                _meta = _fach(p["subject"])
-                _active = st.session_state.get("practice_choice") == p["problem_id"]
-                if st.button(f"{'▶️ ' if _active else ''}{_label}",
-                            key=f"practice_pick_{p['problem_id']}",
-                            use_container_width=True, help=_meta):
-                    st.session_state["_practice_pending_choice"] = p["problem_id"]
-                    st.rerun()
+        else:
+            with st.container(height=480):
+                for p in _problems:
+                    _label = _KIND_LABEL.get(p["kind"], p["kind"]) + " · " + (
+                        p["topic"] or (p["problem_text"][:40] + "…"
+                                      if len(p["problem_text"]) > 40 else p["problem_text"]))
+                    _meta = _fach(p["subject"])
+                    _active = st.session_state.get("practice_choice") == p["problem_id"]
+                    if st.button(f"{'▶️ ' if _active else ''}{_label}",
+                                key=f"practice_pick_{p['problem_id']}",
+                                use_container_width=True, help=_meta):
+                        st.session_state["_practice_pending_choice"] = p["problem_id"]
+                        st.rerun()
 
 # --------------------------------------------------------------------------- #
 # Übungsfluss

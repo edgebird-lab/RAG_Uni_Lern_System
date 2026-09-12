@@ -180,7 +180,10 @@ with card("viewer"):
         st.markdown(f"<div style='text-align:right;padding-top:6px;font-size:.8rem;opacity:.7'>"
                    f"{len(_graph.get('nodes', []))} Themen</div>", unsafe_allow_html=True)
 
-    with st.expander("⚙️ Neu generieren & Löschen"):
+    # key= haelt den Auf/Zu-Zustand fest - ohne key faellt der Expander sonst bei
+    # JEDEM Rerun (auch nur durch die Modellwahl DARIN) auf zugeklappt zurueck,
+    # bevor der Klick auf "neu generieren" erfolgt.
+    with st.expander("⚙️ Neu generieren & Löschen", key=f"mm_regen_expander_{_active_id}"):
         _regen_model = _model_picker(f"mm_regen_model_{_active_id}")
         if st.button("🔄 Mindmap neu generieren", key=f"mm_regen_{_active_id}"):
             with st.spinner("KI erstellt die Mindmap neu … das kann je nach Umfang und "

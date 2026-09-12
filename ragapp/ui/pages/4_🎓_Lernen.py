@@ -105,7 +105,11 @@ if _offen_global > 0:
         elif ares.get("status") == "llm_error":
             st.error(f"❌ Modellfehler: {ares.get('error_msg', '')}")
 
-with st.expander("⚙️ Karten verwalten"):
+# key= haelt den Auf/Zu-Zustand fest - ohne key faellt der Expander sonst bei
+# JEDEM Rerun (auch nur durch die "Fach"-Auswahl DARIN) auf zugeklappt zurueck,
+# bevor der Klick auf den eigentlichen Knopf erfolgt (gleiches Muster wie beim
+# Ausspracheregeln-Expander in Audio-Overview behoben).
+with st.expander("⚙️ Karten verwalten", key="hv_expander"):
     st.caption("Karten kommen aus dem generierten Fragenmaterial. Wähle, aus welchem "
                "Fach und wie viele Fragen je Textabschnitt du aufnimmst.")
     cc1, cc2, cc3 = st.columns(3)
@@ -155,7 +159,8 @@ with st.expander("⚙️ Karten verwalten"):
             st.success(f"✅ {ares['filled']} Musterlösung(en) erzeugt.")
             st.rerun()
 
-with st.expander("🗂️ Stapel verwalten (Fach → Dokument → Thema → Karten)", expanded=False):
+with st.expander("🗂️ Stapel verwalten (Fach → Dokument → Thema → Karten)",
+                 expanded=False, key="dk_expander"):
     st.caption(
         "Stapel nach **Fach** organisieren. Innerhalb eines Fachs: nach **Dokument**, "
         "**Thema/Inhaltsverzeichnis** oder **einzelnen Karten** zusammenstellen. "
@@ -409,7 +414,8 @@ with st.expander("🗂️ Stapel verwalten (Fach → Dokument → Thema → Kart
 
 st.divider()
 
-with st.expander("📋 Karten & Fragen verwalten (auswählen, bearbeiten, löschen)"):
+with st.expander("📋 Karten & Fragen verwalten (auswählen, bearbeiten, löschen)",
+                 key="mv_expander"):
     st.caption("Frage/Antwort direkt in der Tabelle bearbeiten. Häkchen setzen, um Karten "
                "zu löschen, einem Stapel zuzuordnen oder Antworten zu erzeugen. "
                "**Abfrage** = in der Lernrunde zeigen · **Embedding** = Frage im Suchindex halten.")
