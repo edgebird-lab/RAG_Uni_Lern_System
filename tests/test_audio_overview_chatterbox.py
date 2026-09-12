@@ -134,6 +134,7 @@ def synth_env(load_functions, ragapp_dir, tmp_path):
                 "Optional": None,
                 "Path": __import__("pathlib").Path,
                 "re": __import__("re"),
+                "manifest": types.SimpleNamespace(list_pronunciation_fixes=lambda: {}),
             },
             const_names=["_PRONUNCIATION_FIXES", "_PATH_PATTERN", "_DOMAIN_PATTERN",
                          "_BARE_SUFFIX_PATTERN"],

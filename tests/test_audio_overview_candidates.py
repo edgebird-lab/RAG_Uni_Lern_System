@@ -6,6 +6,7 @@ CamelCase-Compounds, vokallose Kurzwörter) - explizit KEIN Wörterbuch-Abgleich
 (deutsche Komposita sind unbegrenzt zusammensetzbar) und KEIN automatischer
 Fix, nur ein Vorschlag zum Gegenhören."""
 import re
+import types
 
 import pytest
 
@@ -15,10 +16,26 @@ def find_fn(load_functions, ragapp_dir):
     return load_functions(
         ragapp_dir / "audio_overview.py",
         ["find_pronunciation_candidates"],
-        {"re": re},
+        {"re": re, "manifest": types.SimpleNamespace(list_pronunciation_fixes=lambda: {})},
         const_names=["_PRONUNCIATION_FIXES", "_CANDIDATE_PATTERN",
                      "_CANDIDATE_SHORT_WORD", "_VOWELS"],
     )["find_pronunciation_candidates"]
+
+
+@pytest.fixture
+def find_fn_with_dynamic(load_functions, ragapp_dir):
+    """Wie ``find_fn``, aber mit einem gefakten ``manifest.list_pronunciation_fixes()``
+    fuer Tests, ob dauerhaft gemerkte Korrekturen die Kandidatenliste kuerzen."""
+    def _make(dynamic_fixes: dict):
+        return load_functions(
+            ragapp_dir / "audio_overview.py",
+            ["find_pronunciation_candidates"],
+            {"re": re,
+             "manifest": types.SimpleNamespace(list_pronunciation_fixes=lambda: dynamic_fixes)},
+            const_names=["_PRONUNCIATION_FIXES", "_CANDIDATE_PATTERN",
+                         "_CANDIDATE_SHORT_WORD", "_VOWELS"],
+        )["find_pronunciation_candidates"]
+    return _make
 
 
 def test_kurzes_grossbuchstaben_kuerzel_wird_erkannt(find_fn):
@@ -69,3 +86,22 @@ def test_mehrere_kategorien_gemischt(find_fn):
 
 def test_leerer_text_gibt_leere_liste(find_fn):
     assert find_fn("") == []
+
+
+def test_dauerhaft_gemerkte_korrektur_wird_nicht_mehr_vorgeschlagen(find_fn_with_dynamic):
+    # "PID" waere ohne gemerkte Korrektur ein Grossbuchstaben-Kuerzel und
+    # wuerde auftauchen (siehe test_kurzes_grossbuchstaben_kuerzel_wird_erkannt)
+    # - einmal vom Nutzer bestaetigt (manifest.pronunciation_fixes), soll es
+    # nie wieder als "moeglicherweise falsch" gemeldet werden.
+    fn = find_fn_with_dynamic({"PID": "pie-ai-di"})
+    assert fn("Die PID ist eindeutig.") == []
+
+
+def test_dauerhaft_gemerkte_korrektur_ist_case_insensitive(find_fn_with_dynamic):
+    fn = find_fn_with_dynamic({"pid": "pie-ai-di"})
+    assert fn("Die PID ist eindeutig.") == []
+
+
+def test_andere_kandidaten_bleiben_trotz_gemerkter_korrektur_erkannt(find_fn_with_dynamic):
+    fn = find_fn_with_dynamic({"PID": "pie-ai-di"})
+    assert fn("Die PID und die UID sind beide gesetzt.") == ["UID"]

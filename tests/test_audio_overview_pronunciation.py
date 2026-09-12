@@ -19,10 +19,28 @@ def fix_fn(load_functions, ragapp_dir):
         ragapp_dir / "audio_overview.py",
         ["_apply_pronunciation_fixes", "_keep_case", "_speakify_path", "_speakify_domain",
          "_speakify_suffix"],
-        {"re": re},
+        {"re": re, "manifest": types.SimpleNamespace(list_pronunciation_fixes=lambda: {})},
         const_names=["_PRONUNCIATION_FIXES", "_PATH_PATTERN", "_DOMAIN_PATTERN",
                      "_BARE_SUFFIX_PATTERN"],
     )["_apply_pronunciation_fixes"]
+
+
+@pytest.fixture
+def fix_fn_with_dynamic(load_functions, ragapp_dir):
+    """Wie ``fix_fn``, aber mit einem gefakten ``manifest.list_pronunciation_fixes()``,
+    das dauerhaft gemerkte (vom Nutzer bestaetigte) Korrekturen liefert - fuer
+    Tests der Verzahnung mit der statischen ``_PRONUNCIATION_FIXES``-Liste."""
+    def _make(dynamic_fixes: dict):
+        return load_functions(
+            ragapp_dir / "audio_overview.py",
+            ["_apply_pronunciation_fixes", "_keep_case", "_speakify_path", "_speakify_domain",
+             "_speakify_suffix"],
+            {"re": re,
+             "manifest": types.SimpleNamespace(list_pronunciation_fixes=lambda: dynamic_fixes)},
+            const_names=["_PRONUNCIATION_FIXES", "_PATH_PATTERN", "_DOMAIN_PATTERN",
+                         "_BARE_SUFFIX_PATTERN"],
+        )["_apply_pronunciation_fixes"]
+    return _make
 
 
 def test_ssh_wird_buchstabiert(fix_fn):
@@ -70,6 +88,39 @@ def test_boot_als_eigenstaendiges_wort_bleibt_unangetastet(fix_fn):
 def test_text_ohne_treffer_bleibt_unveraendert(fix_fn):
     text = "Ein ganz normaler Satz ohne Problemwörter."
     assert fix_fn(text) == text
+
+
+# --------------------------------------------------------------------------- #
+# Dauerhaft gemerkte Korrekturen (manifest.pronunciation_fixes) - vom Nutzer
+# bestaetigte KI-Vorschlaege (siehe suggest_pronunciations), zusaetzlich zur
+# fest im Code hinterlegten _PRONUNCIATION_FIXES-Liste
+# --------------------------------------------------------------------------- #
+
+def test_dauerhaft_gemerkte_korrektur_wird_angewendet(fix_fn_with_dynamic):
+    fn = fix_fn_with_dynamic({"nmap": "en map"})
+    assert fn("Starte nmap gegen den Zielhost.") == "Starte en map gegen den Zielhost."
+
+
+def test_dauerhaft_gemerkte_korrektur_ist_case_insensitive_und_erhaelt_grossschreibung(
+        fix_fn_with_dynamic):
+    fn = fix_fn_with_dynamic({"nmap": "en map"})
+    assert fn("NMAP ist ein Netzwerk-Scanner.") == "En map ist ein Netzwerk-Scanner."
+
+
+def test_mehrere_dauerhafte_korrekturen_werden_alle_angewendet(fix_fn_with_dynamic):
+    fn = fix_fn_with_dynamic({"nmap": "en map", "curl": "köll"})
+    assert fn("nmap und curl sind beides Kommandozeilen-Tools.") == \
+        "en map und köll sind beides Kommandozeilen-Tools."
+
+
+def test_statische_und_dauerhafte_korrekturen_wirken_zusammen(fix_fn_with_dynamic):
+    fn = fix_fn_with_dynamic({"nmap": "en map"})
+    assert fn("Nutze SSH, dann nmap.") == "Nutze Es-Es-Ha, dann en map."
+
+
+def test_ohne_dauerhafte_korrekturen_bleibt_verhalten_wie_vorher(fix_fn_with_dynamic):
+    fn = fix_fn_with_dynamic({})
+    assert fn("Wir müssen den Rechner booten.") == "Wir müssen den Rechner buhten."
 
 
 # --------------------------------------------------------------------------- #
@@ -171,6 +222,7 @@ def synth_with_fixes(load_functions, ragapp_dir, tmp_path):
             "Optional": None,
             "Path": __import__("pathlib").Path,
             "re": re,
+            "manifest": types.SimpleNamespace(list_pronunciation_fixes=lambda: {}),
         },
         const_names=["_PRONUNCIATION_FIXES", "_PATH_PATTERN", "_DOMAIN_PATTERN",
                      "_BARE_SUFFIX_PATTERN", "_segmenter_singleton"],
@@ -193,3 +245,89 @@ def test_synthesize_speech_veraendert_script_text_argument_nicht(synth_with_fixe
     original = "Wir booten den Server per SSH."
     env.synthesize_speech(original, "ref.wav", str(env.tmp_path / "out.wav"))
     assert original == "Wir booten den Server per SSH."
+
+
+# --------------------------------------------------------------------------- #
+# suggest_pronunciations: fragt das LLM, welche Woerter im GANZEN Skript-Text
+# falsch vorgelesen wuerden - bewusst NICHT auf find_pronunciation_candidates
+# als Vorfilter beschraenkt (siehe Modul-Kommentar in audio_overview.py: das
+# Nutzer-Beispiel "nmap" faellt durch das Regex-Sieb, klein geschrieben mit
+# Vokal). Reiner Vorschlag, wendet nichts an, schreibt nichts in die DB.
+# --------------------------------------------------------------------------- #
+
+@pytest.fixture
+def suggest_fn(load_functions, ragapp_dir):
+    def _make(*, llm_response=None, raises=None):
+        calls = []
+
+        class _FakeLLM:
+            def generate_json(self, prompt, system=None, **kwargs):
+                calls.append({"prompt": prompt, "system": system, **kwargs})
+                if raises:
+                    raise raises
+                return llm_response
+
+        settings_obj = types.SimpleNamespace(author_model=lambda: "test-modell")
+        funcs = load_functions(
+            ragapp_dir / "audio_overview.py",
+            ["suggest_pronunciations"],
+            {
+                "settings": settings_obj,
+                "get_llm": lambda model: _FakeLLM(),
+                "Optional": None,
+            },
+            const_names=["_PRONUNCIATION_SUGGEST_SYSTEM", "_PRONUNCIATION_SUGGEST_PROMPT"],
+        )
+        return types.SimpleNamespace(**funcs, calls=calls)
+    return _make
+
+
+def test_suggest_pronunciations_leerer_text_ruft_llm_nicht_auf(suggest_fn):
+    env = suggest_fn(llm_response={"nmap": "en map"})
+    assert env.suggest_pronunciations("") == {}
+    assert env.suggest_pronunciations("   ") == {}
+    assert env.calls == []
+
+
+def test_suggest_pronunciations_gibt_gueltige_vorschlaege_zurueck(suggest_fn):
+    env = suggest_fn(llm_response={"nmap": "en map"})
+    assert env.suggest_pronunciations("Starte nmap gegen den Zielhost.") == {"nmap": "en map"}
+
+
+def test_suggest_pronunciations_verwirft_woerter_die_nicht_im_text_vorkommen(suggest_fn):
+    # Schutz gegen ein Abschweifen des Modells auf Woerter, die gar nicht Teil
+    # des uebergebenen Textes waren
+    env = suggest_fn(llm_response={"nmap": "en map", "erfundenes_wort": "irgendwas"})
+    assert env.suggest_pronunciations("Starte nmap gegen den Zielhost.") == {"nmap": "en map"}
+
+
+def test_suggest_pronunciations_ist_case_insensitiv_beim_textabgleich(suggest_fn):
+    env = suggest_fn(llm_response={"nmap": "en map"})
+    assert env.suggest_pronunciations("Starte NMAP gegen den Zielhost.") == {"nmap": "en map"}
+
+
+def test_suggest_pronunciations_verwirft_vorschlag_identisch_zum_original(suggest_fn):
+    env = suggest_fn(llm_response={"Server": "Server"})
+    assert env.suggest_pronunciations("Der Server läuft.") == {}
+
+
+def test_suggest_pronunciations_ignoriert_nicht_string_werte(suggest_fn):
+    env = suggest_fn(llm_response={"nmap": "en map", "curl": 123})
+    assert env.suggest_pronunciations("nmap und curl.") == {"nmap": "en map"}
+
+
+def test_suggest_pronunciations_nicht_dict_antwort_gibt_leeres_dict(suggest_fn):
+    env = suggest_fn(llm_response=["nmap", "en map"])
+    assert env.suggest_pronunciations("Starte nmap.") == {}
+    env2 = suggest_fn(llm_response=None)
+    assert env2.suggest_pronunciations("Starte nmap.") == {}
+
+
+def test_suggest_pronunciations_llm_fehler_wirft_keine_ausnahme(suggest_fn):
+    env = suggest_fn(raises=RuntimeError("Modell antwortet nicht"))
+    assert env.suggest_pronunciations("Starte nmap.") == {}
+
+
+def test_suggest_pronunciations_leeres_json_objekt_gibt_leeres_dict(suggest_fn):
+    env = suggest_fn(llm_response={})
+    assert env.suggest_pronunciations("Ein ganz normaler Satz.") == {}

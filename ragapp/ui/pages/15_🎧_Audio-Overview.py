@@ -11,6 +11,14 @@ mehrminuetige Vertonung laeuft, nicht erst danach. Alternativ laesst sich ein
 Skript auch komplett selbst schreiben (keine Dokumente/KI noetig) und ein
 bestehendes Skript laesst sich bearbeiten und NUR neu vertonen, ohne die
 KI-Generierung erneut anzustossen.
+
+Fachjargon (Kommandos, Abkuerzungen wie "nmap") wird von JEDEM TTS-Modell nach
+Standard-Ausspracheregeln vorgelesen, nicht wie im IT-Jargon ueblich - das ist
+ein Text-Normalisierungs-, kein Stimmqualitaets-Problem (siehe Moduldoc
+``ragapp/audio_overview.py``). ``_render_pronunciation_hints`` laesst dafuer
+das LLM Aussprache-Vorschlaege machen; bestaetigte Korrekturen werden
+dauerhaft gemerkt (``manifest.pronunciation_fixes``) und gelten automatisch
+fuer alle kuenftigen Audio-Overviews.
 """
 from __future__ import annotations
 
@@ -96,33 +104,89 @@ def _progress_tracker(bar, caption, label: str):
     return _cb
 
 
-def _render_pronunciation_hints(text: str) -> None:
-    """Zeigt (falls vorhanden) einen aufklappbaren Kasten mit Woertern, die
-    laut ``audio_overview.find_pronunciation_candidates`` MOEGLICHERWEISE
-    falsch ausgesprochen werden - reiner Vorschlag zum Gegenhoeren, kein
-    automatischer Fix (siehe dort). ``st.text_area`` kann selbst keine
-    einzelnen Woerter einfaerben, deshalb eine SEPARATE, nur lesbare
-    Vorschau via ``st.markdown``/HTML statt echter Inline-Hervorhebung in
-    der Editier-Box selbst - Aenderungen macht der Nutzer weiterhin oben in
-    der normalen Textbox. Klappt standardmaessig zu, damit ein Skript ohne
-    Treffer nicht unnoetig Platz braucht."""
-    _candidates = audio_overview.find_pronunciation_candidates(text)
-    if not _candidates:
+def _render_pronunciation_hints(text: str, *, key_prefix: str) -> None:
+    """Laesst das LLM ``text`` selbst nach falsch vorzulesenden Woertern
+    durchsuchen (``audio_overview.suggest_pronunciations``) und zeigt die
+    Treffer editierbar mit Haekchen zum Uebernehmen. Ein staerkeres TTS-Modell
+    wuerde das falsche Vorlesen von Fachjargon NICHT beheben (Text-
+    Normalisierungs-, kein Stimmqualitaets-Problem, siehe Modul-Kommentar in
+    audio_overview.py) - deshalb fragen wir das ohnehin laufende LLM. Bewusst
+    NICHT auf ``find_pronunciation_candidates`` (Regex-Vorfilter) beschraenkt:
+    genau das Beispiel "nmap" (klein geschrieben, mit Vokal) faellt durch
+    dieses Sieb, waere also nie zur KI-Anfrage gekommen - das Regex-Sieb dient
+    hier nur noch der zusaetzlichen optischen Hervorhebung im Text, nicht mehr
+    als Filter fuer die KI-Anfrage selbst. Uebernommene Korrekturen werden
+    SOFORT dauerhaft gespeichert (``manifest.upsert_pronunciation_fix``) -
+    ``synthesize_speech`` liest die Liste bei jedem Aufruf frisch aus der DB,
+    ein neuer Eintrag wirkt also ab dem naechsten Vertonungslauf automatisch,
+    auch in ganz anderen Skripten. ``key_prefix`` haelt Widget-Keys ueber die
+    drei Aufrufstellen (KI-Entwurf, eigenes Skript, bestehendes Overview)
+    auseinander. Zeigt nichts an, wenn weder die KI noch das Regex-Sieb etwas
+    findet, damit ein unauffaelliges Skript nicht unnoetig Platz braucht."""
+    text = (text or "").strip()
+    if not text:
         return
+
+    # KI-Suche einmal pro Textstand holen (nicht bei jedem Rerun neu anfragen).
+    _cache_key = f"_audio_pron_suggest_{key_prefix}_{hash(text)}"
+    if _cache_key not in st.session_state:
+        with st.spinner("Text wird auf falsch vorzulesende Wörter geprüft …"):
+            st.session_state[_cache_key] = audio_overview.suggest_pronunciations(text)
+    _suggestions = st.session_state[_cache_key]
+
+    _candidates = audio_overview.find_pronunciation_candidates(text)
+    # Anzeige-Reihenfolge: erst was die KI vorschlaegt (die eigentlichen
+    # Treffer), danach evtl. vom Regex-Sieb zusaetzlich markierte Woerter ohne
+    # KI-Vorschlag (leeres Eingabefeld zum selbst Eintragen).
+    _words = list(_suggestions.keys()) + [w for w in _candidates if w not in _suggestions]
+    if not _words:
+        return
+
     _escaped = html.escape(text)
     _pattern = re.compile(
-        r"\b(?:" + "|".join(re.escape(w) for w in sorted(_candidates, key=len, reverse=True))
+        r"\b(?:" + "|".join(re.escape(w) for w in sorted(_words, key=len, reverse=True))
         + r")\b")
     _highlighted = _pattern.sub(lambda m: f"<mark>{m.group(0)}</mark>", _escaped)
     _highlighted = _highlighted.replace("\n", "<br>")
-    with st.expander(f"🔍 {len(_candidates)} möglicherweise falsch ausgesprochene(s) "
-                     "Wort/Wörter - zum Gegenhören"):
-        st.caption("Nur ein Vorschlag (kurze GROSSBUCHSTABEN-Kürzel, CamelCase-Begriffe, "
-                   "vokallose Kurzwörter wie „ps“) - keine Garantie und kein automatischer "
-                   "Fix. Anhören, und was wirklich falsch klingt oben im Text von Hand "
-                   "anpassen.")
+    with st.expander(f"🔍 {len(_words)} möglicherweise falsch ausgesprochene(s) "
+                     "Wort/Wörter - Aussprache prüfen"):
+        st.caption("Vorschläge kommen vom KI-Modell (kennt übliches Fachjargon-Vorlesen, "
+                   "z. B. „nmap“ → „en map“) - kurz gegenhören/korrigieren und übernehmen. "
+                   "Übernommene Korrekturen merkt sich die App dauerhaft und wendet sie ab "
+                   "sofort auf ALLE künftigen Audio-Overviews an, nicht nur auf dieses Skript.")
         st.markdown(f'<div style="line-height:1.6">{_highlighted}</div>',
                    unsafe_allow_html=True)
+        st.write("")
+
+        _rows = []
+        for _word in _words:
+            _c1, _c2, _c3 = st.columns([2, 3, 1])
+            _c1.markdown(f"**{_word}**")
+            _sugg = _suggestions.get(_word, "")
+            _val = _c2.text_input(
+                f"Aussprache für {_word}", value=_sugg,
+                key=f"pron_val_{key_prefix}_{_word}", label_visibility="collapsed",
+                placeholder="normale Aussprache (kein Fix nötig)")
+            _take = _c3.checkbox("✓ übernehmen", value=bool(_sugg),
+                                 key=f"pron_take_{key_prefix}_{_word}",
+                                 label_visibility="collapsed",
+                                 help="Übernehmen & dauerhaft merken")
+            _rows.append((_word, _val.strip(), _take))
+
+        if st.button("💾 Ausgewählte Korrekturen übernehmen & merken",
+                     key=f"pron_apply_{key_prefix}"):
+            _n = 0
+            for _word, _val, _take in _rows:
+                if _take and _val:
+                    manifest.upsert_pronunciation_fix(_word, _val)
+                    _n += 1
+            if _n:
+                st.session_state.pop(_cache_key, None)
+                st.success(f"{_n} Aussprache-Korrektur(en) gespeichert - gelten ab sofort "
+                          "automatisch für alle künftigen Audio-Overviews.")
+                st.rerun()
+            else:
+                st.info("Keine Korrektur ausgewählt.")
 
 
 def _model_picker(key: str) -> "str | None":
@@ -190,6 +254,26 @@ def _fmt_ov_option(oid: "str | None") -> str:
 st.selectbox("Audio-Overview wählen", [None] + list(_ov_by_id.keys()),
             format_func=_fmt_ov_option, key="audio_choice")
 _active_id = st.session_state.get("audio_choice")
+
+# --------------------------------------------------------------------------- #
+# Dauerhaft gemerkte Ausspracheregeln (siehe _render_pronunciation_hints/
+# manifest.pronunciation_fixes) - Uebersicht + Loeschen, falls sich eine
+# Korrektur im Nachhinein als falsch herausstellt. Nur sichtbar, wenn es
+# ueberhaupt welche gibt, damit die Seite ohne gespeicherte Korrekturen nicht
+# unnoetig Platz braucht.
+# --------------------------------------------------------------------------- #
+_pron_fixes = manifest.list_pronunciation_fixes()
+if _pron_fixes:
+    with st.expander(f"🔤 {len(_pron_fixes)} gespeicherte Ausspracheregel(n) verwalten"):
+        st.caption("Gilt automatisch für alle Audio-Overviews (KI-generiert, selbst "
+                   "geschrieben oder neu vertont).")
+        for _word, _replacement in _pron_fixes.items():
+            _pc1, _pc2, _pc3 = st.columns([2, 3, 1])
+            _pc1.markdown(f"**{_word}**")
+            _pc2.caption(f"→ {_replacement}")
+            if _pc3.button("🗑️", key=f"pron_del_{_word}", help="Regel löschen"):
+                manifest.delete_pronunciation_fix(_word)
+                st.rerun()
 
 st.divider()
 
@@ -278,7 +362,7 @@ if _active_id is None:
             st.text_area("Skript-Text", value=_draft["script"], height=320, key=_draft_key)
             st.caption(f"{len(st.session_state[_draft_key])} Zeichen · {_fach(_draft['subject'])} "
                       f"· {len(_draft['doc_ids'])} Dokument(e)")
-            _render_pronunciation_hints(st.session_state[_draft_key])
+            _render_pronunciation_hints(st.session_state[_draft_key], key_prefix="draft")
 
             dc1, dc2 = st.columns([1, 1])
             if dc1.button("🎙️ Jetzt vertonen", type="primary", use_container_width=True,
@@ -315,7 +399,7 @@ if _active_id is None:
                         "vorgelesen, ganz ohne KI-Generierung oder Dokumente.")
         st.caption(f"{len(_man_script)} Zeichen. Kein Dokument nötig - der Text wird direkt "
                    "vertont.")
-        _render_pronunciation_hints(_man_script)
+        _render_pronunciation_hints(_man_script, key_prefix="manual")
 
         if st.button("🎧 Audio erzeugen", type="primary", disabled=not _man_script.strip()):
             _audio_bar = st.progress(0.0)
@@ -383,7 +467,7 @@ with card("player"):
     if _pending_regen is not None:
         st.session_state[_edit_key] = _pending_regen
     st.text_area("Skript-Text", value=_active["script_text"], height=280, key=_edit_key)
-    _render_pronunciation_hints(st.session_state[_edit_key])
+    _render_pronunciation_hints(st.session_state[_edit_key], key_prefix=f"existing_{_active_id}")
 
     ec1, ec2 = st.columns([1, 1])
     if ec1.button("💾 Speichern & nur Audio neu erzeugen", key=f"audio_resynth_{_active_id}",

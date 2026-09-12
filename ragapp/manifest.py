@@ -366,6 +366,20 @@ CREATE TABLE IF NOT EXISTS audio_overviews (
     updated_at  REAL
 );
 CREATE INDEX IF NOT EXISTS idx_audio_overviews_subject ON audio_overviews(subject);
+
+-- Dauerhaft gemerkte Ausspracheregeln fuers Vorlesen (siehe
+-- ragapp/audio_overview.py: _apply_pronunciation_fixes/suggest_pronunciations).
+-- Ergaenzt die fest im Code hinterlegte _PRONUNCIATION_FIXES-Liste um vom
+-- Nutzer BESTAETIGTE, vom LLM vorgeschlagene Korrekturen (z. B. "nmap" ->
+-- "en map") - einmal bestaetigt, gilt die Korrektur automatisch fuer ALLE
+-- kuenftigen Audio-Overviews, nicht nur fuer das eine Skript, in dem sie
+-- entdeckt wurde.
+CREATE TABLE IF NOT EXISTS pronunciation_fixes (
+    word        TEXT PRIMARY KEY,   -- Original-Schreibweise, wie erkannt
+    replacement TEXT NOT NULL,      -- gesprochene/phonetische Ersetzung
+    created_at  REAL,
+    updated_at  REAL
+);
 """
 
 
@@ -2192,6 +2206,40 @@ def delete_audio_overview(overview_id: str) -> None:
                 p.unlink()
             except OSError:
                 pass
+
+
+# --------------------------------------------------------------------------- #
+# Dauerhaft gemerkte Ausspracheregeln (siehe _SCHEMA-Kommentar oben) - einfache
+# Wort-fuer-Wort-Tabelle statt eines eigenen ID-Schemas wie bei Mindmaps/Audio-
+# Overviews, weil ``word`` selbst der natuerliche, eindeutige Schluessel ist.
+# --------------------------------------------------------------------------- #
+
+def upsert_pronunciation_fix(word: str, replacement: str) -> None:
+    """Legt eine Ausspracheregel an oder aktualisiert sie (gleiches Wort ->
+    neue Ersetzung ueberschreibt die alte, kein Duplikat)."""
+    now = time.time()
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO pronunciation_fixes (word, replacement, created_at, updated_at) "
+            "VALUES (?,?,?,?) "
+            "ON CONFLICT(word) DO UPDATE SET replacement=excluded.replacement, "
+            "updated_at=excluded.updated_at",
+            (word, replacement, now, now),
+        )
+
+
+def list_pronunciation_fixes() -> dict[str, str]:
+    """``{original_wort: ausgesprochene_ersetzung}`` - fuer den schnellen
+    Nachschlage-Zugriff aus ``audio_overview._apply_pronunciation_fixes``."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT word, replacement FROM pronunciation_fixes ORDER BY word").fetchall()
+    return {r["word"]: r["replacement"] for r in rows}
+
+
+def delete_pronunciation_fix(word: str) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM pronunciation_fixes WHERE word=?", (word,))
 
 
 # Ro7: KEINE Initialisierung mehr als Import-Nebenwirkung. Schema/Migrationen
