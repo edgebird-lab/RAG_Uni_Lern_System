@@ -48,6 +48,8 @@ PAGE_REGISTRY: list[dict] = [
      "target": "pages/7_📄_Zusammenfassung.py", "category": "Erstellen"},
     {"key": "audio", "icon": "🎧", "title": "Audio-Overview", "subtitle": "Vorgelesen mit deiner Stimme",
      "target": "pages/15_🎧_Audio-Overview.py", "category": "Erstellen"},
+    {"key": "semesterplan", "icon": "📚", "title": "Semesterplan", "subtitle": "Fächer & Termine importieren",
+     "target": "pages/16_📚_Semesterplan.py", "category": "Erstellen"},
     {"key": "notizen", "icon": "🗒️", "title": "Notizen", "subtitle": "Eigene Gedanken",
      "target": "pages/12_🗒️_Notizen.py", "category": "Erstellen"},
     {"key": "fortschritt", "icon": "📈", "title": "Fortschritt", "subtitle": "Dein Lernfortschritt",
@@ -93,6 +95,7 @@ PAGE_THEMES: dict[str, dict] = {
     "evaluation":      {"accent": "#F4B942", "soft": "#FDEFD2", "name": "Honig"},
     "einstellungen":   {"accent": "#A9A6D4", "soft": "#EAE9F7", "name": "Fliederblau"},
     "audio":           {"accent": "#4FC3D9", "soft": "#DCF4F8", "name": "Aquamarin"},
+    "semesterplan":    {"accent": "#D9A464", "soft": "#F7E7CE", "name": "Karamell"},
 }
 _DEFAULT_THEME = PAGE_THEMES["home"]
 
