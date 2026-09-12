@@ -137,8 +137,16 @@ def health_check(base_url: Optional[str] = None,
         base = _normalize_base_url(base_url or settings.SEARXNG_BASE_URL)
         timeout = float(timeout_s if timeout_s is not None else settings.SEARXNG_TIMEOUT_S)
         url = urljoin(base, "search")
+        # "test" + science liefert oft 0 Treffer – besser eine echte Fachquery
         with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-            r = client.get(url, params={"q": "test", "format": "json", "categories": "science"})
+            r = client.get(
+                url,
+                params={
+                    "q": "spaced repetition meta-analysis",
+                    "format": "json",
+                    "categories": "science",
+                },
+            )
         if r.status_code >= 400:
             return False, f"HTTP {r.status_code} von {base}"
         data = r.json()

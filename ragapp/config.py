@@ -510,10 +510,10 @@ class Settings:
     # Sicherheitsnetz, NICHT die normale Ziel-Laenge: das Skript entsteht
     # ABSCHNITTSWEISE (ein LLM-Aufruf je Abschnitt, siehe audio_overview.py)
     # und waechst dadurch natuerlich mit der Dokumentgroesse - dieser Deckel
-    # greift nur, wenn SEHR viele/lange Dokumente auf einmal gewaehlt werden,
-    # und verhindert eine Laufzeit-Explosion (40000 Zeichen ~ 40 Min Audio bei
-    # durchschnittlichem Sprechtempo).
-    AUDIO_MAX_SCRIPT_CHARS: int = 40000
+    # greift nur, wenn SEHR viele/lange Dokumente auf einmal gewaehlt werden.
+    # Faustregel ~1000 Zeichen/Min Sprechzeit → 180000 ≈ 3 Stunden Audio
+    # (bewusst ueber 2h, damit laengere Vortraege/Lernvideos nicht abbrechen).
+    AUDIO_MAX_SCRIPT_CHARS: int = 180000
     # Chatterbox wird SATZWEISE aufgerufen (siehe audio_overview.py) - in
     # echten Testlaeufen deutlich sauberer als ein Aufruf mit dem kompletten
     # Skript auf einmal (unnatuerlich schnelles/gehetztes Ergebnis; Chatterbox
@@ -549,9 +549,9 @@ class Settings:
     SEARXNG_BASE_URL: str = "https://search.olbricht-digital.de/"
     SEARXNG_TIMEOUT_S: float = 12.0
     SEARXNG_MAX_RESULTS: int = 12
-    # Sicherheitsnetz fuer Vortrags-Skript (wie AUDIO_MAX_SCRIPT_CHARS).
-    TALK_MAX_SCRIPT_CHARS: int = 24000
-    TALK_MAX_SLIDES: int = 24
+    # Gleicher Grosszuegigkeits-Rahmen wie Audio-Overview (~3h Skript).
+    TALK_MAX_SCRIPT_CHARS: int = 180000
+    TALK_MAX_SLIDES: int = 80
 
     # ------------------------------------------------------------------ #
     # Evaluation

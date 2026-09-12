@@ -277,11 +277,15 @@ Aus gewählten Unterlagen entsteht ein **Marp-Markdown-Vortrag** plus separates
 2. Optional **externe wissenschaftliche Quellen** über deine private SearXNG
    (Opt-in, Standard **aus** – die App bleibt offline). In den Einstellungen
    URL setzen und „Verbindung testen“; oft nur per VPN/LAN erreichbar. Treffer
-   werden gegen eine Domain-Allowlist gefiltert (arxiv, PubMed, Nature, …).
+   werden gegen eine Domain-Allowlist gefiltert (arxiv, PubMed, Nature, …) und
+   als **Zusatzwissen** in Folien/Skript eingearbeitet (nicht nur Literaturliste).
 3. Folien & Skript prüfen/bearbeiten, speichern, mit der **gleichen Stimme** wie
    beim Audio-Overview vertonen.
 4. Export: Marp-`.md`, WAV, optional HTML (Marp-CLI) und **MP4** (PNG-Folien +
    Audio per ffmpeg). Ohne installiertes Marp-CLI bleiben MD + Audio nutzbar.
+
+Skript-Länge: Sicherheitsnetz ca. **3 Stunden** Sprechzeit (gemeinsam mit
+Audio-Overview, `AUDIO_MAX_SCRIPT_CHARS` / `TALK_MAX_SCRIPT_CHARS`).
 
 ---
 
