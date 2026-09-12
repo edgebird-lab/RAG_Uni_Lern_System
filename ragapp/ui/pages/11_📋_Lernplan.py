@@ -496,6 +496,11 @@ else:
             f"🔁 Zusätzlich sind **{_fmt_min(_preview['review_minutes_reserved'])}** für "
             "fällige Karteikarten-Wiederholungen reserviert (aus der Fälligkeits-Prognose) "
             "– die belegen echte Zeit, bevor neuer Stoff drankommt.")
+    if _preview["class_minutes_reserved"] > 0:
+        st.caption(
+            f"🗓️ Außerdem sind **{_fmt_min(_preview['class_minutes_reserved'])}** durch "
+            "Vorlesungen/Kurse aus deinem Stundenplan (Organisation) belegt – der Plan "
+            "rechnet nur noch mit der Zeit, die daneben realistisch übrig bleibt.")
     if _preview["shortfall_minutes"] > 0:
         st.warning(
             f"⚠️ Ehrlich gesagt: Bis zum Zieldatum passen nur "

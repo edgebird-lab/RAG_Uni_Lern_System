@@ -416,13 +416,11 @@ def _collapse_repeats(text: str, max_repeat: int = 2) -> str:
     return "\n".join(out).strip()
 
 
-def _vision_ocr_page(page, model: str) -> str:
-    """Rendert die Seite -> verkleinertes PNG -> Ollama-Vision -> bereinigter
-    Text. Gibt '' bei Fehler oder degenerierter Ausgabe zurueck (Aufrufer faellt
-    dann auf easyocr zurueck)."""
-    png = _render_page_png(page, settings.OCR_VISION_MAX_SIDE, settings.OCR_RENDER_DPI)
-    if not png:
-        return ""
+def _vision_ocr_bytes(png: bytes, model: str) -> str:
+    """Kern der Vision-OCR: fertiges PNG -> Ollama-Vision -> bereinigter Text.
+    Gemeinsam genutzt von ``_vision_ocr_page`` (PDF-Seite) und
+    ``ocr_image_bytes`` (einzelnes Foto, siehe Notizen.py "Foto-Mitschrift").
+    Gibt '' bei Fehler oder degenerierter Ausgabe zurueck."""
     try:
         import base64
         import ollama
@@ -460,6 +458,49 @@ def _vision_ocr_page(page, model: str) -> str:
     if kind in ("unreadable", "template"):
         return ""
     return _collapse_repeats(cleaned)
+
+
+def _vision_ocr_page(page, model: str) -> str:
+    """Rendert die Seite -> verkleinertes PNG -> Ollama-Vision -> bereinigter
+    Text. Gibt '' bei Fehler oder degenerierter Ausgabe zurueck (Aufrufer faellt
+    dann auf easyocr zurueck)."""
+    png = _render_page_png(page, settings.OCR_VISION_MAX_SIDE, settings.OCR_RENDER_DPI)
+    if not png:
+        return ""
+    return _vision_ocr_bytes(png, model)
+
+
+def ocr_image_bytes(image_bytes: bytes) -> "tuple[str, str]":
+    """OCR eines einzelnen FOTOS (kein PDF) - z. B. eine abfotografierte Tafel
+    oder Heftseite (siehe Notizen.py "Foto-Mitschrift"). Nutzt bewusst NUR
+    Vision-OCR (nicht easyocr): easyocr liest lediglich gedruckten Text
+    einigermassen zuverlaessig, bei Handschrift liefert es meist nur
+    Zeichenbrei (siehe Modul-Docstring oben) - und Handschrift ist hier der
+    Hauptfall. Kein Vision-Modell verfuegbar/zu wenig VRAM -> ('', '')
+    statt eines schlechten easyocr-Ergebnisses; der Aufrufer zeigt dann eine
+    klare Fehlermeldung. Gibt (text, engine) zurueck, engine ist "vision" bei
+    Erfolg."""
+    model = _resolve_vision_model()
+    if not model:
+        return "", ""
+    if not _vision_ocr_prepare(model):
+        return "", ""
+    try:
+        import io
+        from PIL import Image
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        w, h = img.size
+        max_side = settings.OCR_VISION_MAX_SIDE
+        scale = max_side / max(w, h)
+        if scale < 1:
+            img = img.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        png = buf.getvalue()
+    except Exception:  # noqa: BLE001
+        return "", ""
+    text = _vision_ocr_bytes(png, model)
+    return (text, "vision") if text else ("", "")
 
 
 # Einmal-pro-Dokument-Entscheidung: darf Vision-OCR (Ollama/GPU) genutzt werden,

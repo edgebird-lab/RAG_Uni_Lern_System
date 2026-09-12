@@ -382,6 +382,31 @@ def parse_iso_date(s: Optional[str]) -> Optional[date]:
 _REVIEW_FORECAST_DAYS = 120   # Horizont fuer die Wiederholungs-Reservierung (siehe unten)
 
 
+def _class_minutes_by_weekday() -> dict[int, int]:
+    """Minuten Vorlesungs-/Kurszeit pro Wochentag (0=Montag..6=Sonntag), aus dem
+    im Organisationsbereich hinterlegten Stundenplan (``manifest.timetable``) -
+    wochentagsbasiert statt datumsbasiert, da ein Stundenplan woechentlich
+    wiederkehrt (kein Forecast-Fenster wie bei den faelligen Wiederholungen
+    noetig). Leer, wenn kein Stundenplan gepflegt ist - ändert dann nichts am
+    bisherigen Verhalten."""
+    try:
+        slots = manifest.list_timetable()
+    except Exception:  # noqa: BLE001
+        return {}
+    out: dict[int, int] = {}
+    for s in slots:
+        try:
+            wd = int(s["weekday"])
+            sh, sm = (int(x) for x in s["start_time"].split(":"))
+            eh, em = (int(x) for x in s["end_time"].split(":"))
+            dur = (eh * 60 + em) - (sh * 60 + sm)
+        except Exception:  # noqa: BLE001
+            continue
+        if dur > 0:
+            out[wd] = out.get(wd, 0) + dur
+    return out
+
+
 def _review_reservation_by_day(subject: Optional[str], effective_daily: int) -> dict[str, int]:
     """Pro Tag (ISO-Datum) reservierte Minuten fuer faellige Karteikarten-Wiederholungen,
     aus der bestehenden Faelligkeits-Prognose (``analytics.due_forecast``) und
@@ -411,13 +436,17 @@ def build_schedule(sections: list[dict], daily_minutes: int,
     mehr angibt (siehe docs/LERNPLAN_FORSCHUNG.md). Faellige Karteikarten-
     Wiederholungen belegen echte Zeit, BEVOR neuer Stoff drankommt - ohne
     das waere der Tagesplan zu optimistisch, weil er die parallel laufende
-    Wiederholungslast ignoriert (siehe ``_review_reservation_by_day``). Reicht
-    ein gesetztes Zieldatum trotzdem nicht, werden nur so viele Bloecke erzeugt,
+    Wiederholungslast ignoriert (siehe ``_review_reservation_by_day``). Ebenso
+    reserviert werden bereits im Stundenplan eingetragene Vorlesungen/Kurse
+    (siehe ``_class_minutes_by_weekday``) - ein Tag mit 6 Stunden Uni hat real
+    weniger freie Zeit als ein vorlesungsfreier Tag. Reicht ein gesetztes
+    Zieldatum trotzdem nicht, werden nur so viele Bloecke erzeugt,
     wie bis dahin passen - der Rest wird als ``shortfall_minutes`` ehrlich
     ausgewiesen statt stillschweigend ueber das Zieldatum hinausgeplant.
 
     Rueckgabe: {blocks, effective_daily_min, capped_daily, total_minutes,
-    days_needed_total, shortfall_minutes, deadline_days, review_minutes_reserved}."""
+    days_needed_total, shortfall_minutes, deadline_days, review_minutes_reserved,
+    class_minutes_reserved}."""
     start = start or date.today()
     effective_daily = min(int(daily_minutes), settings.PLAN_MAX_DAILY_FOCUS_MIN)
     capped = effective_daily < int(daily_minutes)
@@ -429,13 +458,18 @@ def build_schedule(sections: list[dict], daily_minutes: int,
             "blocks": [], "effective_daily_min": 0, "capped_daily": capped,
             "total_minutes": total_minutes, "days_needed_total": 0,
             "shortfall_minutes": total_minutes, "deadline_days": None,
-            "review_minutes_reserved": 0,
+            "review_minutes_reserved": 0, "class_minutes_reserved": 0,
         }
 
     review_by_day = _review_reservation_by_day(subject, effective_daily)
+    class_by_weekday = _class_minutes_by_weekday()
+    class_cap_share = max(0.0, min(0.95, float(settings.PLAN_CLASS_MAX_SHARE)))
 
     def _day_budget(d: date) -> int:
-        return max(0, effective_daily - review_by_day.get(d.isoformat(), 0))
+        reserved_review = review_by_day.get(d.isoformat(), 0)
+        reserved_class = min(class_by_weekday.get(d.weekday(), 0),
+                             effective_daily * class_cap_share)
+        return max(0, round(effective_daily - reserved_review - reserved_class))
 
     deadline_date = parse_iso_date(deadline)
     deadline_days = None
@@ -453,6 +487,8 @@ def build_schedule(sections: list[dict], daily_minutes: int,
     cur_date = start
     remaining_today = _day_budget(cur_date)
     review_reserved_total = review_by_day.get(cur_date.isoformat(), 0)
+    class_reserved_total = min(class_by_weekday.get(cur_date.weekday(), 0),
+                               effective_daily * class_cap_share)
     seen_days = {cur_date.isoformat()}
     for s in sections:
         remaining_section = int(s.get("est_minutes") or 0)
@@ -464,6 +500,8 @@ def build_schedule(sections: list[dict], daily_minutes: int,
                 if iso not in seen_days:
                     seen_days.add(iso)
                     review_reserved_total += review_by_day.get(iso, 0)
+                    class_reserved_total += min(class_by_weekday.get(cur_date.weekday(), 0),
+                                                effective_daily * class_cap_share)
                 continue   # Tag kann trotz Reservierung 0 Minuten frei haben -> pruefen
             take = min(block_min, remaining_section, remaining_today, budget_left)
             blocks.append({"section_id": s.get("section_id"),
@@ -480,4 +518,5 @@ def build_schedule(sections: list[dict], daily_minutes: int,
         "total_minutes": total_minutes, "days_needed_total": days_needed_total,
         "shortfall_minutes": shortfall_minutes, "deadline_days": deadline_days,
         "review_minutes_reserved": review_reserved_total,
+        "class_minutes_reserved": round(class_reserved_total),
     }

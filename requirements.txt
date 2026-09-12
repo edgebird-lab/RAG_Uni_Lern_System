@@ -33,6 +33,7 @@ pypdf>=4.2.0,<7.0        # Fallback-PDF-Parser
 python-docx>=1.1.0,<2.0  # .docx
 python-pptx>=0.6.23,<2.0 # .pptx
 python-frontmatter>=1.1.0,<2.0
+icalendar>=5.0,<7.0      # .ics-Import (Stundenplan/Termine, z. B. WebUntis-Export)
 
 # --- Keyword-Suche (BM25) + deutsche Sprachverarbeitung ---
 rank-bm25>=0.2.2,<1.0
@@ -64,9 +65,9 @@ easyocr>=1.7.0,<2.0
 # NICHT numpy (dessen Version bestimmen andere Pakete wie chromadb; chatterbox
 # lief in echten Tests trotz eigener numpy<2.0-Empfehlung auch mit numpy 2.x
 # einwandfrei).
-librosa==0.11.0
+librosa==0.11.0     # auch fuer Sprachnotizen genutzt (Audio-Dekodierung, ragapp/speech_to_text.py)
 s3tokenizer
-transformers==5.2.0
+transformers==5.2.0 # auch fuer Sprachnotizen genutzt (Whisper-ASR-Pipeline, ragapp/speech_to_text.py)
 diffusers==0.29.0
 resemble-perth>=1.0.0
 conformer==0.3.2

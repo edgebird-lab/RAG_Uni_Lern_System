@@ -429,6 +429,70 @@ with card("aufgaben"):
 st.divider()
 
 # --------------------------------------------------------------------------- #
+# Kalender-Import (.ics) - z. B. WebUntis-/Schulverwaltungs-Export, oder ein
+# abonnierter Uni-/Google-/Outlook-Kalender. Bewusst datei-basiert statt einer
+# Live-API-Anbindung (kein OAuth/Konto noetig, bleibt offline-tauglich - siehe
+# ragapp/ics_import.py-Modul-Docstring). Vorschau-vor-Import wie beim
+# KI-gestuetzten Semesterplan-Import: NICHTS landet ungefragt in der DB.
+# --------------------------------------------------------------------------- #
+with card("ics_import"):
+    st.subheader("📥 Stundenplan & Termine importieren (.ics)")
+    # st.success() direkt vor st.rerun() wird nie sichtbar (der Rerun verwirft
+    # die Meldung, bevor der Browser sie zeigen konnte - derselbe Bug wie bei
+    # "Karten & Fragen verwalten" in Lernen.py) - deshalb ueber session_state
+    # ins naechste Laufen retten (Muster "_dl_msg" aus Einstellungen.py).
+    _ics_flash = st.session_state.pop("_ics_flash", None)
+    if _ics_flash:
+        st.success(_ics_flash)
+    st.caption('Datei aus WebUntis, DSB Mobile, Outlook oder Google Kalender exportieren '
+               '(meist unter „Exportieren"/„Kalender abonnieren" zu finden) und hier '
+               'hochladen. Wöchentlich wiederkehrende Stunden landen im Stundenplan, '
+               'einmalige Termine als Aufgabe.')
+    _ics_file = st.file_uploader("Kalenderdatei (.ics)", type=["ics"], key="ics_upload")
+    if _ics_file is not None:
+        try:
+            from ragapp.ics_import import parse_ics
+            _ics_parsed = parse_ics(_ics_file.getvalue())
+        except Exception as _exc:  # noqa: BLE001
+            _ics_parsed = None
+            st.error(f"Konnte die Datei nicht lesen ({_exc}). Ist es eine gültige .ics-Datei?")
+        if _ics_parsed is not None:
+            _n_tt, _n_tasks = len(_ics_parsed["timetable"]), len(_ics_parsed["tasks"])
+            if not _n_tt and not _n_tasks:
+                st.info("Keine Termine in dieser Datei gefunden.")
+            else:
+                st.success(f"Gefunden: {_n_tt} wöchentliche Stunde(n), {_n_tasks} Termin(e)/Aufgabe(n).")
+                _sel_tt, _sel_tasks = [], []
+                if _n_tt:
+                    st.markdown("**🗓️ Als Stundenplan übernehmen**")
+                    for i, row in enumerate(_ics_parsed["timetable"]):
+                        _lbl = (f"{row['subject']} · {_WOCHENTAGE[row['weekday']]} "
+                               f"{row['start_time']}–{row['end_time']}"
+                               + (f" · {row['room']}" if row.get("room") else ""))
+                        if st.checkbox(_lbl, value=True, key=f"ics_tt_{i}"):
+                            _sel_tt.append(row)
+                if _n_tasks:
+                    st.markdown("**📝 Als Aufgabe übernehmen**")
+                    for i, row in enumerate(_ics_parsed["tasks"]):
+                        _lbl = f"{row['title']}" + (f" · fällig {row['due_date']}" if row.get("due_date") else "")
+                        if st.checkbox(_lbl, value=True, key=f"ics_task_{i}"):
+                            _sel_tasks.append(row)
+                if st.button("📥 Auswahl importieren", key="ics_import_go",
+                            disabled=not _sel_tt and not _sel_tasks):
+                    for row in _sel_tt:
+                        manifest.upsert_timetable_slot(
+                            subject=row["subject"], weekday=row["weekday"],
+                            start_time=row["start_time"], end_time=row["end_time"],
+                            room=row.get("room"))
+                    for row in _sel_tasks:
+                        manifest.upsert_task(title=row["title"], due_date=row.get("due_date"),
+                                            notiz=row.get("notiz"))
+                    st.session_state["_ics_flash"] = (
+                        f"{len(_sel_tt)} Stundenplan-Eintrag/Einträge, "
+                        f"{len(_sel_tasks)} Aufgabe(n) importiert.")
+                    st.rerun()
+
+# --------------------------------------------------------------------------- #
 # Kalender-Export
 # --------------------------------------------------------------------------- #
 with card("export"):

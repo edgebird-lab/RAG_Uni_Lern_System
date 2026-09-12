@@ -221,6 +221,55 @@ with col_editor:
             # (bei jedem Rendern des text_area aktualisiert) und beim Zurueckschalten
             # als expliziter Startwert zurueckgegeben.
             _draft_key = "notiz_new_body_draft"
+
+            # Schneller als Tippen: eine Sprachnotiz aufnehmen (lokales Whisper,
+            # ragapp/speech_to_text.py) oder eine Tafel-/Heftseite abfotografieren
+            # (dieselbe Vision-OCR wie beim Dokumenten-Import, auch fuer
+            # Handschrift geeignet - siehe ragapp/ingestion/loaders.py). Beides
+            # haengt den erkannten Text an den Notiz-Entwurf an, statt selbst zu
+            # speichern - der Nutzer sieht/korrigiert ihn erst im gewohnten Editor.
+            with st.expander("🎙️ Sprachnotiz aufnehmen (statt tippen)"):
+                st.caption("Läuft komplett lokal (Whisper) - kein Internet zur Laufzeit nötig, "
+                          "nur beim allerersten Mal zum einmaligen Herunterladen des Modells.")
+                _voice_audio = st.audio_input("Aufnehmen", key="notiz_voice_input")
+                if _voice_audio is not None and st.button("📝 In Text umwandeln",
+                                                          key="notiz_voice_transcribe"):
+                    from ragapp import speech_to_text as _stt
+                    if not _stt.is_available():
+                        st.error("Sprache-zu-Text ist auf diesem System nicht verfügbar "
+                                "(fehlende Pakete - `pip install -r requirements.txt`).")
+                    else:
+                        with st.spinner("Transkribiere …"):
+                            _voice_text = _stt.transcribe_audio(_voice_audio.getvalue())
+                        if not _voice_text:
+                            st.warning("Konnte nichts transkribieren – bitte lauter/deutlicher "
+                                      "erneut aufnehmen.")
+                        else:
+                            _existing = st.session_state.get(_draft_key, "")
+                            st.session_state[_draft_key] = (
+                                _existing + ("\n\n" if _existing else "") + _voice_text)
+                            st.success("Text übernommen – unten in der Notiz sichtbar, editierbar.")
+                            st.rerun()
+
+            with st.expander("📷 Foto mitschreiben (Tafel/Heft abfotografieren)"):
+                st.caption("Nutzt dieselbe KI-Texterkennung wie beim Dokumenten-Import - liest "
+                          "auch Handschrift (siehe ⚙️ Einstellungen für das verwendete Modell).")
+                _note_photo = st.camera_input("Foto aufnehmen", key="notiz_photo_input")
+                if _note_photo is not None and st.button("📝 Text erkennen", key="notiz_photo_ocr"):
+                    from ragapp.ingestion import loaders as _loaders
+                    with st.spinner("Erkenne Text (kann bis zu einer Minute dauern) …"):
+                        _photo_text, _engine = _loaders.ocr_image_bytes(_note_photo.getvalue())
+                    if not _photo_text:
+                        st.warning("Konnte auf dem Foto keinen Text erkennen – bitte schärfer/"
+                                  "heller erneut versuchen, oder prüfe unter ⚙️ Einstellungen, "
+                                  "ob ein Vision-Modell installiert ist.")
+                    else:
+                        _existing = st.session_state.get(_draft_key, "")
+                        st.session_state[_draft_key] = (
+                            _existing + ("\n\n" if _existing else "") + _photo_text)
+                        st.success("Text übernommen – unten in der Notiz sichtbar, editierbar.")
+                        st.rerun()
+
             _preview = st.toggle("👁️ Vorschau", key="notiz_new_preview")
             if _preview:
                 _render_note_markdown(st.session_state.get(_draft_key))

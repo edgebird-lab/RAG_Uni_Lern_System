@@ -599,3 +599,77 @@ with card("anki"):
             f'⬇️ {st.session_state["_anki_apkg_n"]} Karten herunterladen (.apkg)',
             data=st.session_state["_anki_apkg"], file_name="rag-lernsystem.apkg",
             mime="application/octet-stream", use_container_width=True)
+
+# --------------------------------------------------------------------------- #
+# Lerndeck teilen (Export/Import fuer Lerngruppen) - anders als der Anki-
+# Export bleibt das Format IN der App: ein Kommilitone importiert die Datei in
+# SEINER eigenen Instanz und lernt weiter mit FSRS-6/Klausurplanung/
+# Gamification statt in Anki. Kein Server/Konto/Sync noetig (siehe
+# ragapp/deck_share.py-Modul-Docstring).
+# --------------------------------------------------------------------------- #
+with card("deck_share"):
+    st.subheader("🤝 Lerndeck teilen")
+    _ds_flash = st.session_state.pop("_ds_flash", None)
+    if _ds_flash:
+        st.success(_ds_flash)
+    st.caption("Karten mit einem Kommilitonen/einer Lerngruppe teilen - er/sie importiert die "
+               "Datei in der eigenen App-Instanz und lernt sofort mit dem eigenen FSRS-Zeitplan "
+               "weiter. Dein Lernfortschritt wird NICHT mitgegeben (wäre für eine andere Person "
+               "ohnehin bedeutungslos), nur Frage/Antwort/Thema/Stapel.")
+    _ds_tab_export, _ds_tab_import = st.tabs(["📤 Exportieren", "📥 Importieren"])
+    with _ds_tab_export:
+        dsc1, dsc2 = st.columns(2)
+        with dsc1:
+            _ds_subject = st.selectbox(
+                "Fach", ["Alle Fächer"] + subjects, key="ds_subject",
+                format_func=lambda s: s if s == "Alle Fächer" else _fach(s))
+        with dsc2:
+            st.write("")
+            st.write("")
+            if st.button("📤 Lerndeck erzeugen", use_container_width=True, key="ds_build"):
+                from ragapp import deck_share as _deck_share
+                _sub_arg = None if _ds_subject == "Alle Fächer" else _ds_subject
+                _ds_bytes, _ds_n = _deck_share.build_deck_export(subject=_sub_arg)
+                st.session_state["_ds_export_bytes"] = _ds_bytes
+                st.session_state["_ds_export_n"] = _ds_n
+        if st.session_state.get("_ds_export_bytes"):
+            st.download_button(
+                f'⬇️ {st.session_state["_ds_export_n"]} Karten herunterladen (.json)',
+                data=st.session_state["_ds_export_bytes"], file_name="lerndeck.json",
+                mime="application/json", use_container_width=True, key="ds_download")
+    with _ds_tab_import:
+        _ds_file = st.file_uploader("Lerndeck-Datei (.json)", type=["json"], key="ds_upload")
+        if _ds_file is not None:
+            try:
+                from ragapp import deck_share as _deck_share
+                _ds_parsed = _deck_share.parse_deck_import(_ds_file.getvalue())
+            except ValueError as _exc:
+                _ds_parsed = None
+                st.error(str(_exc))
+            if _ds_parsed is not None:
+                if not _ds_parsed["cards"]:
+                    st.info("Keine importierbaren Karten in dieser Datei gefunden.")
+                else:
+                    st.success(f"{len(_ds_parsed['cards'])} Karte(n) gefunden"
+                              + (f" (Fach beim Absender: {_ds_parsed['subject_label']})."
+                                 if _ds_parsed["subject_label"] else "."))
+                    dic1, dic2 = st.columns(2)
+                    with dic1:
+                        _ds_target_choice = st.selectbox(
+                            "In welches EIGENE Fach importieren?",
+                            subjects + ["(neues Fach …)"], key="ds_target_subject",
+                            format_func=lambda s: "(neues Fach …)" if s == "(neues Fach …)" else _fach(s))
+                    with dic2:
+                        _ds_target_new = st.text_input(
+                            "Neues Fach", key="ds_target_subject_text",
+                            disabled=_ds_target_choice != "(neues Fach …)")
+                    _ds_target = (_ds_target_new.strip()
+                                 if _ds_target_choice == "(neues Fach …)" else _ds_target_choice)
+                    if st.button("📥 Importieren", use_container_width=True, key="ds_import_go",
+                                disabled=not _ds_target):
+                        from ragapp import deck_share as _deck_share
+                        _n_imported = _deck_share.import_deck_cards(
+                            _ds_parsed["cards"], subject=_ds_target)
+                        st.session_state["_ds_flash"] = (
+                            f'{_n_imported} Karte(n) in „{_fach(_ds_target)}" importiert.')
+                        st.rerun()

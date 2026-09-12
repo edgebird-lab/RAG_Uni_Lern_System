@@ -169,6 +169,21 @@ class Settings:
     OCR_MIN_PAGE_CHARS: int = 40
 
     # ------------------------------------------------------------------ #
+    # Sprache-zu-Text (Sprachnotizen, siehe ragapp/speech_to_text.py + Notizen.py)
+    # ------------------------------------------------------------------ #
+    # Laeuft LOKAL ueber transformers (Whisper), KEIN Ollama/Internet noetig.
+    # "small" ist ein guter Kompromiss aus Geschwindigkeit/deutscher Genauigkeit
+    # fuer kurze Sprachnotizen (Sekunden bis wenige Minuten); "base" ist
+    # schneller, aber merklich fehleranfaelliger bei Deutsch.
+    STT_MODEL: str = "openai/whisper-small"
+    STT_LANGUAGE: str = "de"
+    # Bewusst CPU als Standard (wie easyocr, siehe dort): Whisper laeuft ueber
+    # dieselbe torch/ROCm-Umgebung wie Ollama - eine GPU-Allokation unter
+    # VRAM-Druck kann den amdgpu-Treiber haengen lassen. Fuer eine kurze
+    # Sprachnotiz ist CPU schnell genug; bewusst aktivieren mit RAG_STT_GPU=1.
+    STT_MAX_SECONDS: int = 300             # Sicherheitsdeckel gegen versehentliche Stunden-Aufnahmen
+
+    # ------------------------------------------------------------------ #
     # Chunking (Slicing)
     # ------------------------------------------------------------------ #
     CHUNK_SIZE: int = 1100                 # Zielgröße pro Chunk (Zeichen)
@@ -301,6 +316,13 @@ class Settings:
     # Plans nicht komplett verdraengen (dann lieber ehrlich weniger Puffer als
     # tagelang NULL Fortschritt beim neuen Stoff).
     PLAN_REVIEW_MAX_SHARE: float = 0.5
+    # Reserviert im Lernplan taeglich Zeit fuer bereits im Stundenplan
+    # eingetragene Vorlesungen/Kurse (siehe manifest.timetable) - ein Tag mit
+    # 6 Stunden Uni hat real weniger freie Zeit als ein vorlesungsfreier Tag
+    # (siehe study_plan.py:build_schedule). Deckel wie bei PLAN_REVIEW_MAX_SHARE,
+    # nur grosszuegiger: tatsaechliche Anwesenheitspflicht ist eine haertere
+    # Grenze als eine (flexible) Wiederholungs-Schaetzung.
+    PLAN_CLASS_MAX_SHARE: float = 0.7
     PLAN_MAX_DAILY_FOCUS_MIN: int = 240    # nachhaltige Tagesobergrenze hochfokussierten Lernens (Forschung: 3-4h optimal, Qualitaet faellt ab ~4-5h)
     PLAN_BLOCK_MIN: int = 25               # Groesse eines Lernblocks (= 1 Pomodoro-Arbeitsblock)
     PLAN_MAX_OUTLINE_SECTIONS: int = 15    # Obergrenze fuer die KI-Gliederung (Uebersichtlichkeit)
