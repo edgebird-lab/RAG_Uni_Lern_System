@@ -52,6 +52,30 @@ def test_apply_talk_theme_idempotent():
     assert twice.count("style: |") == 1
 
 
+def test_normalize_and_parse_slides_script():
+    from ragapp.talk import _normalize_slides_chunk, _parse_slides_script, _join_slide_chunks
+    raw = {
+        "slides": "---\nmarp: true\n---\n\n# Hi\n\n---\n\n## Zwei",
+        "script": "Hallo Welt.",
+    }
+    slides, script = _parse_slides_script(raw)
+    assert "marp:" not in slides
+    assert "Hallo" in script
+    assert _normalize_slides_chunk("## Nur Titel").startswith("<!-- _class:")
+    joined = _join_slide_chunks(["<!-- _class: lead -->\n# A", "<!-- _class: content -->\n## B"])
+    assert "\n\n---\n\n" in joined
+
+
+def test_list_slide_pngs_finds_nested(tmp_path):
+    from ragapp.talk import list_slide_pngs
+    nested = tmp_path / "slide"
+    nested.mkdir()
+    png = nested / "slide.001.png"
+    png.write_bytes(b"x" * 200)
+    found = list_slide_pngs(tmp_path)
+    assert png in found
+
+
 def test_build_ffmpeg_concat_cmd_structure(tmp_path):
     concat = tmp_path / "concat.txt"
     audio = tmp_path / "a.wav"

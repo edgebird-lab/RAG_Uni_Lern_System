@@ -41,6 +41,7 @@ with skeleton("Vortrag wird geladen …"):
     from ragapp.config import settings, SUBJECT_LABELS, PROJECT_ROOT, TALK_DIR
     from ragapp.llm import list_installed_models
     from ragapp.ui._progress import fmt_dauer as _fmt_dauer, progress_tracker as _progress_tracker
+    from ragapp.ui._pronunciation import render_pronunciation_hints as _render_pronunciation_hints
 
 _KEIN_FACH = "— Kein Fach —"
 
@@ -177,16 +178,19 @@ if _active_id is None:
                      disabled=not _new_doc_names, key="talk_generate"):
             _doc_ids = [_subj_docs[n] for n in _new_doc_names]
             _sources = list(st.session_state.get("_talk_selected_sources") or [])
+            _bar = st.progress(0.0)
+            _cap = st.empty()
             try:
-                with st.spinner("Vortrag wird geschrieben …"):
-                    _marp, _script, _used = talk.generate_talk_content(
-                        _doc_ids, title=_new_title or "Vortrag",
-                        subject=_new_subject, sources=_sources, model=_new_model)
+                _marp, _script, _used, _warn = talk.generate_talk_content(
+                    _doc_ids, title=_new_title or "Vortrag",
+                    subject=_new_subject, sources=_sources, model=_new_model,
+                    on_progress=_progress_tracker(_bar, _cap, "Vortrag"))
                 st.session_state["_talk_draft"] = {
                     "marp_md": _marp, "script": _script,
                     "title": _new_title or f"Vortrag {_fach(_new_subject)}",
                     "subject": _new_subject, "doc_ids": _doc_ids,
                     "sources": _sources, "model": _used,
+                    "warning": _warn,
                 }
                 st.rerun()
             except talk.TalkError as exc:
@@ -194,12 +198,18 @@ if _active_id is None:
 
     else:
         st.markdown("##### Entwurf prüfen")
+        if _draft.get("warning"):
+            st.warning(_draft["warning"])
         _marp_key = "talk_draft_marp"
         _script_key = "talk_draft_script"
         st.text_area("Marp-Markdown", value=_draft["marp_md"], height=280, key=_marp_key)
-        st.text_area("Sprecher-Skript", value=_draft["script"], height=220, key=_script_key)
-        st.caption(f"{len(st.session_state[_script_key])} Zeichen Skript · "
-                   f"{len(_draft.get('sources') or [])} externe Quelle(n)")
+        st.text_area("Sprecher-Skript", value=_draft["script"], height=280, key=_script_key)
+        _script_len = len(st.session_state[_script_key])
+        st.caption(
+            f"{_script_len} Zeichen Skript (~{_script_len / 1000:.0f} Min. grob) · "
+            f"{len(_draft.get('sources') or [])} externe Quelle(n)"
+        )
+        _render_pronunciation_hints(st.session_state[_script_key], key_prefix="talk_draft")
 
         dc1, dc2, dc3 = st.columns(3)
         if dc1.button("💾 Speichern", type="primary", use_container_width=True,
@@ -268,8 +278,10 @@ with card("talk_head"):
 
     _marp_edit = st.text_area("Marp-Markdown", value=_active["marp_md"], height=260,
                               key=f"talk_marp_{_active_id}")
-    _script_edit = st.text_area("Sprecher-Skript", value=_active["script_text"], height=200,
+    _script_edit = st.text_area("Sprecher-Skript", value=_active["script_text"], height=240,
                                 key=f"talk_script_{_active_id}")
+    st.caption(f"{len(_script_edit)} Zeichen Skript (~{len(_script_edit) / 1000:.0f} Min. grob)")
+    _render_pronunciation_hints(_script_edit, key_prefix=f"talk_exist_{_active_id}")
 
     if _active.get("sources"):
         with st.expander(f"🔗 {len(_active['sources'])} externe Quelle(n)"):

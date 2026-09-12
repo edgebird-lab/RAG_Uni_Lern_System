@@ -28,8 +28,6 @@ from __future__ import annotations
 
 import sys
 import pathlib
-import re
-import html
 
 _p = pathlib.Path(__file__).resolve()
 for _anc in _p.parents:
@@ -71,92 +69,7 @@ def _fach(code: "str | None") -> str:
     return SUBJECT_LABELS.get(code, code) if code else "–"
 
 
-def _render_pronunciation_hints(text: str, *, key_prefix: str) -> None:
-    """Laesst das LLM ``text`` selbst nach falsch vorzulesenden Woertern
-    durchsuchen (``audio_overview.suggest_pronunciations``) und zeigt die
-    Treffer editierbar mit Haekchen zum Uebernehmen. Ein staerkeres TTS-Modell
-    wuerde das falsche Vorlesen von Fachjargon NICHT beheben (Text-
-    Normalisierungs-, kein Stimmqualitaets-Problem, siehe Modul-Kommentar in
-    audio_overview.py) - deshalb fragen wir das ohnehin laufende LLM. Bewusst
-    NICHT auf ``find_pronunciation_candidates`` (Regex-Vorfilter) beschraenkt:
-    genau das Beispiel "nmap" (klein geschrieben, mit Vokal) faellt durch
-    dieses Sieb, waere also nie zur KI-Anfrage gekommen - das Regex-Sieb dient
-    hier nur noch der zusaetzlichen optischen Hervorhebung im Text, nicht mehr
-    als Filter fuer die KI-Anfrage selbst. Uebernommene Korrekturen werden
-    SOFORT dauerhaft gespeichert (``manifest.upsert_pronunciation_fix``) -
-    ``synthesize_speech`` liest die Liste bei jedem Aufruf frisch aus der DB,
-    ein neuer Eintrag wirkt also ab dem naechsten Vertonungslauf automatisch,
-    auch in ganz anderen Skripten. ``key_prefix`` haelt Widget-Keys ueber die
-    drei Aufrufstellen (KI-Entwurf, eigenes Skript, bestehendes Overview)
-    auseinander. Zeigt nichts an, wenn weder die KI noch das Regex-Sieb etwas
-    findet, damit ein unauffaelliges Skript nicht unnoetig Platz braucht."""
-    text = (text or "").strip()
-    if not text:
-        return
-
-    # KI-Suche einmal pro Textstand holen (nicht bei jedem Rerun neu anfragen).
-    _cache_key = f"_audio_pron_suggest_{key_prefix}_{hash(text)}"
-    if _cache_key not in st.session_state:
-        with st.spinner("Text wird auf falsch vorzulesende Wörter geprüft …"):
-            st.session_state[_cache_key] = audio_overview.suggest_pronunciations(text)
-    _suggestions = st.session_state[_cache_key]
-
-    _candidates = audio_overview.find_pronunciation_candidates(text)
-    # Anzeige-Reihenfolge: erst was die KI vorschlaegt (die eigentlichen
-    # Treffer), danach evtl. vom Regex-Sieb zusaetzlich markierte Woerter ohne
-    # KI-Vorschlag (leeres Eingabefeld zum selbst Eintragen).
-    _words = list(_suggestions.keys()) + [w for w in _candidates if w not in _suggestions]
-    if not _words:
-        return
-
-    _escaped = html.escape(text)
-    _pattern = re.compile(
-        r"\b(?:" + "|".join(re.escape(w) for w in sorted(_words, key=len, reverse=True))
-        + r")\b")
-    _highlighted = _pattern.sub(lambda m: f"<mark>{m.group(0)}</mark>", _escaped)
-    _highlighted = _highlighted.replace("\n", "<br>")
-    # key= haelt den Auf/Zu-Zustand fest - ohne key faellt der Expander sonst
-    # bei JEDEM Rerun (auch nur durch ein Haekchen/Textfeld HIER DRIN) auf
-    # geschlossen zurueck (siehe Kommentar beim Hörbuch-Export-Expander unten).
-    with st.expander(f"🔍 {len(_words)} möglicherweise falsch ausgesprochene(s) "
-                     "Wort/Wörter - Aussprache prüfen", key=f"pron_expander_{key_prefix}"):
-        st.caption("Vorschläge kommen vom KI-Modell (kennt übliches Fachjargon-Vorlesen, "
-                   "z. B. „nmap“ → „en map“) - kurz gegenhören/korrigieren und übernehmen. "
-                   "Übernommene Korrekturen merkt sich die App dauerhaft und wendet sie ab "
-                   "sofort auf ALLE künftigen Audio-Overviews an, nicht nur auf dieses Skript.")
-        st.markdown(f'<div style="line-height:1.6">{_highlighted}</div>',
-                   unsafe_allow_html=True)
-        st.write("")
-
-        _rows = []
-        for _word in _words:
-            _c1, _c2, _c3 = st.columns([2, 3, 1])
-            _c1.markdown(f"**{_word}**")
-            _sugg = _suggestions.get(_word, "")
-            _val = _c2.text_input(
-                f"Aussprache für {_word}", value=_sugg,
-                key=f"pron_val_{key_prefix}_{_word}", label_visibility="collapsed",
-                placeholder="normale Aussprache (kein Fix nötig)")
-            _take = _c3.checkbox("✓ übernehmen", value=bool(_sugg),
-                                 key=f"pron_take_{key_prefix}_{_word}",
-                                 label_visibility="collapsed",
-                                 help="Übernehmen & dauerhaft merken")
-            _rows.append((_word, _val.strip(), _take))
-
-        if st.button("💾 Ausgewählte Korrekturen übernehmen & merken",
-                     key=f"pron_apply_{key_prefix}"):
-            _n = 0
-            for _word, _val, _take in _rows:
-                if _take and _val:
-                    manifest.upsert_pronunciation_fix(_word, _val)
-                    _n += 1
-            if _n:
-                st.session_state.pop(_cache_key, None)
-                st.success(f"{_n} Aussprache-Korrektur(en) gespeichert - gelten ab sofort "
-                          "automatisch für alle künftigen Audio-Overviews.")
-                st.rerun()
-            else:
-                st.info("Keine Korrektur ausgewählt.")
+from ragapp.ui._pronunciation import render_pronunciation_hints as _render_pronunciation_hints
 
 
 def _model_picker(key: str) -> "str | None":
