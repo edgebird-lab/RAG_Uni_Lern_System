@@ -14,6 +14,7 @@ from ragapp.ui._style import (
     TECHNICAL_PAGE_KEYS,
     _command_palette_shortcut_html,
     _doodle_layer,
+    _hero_title_html,
     _technical_override_css,
     celebration_effects_html,
     combo_pulse_html,
@@ -122,3 +123,41 @@ def test_kategorien_gruppieren_alle_nicht_home_seiten_lueckenlos():
     _grouped_keys = {k for keys in _by_category.values() for k in keys}
     _all_non_home = {p["key"] for p in PAGE_REGISTRY if p["key"] != "home"}
     assert _grouped_keys == _all_non_home
+
+
+# --------------------------------------------------------------------------- #
+# Handy-Optimierung: Hero-Titel darf nicht mehr mitten im Wort umbrechen
+# (Live-Test bei 390px zeigte vorher "Willkommen zurü/ck", weil jeder
+# Buchstabe sein eigenes inline-block-Element war) - siehe
+# _hero_title_html()-Docstring.
+# --------------------------------------------------------------------------- #
+def test_hero_title_html_wrapt_jedes_wort_atomar():
+    import xml.etree.ElementTree as ET
+    html = _hero_title_html("Willkommen zurück")
+    root = ET.fromstring(html)
+    word_els = root.findall('.//span[@class="rag-hero-word"]')
+    assert len(word_els) == 2
+    # Jedes Wort-Span enthaelt NUR die Buchstaben dieses einen Wortes - kein
+    # Leerzeichen/keine Trennung dazwischen, die der Browser als eigene
+    # Umbruchstelle missverstehen koennte.
+    rebuilt = ["".join(word.itertext()) for word in word_els]
+    assert rebuilt == ["Willkommen", "zurück"]
+
+
+def test_hero_title_html_erlaubt_umbruch_nur_zwischen_woertern():
+    html = _hero_title_html("Eine Testüberschrift")
+    # Zwischen den beiden Wort-Wrappern muss ein GANZ NORMALES, umbrechbares
+    # Leerzeichen stehen (kein &nbsp;) - genau da DARF der Browser umbrechen.
+    assert "</span> <span class=\"rag-hero-word\">" in html
+    assert "&nbsp;" not in html
+
+
+def test_hero_title_html_einzelnes_wort_hat_keine_luecke():
+    html = _hero_title_html("Fortschritt")
+    assert html.count('class="rag-hero-word"') == 1
+
+
+def test_hero_title_html_ist_wohlgeformtes_xml():
+    import xml.etree.ElementTree as ET
+    html = _hero_title_html("Willkommen zurück 👋")
+    ET.fromstring(html)

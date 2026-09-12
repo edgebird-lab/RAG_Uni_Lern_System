@@ -157,6 +157,18 @@ h1, h2, h3, h4, h5, h6 {
   font-family: 'RAG Heading', 'Fredoka', -apple-system, BlinkMacSystemFont,
     'Segoe UI', sans-serif !important;
 }
+/* Lange deutsche Komposita ("Dokumentenmanager", "Uebungsaufgaben") brechen
+   bei Handy-Breite sonst MITTEN im Wort um, ohne jede Kennzeichnung (Live-
+   Test bei 390px: "Dokumentenman/ager") - der Browser braucht dafuer
+   ausser einer Leerstelle KEINE Erlaubnis, sobald sein eigenes Overflow-
+   Verhalten das Wort schon irgendwo trennt. "hyphens: auto" laesst ihn an
+   einer echten Silbengrenze MIT sichtbarem Trennstrich umbrechen - dafuer
+   muss der Browser aber wissen, dass der Text deutsch ist (siehe
+   _i18n_patch_html(), setzt document.documentElement.lang = "de"). */
+h1, h2, h3, h4, h5, h6 {
+  hyphens: auto; -webkit-hyphens: auto; -ms-hyphens: auto;
+  overflow-wrap: break-word;
+}
 /* Die App nutzt Emoji als durchgaengige Icon-Sprache (Navigation, Maskottchen-
    Requisiten, Errungenschaften) - eine bewusste Stilentscheidung fuer
    Comic-/Manga-Charme statt eines sterilen SVG-Icon-Sets. Der Nebeneffekt:
@@ -297,7 +309,24 @@ h1 {{
   border-bottom:4px solid {soft}; padding-bottom:2px; margin-bottom:.3rem !important;
   color:{accent} !important;
 }}
-.rag-hero-title span {{display:inline-block; opacity:0; animation:ragLetterIn .45s ease forwards;}}
+/* Wort-Wrapper (siehe render_hero_title()-Docstring): macht ein ganzes Wort
+   umbruch-atomar, waehrend zwischen Woertern weiterhin normal umgebrochen
+   werden darf - behebt den "Willkommen zurü/ck"-Mitten-im-Wort-Umbruch bei
+   schmalen (Handy-)Breiten. */
+.rag-hero-word {{display:inline-block; white-space:nowrap;}}
+.rag-hero-title .rag-hero-letter {{display:inline-block; opacity:0; animation:ragLetterIn .45s ease forwards;}}
+/* Auf Home verbraucht die Kombination aus grosser Hero-Ueberschrift + grossem
+   Maskottchen bei Handy-Breite sehr viel Platz, bevor ueberhaupt etwas
+   Nuetzliches (Suche, Kacheln) sichtbar wird (Live-Test bei 390px zeigte:
+   mehrere Bildschirme scrollen, bevor die eigentliche Seite anfaengt).
+   Kompakter statt kleiner - der Effekt bleibt erkennbar, nimmt aber deutlich
+   weniger vertikalen Raum ein. Betrifft NUR das grosse Home-Maskottchen
+   (render_mascot(), einzige Verwendung), nicht das kleine Eck-Maskottchen
+   (das ist ohnehin schon unter 700px ausgeblendet). */
+@media (max-width: 480px) {{
+  .rag-hero-title {{font-size:1.9rem !important;}}
+  .rag-mascot svg {{width:120px !important; height:auto !important;}}
+}}
 @keyframes ragLetterIn {{
   from {{opacity:0; transform:translateY(10px) scale(.85);}}
   to   {{opacity:1; transform:translateY(0) scale(1);}}
@@ -442,6 +471,17 @@ html.rag-dark .rag-heute-chip {{background:#132b4d; border-color:{accent}66; col
 html.rag-dark .stButton > button:hover, html.rag-dark .stDownloadButton > button:hover,
 html.rag-dark .stFormSubmitButton > button:hover {{
   box-shadow:0 3px 10px rgba(0,0,0,.35);
+}}
+
+/* Tap-Ziele am Handy: ein Live-Test bei 390px zeigte 40px hohe Buttons (z. B.
+   die drei Bewertungs-Knoepfe beim Lernen) - knapp unter der von Apple/Google
+   empfohlenen 44px-Komfortzone. Nur auf schmalen Viewports angehoben (auf
+   dem Desktop bleibt die kompaktere Groesse, dort tippt niemand mit dem
+   Finger). */
+@media (max-width: 480px) {{
+  .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {{
+    min-height:44px;
+  }}
 }}
 
 /* Skeleton-Ladeplatzhalter (siehe ragapp.ui._loading.skeleton()) - schimmernde
@@ -861,6 +901,10 @@ def _i18n_patch_html() -> str:
 (function() {
   try {
     var doc = window.parent.document;
+    // Fuer "hyphens: auto" auf Ueberschriften (siehe _BASE_CSS) muss der
+    // Browser wissen, dass der Text deutsch ist - Streamlit setzt selbst
+    // kein lang-Attribut auf <html>.
+    if (doc.documentElement.lang !== 'de') { doc.documentElement.lang = 'de'; }
 
     function patchOnce() {
       doc.querySelectorAll('[data-testid="stFileUploaderDropzone"]').forEach(function(dz) {
@@ -900,36 +944,44 @@ def render_hamburger_nav(current_page_key: str) -> None:
     (14 von 18) aus fuehrte JEDE Navigation ueber einen Umweg zurueck zu Home.
     Die Kategorie-Gruppierung uebernimmt bewusst dieselbe Reihenfolge/
     Einteilung wie PAGE_REGISTRY (siehe Home-Kacheln), damit Nutzer nicht
-    zwei verschiedene Gliederungen im Kopf behalten muessen."""
-    with st.sidebar:
-        with st.popover("☰ Menü", use_container_width=True):
-            st.caption("Kurzwahl")
-            for key in HAMBURGER_KEYS:
-                page = _PAGE_BY_KEY.get(key)
-                if not page:
-                    continue
-                is_here = key == current_page_key
-                label = f"{page['icon']} {page['title']}" + ("  ·  hier" if is_here else "")
-                if st.button(label, key=f"hamburger_{key}", use_container_width=True,
-                            disabled=is_here):
-                    _go_to(page)
+    zwei verschiedene Gliederungen im Kopf behalten muessen.
 
-            st.divider()
-            _seen_categories: list[str] = []
-            for page in PAGE_REGISTRY:
-                cat = page["category"]
-                if not cat or cat in _seen_categories:
+    BEWUSST NICHT (mehr) in ``st.sidebar``: Streamlit klappt die Sidebar auf
+    schmalen (Handy-)Viewports automatisch komplett aus dem sichtbaren Bereich
+    (``transform: translateX(-300px)``, ausserhalb des Viewports) - ein
+    Live-Test mit echter Handy-Breite (390px) zeigte, dass der Menu-Button
+    dadurch fuer Playwright/einen Finger schlicht UNERREICHBAR war, ohne
+    vorher den winzigen 28px-Pfeil oben links zu treffen. Die eigentliche
+    Navigation der App gehoert deshalb in den normalen Seiteninhalt (oben,
+    vor dem Titel) - dort ist sie auf jedem Geraet ohne Umweg erreichbar."""
+    with st.popover("☰ Menü", use_container_width=False):
+        st.caption("Kurzwahl")
+        for key in HAMBURGER_KEYS:
+            page = _PAGE_BY_KEY.get(key)
+            if not page:
+                continue
+            is_here = key == current_page_key
+            label = f"{page['icon']} {page['title']}" + ("  ·  hier" if is_here else "")
+            if st.button(label, key=f"hamburger_{key}", use_container_width=True,
+                        disabled=is_here):
+                _go_to(page)
+
+        st.divider()
+        _seen_categories: list[str] = []
+        for page in PAGE_REGISTRY:
+            cat = page["category"]
+            if not cat or cat in _seen_categories:
+                continue
+            _seen_categories.append(cat)
+            st.caption(cat)
+            for _p in PAGE_REGISTRY:
+                if _p["category"] != cat:
                     continue
-                _seen_categories.append(cat)
-                st.caption(cat)
-                for _p in PAGE_REGISTRY:
-                    if _p["category"] != cat:
-                        continue
-                    is_here = _p["key"] == current_page_key
-                    label = f"{_p['icon']} {_p['title']}" + ("  ·  hier" if is_here else "")
-                    if st.button(label, key=f"hamburger_all_{_p['key']}",
-                                use_container_width=True, disabled=is_here):
-                        _go_to(_p)
+                is_here = _p["key"] == current_page_key
+                label = f"{_p['icon']} {_p['title']}" + ("  ·  hier" if is_here else "")
+                if st.button(label, key=f"hamburger_all_{_p['key']}",
+                            use_container_width=True, disabled=is_here):
+                    _go_to(_p)
 
 
 def _go_to(page: dict) -> None:
@@ -962,18 +1014,40 @@ def card(key: str):
     return st.container(key=f"card_{key}")
 
 
+def _hero_title_html(text: str) -> str:
+    """Baut das HTML fuer render_hero_title() (reine String-Funktion, siehe
+    dort fuer die Wort-Wrapper-Begruendung) - ausgelagert, damit die
+    Umbruch-Korrektheit ohne Streamlit-Laufzeit testbar ist."""
+    words = text.split(" ")
+    letter_i = 0
+    word_htmls = []
+    for word in words:
+        letters = []
+        for ch in word:
+            letters.append(f'<span class="rag-hero-letter" '
+                          f'style="animation-delay:{letter_i * 0.035:.3f}s">{ch}</span>')
+            letter_i += 1
+        word_htmls.append(f'<span class="rag-hero-word">{"".join(letters)}</span>')
+        letter_i += 1  # kleine zusaetzliche Verzoegerung fuer die Wortluecke
+    return f'<h1 class="rag-hero-title">{" ".join(word_htmls)}</h1>'
+
+
 def render_hero_title(text: str, *, accent: str | None = None) -> None:
     """Grosse Willkommens-Ueberschrift mit Buchstabe-fuer-Buchstabe-Einflug -
     fuer den EINEN Blickfang-Moment einer Seite (z. B. Home), nicht als
     Ersatz fuer normale ``st.title()``-Aufrufe gedacht (die bekommen ihre
     eigene, dezentere Fly-in-Animation schon automatisch ueber den globalen
-    ``h1``-Stil in _BASE_CSS)."""
-    accent = accent or _DEFAULT_THEME["accent"]
-    spans = "".join(
-        f'<span style="animation-delay:{i * 0.035:.3f}s">{"&nbsp;" if ch == " " else ch}</span>'
-        for i, ch in enumerate(text)
-    )
-    st.markdown(f'<h1 class="rag-hero-title">{spans}</h1>', unsafe_allow_html=True)
+    ``h1``-Stil in _BASE_CSS).
+
+    Jedes WORT (nicht jeder Buchstabe) steckt in einem eigenen
+    ``display:inline-block``-Wrapper (siehe ``_hero_title_html()``): ein
+    Live-Test bei Handy-Breite (390px) zeigte, dass der Browser sonst mitten
+    im Wort umbricht ("Willkommen zurü/ck") - jeder Buchstabe war zuvor SEIN
+    EIGENES inline-block-Element, wodurch der Browser die Wortgrenze
+    verliert und zwischen JEDEM Buchstaben umbrechen darf. Der Wort-Wrapper
+    macht das Wort selbst wieder atomar; umbrechen darf der Browser
+    weiterhin (normal) zwischen den Woertern."""
+    st.markdown(_hero_title_html(text), unsafe_allow_html=True)
 
 
 def speech_bubble(text: str, *, icon: str = "💡") -> None:
