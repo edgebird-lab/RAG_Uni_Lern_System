@@ -155,6 +155,9 @@ CREATE TABLE IF NOT EXISTS exams (
     ects        REAL,               -- Umfang (optional, fuer Gewichtung)
     gewicht     REAL DEFAULT 1.0,   -- manuelles Gewicht (Prioritaet)
     notiz       TEXT,
+    note        REAL,               -- tatsaechlich erhaltene Note (Noten-Tracking, NACH
+                                     -- der Klausur eingetragen) - siehe planner.gpa_summary()
+    note_updated_at REAL,
     created_at  REAL,
     updated_at  REAL
 );
@@ -380,6 +383,27 @@ CREATE TABLE IF NOT EXISTS pronunciation_fixes (
     created_at  REAL,
     updated_at  REAL
 );
+
+-- Taegliche Momentaufnahme von "Klausur-Bereitschaft" und "Sitzt"-Anteil (siehe
+-- analytics.subject_readiness()/overview()) - beide werden sonst IMMER LIVE aus
+-- dem aktuellen FSRS-Zustand berechnet, es existiert also von Haus aus keine
+-- Historie dafuer (anders als retention_trend(), das aus den zeitgestempelten
+-- review_log-Eintraegen echte Vergangenheitswerte ableiten kann). Ein Eintrag
+-- pro (Tag, Fach) - "_all_" steht fuer die Fach-Auswahl "Alle Faecher" -, beim
+-- erneuten Schreiben AM SELBEN TAG ueberschrieben (PRIMARY KEY), damit
+-- mehrfaches Oeffnen der Seite an einem Tag nicht mehrere Zeilen erzeugt.
+-- Baut erst AB dem Tag der Einfuehrung eine echte Kurve auf - fuer Tage davor
+-- gibt es bewusst KEINE rueckwirkend rekonstruierten Werte (waere aus dem
+-- heutigen FSRS-Zustand nicht verlaesslich moeglich, siehe analytics.py).
+CREATE TABLE IF NOT EXISTS progress_snapshots (
+    day             TEXT NOT NULL,
+    subject         TEXT NOT NULL,
+    readiness_pct   INTEGER,
+    mastery_pct     INTEGER,
+    created_at      REAL,
+    PRIMARY KEY (day, subject)
+);
+CREATE INDEX IF NOT EXISTS idx_progress_snapshots_subject ON progress_snapshots(subject);
 """
 
 
@@ -481,6 +505,17 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE study_plan_blocks ADD COLUMN actual_min INTEGER")
         except Exception:  # noqa: BLE001
             _log.warning("Additive Migration study_plan_blocks uebersprungen", exc_info=True)
+        # Additive Migration fuer exams: tatsaechlich erhaltene Note (Noten-
+        # Tracking/GPA, siehe upsert_exam()/planner.gpa_summary()) - kommt zeitlich
+        # NACH dem Anlegen des Klausurtermins, daher separate Migration.
+        try:
+            ecols = {r["name"] for r in conn.execute("PRAGMA table_info(exams)")}
+            if "note" not in ecols:
+                conn.execute("ALTER TABLE exams ADD COLUMN note REAL")
+            if "note_updated_at" not in ecols:
+                conn.execute("ALTER TABLE exams ADD COLUMN note_updated_at REAL")
+        except Exception:  # noqa: BLE001
+            _log.warning("Additive Migration exams uebersprungen", exc_info=True)
 
 
 def _ensure_initialized() -> None:
@@ -1315,24 +1350,29 @@ def deck_overview(subject: Optional[str] = None) -> list[dict]:
 # --------------------------------------------------------------------------- #
 def upsert_exam(subject: str, *, exam_date: Optional[str] = None,
                 ects: Optional[float] = None, gewicht: float = 1.0,
-                notiz: Optional[str] = None) -> None:
+                notiz: Optional[str] = None, note: Optional[float] = None) -> None:
     """Legt einen Klausurtermin fuer ein Fach an oder aktualisiert ihn.
-    ``exam_date`` ist ISO 'YYYY-MM-DD' (oder None/'' = kein Termin gesetzt)."""
+    ``exam_date`` ist ISO 'YYYY-MM-DD' (oder None/'' = kein Termin gesetzt).
+    ``note`` ist die tatsaechlich erhaltene Note (meist erst lange NACH dem
+    Anlegen des Termins eingetragen, siehe planner.gpa_summary())."""
     if not subject:
         return
     now = time.time()
     exam_date = (exam_date or "").strip() or None
+    note_updated_at = now if note is not None else None
     with _connect() as conn:
         exists = conn.execute(
             "SELECT created_at FROM exams WHERE subject=?", (subject,)).fetchone()
         created = exists["created_at"] if exists else now
         conn.execute(
-            "INSERT INTO exams (subject, exam_date, ects, gewicht, notiz, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?) "
+            "INSERT INTO exams (subject, exam_date, ects, gewicht, notiz, note, "
+            "note_updated_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?) "
             "ON CONFLICT(subject) DO UPDATE SET exam_date=excluded.exam_date, "
             "ects=excluded.ects, gewicht=excluded.gewicht, notiz=excluded.notiz, "
+            "note=excluded.note, note_updated_at=excluded.note_updated_at, "
             "updated_at=excluded.updated_at",
-            (subject, exam_date, ects, float(gewicht or 1.0), notiz, created, now),
+            (subject, exam_date, ects, float(gewicht or 1.0), notiz, note,
+             note_updated_at, created, now),
         )
 
 
@@ -1817,6 +1857,32 @@ def chars_per_token(model: str, min_samples: int = 5, limit: int = 40) -> Option
         return None
     ratios = [chars / tokens for chars, tokens in usable]
     return sum(ratios) / len(ratios)
+
+
+# --------------------------------------------------------------------------- #
+# Fortschritt: taeglicher Schnappschuss fuer die Trend-Sparklines auf der
+# Seite "Fortschritt" (siehe analytics.py-Kommentar oben bei progress_snapshots)
+# --------------------------------------------------------------------------- #
+def upsert_progress_snapshot(day: str, subject: str, readiness_pct: int, mastery_pct: int) -> None:
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO progress_snapshots (day, subject, readiness_pct, mastery_pct, created_at) "
+            "VALUES (?,?,?,?,?) "
+            "ON CONFLICT(day, subject) DO UPDATE SET "
+            "readiness_pct=excluded.readiness_pct, mastery_pct=excluded.mastery_pct, "
+            "created_at=excluded.created_at",
+            (day, subject, int(readiness_pct), int(mastery_pct), time.time()))
+
+
+def list_progress_snapshots(subject: str, days: int = 14) -> list[dict]:
+    """Die letzten ``days`` Tages-Schnappschuesse fuer ein Fach (oder '_all_'),
+    aeltester zuerst (passend fuer eine Sparkline/einen Verlaufs-Chart)."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT day, readiness_pct, mastery_pct FROM progress_snapshots "
+            "WHERE subject=? ORDER BY day DESC LIMIT ?",
+            (subject, int(days))).fetchall()
+    return [dict(r) for r in rows][::-1]
 
 
 def exam_map() -> dict:

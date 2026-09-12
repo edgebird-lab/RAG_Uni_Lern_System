@@ -298,6 +298,29 @@ def forgetting_curve(subject: str, days_ahead: int = 30,
     return out
 
 
+_SNAPSHOT_ALL = "_all_"   # Fach-Platzhalter fuer die Auswahl "Alle Faecher"
+
+
+def record_progress_snapshot(subject: Optional[str] = None) -> None:
+    """Schreibt/aktualisiert den heutigen Schnappschuss von Klausur-Bereitschaft
+    + 'Sitzt'-Anteil fuer ``subject`` (oder 'Alle Faecher') - siehe
+    manifest.progress_snapshots-Kommentar. Ueberschreibt bei mehrfachem Aufruf
+    am selben Tag denselben Eintrag (kein Anwachsen bei jedem Seitenaufruf)."""
+    from ragapp import manifest
+    ov = overview(subject)
+    ready = subject_readiness(subject)["readiness_pct"]
+    manifest.upsert_progress_snapshot(
+        _day_key(time.time()), subject or _SNAPSHOT_ALL, ready, ov["mastery_pct"])
+
+
+def progress_snapshot_trend(subject: Optional[str] = None, days: int = 14) -> list[dict]:
+    """Die letzten ``days`` taeglichen Schnappschuesse (siehe
+    record_progress_snapshot) - leer, solange noch keine Schnappschuesse fuer
+    dieses Fach vorliegen (baut sich erst ab dem ersten Aufruf auf)."""
+    from ragapp import manifest
+    return manifest.list_progress_snapshots(subject or _SNAPSHOT_ALL, days)
+
+
 def daily_goal_status(subject: Optional[str] = None) -> dict:
     """Heutiges Tagesziel + Backlog-Ampel: heute geuebt vs. Ziel, faellige Karten."""
     goal = max(1, int(getattr(settings, "DAILY_REVIEW_GOAL", 40)))

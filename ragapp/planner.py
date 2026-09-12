@@ -177,6 +177,26 @@ def exams_to_ics() -> str:
     return ("\r\n".join(lines) + "\r\n") if n else ""
 
 
+def gpa_summary() -> dict:
+    """Notendurchschnitt ueber alle Klausuren mit eingetragener Note, ECTS-
+    gewichtet (Standard-Verfahren an deutschen Hochschulen). Faecher OHNE ECTS-
+    Angabe gehen mit Gewicht 1.0 ein - eine vergessene ECTS-Angabe soll die Note
+    nicht einfach aus dem Schnitt werfen. Keine Annahme ueber die Notenskala
+    (1,0-5,0 deutsch, Prozent, ...) - rein linearer, gewichteter Durchschnitt
+    ueber das, was der Nutzer eintraegt."""
+    graded = [e for e in manifest.list_exams() if e.get("note") is not None]
+    if not graded:
+        return {"count": 0, "gpa": None, "total_ects": 0.0, "exams": []}
+    weighted_sum = sum(float(e["note"]) * float(e["ects"] or 1.0) for e in graded)
+    total_weight = sum(float(e["ects"] or 1.0) for e in graded)
+    return {
+        "count": len(graded),
+        "gpa": round(weighted_sum / total_weight, 2) if total_weight else None,
+        "total_ects": sum(float(e["ects"]) for e in graded if e.get("ects")),
+        "exams": graded,
+    }
+
+
 def organizer_to_ics() -> str:
     """Kombinierter Kalender-Export der Seite 'Organisation': Klausurtermine +
     Aufgaben-Fristen (Einzeltermine) + Stundenplan (woechentlich wiederkehrend via

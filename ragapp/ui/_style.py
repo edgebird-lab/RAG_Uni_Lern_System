@@ -96,6 +96,14 @@ PAGE_THEMES: dict[str, dict] = {
 }
 _DEFAULT_THEME = PAGE_THEMES["home"]
 
+# --------------------------------------------------------------------------- #
+# "Technische" Seiten (Evaluation, Einstellungen): Betreiber-/Admin-Werkzeuge
+# fuer Retrieval-Tuning und Modell-Konfiguration statt Lernoberflaeche - hier
+# passt die verspielte "Cozy Kawaii"-Optik (Doodles, Halbton-Punktraster,
+# Farbverlauf-Titel) tonal nicht. Siehe _technical_override_css() unten.
+# --------------------------------------------------------------------------- #
+TECHNICAL_PAGE_KEYS = frozenset({"evaluation", "einstellungen"})
+
 
 def theme_for(page_key: str) -> dict:
     """Akzent/Soft-Farbe + Name fuer eine Seite - falls unbekannt, neutraler
@@ -185,6 +193,41 @@ def _doodle_layer(accent: str, soft: str) -> str:
     <path fill="{soft}" d="M30 4 L34 24 L54 30 L34 36 L30 56 L26 36 L6 30 L26 24 Z"/>
   </svg>
 </div>
+"""
+
+
+# --------------------------------------------------------------------------- #
+# Ueberschreibung fuer TECHNICAL_PAGE_KEYS: sachlicherer Auftritt statt der
+# verspielten Basis-Optik - kein Halbton-Punktraster in den Karten, kleinerer
+# Radius, entsaettigter Seitenhintergrund, Titel in Volltonfarbe statt
+# Farbverlauf-Text-Clip. Wird ZUSAETZLICH zu _BASE_CSS injiziert (reine
+# Ueberschreibung per spaeterer Deklaration im selben <style>-Block, kein
+# eigenes CSS-Grundsystem) - der Doodle-Layer wird fuer diese Seiten in
+# apply_page_style() gleich gar nicht erst mit ausgeliefert.
+# --------------------------------------------------------------------------- #
+def _technical_override_css(soft: str) -> str:
+    return f"""
+<style>
+[data-testid="stAppViewContainer"] {{
+  background:#f6f6f7 !important; background-attachment:fixed !important;
+}}
+html.rag-dark [data-testid="stAppViewContainer"] {{background:#12141a !important;}}
+h1 {{
+  background:none !important; -webkit-background-clip:unset !important;
+  background-clip:unset !important; color:#3a3a42 !important;
+  border-bottom-color:{soft} !important;
+}}
+html.rag-dark h1 {{color:#dcdde2 !important;}}
+div[class*="st-key-card_"] {{
+  background:#ffffff !important;
+  border:1px solid rgba(43,32,54,.14) !important; border-radius:10px !important;
+  box-shadow:0 1px 3px rgba(0,0,0,.05) !important;
+}}
+html.rag-dark div[class*="st-key-card_"] {{
+  background:#191c24 !important; border-color:#2c303a !important;
+  box-shadow:0 1px 3px rgba(0,0,0,.25) !important;
+}}
+</style>
 """
 
 
@@ -740,10 +783,12 @@ def apply_page_style(page_key: str, *, show_nav: bool = True) -> dict:
     theme = theme_for(page_key)
     accent, soft = theme["accent"], theme["soft"]
 
-    st.markdown(
-        _FONT_FACE_CSS + _BASE_CSS.format(accent=accent, soft=soft) + _doodle_layer(accent, soft),
-        unsafe_allow_html=True,
-    )
+    css = _FONT_FACE_CSS + _BASE_CSS.format(accent=accent, soft=soft)
+    if page_key in TECHNICAL_PAGE_KEYS:
+        css += _technical_override_css(soft)          # kein Doodle-Layer hier
+    else:
+        css += _doodle_layer(accent, soft)
+    st.markdown(css, unsafe_allow_html=True)
 
     # Dark-Mode-Bootstrap + Umschalt-Button: UNBEDINGT bei jedem Aufruf (billig,
     # idempotent) - garantiert den richtigen Hell/Dunkel-Zustand auch direkt

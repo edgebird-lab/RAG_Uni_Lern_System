@@ -94,6 +94,17 @@ with card("kennzahlen"):
     acc = "–" if ov["accuracy_7d"] is None else f'{ov["accuracy_7d"]} %'
     c5.metric("Treffer (7 T.)", acc,
               help=f'Anteil „gewusst" der letzten 7 Tage · {ov["reviews_7d"]} Wiederholungen.')
+    # Heutigen Stand als Schnappschuss festhalten (ueberschreibt sich am selben
+    # Tag) - Grundlage der beiden Verlaufs-Sparklines direkt unten, siehe
+    # analytics.record_progress_snapshot()-Docstring.
+    analytics.record_progress_snapshot(subject)
+    _snap_trend = analytics.progress_snapshot_trend(subject, days=14)
+    # Sparkline unter "Sitzt" nur zusaetzlich, wenn schon mind. 2 Tage Historie
+    # vorliegen (bei genau 1 Punkt wirkt ein Balken irrefuehrend "voll").
+    if len(_snap_trend) >= 2:
+        c2.markdown(_charts.sparkline([d["mastery_pct"] for d in _snap_trend],
+                                      color=_theme["accent"], height=24),
+                   unsafe_allow_html=True)
     if ov["leeches"]:
         st.caption(f'⚠️ {ov["leeches"]} Dauerpatzer (Leech-Karten) in der Auswahl – siehe unten.')
 
@@ -105,6 +116,12 @@ with card("kennzahlen"):
     gc1.metric("Klausur-Bereitschaft (Schätzung)", f"{_ready} %",
                help="Geschätzte mittlere Abrufwahrscheinlichkeit über alle Karten "
                     "(Vergessenskurve aus FSRS-6). Eine Schätzung, keine Garantie.")
+    if len(_snap_trend) >= 2:
+        gc1.markdown(_charts.sparkline([d["readiness_pct"] for d in _snap_trend],
+                                       color="#C08A2E", height=24),
+                   unsafe_allow_html=True)
+    else:
+        gc1.caption("📈 Verlauf sammelt sich – ab morgen siehst du hier den Trend.")
     gc2.metric("Heute-Ziel", f'{_goal["done_today"]} / {_goal["goal"]}',
                delta=f'{_ampel} {_goal["due"]} fällig', delta_color="off",
                help="Heute geübte Wiederholungen vs. Tagesziel · Ampel = Backlog "
@@ -142,12 +159,17 @@ with card("klausur"):
                                             help="Wie wichtig ist dieses Fach relativ? (ECTS-artig)")
             ex_ects = st.number_input("ECTS (optional)", min_value=0.0, max_value=60.0,
                                       value=float(existing.get("ects") or 0.0), step=1.0)
+            ex_note = st.number_input(
+                "Note (nach der Klausur eintragen)", min_value=0.0, max_value=6.0,
+                value=float(existing.get("note") or 0.0), step=0.1,
+                help="0,0 = noch keine Note eingetragen. Fließt ECTS-gewichtet in "
+                     "den Notenschnitt unten ein.")
             s1, s2 = st.columns(2)
             save = s1.form_submit_button("💾 Termin speichern", use_container_width=True)
             clear = s2.form_submit_button("🗑️ Termin entfernen", use_container_width=True)
             if save:
                 manifest.upsert_exam(ex_subject, exam_date=ex_date.isoformat() if ex_date else None,
-                                     ects=ex_ects or None, gewicht=ex_weight)
+                                     ects=ex_ects or None, gewicht=ex_weight, note=ex_note or None)
                 st.success(f"Termin für {_fach(ex_subject)} gespeichert.")
                 st.rerun()
             if clear:
@@ -175,6 +197,21 @@ with card("klausur"):
         st.download_button("📅 Klausurtermine als Kalender (.ics)", data=_ics,
                            file_name="klausurtermine.ics", mime="text/calendar",
                            help="In Google/Apple/Outlook-Kalender importieren.")
+
+    _gpa = planner.gpa_summary()
+    if _gpa["count"]:
+        st.divider()
+        st.subheader("🎓 Notenschnitt")
+        ngc1, ngc2 = st.columns(2)
+        ngc1.metric("Ø-Note (ECTS-gewichtet)", f'{_gpa["gpa"]:.2f}',
+                    help="Gewichteter Durchschnitt aller eingetragenen Noten – Fächer ohne "
+                         "ECTS-Angabe zählen mit Gewicht 1,0.")
+        ngc2.metric("Bewertete Klausuren", _gpa["count"])
+        dfg = pd.DataFrame([{
+            "Fach": _fach(e["subject"]), "Note": e["note"],
+            "ECTS": e["ects"] if e.get("ects") else "–",
+        } for e in sorted(_gpa["exams"], key=lambda e: e["subject"])])
+        st.dataframe(dfg, use_container_width=True, hide_index=True)
 
 # --------------------------------------------------------------------------- #
 # Treffer-Trend & Fälligkeits-Prognose
