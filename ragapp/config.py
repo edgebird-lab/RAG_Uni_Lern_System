@@ -74,8 +74,9 @@ UI_MODE_FILE = DATA_DIR / ".mode"                      # aktueller Zugriffsmodus
 VOICE_DIR = DATA_DIR / "voice"                          # eigene Stimm-Referenzaufnahme (Audio-Overview)
 AUDIO_DIR = DATA_DIR / "audio_overviews"                # erzeugte Audio-Overview-WAVs
 AUDIOBOOK_DIR = DATA_DIR / "audiobooks"                 # exportierte Hörbuch-ZIPs (siehe ragapp/audiobook.py)
+TALK_DIR = DATA_DIR / "talks"                           # Vorträge: Marp-MD, Audio, Video (siehe ragapp/talk.py)
 
-for _p in (DATA_DIR, CHROMA_DIR, BM25_DIR, EVAL_DIR, LOG_DIR, INBOX_DIR):
+for _p in (DATA_DIR, CHROMA_DIR, BM25_DIR, EVAL_DIR, LOG_DIR, INBOX_DIR, TALK_DIR):
     _p.mkdir(parents=True, exist_ok=True)
 
 
@@ -536,6 +537,21 @@ class Settings:
     AUDIO_TTS_REPETITION_PENALTY: float = 2.0
     AUDIO_TTS_MIN_P: float = 0.05
     AUDIO_TTS_TOP_P: float = 1.0
+
+    # ------------------------------------------------------------------ #
+    # Vortrag + optionale externe Quellen (SearXNG)
+    # ------------------------------------------------------------------ #
+    # SearXNG ist OPT-IN und standardmaessig AUS - die App bleibt offline-
+    # first. Nur wenn der Nutzer die Checkbox auf der Vortrag-Seite (oder
+    # hier) aktiviert, werden Suchanfragen an die konfigurierte Instanz
+    # geschickt (typisch private Instanz hinter VPN/LAN).
+    SEARXNG_ENABLED: bool = False
+    SEARXNG_BASE_URL: str = "https://search.olbricht-digital.de/"
+    SEARXNG_TIMEOUT_S: float = 12.0
+    SEARXNG_MAX_RESULTS: int = 12
+    # Sicherheitsnetz fuer Vortrags-Skript (wie AUDIO_MAX_SCRIPT_CHARS).
+    TALK_MAX_SCRIPT_CHARS: int = 24000
+    TALK_MAX_SLIDES: int = 24
 
     # ------------------------------------------------------------------ #
     # Evaluation

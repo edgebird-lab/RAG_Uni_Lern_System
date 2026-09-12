@@ -95,6 +95,9 @@ eigenen Kurs- und Klausurunterlagen bleiben ausschließlich auf deinem Rechner:
   **gegroundete** Markdown-Zusammenfassung – mit einem separat wählbaren, großen
   **Autoren-Modell** (`LLM_MODEL_AUTHOR`), während der interaktive Chat auf einem
   schnellen Modell bleibt (kein Modell-Wechsel mitten in der Antwort).
+- **🎤 Vortrag:** Marp-Folien + Sprecher-Skript aus Unterlagen, optional wissenschaftliche
+  Treffer über private SearXNG (**Opt-in**, Offline-Default), Vertonung wie Audio-Overview,
+  optional MP4 (Marp-CLI + ffmpeg).
 - **Hybrid-Retrieval für hohe Trefferquote:** Semantische Suche (dense, `bge-m3`)
   **plus** deutsche Keyword-Suche (BM25 mit Snowball-Stemming & Stoppwörtern),
   vereint per **Reciprocal Rank Fusion (RRF)** und final durch einen

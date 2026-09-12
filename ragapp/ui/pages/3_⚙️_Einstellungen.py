@@ -141,6 +141,7 @@ html.rag-dark .settings-toc a {background:#132b4d !important; border-color:#1e3a
 <a href="#modelle">🧠 Modelle</a>
 <a href="#lernplan">📋 Lernplan</a>
 <a href="#audio-overview-sprachsynthese">🎧 Audio-Overview</a>
+<a href="#externe-quellen-searxng">🌐 SearXNG</a>
 <a href="#evaluation-qualitaetsmessung">📊 Evaluation</a>
 <a href="#uni-sparmodus">🎓 Uni-Modus</a>
 <a href="#zuruecksetzen">↺ Zurücksetzen</a>
@@ -1122,6 +1123,34 @@ with st.form("einstellungen"):
     st.divider()
 
     # ------------------------------------------------------------------ #
+    st.subheader("🌐 Externe Quellen (SearXNG)")
+    st.caption("Opt-in für die Vortrag-Seite. Standard: aus (App bleibt offline). "
+               "Die Instanz ist oft nur per VPN/LAN erreichbar.")
+    neu["SEARXNG_ENABLED"] = st.checkbox(
+        "SearXNG standardmäßig aktiv (kann auf der Vortrag-Seite überschrieben werden)",
+        value=bool(settings.SEARXNG_ENABLED), key="cfg_SEARXNG_ENABLED",
+        help="Technisch: SEARXNG_ENABLED")
+    neu["SEARXNG_BASE_URL"] = st.text_input(
+        "SearXNG-Basis-URL", value=str(settings.SEARXNG_BASE_URL),
+        key="cfg_SEARXNG_BASE_URL",
+        help="z. B. https://search.olbricht-digital.de/ – Technisch: SEARXNG_BASE_URL")
+    sx1, sx2 = st.columns(2)
+    with sx1:
+        neu["SEARXNG_TIMEOUT_S"] = st.number_input(
+            "Timeout (Sekunden)", min_value=3.0, max_value=60.0,
+            value=float(settings.SEARXNG_TIMEOUT_S), step=1.0,
+            key="cfg_SEARXNG_TIMEOUT_S")
+    with sx2:
+        neu["SEARXNG_MAX_RESULTS"] = st.number_input(
+            "Max. Treffer", min_value=3, max_value=40,
+            value=int(settings.SEARXNG_MAX_RESULTS), step=1,
+            key="cfg_SEARXNG_MAX_RESULTS")
+    st.caption("Verbindungstest: speichere zuerst, dann unten außerhalb des Formulars "
+               "auf „Verbindung testen“.")
+
+    st.divider()
+
+    # ------------------------------------------------------------------ #
     st.subheader("📊 Evaluation (Qualitätsmessung)")
     st.caption("Für den Test der Suchqualität auf der Seite „Evaluation\".")
     e1, e2 = st.columns(2)
@@ -1153,6 +1182,7 @@ if gespeichert:
         "DENSE_TOP_K", "BM25_TOP_K", "FUSION_TOP_K", "RRF_K", "FINAL_TOP_K",
         "CHUNK_SIZE", "CHUNK_OVERLAP", "MIN_CHUNK_CHARS", "LLM_NUM_CTX",
         "MAX_CONTEXT_CHARS", "EVAL_SAMPLE_SIZE", "EVAL_QUESTIONS_PER_CHUNK",
+        "SEARXNG_MAX_RESULTS",
     }
     for k in int_felder:
         neu[k] = int(neu[k])
@@ -1167,6 +1197,23 @@ if gespeichert:
         "erst nach einem **Neu-Import** der Dokumente. Die Werte werden in "
         "`data/config.json` gespeichert."
     )
+
+# --------------------------------------------------------------------------- #
+# SearXNG-Verbindungstest (außerhalb des Formulars – st.button in forms geht nicht)
+# --------------------------------------------------------------------------- #
+st.divider()
+st.subheader("🌐 SearXNG – Verbindungstest")
+st.caption(f"Aktuell: `{settings.SEARXNG_BASE_URL}` · "
+           f"{'aktiviert' if settings.SEARXNG_ENABLED else 'deaktiviert (Opt-in)'} · "
+           "Oft nur per VPN/LAN erreichbar.")
+if st.button("🔌 Verbindung testen", key="searx_health_test"):
+    from ragapp.searx_client import health_check
+    with st.spinner("Teste SearXNG …"):
+        _ok, _msg = health_check()
+    if _ok:
+        st.success(_msg)
+    else:
+        st.warning(_msg)
 
 # --------------------------------------------------------------------------- #
 # Uni-/Sparmodus (außerhalb des Formulars, da st.button in Formularen nicht

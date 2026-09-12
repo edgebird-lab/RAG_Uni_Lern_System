@@ -35,7 +35,7 @@ def test_technical_page_keys_sind_bekannte_themen():
 
 def test_lern_und_erstellen_seiten_sind_nicht_technisch():
     for key in ("home", "chat", "lernen", "mindmap", "uebungsaufgaben",
-                "lernplan", "zusammenfassung", "audio", "notizen",
+                "lernplan", "zusammenfassung", "audio", "vortrag", "notizen",
                 "fortschritt", "lernzeit", "ingestion", "dokumente",
                 "organisation"):
         assert key not in TECHNICAL_PAGE_KEYS

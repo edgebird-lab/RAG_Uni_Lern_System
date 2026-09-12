@@ -370,6 +370,26 @@ CREATE TABLE IF NOT EXISTS audio_overviews (
 );
 CREATE INDEX IF NOT EXISTS idx_audio_overviews_subject ON audio_overviews(subject);
 
+-- Vortraege: Marp-Markdown + Sprecher-Skript + optionale externe Quellen
+-- (SearXNG) + Audio/Video-Pfade unter data/talks/<id>/ (siehe ragapp/talk.py).
+-- Wie bei Audio-Overviews liegen Binaerdateien (WAV/MP4/PNGs) auf der Platte,
+-- nur relative Pfade werden in der DB gehalten.
+CREATE TABLE IF NOT EXISTS talks (
+    talk_id      TEXT PRIMARY KEY,
+    title        TEXT NOT NULL,
+    subject      TEXT,
+    doc_ids      TEXT,             -- JSON-Liste gewaehlter Dokument-IDs
+    marp_md      TEXT NOT NULL,    -- Marp-Markdown (YAML-Frontmatter + Folien)
+    script_text  TEXT NOT NULL,    -- Sprecher-Skript (TTS)
+    sources_json TEXT,             -- JSON-Liste ausgewaehlter externer Treffer
+    audio_path   TEXT,             -- relativ zu TALK_DIR (z. B. <id>/audio.wav)
+    video_path   TEXT,             -- relativ zu TALK_DIR (z. B. <id>/talk.mp4)
+    model        TEXT,
+    created_at   REAL,
+    updated_at   REAL
+);
+CREATE INDEX IF NOT EXISTS idx_talks_subject ON talks(subject);
+
 -- Dauerhaft gemerkte Ausspracheregeln fuers Vorlesen (siehe
 -- ragapp/audio_overview.py: _apply_pronunciation_fixes/suggest_pronunciations).
 -- Ergaenzt die fest im Code hinterlegte _PRONUNCIATION_FIXES-Liste um vom
@@ -2649,6 +2669,114 @@ def delete_audio_overview(overview_id: str) -> None:
     if row and row.get("audio_path"):
         from ragapp.config import AUDIO_DIR
         p = AUDIO_DIR / row["audio_path"]
+        if p.is_file():
+            try:
+                p.unlink()
+            except OSError:
+                pass
+
+
+# --------------------------------------------------------------------------- #
+# Vortraege (siehe _SCHEMA-Kommentar oben) - wie Audio-Overviews, zusaetzlich
+# mit Marp-MD, optionalen Quellen und optionalem Video unter TALK_DIR.
+# --------------------------------------------------------------------------- #
+
+def create_talk(*, title: str, subject: Optional[str], doc_ids: list[str],
+                marp_md: str, script_text: str,
+                sources: Optional[list] = None,
+                audio_path: Optional[str] = None,
+                video_path: Optional[str] = None,
+                model: Optional[str] = None,
+                talk_id: Optional[str] = None) -> str:
+    """``talk_id`` optional vorgeben, damit Dateien unter ``data/talks/<id>/``
+    schon vor dem Insert abgelegt werden koennen."""
+    now = time.time()
+    tid = talk_id or uuid.uuid4().hex[:16]
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO talks (talk_id, title, subject, doc_ids, marp_md, "
+            "script_text, sources_json, audio_path, video_path, model, "
+            "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (tid, title.strip(), subject, json.dumps(doc_ids or []),
+             marp_md, script_text, json.dumps(sources or []),
+             audio_path, video_path, model, now, now),
+        )
+    return tid
+
+
+def _decode_talk(row: dict) -> dict:
+    d = dict(row)
+    try:
+        d["doc_ids"] = json.loads(d.get("doc_ids") or "[]")
+    except Exception:  # noqa: BLE001
+        d["doc_ids"] = []
+    try:
+        d["sources"] = json.loads(d.get("sources_json") or "[]")
+    except Exception:  # noqa: BLE001
+        d["sources"] = []
+    return d
+
+
+def get_talk(talk_id: str) -> Optional[dict]:
+    with _connect() as conn:
+        r = conn.execute(
+            "SELECT * FROM talks WHERE talk_id=?", (talk_id,)).fetchone()
+    return _decode_talk(r) if r else None
+
+
+def update_talk(talk_id: str, **fields: Any) -> None:
+    """Aktualisiert einzelne Felder (Skript, Marp, Audio-/Video-Pfad, …)."""
+    valid = {"title", "subject", "doc_ids", "marp_md", "script_text",
+             "sources", "audio_path", "video_path", "model"}
+    sets = []
+    args = []
+    for k, v in fields.items():
+        if k not in valid:
+            continue
+        col = "sources_json" if k == "sources" else k
+        sets.append(f"{col}=?")
+        if k in ("doc_ids", "sources"):
+            args.append(json.dumps(v or []))
+        else:
+            args.append(v)
+    if not sets:
+        return
+    args += [time.time(), talk_id]
+    with _connect() as conn:
+        conn.execute(f"UPDATE talks SET {','.join(sets)}, updated_at=? "
+                     "WHERE talk_id=?", args)
+
+
+def list_talks(subject: Optional[str] = None) -> list[dict]:
+    sql = "SELECT * FROM talks WHERE 1=1"
+    args: list = []
+    if subject:
+        sql += " AND subject=?"; args.append(subject)
+    sql += " ORDER BY created_at DESC"
+    with _connect() as conn:
+        rows = conn.execute(sql, args).fetchall()
+    return [_decode_talk(r) for r in rows]
+
+
+def delete_talk(talk_id: str) -> None:
+    """Loescht DB-Eintrag und den Ordner ``data/talks/<id>/`` (Audio/Video/MD)."""
+    import shutil
+    row = get_talk(talk_id)
+    with _connect() as conn:
+        conn.execute("DELETE FROM talks WHERE talk_id=?", (talk_id,))
+    if not row:
+        return
+    from ragapp.config import TALK_DIR
+    talk_dir = TALK_DIR / talk_id
+    if talk_dir.is_dir():
+        try:
+            shutil.rmtree(talk_dir)
+        except OSError:
+            pass
+    for rel in (row.get("audio_path"), row.get("video_path")):
+        if not rel:
+            continue
+        p = TALK_DIR / rel
         if p.is_file():
             try:
                 p.unlink()

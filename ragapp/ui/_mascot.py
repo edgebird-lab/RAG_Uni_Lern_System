@@ -82,6 +82,7 @@ POSES: dict[str, tuple[str, str, "str | None"]] = {
     "evaluation":      ("focused", "float", None),
     "einstellungen":   ("idle", "float", None),
     "audio":           ("cheer", "float", "mic"),
+    "vortrag":         ("focused", "float", "mic"),
     "semesterplan":    ("idle", "float", "book"),
 }
 

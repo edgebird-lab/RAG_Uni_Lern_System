@@ -48,6 +48,8 @@ PAGE_REGISTRY: list[dict] = [
      "target": "pages/7_📄_Zusammenfassung.py", "category": "Erstellen"},
     {"key": "audio", "icon": "🎧", "title": "Audio-Overview", "subtitle": "Vorgelesen mit deiner Stimme",
      "target": "pages/15_🎧_Audio-Overview.py", "category": "Erstellen"},
+    {"key": "vortrag", "icon": "🎤", "title": "Vortrag", "subtitle": "Marp-Folien + Lernvideo",
+     "target": "pages/17_🎤_Vortrag.py", "category": "Erstellen"},
     {"key": "semesterplan", "icon": "📚", "title": "Semesterplan", "subtitle": "Fächer & Termine importieren",
      "target": "pages/16_📚_Semesterplan.py", "category": "Erstellen"},
     {"key": "notizen", "icon": "🗒️", "title": "Notizen", "subtitle": "Eigene Gedanken",
@@ -98,6 +100,7 @@ PAGE_THEMES: dict[str, dict] = {
     "evaluation":      {"accent": "#F4B942", "soft": "#FDEFD2", "name": "Honig"},
     "einstellungen":   {"accent": "#A9A6D4", "soft": "#EAE9F7", "name": "Fliederblau"},
     "audio":           {"accent": "#4FC3D9", "soft": "#DCF4F8", "name": "Aquamarin"},
+    "vortrag":         {"accent": "#E07A9A", "soft": "#F9E0E8", "name": "Himbeer"},
     "semesterplan":    {"accent": "#D9A464", "soft": "#F7E7CE", "name": "Karamell"},
 }
 _DEFAULT_THEME = PAGE_THEMES["home"]
