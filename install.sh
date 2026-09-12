@@ -307,6 +307,22 @@ else
     ollama pull bge-m3 || warn "bge-m3-Pull fehlgeschlagen (spaeter wiederholbar)."
 fi
 
+# ---- 7b) ffmpeg fuer den Hoerbuch-Export (Audio-Overview) ------------------- #
+# Einzige echte System-Abhaengigkeit der App (sonst bewusst vermieden, siehe
+# easyocr statt System-Tesseract, kein System-Graphviz bei der Mindmap):
+# torchaudios AAC-Encoder braucht ffmpeg's Shared-Libraries vom System, um
+# mehrere Audio-Overviews zu einem getaggten Hoerbuch-ZIP zu exportieren
+# (ragapp/audiobook.py). Ohne ffmpeg funktioniert die App normal weiter - nur
+# dieser eine Export-Knopf zeigt dann einen klaren Fehlerhinweis.
+step "ffmpeg fuer den Hoerbuch-Export pruefen (optional)"
+if command -v ffmpeg >/dev/null 2>&1; then
+    ok "ffmpeg gefunden - Hoerbuch-Export einsatzbereit."
+else
+    warn "ffmpeg nicht gefunden - der Hoerbuch-Export (mehrere Audio-Overviews zu"
+    warn "einem Hoerbuch buendeln) funktioniert dann nicht. Alles andere ist davon"
+    warn "nicht betroffen. Nachinstallieren:  sudo apt install ffmpeg"
+fi
+
 # ---- 8) recommend ---------------------------------------------------------- #
 if [ "${SKIP_RECOMMEND:-0}" = "1" ]; then
     step "Modell-Empfehlung uebersprungen (SKIP_RECOMMEND=1)"

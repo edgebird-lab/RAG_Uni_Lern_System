@@ -19,6 +19,10 @@ ein Text-Normalisierungs-, kein Stimmqualitaets-Problem (siehe Moduldoc
 das LLM Aussprache-Vorschlaege machen; bestaetigte Korrekturen werden
 dauerhaft gemerkt (``manifest.pronunciation_fixes``) und gelten automatisch
 fuer alle kuenftigen Audio-Overviews.
+
+Mehrere Audio-Overviews lassen sich zusaetzlich zu einem Hoerbuch buendeln
+(siehe ``ragapp/audiobook.py``) - statt die einzelnen WAVs von Hand aufs
+Handy zu ziehen und dort zusammenzufuegen.
 """
 from __future__ import annotations
 
@@ -54,7 +58,7 @@ st.caption("Lässt deine Dokumente als gesprochenes Erklär-Skript zusammenfasse
            "lassen sich auch selbst schreiben oder im Nachgang bearbeiten.")
 
 with st.spinner("Audio-Overview wird geladen ..."):
-    from ragapp import manifest, audio_overview
+    from ragapp import manifest, audio_overview, audiobook
     from ragapp.config import settings, SUBJECT_LABELS, PROJECT_ROOT, AUDIO_DIR
     from ragapp.llm import list_installed_models
 
@@ -148,8 +152,11 @@ def _render_pronunciation_hints(text: str, *, key_prefix: str) -> None:
         + r")\b")
     _highlighted = _pattern.sub(lambda m: f"<mark>{m.group(0)}</mark>", _escaped)
     _highlighted = _highlighted.replace("\n", "<br>")
+    # key= haelt den Auf/Zu-Zustand fest - ohne key faellt der Expander sonst
+    # bei JEDEM Rerun (auch nur durch ein Haekchen/Textfeld HIER DRIN) auf
+    # geschlossen zurueck (siehe Kommentar beim Hörbuch-Export-Expander unten).
     with st.expander(f"🔍 {len(_words)} möglicherweise falsch ausgesprochene(s) "
-                     "Wort/Wörter - Aussprache prüfen"):
+                     "Wort/Wörter - Aussprache prüfen", key=f"pron_expander_{key_prefix}"):
         st.caption("Vorschläge kommen vom KI-Modell (kennt übliches Fachjargon-Vorlesen, "
                    "z. B. „nmap“ → „en map“) - kurz gegenhören/korrigieren und übernehmen. "
                    "Übernommene Korrekturen merkt sich die App dauerhaft und wendet sie ab "
@@ -264,7 +271,8 @@ _active_id = st.session_state.get("audio_choice")
 # --------------------------------------------------------------------------- #
 _pron_fixes = manifest.list_pronunciation_fixes()
 if _pron_fixes:
-    with st.expander(f"🔤 {len(_pron_fixes)} gespeicherte Ausspracheregel(n) verwalten"):
+    with st.expander(f"🔤 {len(_pron_fixes)} gespeicherte Ausspracheregel(n) verwalten",
+                     key="pron_manage_expander"):
         st.caption("Gilt automatisch für alle Audio-Overviews (KI-generiert, selbst "
                    "geschrieben oder neu vertont).")
         for _word, _replacement in _pron_fixes.items():
@@ -274,6 +282,72 @@ if _pron_fixes:
             if _pc3.button("🗑️", key=f"pron_del_{_word}", help="Regel löschen"):
                 manifest.delete_pronunciation_fix(_word)
                 st.rerun()
+
+# --------------------------------------------------------------------------- #
+# Hörbuch-Export: mehrere Audio-Overviews in gewählter Reihenfolge zu einem
+# getaggten ZIP bündeln (siehe ragapp/audiobook.py) - erspart das manuelle
+# Zusammenfügen einzelner WAV-Downloads auf dem Handy. Reihenfolge per
+# ⬆️/⬇️ statt Drag&Drop (Streamlit hat kein natives Umsortieren einer Liste);
+# eine eigene session_state-Liste haelt die Sortierung ueber Reruns hinweg
+# und wird nur bei einer NEUEN Auswahl (anderer Wortlaut/Anzahl) aus der
+# Multiselect-Reihenfolge neu aufgebaut.
+# --------------------------------------------------------------------------- #
+if _ov_by_id:
+    # key= haelt den Auf/Zu-Zustand explizit ueber Reruns hinweg fest - ohne
+    # key faellt der Expander sonst bei JEDEM Rerun auf expanded=False zurueck,
+    # auch wenn nur ein WIDGET DARIN (das Multiselect) den Rerun ausgeloest
+    # hat: beobachtet, dass eine Auswahl die gerade geoeffnete Box sofort
+    # wieder zuklappte.
+    with st.expander("📚 Mehrere Audio-Overviews als Hörbuch exportieren",
+                     key="audiobook_expander"):
+        st.caption("Wählt mehrere Audio-Overviews aus, bringt sie in die gewünschte "
+                   "Reihenfolge und ladet sie als EIN ZIP herunter - saubere "
+                   "Kapitel-Dateien (kleiner als WAV, mit Titel/Album/Kapitelnummer "
+                   "getaggt und lautstärke-angeglichen), fürs direkte Reinziehen in "
+                   "eine Musik-/Hörbuch-App aufs Handy statt manuellem Zusammenfügen.")
+
+        _book_selected = st.multiselect(
+            "Audio-Overviews auswählen", list(_ov_by_id.keys()),
+            format_func=_fmt_ov_option, key="audiobook_selected",
+            placeholder="Auswählen …")
+
+        if _book_selected:
+            if st.session_state.get("_audiobook_order_base") != _book_selected:
+                st.session_state["_audiobook_order"] = list(_book_selected)
+                st.session_state["_audiobook_order_base"] = list(_book_selected)
+            _order: list[str] = st.session_state["_audiobook_order"]
+
+            st.caption("Reihenfolge (Kapitel 1 zuerst):")
+            for _idx, _oid in enumerate(_order):
+                _oc1, _oc2, _oc3 = st.columns([7, 1, 1])
+                _oc1.write(f"{_idx + 1}. {_fmt_ov_option(_oid)}")
+                if _oc2.button("⬆️", key=f"book_up_{_oid}", disabled=_idx == 0,
+                              help="Nach oben"):
+                    _order[_idx - 1], _order[_idx] = _order[_idx], _order[_idx - 1]
+                    st.rerun()
+                if _oc3.button("⬇️", key=f"book_down_{_oid}",
+                              disabled=_idx == len(_order) - 1, help="Nach unten"):
+                    _order[_idx + 1], _order[_idx] = _order[_idx], _order[_idx + 1]
+                    st.rerun()
+
+            _book_title = st.text_input("Buchtitel", value="Mein Hörbuch",
+                                        key="audiobook_title")
+
+            if st.button("📚 Hörbuch exportieren", type="primary", key="audiobook_export"):
+                _book_bar = st.progress(0.0)
+                _book_cap = st.empty()
+                try:
+                    _zip_path = audiobook.export_audiobook(
+                        _order, _book_title or "Mein Hörbuch",
+                        on_progress=_progress_tracker(_book_bar, _book_cap, "Export"))
+                except audiobook.AudiobookError as exc:
+                    st.error(str(exc))
+                    st.stop()
+                st.success("Hörbuch-ZIP erstellt.")
+                st.download_button(
+                    "⬇️ ZIP herunterladen", data=_zip_path.read_bytes(),
+                    file_name=_zip_path.name, mime="application/zip",
+                    use_container_width=True)
 
 st.divider()
 

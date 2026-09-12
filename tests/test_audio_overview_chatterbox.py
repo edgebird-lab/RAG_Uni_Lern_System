@@ -14,10 +14,25 @@ Isoliert geladen - ``_get_tts``/``_prepare_vram_for_tts``/``_split_sentences``
 werden in den synthesize_speech-Tests gefaked (kein echtes Modell laden).
 torch/torchaudio/pysbd sind echte, leichte Importe (kein transformers/
 Chatterbox-Modell-Download nötig)."""
+import logging
 import types
 
 import pytest
 import torch
+
+
+class _FakeForcedEosCapture(logging.Handler):
+    """Testdouble fuer ``audio_overview._ForcedEosCapture`` (eine Klasse -
+    der AST-Isolationslader in conftest.py kann nur Funktionen/Konstanten
+    laden, keine Klassendefinitionen). Funktional identisch: sammelt, ob ein
+    "forcing EOS"-Log auf dem Alignment-Logger auftauchte."""
+    def __init__(self):
+        super().__init__(level=logging.WARNING)
+        self.forced = False
+
+    def emit(self, record):
+        if "forcing EOS" in record.getMessage():
+            self.forced = True
 
 
 def _fake_settings(**overrides):
@@ -105,11 +120,17 @@ def test_concat_with_pauses_mehrere_stuecke_drei_pausen_zwei(concat_fn):
 
 @pytest.fixture
 def synth_env(load_functions, ragapp_dir, tmp_path):
-    def _make(*, settings_obj=None, vram_ok=True, sentences=None):
+    def _make(*, settings_obj=None, vram_ok=True, sentences=None,
+              force_eos_once_for=None, force_eos_always_for=None):
         settings_obj = settings_obj or _fake_settings()
         sentences = sentences if sentences is not None else ["Satz eins.", "Satz zwei."]
+        force_eos_once_for = set(force_eos_once_for or ())
+        force_eos_always_for = set(force_eos_always_for or ())
         generate_calls = []
         prepare_calls = []
+        _already_forced: set = set()
+        alignment_logger = logging.getLogger(
+            "chatterbox.models.t3.inference.alignment_stream_analyzer")
 
         class _FakeModel:
             sr = 24000
@@ -119,12 +140,26 @@ def synth_env(load_functions, ragapp_dir, tmp_path):
 
             def generate(self, text, **kwargs):
                 generate_calls.append({"text": text, **kwargs})
+                # Simuliert Chatterbox' eigenes Verhalten (siehe
+                # _ForcedEosCapture-Kommentar in audio_overview.py):
+                # force_eos_once_for loggt nur beim ERSTEN Aufruf (Retry soll
+                # clean sein), force_eos_always_for loggt bei JEDEM Aufruf
+                # (simuliert "der Neuversuch hilft auch nicht").
+                should_force = (
+                    text in force_eos_always_for
+                    or (text in force_eos_once_for and text not in _already_forced))
+                if should_force:
+                    _already_forced.add(text)
+                    alignment_logger.warning(
+                        "forcing EOS token, long_tail=True, alignment_repetition=False, "
+                        "token_repetition=True")
                 return torch.zeros(1, 100)
 
         funcs = load_functions(
             ragapp_dir / "audio_overview.py",
-            ["synthesize_speech", "_concat_with_pauses", "_apply_pronunciation_fixes",
-             "_keep_case", "_speakify_path", "_speakify_domain", "_speakify_suffix"],
+            ["synthesize_speech", "_generate_sentence", "_concat_with_pauses",
+             "_apply_pronunciation_fixes", "_keep_case", "_speakify_path",
+             "_speakify_domain", "_speakify_suffix"],
             {
                 "settings": settings_obj,
                 "_prepare_vram_for_tts": lambda: (vram_ok, "" if vram_ok else "kein VRAM"),
@@ -134,10 +169,12 @@ def synth_env(load_functions, ragapp_dir, tmp_path):
                 "Optional": None,
                 "Path": __import__("pathlib").Path,
                 "re": __import__("re"),
+                "logging": logging,
+                "_ForcedEosCapture": _FakeForcedEosCapture,
                 "manifest": types.SimpleNamespace(list_pronunciation_fixes=lambda: {}),
             },
             const_names=["_PRONUNCIATION_FIXES", "_PATH_PATTERN", "_DOMAIN_PATTERN",
-                         "_BARE_SUFFIX_PATTERN"],
+                         "_BARE_SUFFIX_PATTERN", "_ALIGNMENT_LOGGER_NAME"],
         )
         return types.SimpleNamespace(
             **funcs, generate_calls=generate_calls, prepare_calls=prepare_calls,
@@ -235,3 +272,51 @@ def test_synthesize_speech_modellfehler_wird_zu_audiooverviewerror(synth_env):
         sr=24000, generate=_boom, prepare_conditionals=lambda *a, **kw: None)
     with pytest.raises(RuntimeError):
         env.synthesize_speech("Satz eins.", "ref.wav", str(env.tmp_path / "out.wav"))
+
+
+# --------------------------------------------------------------------------- #
+# Retry bei erzwungener EOS: Chatterbox' AlignmentStreamAnalyzer bricht einen
+# Satz manchmal vorzeitig ab (Wiederholungs-/Halluzinations-Schutz) - dafuer
+# gibt es KEINEN Rueckgabewert, nur ein WARNING-Log. synthesize_speech hoert
+# genau dieses Log ab (_generate_sentence/_ForcedEosCapture) und versucht den
+# betroffenen Satz EINMAL neu, bevor das Ergebnis uebernommen wird.
+# --------------------------------------------------------------------------- #
+
+def test_erzwungene_eos_fuehrt_zu_genau_einem_neuversuch(synth_env):
+    env = synth_env(sentences=["Satz eins.", "Satz zwei."],
+                    force_eos_once_for={"Satz eins."})
+    env.synthesize_speech("Satz eins. Satz zwei.", "ref.wav", str(env.tmp_path / "out.wav"))
+    # "Satz eins." wird zweimal generiert (Erstversuch + Neuversuch), "Satz zwei." nur einmal
+    calls_satz1 = [c for c in env.generate_calls if c["text"] == "Satz eins."]
+    calls_satz2 = [c for c in env.generate_calls if c["text"] == "Satz zwei."]
+    assert len(calls_satz1) == 2
+    assert len(calls_satz2) == 1
+
+
+def test_kein_neuversuch_ohne_erzwungene_eos(synth_env):
+    env = synth_env(sentences=["Satz eins.", "Satz zwei."])
+    env.synthesize_speech("Satz eins. Satz zwei.", "ref.wav", str(env.tmp_path / "out.wav"))
+    assert len(env.generate_calls) == 2
+
+
+def test_neuversuch_wird_im_progress_label_markiert(synth_env):
+    env = synth_env(sentences=["Satz eins.", "Satz zwei."],
+                    force_eos_once_for={"Satz eins."})
+    labels = []
+    env.synthesize_speech(
+        "Satz eins. Satz zwei.", "ref.wav", str(env.tmp_path / "out.wav"),
+        on_progress=lambda done, total, label: labels.append(label))
+    assert labels[0].startswith("🔁 ")
+    assert not labels[1].startswith("🔁 ")
+
+
+def test_neuversuch_der_ebenfalls_erzwungene_eos_hat_bricht_nicht_ab(synth_env):
+    # Auch wenn der Neuversuch WIEDER die Absicherung ausloest, muss die
+    # Vertonung trotzdem fertig werden (kein zweiter Retry, kein Crash) -
+    # gleiches "einmal versuchen, dann akzeptieren"-Prinzip wie beim Skript.
+    env = synth_env(sentences=["Satz eins."], force_eos_always_for={"Satz eins."})
+    out_path = env.tmp_path / "out.wav"
+    env.synthesize_speech("Satz eins.", "ref.wav", str(out_path))
+    assert out_path.is_file()
+    # Genau EIN Neuversuch, kein weiterer (Erstversuch + Retry = 2 Aufrufe):
+    assert len(env.generate_calls) == 2

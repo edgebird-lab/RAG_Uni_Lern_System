@@ -45,6 +45,7 @@ modellinterne Pausenbehandlung zu verlassen.
 """
 from __future__ import annotations
 
+import logging
 import re
 import time
 import uuid
@@ -595,6 +596,48 @@ def _concat_with_pauses(chunks: list, pause_samples: int):
     return torch.cat(parts, dim=-1)
 
 
+# Chatterbox' eingebaute Absicherung (AlignmentStreamAnalyzer, siehe Moduldoc
+# oben) erzwingt bei erkannten Wiederholungs-/Halluzinations-Mustern ein
+# vorzeitiges Satzende - das schuetzt zwar vor Gebrabbel, kann einen Satz aber
+# mitten drin abschneiden, OHNE dass das irgendwo sichtbar wird (Chatterbox
+# gibt dafuer keinen Rueckgabewert, nur ein WARNING-Log). Genau wie bei der
+# Skript-Erzeugung (``_narrate_section``, ein Retry bei erkannter Kuerzung)
+# lohnt sich hier ein einmaliger Neuversuch: die Generierung ist stochastisch
+# (Temperatur/Sampling), ein zweiter Versuch mit denselben Parametern liefert
+# in aller Regel eine andere, oft vollstaendige Stichprobe. Das Log-Abhoeren
+# ist bewusst der einzige verlaessliche Anschlusspunkt - die Bibliothek
+# selbst legt das Ergebnis der Analyse nirgendwo als Rueckgabewert offen.
+_ALIGNMENT_LOGGER_NAME = "chatterbox.models.t3.inference.alignment_stream_analyzer"
+
+
+class _ForcedEosCapture(logging.Handler):
+    """Sammelt, ob waehrend eines ``model.generate()``-Aufrufs Chatterbox'
+    interne Analyse eine erzwungene EOS geloggt hat (siehe Kommentar oben) -
+    reines Mitlesen, kein Eingriff in die Generierung selbst."""
+    def __init__(self):
+        super().__init__(level=logging.WARNING)
+        self.forced = False
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if "forcing EOS" in record.getMessage():
+            self.forced = True
+
+
+def _generate_sentence(model, sentence: str, lang: Optional[str],
+                       tts_kwargs: dict) -> tuple:
+    """Ein ``model.generate()``-Aufruf, der nebenbei mitschneidet, ob
+    Chatterbox intern eine erzwungene EOS geloggt hat. Gibt ``(wav, forced)``
+    zurueck - reine Beobachtung, greift nicht in die Generierung selbst ein."""
+    capture = _ForcedEosCapture()
+    alignment_logger = logging.getLogger(_ALIGNMENT_LOGGER_NAME)
+    alignment_logger.addHandler(capture)
+    try:
+        wav = model.generate(sentence, language_id=lang, **tts_kwargs)
+    finally:
+        alignment_logger.removeHandler(capture)
+    return wav, capture.forced
+
+
 def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
                       output_path: "str | Path", *, language: Optional[str] = None,
                       on_progress: ProgressCallback = None) -> None:
@@ -641,17 +684,22 @@ def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
         # nur gesetzt -> prepare_conditionals erneut aufrufen).
         model.prepare_conditionals(str(reference_wav_path),
                                    exaggeration=settings.AUDIO_TTS_EXAGGERATION)
+        tts_kwargs = dict(
+            exaggeration=settings.AUDIO_TTS_EXAGGERATION,
+            cfg_weight=settings.AUDIO_TTS_CFG_WEIGHT,
+            temperature=settings.AUDIO_TTS_TEMPERATURE,
+            repetition_penalty=settings.AUDIO_TTS_REPETITION_PENALTY,
+            min_p=settings.AUDIO_TTS_MIN_P, top_p=settings.AUDIO_TTS_TOP_P)
         for i, sentence in enumerate(sentences):
-            wav = model.generate(
-                sentence, language_id=lang,
-                exaggeration=settings.AUDIO_TTS_EXAGGERATION,
-                cfg_weight=settings.AUDIO_TTS_CFG_WEIGHT,
-                temperature=settings.AUDIO_TTS_TEMPERATURE,
-                repetition_penalty=settings.AUDIO_TTS_REPETITION_PENALTY,
-                min_p=settings.AUDIO_TTS_MIN_P, top_p=settings.AUDIO_TTS_TOP_P)
+            wav, forced = _generate_sentence(model, sentence, lang, tts_kwargs)
+            if forced:
+                # Vermutlich mitten im Satz abgebrochen (siehe Kommentar oben) -
+                # EIN Neuversuch, gleiches Muster wie beim Skript (_narrate_section).
+                wav, _ = _generate_sentence(model, sentence, lang, tts_kwargs)
             chunks.append(wav)
             if on_progress:
-                on_progress(i + 1, total, sentence[:40])
+                label = ("🔁 " if forced else "") + sentence[:40]
+                on_progress(i + 1, total, label)
     except Exception as exc:  # noqa: BLE001
         raise AudioOverviewError(f"Sprachsynthese fehlgeschlagen: {exc}") from exc
 

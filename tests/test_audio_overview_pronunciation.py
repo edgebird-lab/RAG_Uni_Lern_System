@@ -6,11 +6,24 @@ bestimmte Abkürzungen/Lehnwörter (z. B. "SSH", "booten") kommen dabei falsch
 ausgesprochen raus (siehe Kommentar im Modul). Die Korrektur läuft NUR auf dem
 Text, der tatsächlich an die Vertonung geht, NICHT auf dem im UI angezeigten/
 bearbeitbaren Skript (siehe ``synthesize_speech``)."""
+import logging
 import re
 import types
 
 import pytest
 import torch
+
+
+class _FakeForcedEosCapture(logging.Handler):
+    """Testdouble fuer ``audio_overview._ForcedEosCapture`` (eine Klasse -
+    der AST-Isolationslader kann keine Klassendefinitionen laden)."""
+    def __init__(self):
+        super().__init__(level=logging.WARNING)
+        self.forced = False
+
+    def emit(self, record):
+        if "forcing EOS" in record.getMessage():
+            self.forced = True
 
 
 @pytest.fixture
@@ -211,8 +224,8 @@ def synth_with_fixes(load_functions, ragapp_dir, tmp_path):
     )
     funcs = load_functions(
         ragapp_dir / "audio_overview.py",
-        ["synthesize_speech", "_apply_pronunciation_fixes", "_keep_case",
-         "_speakify_path", "_speakify_domain", "_speakify_suffix",
+        ["synthesize_speech", "_generate_sentence", "_apply_pronunciation_fixes",
+         "_keep_case", "_speakify_path", "_speakify_domain", "_speakify_suffix",
          "_split_sentences", "_get_segmenter", "_concat_with_pauses"],
         {
             "settings": settings_obj,
@@ -222,10 +235,13 @@ def synth_with_fixes(load_functions, ragapp_dir, tmp_path):
             "Optional": None,
             "Path": __import__("pathlib").Path,
             "re": re,
+            "logging": logging,
+            "_ForcedEosCapture": _FakeForcedEosCapture,
             "manifest": types.SimpleNamespace(list_pronunciation_fixes=lambda: {}),
         },
         const_names=["_PRONUNCIATION_FIXES", "_PATH_PATTERN", "_DOMAIN_PATTERN",
-                     "_BARE_SUFFIX_PATTERN", "_segmenter_singleton"],
+                     "_BARE_SUFFIX_PATTERN", "_segmenter_singleton",
+                     "_ALIGNMENT_LOGGER_NAME"],
     )
     return types.SimpleNamespace(**funcs, generate_calls=generate_calls, tmp_path=tmp_path)
 

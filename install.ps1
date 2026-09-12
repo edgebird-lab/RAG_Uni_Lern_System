@@ -390,6 +390,22 @@ try {
         catch { Write-Warn2 $_.Exception.Message }
     }
 
+    # ---- 7b) ffmpeg fuer den Hoerbuch-Export (Audio-Overview) --------------- #
+    # Einzige echte System-Abhaengigkeit der App (sonst bewusst vermieden, siehe
+    # easyocr statt System-Tesseract, kein System-Graphviz bei der Mindmap):
+    # torchaudios AAC-Encoder braucht ffmpeg vom System, um mehrere Audio-
+    # Overviews zu einem getaggten Hoerbuch-ZIP zu exportieren (ragapp/
+    # audiobook.py). Ohne ffmpeg funktioniert die App normal weiter - nur
+    # dieser eine Export-Knopf zeigt dann einen klaren Fehlerhinweis.
+    Write-Step "ffmpeg fuer den Hoerbuch-Export pruefen (optional)"
+    if (Get-Command ffmpeg -ErrorAction SilentlyContinue) {
+        Write-Ok "ffmpeg gefunden - Hoerbuch-Export einsatzbereit."
+    } else {
+        Write-Warn2 "ffmpeg nicht gefunden - der Hoerbuch-Export (mehrere Audio-Overviews zu"
+        Write-Warn2 "einem Hoerbuch buendeln) funktioniert dann nicht. Alles andere ist davon"
+        Write-Warn2 "nicht betroffen. Nachinstallieren:  winget install ffmpeg"
+    }
+
     # ---- 8) recommend: Hardware messen, Modell waehlen/laden/testen -------- #
     if ($SkipRecommend) {
         Write-Step "Modell-Empfehlung uebersprungen (-SkipRecommend)"

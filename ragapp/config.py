@@ -73,6 +73,7 @@ UI_RESTART_FILE = DATA_DIR / ".restart_ui"             # Modus-Wechsel aus der A
 UI_MODE_FILE = DATA_DIR / ".mode"                      # aktueller Zugriffsmodus (der Starter schreibt ihn)
 VOICE_DIR = DATA_DIR / "voice"                          # eigene Stimm-Referenzaufnahme (Audio-Overview)
 AUDIO_DIR = DATA_DIR / "audio_overviews"                # erzeugte Audio-Overview-WAVs
+AUDIOBOOK_DIR = DATA_DIR / "audiobooks"                 # exportierte Hörbuch-ZIPs (siehe ragapp/audiobook.py)
 
 for _p in (DATA_DIR, CHROMA_DIR, BM25_DIR, EVAL_DIR, LOG_DIR, INBOX_DIR):
     _p.mkdir(parents=True, exist_ok=True)
