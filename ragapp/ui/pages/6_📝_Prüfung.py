@@ -199,6 +199,10 @@ def _auswerten():
     exam["result"] = {"items": items, "total_pct": total,
                       "used_min": round((time.time() - exam["start"]) / 60)}
     exam["done"] = True
+    # Ergebnis dauerhaft festhalten (vorher nur in st.session_state, nach
+    # Verlassen der Seite komplett weg) - Grundlage der Errungenschaft
+    # "erste bestandene Probeklausur" (siehe ragapp/achievements.py).
+    manifest.log_exam_attempt(total, len(exam["cards"]))
 
 
 # --------------------------------------------------------------------------- #

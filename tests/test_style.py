@@ -8,6 +8,8 @@ Karten-/Titel-Optik bekommen statt der verspielten "Cozy Kawaii"-Basis-Optik.
 from __future__ import annotations
 
 from ragapp.ui._style import (
+    HAMBURGER_KEYS,
+    PAGE_REGISTRY,
     PAGE_THEMES,
     TECHNICAL_PAGE_KEYS,
     _doodle_layer,
@@ -50,3 +52,39 @@ def test_doodle_layer_bleibt_fuer_normale_seiten_unveraendert():
     html = _doodle_layer(theme["accent"], theme["soft"])
     assert "rag-doodle" in html
     assert theme["accent"] in html
+
+
+# --------------------------------------------------------------------------- #
+# PAGE_REGISTRY-Datenvalidierung - Grundlage der erweiterten Hamburger-
+# Navigation (render_hamburger_nav() zeigt ALLE Seiten nach category
+# gruppiert, siehe dortigen Docstring): eine fehlende/falsch geschriebene
+# category wuerde eine Seite aus dem erweiterten Menue verschwinden lassen,
+# ohne dass das beim Anschauen der Seite selbst auffaellt.
+# --------------------------------------------------------------------------- #
+def test_jede_seite_ausser_home_hat_eine_kategorie():
+    for page in PAGE_REGISTRY:
+        if page["key"] == "home":
+            assert page["category"] is None
+        else:
+            assert page["category"], f"{page['key']} hat keine Kategorie"
+
+
+def test_hamburger_keys_verweisen_auf_existierende_seiten():
+    _keys = {p["key"] for p in PAGE_REGISTRY}
+    for key in HAMBURGER_KEYS:
+        assert key in _keys
+
+
+def test_jede_seite_ist_genau_einmal_in_page_registry():
+    _keys = [p["key"] for p in PAGE_REGISTRY]
+    assert len(_keys) == len(set(_keys))
+
+
+def test_kategorien_gruppieren_alle_nicht_home_seiten_lueckenlos():
+    _by_category: dict[str, list[str]] = {}
+    for page in PAGE_REGISTRY:
+        if page["category"]:
+            _by_category.setdefault(page["category"], []).append(page["key"])
+    _grouped_keys = {k for keys in _by_category.values() for k in keys}
+    _all_non_home = {p["key"] for p in PAGE_REGISTRY if p["key"] != "home"}
+    assert _grouped_keys == _all_non_home

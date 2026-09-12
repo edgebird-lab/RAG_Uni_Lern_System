@@ -320,6 +320,56 @@ try:
 except Exception:  # noqa: BLE001 - Statistik ist ein Bonus, nie blockierend
     pass
 
+# --------------------------------------------------------------------------- #
+# Einheitliche Suche (siehe ragapp/search.py): "wo hab ich das nochmal
+# gesehen" war bisher eine Ratefrage zwischen Notiz/Chat/Zusammenfassung -
+# durchsucht jetzt alle drei gleichzeitig. Bewusst auf der Startseite (nicht
+# irgendwo tief in einer Einzelseite versteckt), da sie der naheliegendste
+# Ausgangspunkt fuer "ich weiss nicht mehr, wo" ist.
+# --------------------------------------------------------------------------- #
+with card("suche"):
+    st.markdown("#### 🔎 Überall suchen")
+    _search_q = st.text_input(
+        "Notizen, Chats und Zusammenfassungen durchsuchen", key="global_search_query",
+        placeholder="z. B. FSRS, Docker, Schnittmenge …", label_visibility="collapsed")
+    if _search_q and len(_search_q.strip()) >= 2:
+        from ragapp import search as _search
+        from ragapp.config import PROJECT_ROOT as _PROJECT_ROOT
+        # Eigenstaendig neu aufgebaut (nicht auf das "_target" aus dem Heute-
+        # Briefing oben verlassen) - das existiert nur, wenn today_snapshot()
+        # dort erfolgreich lief; diese Suche soll davon unabhaengig sein.
+        _target = {p["key"]: p["target"] for p in PAGE_REGISTRY}
+        _results = _search.search_everything(_search_q)
+        _total_hits = sum(len(v) for v in _results.values())
+        if _total_hits == 0:
+            st.caption("Keine Treffer.")
+        else:
+            if _results["notiz"]:
+                st.markdown("**🗒️ Notizen**")
+                for _r in _results["notiz"]:
+                    if st.button(f"{_r['title']} — {_r['snippet'][:70]}",
+                                key=f"gsearch_notiz_{_r['id']}", use_container_width=True):
+                        st.session_state["notiz_filter_search"] = _search_q
+                        st.switch_page(_target["notizen"])
+            if _results["chat"]:
+                st.markdown("**💬 Chats**")
+                for _r in _results["chat"]:
+                    if st.button(f"{_r['title']} — {_r['snippet'][:70]}",
+                                key=f"gsearch_chat_{_r['id']}", use_container_width=True):
+                        st.session_state["_chat_pending_choice"] = _r["id"]
+                        st.switch_page(_target["chat"])
+            if _results["zusammenfassung"]:
+                st.markdown("**📄 Zusammenfassungen**")
+                for _r in _results["zusammenfassung"]:
+                    _zc1, _zc2 = st.columns([4, 1])
+                    _zc1.caption(f"**{_r['title']}** — {_r['snippet'][:80]}")
+                    _zpath = _PROJECT_ROOT / "docs" / _r["id"]
+                    if _zpath.is_file():
+                        _zc2.download_button(
+                            "⬇️", _zpath.read_bytes(), file_name=_r["id"],
+                            mime="text/markdown", key=f"gsearch_zsf_{_r['id']}",
+                            help="Zusammenfassung herunterladen")
+
 st.write("")
 
 _categories: list[str] = []

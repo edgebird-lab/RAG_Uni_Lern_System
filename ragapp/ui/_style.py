@@ -407,6 +407,32 @@ html.rag-dark .rag-heute-chip {{background:#132b4d; border-color:{accent}66; col
   .rag-mascot-corner {{display:none;}}
 }}
 
+/* Einheitliches Hover-/Klick-Gefuehl fuer ALLE normalen Buttons app-weit -
+   vorher fuehlten sich nur die Home-Kacheln "lebendig" an (Skalierung +
+   Schatten beim Hover), jeder andere Button ueberall sonst blieb komplett
+   statisch - Klickbares und nicht-Klickbares liess sich dadurch nicht auf
+   den ersten Blick unterscheiden. Bewusst DEZENTER als die grossen Kacheln
+   (kein Scale, nur ein kleines Anheben) - bei vielen Buttons auf einer Seite
+   waere eine kachel-starke Animation ueberall zu viel Bewegung auf einmal.
+   Kommt VOR der Kachel-Regel unten, die (durch die spezifischere
+   Attribut-Selektor-Kombination) ihr eigenes, staerkeres Hover-Verhalten
+   trotzdem behaelt. */
+.stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {{
+  transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}}
+.stButton > button:hover, .stDownloadButton > button:hover, .stFormSubmitButton > button:hover {{
+  transform:translateY(-1px);
+  box-shadow:0 3px 10px rgba(0,0,0,.10);
+}}
+.stButton > button:active, .stDownloadButton > button:active, .stFormSubmitButton > button:active {{
+  transform:translateY(0);
+  box-shadow:0 1px 3px rgba(0,0,0,.08);
+}}
+html.rag-dark .stButton > button:hover, html.rag-dark .stDownloadButton > button:hover,
+html.rag-dark .stFormSubmitButton > button:hover {{
+  box-shadow:0 3px 10px rgba(0,0,0,.35);
+}}
+
 /* Kacheln (Home-Navigation) + wiederverwendbare "weiche Karte" fuer alle
    Seiten - Klick-Ziel ist ein ECHTER st.button in einem st.container(key=...),
    dessen automatisch vergebene CSS-Klasse (".st-key-<key>") wir hier stylen -
@@ -711,8 +737,16 @@ def _i18n_patch_html() -> str:
 # "App beenden"-Buttons bleiben unangetastet (siehe _auth.py).
 # --------------------------------------------------------------------------- #
 def render_hamburger_nav(current_page_key: str) -> None:
+    """Kurzwahl (die 4 meistgenutzten Seiten, HAMBURGER_KEYS) PLUS - darunter,
+    nach Kategorie gruppiert wie die Home-Kacheln - alle uebrigen Seiten. Bis
+    Version X gab es hier NUR die Kurzwahl: von einer Nicht-Kurzwahl-Seite
+    (14 von 18) aus fuehrte JEDE Navigation ueber einen Umweg zurueck zu Home.
+    Die Kategorie-Gruppierung uebernimmt bewusst dieselbe Reihenfolge/
+    Einteilung wie PAGE_REGISTRY (siehe Home-Kacheln), damit Nutzer nicht
+    zwei verschiedene Gliederungen im Kopf behalten muessen."""
     with st.sidebar:
         with st.popover("☰ Menü", use_container_width=True):
+            st.caption("Kurzwahl")
             for key in HAMBURGER_KEYS:
                 page = _PAGE_BY_KEY.get(key)
                 if not page:
@@ -722,6 +756,23 @@ def render_hamburger_nav(current_page_key: str) -> None:
                 if st.button(label, key=f"hamburger_{key}", use_container_width=True,
                             disabled=is_here):
                     _go_to(page)
+
+            st.divider()
+            _seen_categories: list[str] = []
+            for page in PAGE_REGISTRY:
+                cat = page["category"]
+                if not cat or cat in _seen_categories:
+                    continue
+                _seen_categories.append(cat)
+                st.caption(cat)
+                for _p in PAGE_REGISTRY:
+                    if _p["category"] != cat:
+                        continue
+                    is_here = _p["key"] == current_page_key
+                    label = f"{_p['icon']} {_p['title']}" + ("  ·  hier" if is_here else "")
+                    if st.button(label, key=f"hamburger_all_{_p['key']}",
+                                use_container_width=True, disabled=is_here):
+                        _go_to(_p)
 
 
 def _go_to(page: dict) -> None:

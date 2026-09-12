@@ -682,6 +682,7 @@ if not st.session_state.get(ACTIVE):
                     st.session_state[ACTIVE] = True
                     st.session_state[REVEAL] = False
                     st.session_state[TALLY] = {"gewusst": 0, "halb": 0, "nicht": 0}
+                    st.session_state["_study_combo"] = 0
                     st.session_state[ROUND] = len(_pk)
                     st.session_state["_study_mode"] = _mode_map[_mode_lbl]
                     st.rerun()
@@ -711,6 +712,7 @@ if not st.session_state.get(ACTIVE):
                 st.session_state[ACTIVE] = True
                 st.session_state[REVEAL] = False
                 st.session_state[TALLY] = {"gewusst": 0, "halb": 0, "nicht": 0}
+                st.session_state["_study_combo"] = 0
                 st.session_state[ROUND] = len(karten)
                 st.session_state["_study_mode"] = _mode_map[_mode_lbl]
                 st.rerun()
@@ -902,7 +904,23 @@ else:
         def _bewerten(rating: int) -> None:
             _conf = st.session_state.get("_study_conf")
             nxt = study.rate_card(karte, rating, confidence=_conf)
-            st.toast(f"Nächste Wiederholung: {study.humanize_due(nxt['due'])}")
+            # Dezentes, aber SPUERBARES Feedback fuer die haeufigste Aktion der
+            # ganzen App - vorher gab es hier nur einen stillen Hinweis auf das
+            # naechste Faelligkeitsdatum, unabhaengig vom Ergebnis. Ein Kombo-
+            # Zaehler (in Folge "Gewusst") macht kleine Erfolgsstrecken sichtbar,
+            # ohne bei JEDER einzelnen Karte schon zu uebertreiben (siehe
+            # Balloons-Regel weiter unten in der App: nur fuer echte Meilen-
+            # steine, sonst nutzt sich die Freude schnell ab).
+            if rating == study.GEWUSST:
+                _combo = st.session_state.get("_study_combo", 0) + 1
+                st.session_state["_study_combo"] = _combo
+                if _combo >= 3 and _combo % 3 == 0:
+                    st.toast(f"🔥 {_combo}x in Folge gewusst!", icon="🔥")
+                else:
+                    st.toast(f"✅ Gewusst! · Nächste Wiederholung: {study.humanize_due(nxt['due'])}")
+            else:
+                st.session_state["_study_combo"] = 0
+                st.toast(f"Nächste Wiederholung: {study.humanize_due(nxt['due'])}")
             t = st.session_state[TALLY]
             t["gewusst" if rating == study.GEWUSST else
               "halb" if rating == study.HALB else "nicht"] += 1

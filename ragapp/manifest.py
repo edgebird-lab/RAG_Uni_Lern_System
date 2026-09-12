@@ -411,6 +411,44 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_subject ON chat_sessions(subject);
 
+-- Fach-Archivierung: ein "fertiges" Fach (Klausur vorbei, Note eingetragen)
+-- soll aus den Lern-Dropdowns/Faelligkeits-Zaehlern verschwinden, OHNE dass
+-- Karten/Dokumente geloescht werden. Nutzt bewusst dieselbe suspended-
+-- Markierung wieder, die ueberall in analytics.py schon "zaehlt nicht mehr
+-- mit" bedeutet (review_items.suspended, siehe set_suspended()) - dadurch
+-- braucht keine einzige Analytics-Abfrage angefasst zu werden. Gemerkt wird
+-- hier nur, WELCHE Karten DURCH das Archivieren pausiert wurden (nicht alle
+-- Karten des Fachs pauschal), damit eine Reaktivierung eine schon VORHER
+-- (aus anderem Grund) pausierte Karte nicht versehentlich mit reaktiviert.
+CREATE TABLE IF NOT EXISTS archived_subjects (
+    subject         TEXT PRIMARY KEY,
+    card_ids_json   TEXT NOT NULL,
+    archived_at     REAL
+);
+
+-- Probeklausur-Ergebnisse: bisher lebte das Ergebnis nur in st.session_state
+-- und war nach Verlassen der Seite komplett weg - keine Historie, kein
+-- "habe ich schon mal eine bestanden" moeglich. Bewusst schlank (nur die
+-- Gesamt-Prozentzahl, keine Einzelantworten - die stehen bereits in
+-- review_log via study.rate_card()).
+CREATE TABLE IF NOT EXISTS exam_attempts (
+    attempt_id   TEXT PRIMARY KEY,
+    total_pct    INTEGER NOT NULL,
+    num_items    INTEGER NOT NULL,
+    taken_at     REAL
+);
+
+-- Errungenschaften (Gamification): einmal freigeschaltet, fuer immer
+-- freigeschaltet - der Katalog selbst (Titel/Beschreibung/Freischalt-
+-- bedingung) lebt bewusst NICHT in der DB, sondern als Code in
+-- ragapp/achievements.py (hier wird nur "welche ID ist schon frei" vermerkt,
+-- damit sich der Katalog jederzeit erweitern laesst, ohne Altdaten zu
+-- migrieren).
+CREATE TABLE IF NOT EXISTS achievements (
+    achievement_id  TEXT PRIMARY KEY,
+    unlocked_at     REAL
+);
+
 CREATE TABLE IF NOT EXISTS progress_snapshots (
     day             TEXT NOT NULL,
     subject         TEXT NOT NULL,
@@ -1093,6 +1131,102 @@ def set_suspended(card_ids: list[str], suspended: bool = True) -> int:
             f"UPDATE review_items SET suspended=? WHERE card_id IN ({ph})",
             [1 if suspended else 0] + list(card_ids))
         return cur.rowcount
+
+
+def archive_subject(subject: str) -> int:
+    """Archiviert ein "fertiges" Fach: alle AKTUELL AKTIVEN Karten werden
+    pausiert (siehe set_suspended - dieselbe, bereits überall integrierte
+    Ausschluss-Logik wie bei einzeln pausierten Karten). Nichts wird
+    gelöscht; ``unarchive_subject`` macht GENAU das rückgängig. Gibt die
+    Anzahl betroffener Karten zurück."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT card_id FROM review_items WHERE subject=? AND suspended=0",
+            (subject,)).fetchall()
+    card_ids = [r["card_id"] for r in rows]
+    if card_ids:
+        set_suspended(card_ids, True)
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO archived_subjects (subject, card_ids_json, archived_at) "
+            "VALUES (?,?,?) ON CONFLICT(subject) DO UPDATE SET "
+            "card_ids_json=excluded.card_ids_json, archived_at=excluded.archived_at",
+            (subject, json.dumps(card_ids), time.time()))
+    return len(card_ids)
+
+
+def unarchive_subject(subject: str) -> int:
+    """Reaktiviert NUR die Karten, die ``archive_subject`` selbst pausiert
+    hatte - eine Karte, die schon VORHER (aus anderem Grund) pausiert war,
+    bleibt pausiert. Gibt die Anzahl reaktivierter Karten zurück."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT card_ids_json FROM archived_subjects WHERE subject=?",
+            (subject,)).fetchone()
+    card_ids = json.loads(row["card_ids_json"]) if row else []
+    if card_ids:
+        set_suspended(card_ids, False)
+    with _connect() as conn:
+        conn.execute("DELETE FROM archived_subjects WHERE subject=?", (subject,))
+    return len(card_ids)
+
+
+def list_archived_subjects() -> list[str]:
+    with _connect() as conn:
+        return [r["subject"] for r in conn.execute(
+            "SELECT subject FROM archived_subjects ORDER BY subject")]
+
+
+def log_exam_attempt(total_pct: int, num_items: int) -> str:
+    """Speichert das Gesamtergebnis EINER Probeklausur (siehe Schema-Kommentar
+    - vorher gab es dafuer keine Historie). Grundlage der Errungenschaft
+    "erste bestandene Probeklausur" (siehe ragapp/achievements.py)."""
+    aid = uuid.uuid4().hex[:16]
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO exam_attempts (attempt_id, total_pct, num_items, taken_at) "
+            "VALUES (?,?,?,?)", (aid, int(total_pct), int(num_items), time.time()))
+    return aid
+
+
+def list_exam_attempts(limit: Optional[int] = None) -> list[dict]:
+    sql = "SELECT * FROM exam_attempts ORDER BY taken_at DESC"
+    args: list = []
+    if limit is not None:
+        sql += " LIMIT ?"
+        args.append(int(limit))
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+
+def best_exam_pct() -> Optional[int]:
+    with _connect() as conn:
+        row = conn.execute("SELECT MAX(total_pct) AS m FROM exam_attempts").fetchone()
+    return row["m"] if row and row["m"] is not None else None
+
+
+def unlock_achievement(achievement_id: str) -> bool:
+    """Traegt eine Errungenschaft als freigeschaltet ein. Gibt ``True`` zurueck,
+    wenn sie JETZT NEU freigeschaltet wurde (fuer eine Feier-Anzeige/Balloons),
+    ``False``, wenn sie schon vorher freigeschaltet war (idempotent - darf
+    beliebig oft aufgerufen werden, ohne den Zeitpunkt zu verfaelschen)."""
+    with _connect() as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM achievements WHERE achievement_id=?", (achievement_id,)).fetchone()
+        if exists:
+            return False
+        conn.execute(
+            "INSERT INTO achievements (achievement_id, unlocked_at) VALUES (?,?)",
+            (achievement_id, time.time()))
+        return True
+
+
+def list_unlocked_achievements() -> dict[str, float]:
+    """``{achievement_id: unlocked_at}`` aller bisher freigeschalteten
+    Errungenschaften."""
+    with _connect() as conn:
+        rows = conn.execute("SELECT achievement_id, unlocked_at FROM achievements").fetchall()
+    return {r["achievement_id"]: r["unlocked_at"] for r in rows}
 
 
 def update_card(card_id: str, *, front: Optional[str] = None,

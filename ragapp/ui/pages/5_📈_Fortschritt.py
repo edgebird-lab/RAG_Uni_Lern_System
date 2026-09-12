@@ -40,6 +40,7 @@ h1 {font-weight: 750; letter-spacing:-0.5px;}
 with st.spinner("Fortschritt wird geladen ..."):
     import pandas as pd
     from ragapp import analytics, planner, manifest, backup, study_plan, sync as _sync
+    from ragapp import achievements as _achievements
     from ragapp.config import settings, SUBJECT_LABELS
 
 
@@ -82,6 +83,11 @@ with card("kennzahlen"):
     c1.metric("Karten", ov["total"], help="Aktive Abfrage-Karten in der Auswahl.")
     c2.metric("Sitzt", f'{ov["mastery_pct"]} %',
               help=f'Anteil Karten mit ≥ {settings.MASTERY_TARGET_REPS} Wiederholungen in Folge.')
+    # Gauge-Balken UNTER der nackten Prozentzahl - anders als die Sparkline
+    # weiter unten (Verlauf ueber Zeit, erst ab 2 Tagen Historie) zeigt das
+    # sofort "wie voll ist das GERADE JETZT", ohne auf Historie zu warten.
+    c2.markdown(_charts.progress_bar(ov["mastery_pct"], color=_theme["accent"]),
+               unsafe_allow_html=True)
     c3.metric("Fällig", ov["due"], help="Jetzt zur Wiederholung anstehend.")
     c4.metric("Streak", f'{ov["streak"]} 🔥', help="Zusammenhängende Lerntage.")
     # Kleine Sparkline direkt unter der nackten Streak-Zahl: zeigt auf einen
@@ -116,6 +122,7 @@ with card("kennzahlen"):
     gc1.metric("Klausur-Bereitschaft (Schätzung)", f"{_ready} %",
                help="Geschätzte mittlere Abrufwahrscheinlichkeit über alle Karten "
                     "(Vergessenskurve aus FSRS-6). Eine Schätzung, keine Garantie.")
+    gc1.markdown(_charts.progress_bar(_ready, color="#C08A2E"), unsafe_allow_html=True)
     if len(_snap_trend) >= 2:
         gc1.markdown(_charts.sparkline([d["readiness_pct"] for d in _snap_trend],
                                        color="#C08A2E", height=24),
@@ -130,6 +137,35 @@ with card("kennzahlen"):
         st.caption("💡 Noch keine Wiederholung in den letzten 7 Tagen – die Zahlen oben "
                    "sind noch nicht aussagekräftig. Starte auf **🎓 Lernen** deine erste "
                    "Lernrunde, dann füllen sie sich mit echten Werten.")
+
+# --------------------------------------------------------------------------- #
+# Errungenschaften: Katalog lebt in ragapp/achievements.py, hier nur Anzeige +
+# das "Freischalten fühlt sich an wie etwas" (Balloons + Maskottchen-Jubel) -
+# check_and_unlock() ist idempotent, ein Aufruf pro Seitenaufruf reicht.
+# --------------------------------------------------------------------------- #
+with card("errungenschaften"):
+    st.subheader("🏆 Errungenschaften")
+    _newly_unlocked = _achievements.check_and_unlock()
+    if _newly_unlocked:
+        st.balloons()
+        from ragapp.ui._mascot import render_mascot_corner as _render_mascot_corner
+        _render_mascot_corner(_theme["accent"], pose="cheer", animation="wave", prop="star")
+        for _na in _newly_unlocked:
+            st.success(f"**Neu freigeschaltet:** {_na.icon} {_na.title} – {_na.description}")
+    _unlocked_map = manifest.list_unlocked_achievements()
+    _catalog = _achievements.catalog()
+    _ach_cols = st.columns(4)
+    for _i, _ach in enumerate(_catalog):
+        _col = _ach_cols[_i % 4]
+        if _ach.id in _unlocked_map:
+            _when = time.strftime("%d.%m.%Y", time.localtime(_unlocked_map[_ach.id]))
+            _col.markdown(f"**{_ach.icon} {_ach.title}**")
+            _col.caption(f"{_ach.description}\n\nFreigeschaltet am {_when}.")
+        else:
+            _col.markdown(f"**🔒 {_ach.title}**")
+            _col.caption(_ach.description)
+    _n_done = len(_unlocked_map)
+    st.caption(f"{_n_done} / {len(_catalog)} freigeschaltet.")
 
 # --------------------------------------------------------------------------- #
 # Wochenrückblick: diese Woche vs. die Woche davor - macht Fortschritt bewusst
@@ -238,6 +274,43 @@ with card("klausur"):
             "ECTS": e["ects"] if e.get("ects") else "–",
         } for e in sorted(_gpa["exams"], key=lambda e: e["subject"])])
         st.dataframe(dfg, use_container_width=True, hide_index=True)
+
+# --------------------------------------------------------------------------- #
+# Fach-Archivierung: ein "fertiges" Fach (Klausur vorbei, Note eingetragen)
+# raeumt sich damit selbst aus den Lern-Dropdowns/Faelligkeits-Zaehlern - ohne
+# dass irgendetwas geloescht wird (siehe manifest.archive_subject()). Noten/
+# Klausurtermine oben bleiben davon unberuehrt, die sollen ja gerade dauerhaft
+# sichtbar bleiben.
+# --------------------------------------------------------------------------- #
+with card("archiv"):
+    st.subheader("📦 Fächer archivieren")
+    st.caption('Ein archiviertes Fach verschwindet aus den Lern-/Fortschritt-Auswahlen '
+              '(Karten bleiben erhalten, tauchen nur nicht mehr als „fällig" auf) - '
+              'praktisch, wenn Klausur und Note schon durch sind.')
+    _archived = manifest.list_archived_subjects()
+    _ac1, _ac2 = st.columns(2)
+    with _ac1:
+        if subjects:
+            _to_archive = st.selectbox("Fach archivieren", subjects, format_func=_fach,
+                                       key="archive_pick")
+            if st.button("📦 Archivieren", key="archive_go", use_container_width=True):
+                _n_arch = manifest.archive_subject(_to_archive)
+                st.success(f"{_fach(_to_archive)} archiviert ({_n_arch} Karte(n) pausiert).")
+                st.rerun()
+        else:
+            st.caption("Keine aktiven Fächer zum Archivieren.")
+    with _ac2:
+        if _archived:
+            st.caption("Archivierte Fächer:")
+            for _a_subj in _archived:
+                _rc1, _rc2 = st.columns([3, 1])
+                _rc1.markdown(f"📦 {_fach(_a_subj)}")
+                if _rc2.button("↩️", key=f"unarchive_{_a_subj}", help="Reaktivieren"):
+                    _n_un = manifest.unarchive_subject(_a_subj)
+                    st.success(f"{_fach(_a_subj)} reaktiviert ({_n_un} Karte(n)).")
+                    st.rerun()
+        else:
+            st.caption("Noch keine Fächer archiviert.")
 
 # --------------------------------------------------------------------------- #
 # Treffer-Trend & Fälligkeits-Prognose

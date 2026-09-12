@@ -53,6 +53,17 @@ def _subj_clause(subject: Optional[str], col: str = "subject") -> tuple[str, lis
     return (f" AND {col}=?", [subject]) if subject else ("", [])
 
 
+def total_reviews_count(subject: Optional[str] = None) -> int:
+    """Wiederholungen INSGESAMT (nicht nur die letzten 7 Tage wie in
+    ``overview()``) - Grundlage der Errungenschaften "100/1000 Wiederholungen"
+    (siehe ragapp/achievements.py)."""
+    sc, sa = _subj_clause(subject)
+    with _conn() as c:
+        return c.execute(
+            "SELECT COUNT(*) AS r FROM review_log WHERE 1=1" + sc, sa
+        ).fetchone()["r"] or 0
+
+
 # --------------------------------------------------------------------------- #
 # Ueberblick
 # --------------------------------------------------------------------------- #

@@ -237,3 +237,24 @@ def sparkline(values: list, *, color: str = "#61C9A8", height: int = 32) -> str:
 <svg viewBox="0 0 {vw} {height}" width="100%" height="{height}" preserveAspectRatio="none"
      style="display:block;overflow:visible;">{''.join(bars)}</svg>
 """
+
+
+def progress_bar(pct: float, *, color: str = "#61C9A8", track: str = "#00000014",
+                 height: int = 8) -> str:
+    """Schmaler, abgerundeter Fortschrittsbalken zum direkten Einbetten UNTER
+    eine ``st.metric()``-Prozent-Kennzahl (z. B. "Sitzt"/"Klausur-
+    Bereitschaft") - dieselbe Idee wie ``sparkline()`` fuer den Streak: die
+    nackte Zahl bekommt eine sofort erfassbare visuelle Entsprechung, statt
+    nur als Text dazustehen. ``pct`` wird auf 0-100 gekappt (nie ueber/unter
+    den Balken hinausschiessen, auch bei unerwarteten Eingabewerten)."""
+    frac = max(0.0, min(100.0, pct)) / 100.0
+    vw = 200
+    r = height / 2
+    fill_w = max(height, vw * frac)  # Mindestbreite = Balkenhoehe, sonst wirkt 1% wie ein Punkt-Bug
+    return f"""
+<svg viewBox="0 0 {vw} {height}" width="100%" height="{height}" preserveAspectRatio="none"
+     style="display:block;overflow:visible;">
+  <rect x="0" y="0" width="{vw}" height="{height}" rx="{r:.1f}" fill="{track}"/>
+  <rect x="0" y="0" width="{fill_w:.1f}" height="{height}" rx="{r:.1f}" fill="{color}"/>
+</svg>
+"""

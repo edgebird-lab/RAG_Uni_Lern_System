@@ -1,7 +1,7 @@
 """Tests fuer ragapp.ui._charts (reine SVG-Bausteine, keine Streamlit-Abhaengigkeit)."""
 from __future__ import annotations
 
-from ragapp.ui._charts import line_chart, bar_chart, sparkline, _pick_label_indices
+from ragapp.ui._charts import line_chart, bar_chart, sparkline, progress_bar, _pick_label_indices
 
 
 def test_line_chart_rendert_svg_mit_pfad_und_punkten():
@@ -91,3 +91,41 @@ def test_sparkline_alle_werte_null_stuerzt_nicht_ab_durch_division():
     # vmax waere 0 - darf nicht durch 0 teilen
     svg = sparkline([0, 0, 0])
     assert svg.count("<rect") == 3
+
+
+# --------------------------------------------------------------------------- #
+# progress_bar() - schmaler Balken unter Prozent-Kennzahlen (Sitzt-Anteil,
+# Klausur-Bereitschaft), damit die nackte Zahl eine sofort erfassbare
+# visuelle Entsprechung bekommt (gleiches Prinzip wie sparkline() beim Streak).
+# --------------------------------------------------------------------------- #
+def test_progress_bar_rendert_track_und_fuellung():
+    svg = progress_bar(50.0)
+    assert svg.count("<rect") == 2
+
+
+def test_progress_bar_null_prozent_zeigt_mindestbreite_statt_punkt():
+    # Ohne Mindestbreite wuerde 0% wie ein kaputter Ein-Pixel-Fehler aussehen.
+    svg = progress_bar(0.0)
+    assert 'width="8.0"' in svg  # Mindestbreite = Balkenhoehe (Standard 8)
+
+
+def test_progress_bar_hundert_prozent_fuellt_die_volle_breite():
+    svg = progress_bar(100.0)
+    assert 'width="200.0"' in svg
+
+
+def test_progress_bar_kappt_werte_ueber_100():
+    svg_100 = progress_bar(100.0)
+    svg_ueber = progress_bar(150.0)
+    assert svg_100 == svg_ueber
+
+
+def test_progress_bar_kappt_negative_werte_auf_null():
+    svg_null = progress_bar(0.0)
+    svg_negativ = progress_bar(-20.0)
+    assert svg_null == svg_negativ
+
+
+def test_progress_bar_nutzt_uebergebene_farbe():
+    svg = progress_bar(50.0, color="#FF0000")
+    assert "#FF0000" in svg

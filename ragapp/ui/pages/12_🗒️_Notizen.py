@@ -82,6 +82,20 @@ def _fach(code: "str | None") -> str:
     return SUBJECT_LABELS.get(code, code) if code else "–"
 
 
+def _notes_to_markdown(notes: list) -> str:
+    """Bündelt Notizen zu EINEM Markdown-Dokument (Titel/Fach/Datum als
+    Kopfzeile je Notiz) - respektiert die aktuelle Fach-/Suchfilterung, damit
+    sich sowohl "alles" als auch "nur ein Fach" exportieren lässt."""
+    import time as _time
+    parts = []
+    for n in notes:
+        _hdr = n.get("title") or "(ohne Titel)"
+        _meta = _fach(n["subject"]) if n.get("subject") else "ohne Fach"
+        _datum = _time.strftime("%d.%m.%Y", _time.localtime(n.get("updated_at") or 0))
+        parts.append(f"# {_hdr}\n\n_{_meta} · zuletzt geändert {_datum}_\n\n{n['body']}")
+    return "\n\n---\n\n".join(parts)
+
+
 _known_subjects = sorted(
     set(SUBJECT_LABELS.keys())
     | {d["subject"] for d in manifest.list_documents() if d["subject"]})
@@ -116,6 +130,11 @@ with lcol:
 
 _subj_arg = None if _f_subject == "Alle Fächer" else _f_subject
 _notes = manifest.list_notes(subject=_subj_arg, search=_f_search or None)
+
+if _notes:
+    st.download_button(
+        f"⬇️ {len(_notes)} Notiz(en) als Markdown exportieren", _notes_to_markdown(_notes),
+        file_name="notizen_export.md", mime="text/markdown", key="notiz_export_btn")
 
 st.divider()
 
