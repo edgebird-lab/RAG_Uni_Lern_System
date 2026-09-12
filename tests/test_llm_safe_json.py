@@ -11,9 +11,19 @@ import pytest
 
 @pytest.fixture
 def safe_json(load_functions, ragapp_dir):
-    funcs = load_functions(ragapp_dir / "llm.py", ["_safe_json"],
-                           {"json": _json, "re": _re})
+    funcs = load_functions(
+        ragapp_dir / "llm.py",
+        ["_safe_json", "_loads_lenient", "_fix_invalid_json_escapes"],
+        {"json": _json, "re": _re}, const_names=["_JSON_VALID_ESCAPES"])
     return funcs["_safe_json"]
+
+
+@pytest.fixture
+def fix_invalid_escapes(load_functions, ragapp_dir):
+    funcs = load_functions(
+        ragapp_dir / "llm.py", ["_fix_invalid_json_escapes"],
+        {"json": _json, "re": _re}, const_names=["_JSON_VALID_ESCAPES"])
+    return funcs["_fix_invalid_json_escapes"]
 
 
 def test_none_und_leer_ergeben_none(safe_json):
@@ -62,3 +72,48 @@ def test_muell_ohne_klammern_ergibt_none(safe_json):
 
 def test_unbalanciertes_objekt_ergibt_none(safe_json):
     assert safe_json('{"broken": ') is None
+
+
+# --------------------------------------------------------------------------- #
+# LaTeX-Notation in KI-Antworten (\cap, \in, \leq, ...) - regulaeres JSON kennt
+# diese Escapes nicht ("Invalid \escape"), obwohl der Rest der Antwort
+# voellig brauchbar ist. Regressionstest fuer einen real beobachteten Bug:
+# die Uebungsaufgaben-Generierung fuer "Analysis" scheiterte daran, dass eine
+# inhaltlich einwandfreie KI-Antwort ein "$A \cap B$" im Aufgabentext enthielt.
+# --------------------------------------------------------------------------- #
+def test_latex_escape_in_string_wird_geheilt(safe_json):
+    raw = r'{"problem_text": "Bestimme $A \cap B$ und $A \cup B$."}'
+    assert safe_json(raw) == {"problem_text": "Bestimme $A \\cap B$ und $A \\cup B$."}
+
+
+def test_latex_escape_in_codefence_wird_geheilt(safe_json):
+    raw = '```json\n{"steps": [{"step_text": "Nutze \\\\in und \\\\leq hier"}]}\n```'
+    # Hinweis: obiger raw-String enthaelt bereits GUELTIGE Escapes (\\\\ -> ein
+    # Backslash) - der eigentliche Bug-Fall (rohe KI-Ausgabe mit einem
+    # einzelnen Backslash vor einem Buchstaben) wird unten separat getestet.
+    assert safe_json(raw) is not None
+
+
+def test_echte_ki_antwort_mit_cap_cup_wird_geparst(safe_json):
+    # 1:1 die reale, live beobachtete Antwort, an der die Generierung scheiterte.
+    raw = ('```json\n{\n  "problem_text": "Gegeben sind die Mengen $A = [-5; 4)$ '
+          'und $B = [0; 9]$. Bestimme die Schnittmenge $A \\cap B$ sowie die '
+          'Vereinigungsmenge $A \\cup B$.",\n  "given": [],\n  "steps": '
+          '[{"step_text": "Ergebnis: $A \\cap B = [0; 4)$."}],\n  '
+          '"final_answer": "x",\n  "hints": []\n}\n```')
+    data = safe_json(raw)
+    assert data is not None
+    assert r"\cap" in data["problem_text"]
+
+
+def test_gueltige_escapes_bleiben_unveraendert(safe_json):
+    raw = '{"a": "Zeile1\\nZeile2", "b": "Tab\\there", "c": "Pfad\\\\Datei", "d": "\\u00e4"}'
+    assert safe_json(raw) == {"a": "Zeile1\nZeile2", "b": "Tab\there",
+                              "c": "Pfad\\Datei", "d": "ä"}
+
+
+def test_fix_invalid_json_escapes_verdoppelt_nur_ungueltige_backslashes(fix_invalid_escapes):
+    assert fix_invalid_escapes(r"\cap") == r"\\cap"
+    assert fix_invalid_escapes(r"\n") == r"\n"          # gueltig -> unveraendert
+    assert fix_invalid_escapes(r"ä") == r"ä"  # gueltiges Unicode-Escape
+    assert fix_invalid_escapes(r"\uZZZZ") == r"\\uZZZZ"  # kein echtes Hex -> ungueltig

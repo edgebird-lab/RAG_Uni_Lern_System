@@ -308,6 +308,60 @@ class LLM:
             raise RuntimeError(diagnose_error(exc)) from exc
 
 
+_JSON_VALID_ESCAPES = set('"\\/bfnrtu')
+
+
+def _fix_invalid_json_escapes(text: str) -> str:
+    """Verdoppelt Backslashes, die keine gültige JSON-Escape-Sequenz einleiten.
+
+    KI-Antworten zu mathematischen/technischen Themen enthalten oft LaTeX-
+    Notation (``\\cap``, ``\\in``, ``\\leq`` ...) direkt in JSON-Stringwerten -
+    ``json.loads()`` scheitert daran sonst mit "Invalid \\escape", obwohl der
+    Rest der Antwort völlig brauchbar ist (beobachtet: Übungsaufgaben-
+    Generierung für Analysis - "$A \\cap B$" im Aufgabentext ließ die KOMPLETTE,
+    inhaltlich einwandfreie Antwort an einem einzigen ungültigen Escape
+    scheitern). Erkennt gültige Escapes (inkl. ``\\uXXXX``) und lässt sie
+    unangetastet - nur wirklich ungültige Sequenzen werden entschärft."""
+    out: list[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch == "\\" and i + 1 < n:
+            nxt = text[i + 1]
+            if nxt == "u":
+                # \u wird NUR mit genau 4 Hex-Ziffern zu einem gueltigen Escape -
+                # sonst waere z.B. "\underbrace" (LaTeX) faelschlich als
+                # (kaputtes) Unicode-Escape statt als ungueltiger Backslash
+                # behandelt worden.
+                if re.match(r"[0-9a-fA-F]{4}", text[i + 2:i + 6]):
+                    out.append(text[i:i + 6])
+                    i += 6
+                    continue
+                out.append("\\\\")
+                i += 1
+                continue
+            if nxt in _JSON_VALID_ESCAPES:
+                out.append(text[i:i + 2])
+                i += 2
+                continue
+            out.append("\\\\")
+            i += 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _loads_lenient(s: str) -> Any:
+    """``json.loads()`` mit einem Reparatur-Versuch bei ungültigen Escapes
+    (siehe ``_fix_invalid_json_escapes``) - wirft weiter, wenn auch das nicht
+    hilft (dann greift der naechste Fallback in ``_safe_json``)."""
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        return json.loads(_fix_invalid_json_escapes(s))
+
+
 def _safe_json(raw: str) -> Any:
     if not raw or not raw.strip():
         return None
@@ -318,7 +372,7 @@ def _safe_json(raw: str) -> Any:
         if m:
             raw = m.group(1).strip()
     try:
-        return json.loads(raw)
+        return _loads_lenient(raw)
     except Exception:
         pass
     # Erstes BALANCIERTES {..} bzw. [..]-Objekt scannen (Strings/Escapes beachten),
@@ -347,14 +401,14 @@ def _safe_json(raw: str) -> Any:
                 depth -= 1
                 if depth == 0 and start != -1:
                     try:
-                        return json.loads(raw[start:i + 1])
+                        return _loads_lenient(raw[start:i + 1])
                     except Exception:
                         start = -1
         # Greedy-Fallback wie bisher
         s, e = raw.find(opener), raw.rfind(closer)
         if s != -1 and e > s:
             try:
-                return json.loads(raw[s:e + 1])
+                return _loads_lenient(raw[s:e + 1])
             except Exception:
                 continue
     return None
