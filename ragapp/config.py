@@ -251,6 +251,19 @@ class Settings:
     LEECH_LAPSES_THRESHOLD: int = 4       # ab so vielen Patzern gilt eine Karte als "Dauerpatzer" (Leech)
     BACKUP_KEEP: int = 12                 # Anzahl aufbewahrter Lernstand-Snapshots
     BACKUP_MIN_HOURS: float = 24.0        # automatischer Start-Snapshot nur, wenn letzter aelter als dies
+    # Ab dieser Uhrzeit (24h, lokale Zeit) gilt der Streak als "gefaehrdet", wenn
+    # heute noch nichts geuebt wurde - Grundlage sowohl fuer den Warnhinweis auf
+    # der Startseite als auch fuer die native Desktop-Erinnerung (siehe unten).
+    STREAK_RISK_HOUR: int = 17
+    # Ab wie vielen Tagen vor dem naechsten Klausurtermin schaltet die Startseite
+    # in einen fokussierteren "Cram"-Modus (siehe planner.today_snapshot()).
+    CRAM_MODE_DAYS: int = 3
+    # Native Betriebssystem-Erinnerung aus dem Desktop-Starter (ragapp/desktop.py),
+    # wenn ab STREAK_RISK_HOUR noch faellige Karten warten - bewusst KEIN Smartphone-
+    # Push (Rechner laeuft ja bereits waehrend der Sitzung), hoechstens einmal pro
+    # Tag. Nur wirksam im Desktop-Start (start.sh/Start.bat), nicht im reinen
+    # Browser-Betrieb.
+    DESKTOP_REMINDERS_ENABLED: bool = True
 
     # ------------------------------------------------------------------ #
     # Lernplan (KI-Gliederung -> realistischer Zeitplan)
@@ -414,6 +427,10 @@ class Settings:
     # Absicherung wie PLAN_MAX_TOC_CHARS: ohne Deckel wuerde ein sehr grosses
     # Thema den Kontext sprengen und das Modell frei erfinden lassen.
     PRACTICE_MAX_SOURCE_CHARS: int = 6000
+    # Obergrenze fuer die "Formelsammlung" (siehe practice_gen.generate_
+    # formelsammlung) - fasst ALLE bisherigen Aufgaben eines Fachs zusammen,
+    # deshalb grosszuegiger als das Einzel-Aufgaben-Budget oben.
+    FORMELSAMMLUNG_MAX_CHARS: int = 12000
 
     # ------------------------------------------------------------------ #
     # Mindmap (Themenbaum aus dem Inhaltsverzeichnis, wie die Lernplan-

@@ -97,9 +97,26 @@ def today_snapshot() -> dict:
     plan_blocks_today = manifest.list_plan_blocks_detailed(date=today_iso)
     plan_min_today = sum(b["planned_min"] for b in plan_blocks_today)
     plan_done_today = sum(b["planned_min"] for b in plan_blocks_today if b["done"])
+    # Rueckstand: unerledigte Bloecke aus VERGANGENEN Tagen, planuebergreifend -
+    # ohne das wuerde ein verpasster Tag im Lernplan einfach spurlos verschwinden
+    # (die Seite zeigte bisher nur den naechsten unerledigten Block, ohne zu
+    # kennzeichnen, dass dessen Datum schon vorbei ist).
+    overdue_plan_blocks = manifest.list_overdue_plan_blocks(today_iso)
+    overdue_plan_min = sum(b["planned_min"] for b in overdue_plan_blocks)
 
     ov = analytics.overview(None)
     prios = all_priorities()
+
+    # Streak-Gefaehrdung: ab STREAK_RISK_HOUR und noch keine Wiederholung heute -
+    # Grundlage fuer den Warnhinweis auf der Startseite UND die native Desktop-
+    # Erinnerung (siehe ragapp/desktop.py).
+    now_hour = time.localtime().tm_hour
+    streak_at_risk = bool(
+        ov["streak"] > 0 and ov["reviews_today"] == 0
+        and now_hour >= int(settings.STREAK_RISK_HOUR))
+
+    _dte = days_to_exam(next_exam["exam_date"]) if next_exam else None
+    cram_active = bool(_dte is not None and 0 <= _dte <= int(settings.CRAM_MODE_DAYS))
 
     return {
         "today_iso": today_iso,
@@ -107,15 +124,21 @@ def today_snapshot() -> dict:
         "overdue_tasks": overdue_tasks,
         "due_today_tasks": due_today_tasks,
         "next_exam": next_exam,
-        "days_to_exam": days_to_exam(next_exam["exam_date"]) if next_exam else None,
+        "days_to_exam": _dte,
         "study_min_today": study_min_today,
         "plan_blocks_today": plan_blocks_today,
         "plan_min_today": plan_min_today,
         "plan_done_today": plan_done_today,
+        "overdue_plan_blocks": overdue_plan_blocks,
+        "overdue_plan_min": overdue_plan_min,
         "due_cards": ov["due"],
         "leeches": ov["leeches"],
         "total_cards": ov["total"],
         "top_priority": prios[0] if prios else None,
+        "streak": ov["streak"],
+        "reviews_today": ov["reviews_today"],
+        "streak_at_risk": streak_at_risk,
+        "cram_active": cram_active,
     }
 
 

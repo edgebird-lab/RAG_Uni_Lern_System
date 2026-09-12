@@ -148,6 +148,34 @@ _kind_arg = {"🧮 Rechenaufgabe": "numeric",
             "📖 Anwendungsszenario": "scenario"}.get(_f_kind_choice)
 _problems = manifest.list_practice_problems(subject=_subj_arg, kind=_kind_arg)
 
+# --------------------------------------------------------------------------- #
+# "Was lohnt sich zu wiederholen?" - bewusst NICHT als "fällig" formuliert
+# (siehe Modul-Docstring: Aufgaben werden hier absichtlich NIE fällig wie
+# Karteikarten) - nur eine sanfte Empfehlung, welche Aufgabe am ehesten noch
+# einmal dran ist: nie geübt oder zuletzt "nicht gewusst" zuerst, danach am
+# laengsten nicht mehr angefasst. Rein additive Sortierung/Badge, aendert
+# nichts an den Aufgaben selbst.
+# --------------------------------------------------------------------------- #
+_attempt_summary = manifest.practice_attempt_summary([p["problem_id"] for p in _problems])
+
+
+def _practice_priority(p: dict) -> tuple:
+    info = _attempt_summary.get(p["problem_id"])
+    if info is None:
+        return (0, 0.0)                          # nie geuebt -> zuerst
+    _rank = {0: 1, 1: 2, 2: 3}.get(info["last_rating"], 1)
+    return (_rank, info["last_attempted_at"] or 0.0)
+
+
+_problems = sorted(_problems, key=_practice_priority)
+
+
+def _practice_badge(p: dict) -> str:
+    info = _attempt_summary.get(p["problem_id"])
+    if info is None:
+        return "🔴 "
+    return {0: "🔴 ", 1: "🟡 "}.get(info["last_rating"], "")
+
 if "_practice_pending_choice" in st.session_state:
     st.session_state["practice_choice"] = st.session_state.pop("_practice_pending_choice")
 # KEIN Reset, wenn die aktive Aufgabe nur aus der GEFILTERTEN Liste faellt (z. B.
@@ -158,6 +186,9 @@ col_list, col_practice = st.columns([1, 2])
 
 with col_list:
     with card("liste"):
+        if _problems:
+            st.caption("🔴 empfohlen (nie/schlecht geübt) · 🟡 teilweise gewusst – "
+                      "sonst zuletzt gut gelöst.")
         if not _problems:
             # KEIN leerer st.container(height=480) mehr, wenn es nichts zu
             # zeigen gibt - wirkte sonst wie ein verwaistes, kaputtes Element
@@ -173,7 +204,8 @@ with col_list:
                                       if len(p["problem_text"]) > 40 else p["problem_text"]))
                     _meta = _fach(p["subject"])
                     _active = st.session_state.get("practice_choice") == p["problem_id"]
-                    if st.button(f"{'▶️ ' if _active else ''}{_label}",
+                    _prefix = "▶️ " if _active else _practice_badge(p)
+                    if st.button(f"{_prefix}{_label}",
                                 key=f"practice_pick_{p['problem_id']}",
                                 use_container_width=True, help=_meta):
                         st.session_state["_practice_pending_choice"] = p["problem_id"]
@@ -272,3 +304,32 @@ with col_practice:
                 st.session_state["_practice_pending_choice"] = None
                 st.success("Aufgabe gelöscht.")
                 st.rerun()
+
+# --------------------------------------------------------------------------- #
+# Formelsammlung: fasst alle bisherigen Übungsaufgaben EINES Fachs zu einer
+# wachsenden Formel-/Methodensammlung zusammen - ein Nebenprodukt der
+# normalen Nutzung (keine zusätzliche Erstellungsarbeit), das mit jeder neuen
+# Aufgabe reichhaltiger wird. Nur sinnvoll bei einem konkret gewählten Fach
+# (nicht "Alle Fächer" - eine fachübergreifende Formelsammlung wäre beliebig).
+# --------------------------------------------------------------------------- #
+if _subj_arg:
+    with card("formelsammlung"):
+        st.subheader("📎 Formelsammlung")
+        st.caption(f"Fasst alle bisherigen Übungsaufgaben aus {_fach(_subj_arg)} zu einer "
+                  "kompakten Formel-/Methodenübersicht zusammen - ohne die konkreten "
+                  "Zahlenwerte einzelner Aufgaben.")
+        if st.button("📎 Formelsammlung erstellen/aktualisieren", key="formelsammlung_gen"):
+            with st.spinner("KI fasst die bisherigen Aufgaben zusammen …"):
+                try:
+                    _fs_text = practice_gen.generate_formelsammlung(_subj_arg)
+                except practice_gen.PracticeGenError as exc:
+                    st.error(str(exc))
+                else:
+                    st.session_state[f"_formelsammlung_{_subj_arg}"] = _fs_text
+        _fs_cached = st.session_state.get(f"_formelsammlung_{_subj_arg}")
+        if _fs_cached:
+            st.markdown(_fs_cached)
+            st.download_button(
+                "⬇️ Als Markdown herunterladen", _fs_cached,
+                file_name=f"formelsammlung_{_subj_arg}.md", mime="text/markdown",
+                key="formelsammlung_download")

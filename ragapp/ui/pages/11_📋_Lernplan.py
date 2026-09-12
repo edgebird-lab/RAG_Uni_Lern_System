@@ -319,12 +319,33 @@ with card("kopf"):
                            if _total_planned_all else "–"))
     m4.metric("Bis Zieldatum", (f"{_days_left} Tag(e)" if _days_left is not None else "offen"))
 
+    # Rueckstand: unerledigte Bloecke mit Datum VOR heute - vorher zeigte der
+    # naechste Block einfach sein rohes (vergangenes) Datum an, ohne dass
+    # sichtbar wurde, dass der Plan bereits hinterherhinkt (siehe UX-Analyse:
+    # ein verpasster Tag verschwand so unbemerkt aus dem Blick).
+    _today_iso_plan = date.today().isoformat()
+    _overdue_blocks = manifest.list_overdue_plan_blocks(_today_iso_plan, plan_id=_active_plan_id)
+    if _overdue_blocks:
+        _overdue_min = sum(b["planned_min"] for b in _overdue_blocks)
+        oc1, oc2 = st.columns([3, 1])
+        oc1.warning(f"⚠️ **{len(_overdue_blocks)} Block(e) im Rückstand** "
+                   f"({_fmt_min(_overdue_min)}) – ältester: {_overdue_blocks[0]['planned_date']}")
+        if oc2.button("🔁 Auf heute verschieben", key=f"splan_catchup_{_active_plan_id}",
+                     use_container_width=True):
+            manifest.reschedule_overdue_blocks(_active_plan_id, _today_iso_plan, _today_iso_plan)
+            st.success(f"{len(_overdue_blocks)} Block(e) auf heute verschoben.")
+            st.rerun()
+
     _next_block = next((b for b in _blocks if not b["done"]), None)
     if _next_block is not None:
         _next_title = next((s["title"] for s in _sections
                             if s["section_id"] == _next_block["section_id"]), "Abschnitt")
-        _nb_when = ("heute" if _next_block["planned_date"] == date.today().isoformat()
-                   else _next_block["planned_date"])
+        if _next_block["planned_date"] == _today_iso_plan:
+            _nb_when = "heute"
+        elif _next_block["planned_date"] < _today_iso_plan:
+            _nb_when = f"{_next_block['planned_date']} (überfällig)"
+        else:
+            _nb_when = _next_block["planned_date"]
         st.info(f"▶️ **Nächster Block:** {_next_title} · "
                f"{_fmt_min(_next_block['planned_min'])} · {_nb_when}")
     elif _total_planned_all:

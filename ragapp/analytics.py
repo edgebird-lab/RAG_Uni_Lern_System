@@ -144,6 +144,42 @@ def retention_trend(days: int = 30, subject: Optional[str] = None) -> list[dict]
     return out
 
 
+def weekly_recap(subject: Optional[str] = None) -> dict:
+    """Vergleicht die letzten 7 Tage mit den 7 Tagen DAVOR: Wiederholungen,
+    Trefferquote, investierte Lernzeit. Reine Sparklines/Zahlen werden mit der
+    Zeit leicht übersehen - der explizite Wochenvergleich soll Fortschritt
+    bewusst SPÜRBAR machen (Grundlage des "Wochenrückblick" auf Fortschritt)."""
+    now = time.time()
+    this_start = _day_start(now) - 6 * 86400
+    prev_start = this_start - 7 * 86400
+    sc, sa = _subj_clause(subject)
+    with _conn() as c:
+        this_row = c.execute(
+            "SELECT COUNT(*) AS r, SUM(CASE WHEN rating>=? THEN 1 ELSE 0 END) AS g "
+            "FROM review_log WHERE reviewed_at>=?" + sc, [_GEWUSST, this_start] + sa
+        ).fetchone()
+        prev_row = c.execute(
+            "SELECT COUNT(*) AS r, SUM(CASE WHEN rating>=? THEN 1 ELSE 0 END) AS g "
+            "FROM review_log WHERE reviewed_at>=? AND reviewed_at<?" + sc,
+            [_GEWUSST, prev_start, this_start] + sa
+        ).fetchone()
+
+    def _study_minutes(since: float, until: "float | None") -> int:
+        from ragapp import manifest
+        by_subj = manifest.study_time_by_subject(since=since, until=until)
+        return round((by_subj.get(subject, 0) if subject else sum(by_subj.values())) / 60)
+
+    def _pack(row, minutes: int) -> dict:
+        rev = row["r"] or 0
+        acc = round(100 * (row["g"] or 0) / rev) if rev else None
+        return {"reviews": rev, "accuracy_pct": acc, "minutes": minutes}
+
+    return {
+        "this_week": _pack(this_row, _study_minutes(this_start, None)),
+        "prev_week": _pack(prev_row, _study_minutes(prev_start, this_start)),
+    }
+
+
 def mastery_by_subject() -> list[dict]:
     """Pro Fach: Karten, 'sitzt'-Anteil (Mastery %), faellig, Ø-Leichtigkeit."""
     now = time.time()

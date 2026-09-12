@@ -132,6 +132,32 @@ with card("kennzahlen"):
                    "Lernrunde, dann füllen sie sich mit echten Werten.")
 
 # --------------------------------------------------------------------------- #
+# Wochenrückblick: diese Woche vs. die Woche davor - macht Fortschritt bewusst
+# SPÜRBAR statt nur verfügbar (reine Sparklines werden mit der Zeit leicht
+# übersehen, siehe analytics.weekly_recap()-Docstring).
+# --------------------------------------------------------------------------- #
+with card("wochenrueckblick"):
+    st.subheader("📅 Wochenrückblick")
+    _recap = analytics.weekly_recap(subject)
+    _tw, _pw = _recap["this_week"], _recap["prev_week"]
+    if _tw["reviews"] == 0 and _pw["reviews"] == 0 and _tw["minutes"] == 0 and _pw["minutes"] == 0:
+        st.caption("Noch keine zwei Wochen Verlauf für einen Vergleich – komm bald wieder.")
+    else:
+        wc1, wc2, wc3 = st.columns(3)
+        wc1.metric("Wiederholungen", _tw["reviews"],
+                  delta=(_tw["reviews"] - _pw["reviews"]) or None,
+                  help="Diese Woche vs. die 7 Tage davor.")
+        _acc_delta = (None if _tw["accuracy_pct"] is None or _pw["accuracy_pct"] is None
+                     else _tw["accuracy_pct"] - _pw["accuracy_pct"])
+        wc2.metric("Trefferquote",
+                  f'{_tw["accuracy_pct"]} %' if _tw["accuracy_pct"] is not None else "–",
+                  delta=(f"{_acc_delta:+d} %-Punkte" if _acc_delta else None),
+                  help='Anteil „gewusst" diese Woche vs. die 7 Tage davor.')
+        wc3.metric("Lernzeit (Min)", _tw["minutes"] if _tw["minutes"] else "–",
+                  delta=(_tw["minutes"] - _pw["minutes"]) or None,
+                  help="Minuten diese Woche vs. die 7 Tage davor.")
+
+# --------------------------------------------------------------------------- #
 # Klausurtermine + Prioritaet
 # --------------------------------------------------------------------------- #
 with card("klausur"):

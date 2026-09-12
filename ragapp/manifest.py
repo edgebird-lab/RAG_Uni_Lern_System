@@ -1553,21 +1553,28 @@ def delete_study_session(session_id: str) -> None:
         conn.execute("DELETE FROM study_sessions WHERE session_id=?", (session_id,))
 
 
-def study_time_by_subject(since: Optional[float] = None) -> dict:
-    """Fach -> Summe Lernzeit (Sekunden) seit ``since`` (None = gesamter Verlauf)."""
+def study_time_by_subject(since: Optional[float] = None, until: Optional[float] = None) -> dict:
+    """Fach -> Summe Lernzeit (Sekunden) im Zeitraum [``since``, ``until``)
+    (beide optional/offen - None = gesamter Verlauf in diese Richtung).
+    ``until`` ist EXKLUSIV, damit sich Zeitraeume nahtlos aneinanderreihen
+    lassen (z. B. "letzte 7 Tage" vs. "die 7 Tage davor" im Wochenrueckblick,
+    siehe analytics.weekly_recap())."""
     sql = "SELECT subject, SUM(duration_sec) AS s FROM study_sessions WHERE 1=1"
     args: list = []
     if since is not None:
         sql += " AND started_at>=?"
         args.append(since)
+    if until is not None:
+        sql += " AND started_at<?"
+        args.append(until)
     sql += " GROUP BY subject"
     with _connect() as conn:
         return {(r["subject"] or "Ohne Fach"): (r["s"] or 0)
                for r in conn.execute(sql, args)}
 
 
-def study_time_total(since: Optional[float] = None) -> int:
-    return sum(study_time_by_subject(since).values())
+def study_time_total(since: Optional[float] = None, until: Optional[float] = None) -> int:
+    return sum(study_time_by_subject(since, until).values())
 
 
 # --------------------------------------------------------------------------- #
@@ -1801,6 +1808,41 @@ def list_plan_blocks_detailed(plan_id: Optional[str] = None,
     sql += " ORDER BY b.planned_date"
     with _connect() as conn:
         return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+
+def list_overdue_plan_blocks(before_date: str, plan_id: Optional[str] = None) -> list[dict]:
+    """Wie ``list_plan_blocks_detailed``, aber nur UNERLEDIGTE Bloecke mit
+    ``planned_date`` VOR ``before_date`` - Grundlage der Lernplan-Rueckstand-
+    Anzeige (Startseite planuebergreifend, Lernplan-Seite pro Plan). Ein Block
+    wird nie automatisch "ueberfaellig geloescht" - er bleibt sichtbar, bis er
+    entweder abgehakt oder per ``reschedule_overdue_blocks`` verschoben wird."""
+    sql = (
+        "SELECT b.*, p.title AS plan_title, p.subject AS plan_subject, "
+        "p.status AS plan_status, s.title AS section_title "
+        "FROM study_plan_blocks b "
+        "JOIN study_plans p ON p.plan_id = b.plan_id "
+        "LEFT JOIN study_plan_sections s ON s.section_id = b.section_id "
+        "WHERE b.done=0 AND b.planned_date<?"
+    )
+    args: list = [before_date]
+    if plan_id:
+        sql += " AND b.plan_id=?"
+        args.append(plan_id)
+    sql += " ORDER BY b.planned_date"
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+
+def reschedule_overdue_blocks(plan_id: str, before_date: str, new_date: str) -> int:
+    """Verschiebt alle ueberfaelligen, unerledigten Bloecke EINES Plans auf
+    ``new_date`` (typischerweise heute) - die "Rueckstand aufholen"-Aktion auf
+    der Lernplan-Seite. Gibt die Anzahl verschobener Bloecke zurueck."""
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE study_plan_blocks SET planned_date=? "
+            "WHERE plan_id=? AND done=0 AND planned_date<?",
+            (new_date, plan_id, before_date))
+        return cur.rowcount
 
 
 def sync_plan_status(plan_id: str) -> str:
@@ -2125,6 +2167,34 @@ def list_practice_attempts(problem_id: Optional[str] = None,
         sql += " LIMIT ? OFFSET ?"; args += [int(limit), int(offset)]
     with _connect() as conn:
         return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+
+def practice_attempt_summary(problem_ids: Optional[list[str]] = None) -> dict[str, dict]:
+    """Letzte Selbsteinschätzung + Anzahl Versuche JE Aufgabe, in EINER Abfrage
+    (Fensterfunktion statt N Einzelabfragen über ``list_practice_attempts``) -
+    Grundlage der "was ist dran"-Sortierung/Badges auf der Übungsaufgaben-Seite
+    (nie geübt oder zuletzt "nicht gewusst" zuerst). Aufgaben OHNE Versuch
+    tauchen hier gar nicht auf - der Aufrufer behandelt das als "noch nie
+    geübt" (höchste Priorität)."""
+    if problem_ids is not None and not problem_ids:
+        return {}   # explizit LEERE Auswahl -> nicht mit "kein Filter" verwechseln
+    sql = (
+        "SELECT problem_id, self_rating AS last_rating, "
+        "attempted_at AS last_attempted_at, cnt AS attempts FROM ("
+        "  SELECT problem_id, self_rating, attempted_at, "
+        "         COUNT(*) OVER (PARTITION BY problem_id) AS cnt, "
+        "         ROW_NUMBER() OVER (PARTITION BY problem_id "
+        "                            ORDER BY attempted_at DESC) AS rn "
+        "  FROM practice_attempts"
+    )
+    args: list = []
+    if problem_ids:
+        sql += f" WHERE problem_id IN ({','.join('?' * len(problem_ids))})"
+        args += list(problem_ids)
+    sql += ") WHERE rn = 1"
+    with _connect() as conn:
+        rows = conn.execute(sql, args).fetchall()
+    return {r["problem_id"]: dict(r) for r in rows}
 
 
 # --------------------------------------------------------------------------- #

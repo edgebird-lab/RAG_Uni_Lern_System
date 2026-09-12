@@ -214,6 +214,23 @@ if _snap:
         st.markdown(f"#### 🌞 Heute · {_WOCHENTAGE[_today.weekday()]}, "
                     f"{_today.strftime('%d.%m.%Y')}")
 
+        # Cram-Modus: kurz vor der Klausur bekommt die Seite bewusst eine
+        # dringlichere Note statt einer weiteren Chip zwischen den anderen -
+        # das soll auffallen, nicht nur mitlaufen (siehe CRAM_MODE_DAYS).
+        if _snap["cram_active"] and _snap["next_exam"]:
+            _cram_subj = _html_escape(SUBJECT_LABELS.get(
+                _snap["next_exam"]["subject"], _snap["next_exam"]["subject"]))
+            st.warning(f"🔥 **Fokus-Modus:** {_cram_subj} "
+                      f"{planner.humanize_days(_snap['days_to_exam'])} – "
+                      "jetzt zählt jede Wiederholung.")
+
+        # Streak-Warnung: bewusst SEPARAT von den Chips (Verlust-Framing statt
+        # nur einer weiteren neutralen Info) - nur ab STREAK_RISK_HOUR und nur,
+        # wenn heute wirklich noch nichts geuebt wurde (siehe today_snapshot()).
+        if _snap["streak_at_risk"]:
+            st.error(f"🔥 Dein Streak von {_snap['streak']} Tag(en) reißt heute, "
+                    "wenn du jetzt nicht noch kurz lernst.")
+
         _chips: list[str] = []
         if _snap["due_cards"]:
             _chips.append(f"🎴 {_snap['due_cards']} Karten fällig")
@@ -227,6 +244,9 @@ if _snap:
             _chips.append(f"⚠️ {len(_snap['overdue_tasks'])} überfällige Aufgabe(n)")
         if _snap["due_today_tasks"]:
             _chips.append(f"✅ {len(_snap['due_today_tasks'])} Aufgabe(n) heute fällig")
+        if _snap["overdue_plan_blocks"]:
+            _chips.append(f"📋 {len(_snap['overdue_plan_blocks'])} Lernplan-Block(e) "
+                          f"im Rückstand ({_snap['overdue_plan_min']} Min)")
         if _snap["study_min_today"]:
             _chips.append(f"⏱️ {_snap['study_min_today']} Min heute gelernt")
 
@@ -267,8 +287,13 @@ if _snap:
             _cta_label, _cta_target = "▶ Jetzt lernen", _target["lernen"]
         elif _snap["overdue_tasks"] or _snap["due_today_tasks"]:
             _cta_label, _cta_target = "🗂️ Aufgaben ansehen", _target["organisation"]
-        elif _snap["plan_blocks_today"] and _snap["plan_done_today"] < _snap["plan_min_today"]:
+        elif (_snap["overdue_plan_blocks"]
+              or (_snap["plan_blocks_today"] and _snap["plan_done_today"] < _snap["plan_min_today"])):
             _cta_label, _cta_target = "📋 Lernplan ansehen", _target["lernplan"]
+        elif _snap["cram_active"]:
+            # Keine faelligen Karten mehr, Klausur aber ganz nah -> aktiv eine
+            # Probeklausur unter Zeitdruck anbieten statt nur "nichts zu tun".
+            _cta_label, _cta_target = "📝 Probeklausur starten", _target["pruefung"]
         elif _snap["top_priority"]:
             _tp_subj = SUBJECT_LABELS.get(_snap["top_priority"]["subject"],
                                           _snap["top_priority"]["subject"])

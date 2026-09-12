@@ -61,6 +61,8 @@ ICON_PNG = ROOT / "assets" / "icon.png"
 LOG_FILE = ROOT / "data" / "app.log"                    # Startprotokoll (auch unter pythonw, sonst unsichtbar)
 INSTANCE_FILE = ROOT / "data" / ".instance.json"        # laufende Instanz (pid/port/url) -> Zweitfenster auf 2. Bildschirm
 OPEN_WINDOW_FILE = ROOT / "data" / ".open_window"       # Button in der App: zweites Fenster oeffnen
+REMINDER_STATE_FILE = ROOT / "data" / ".last_reminder_date"  # Tag der letzten Erinnerung (hoechstens 1x/Tag)
+REMINDER_CHECK_INTERVAL_SEC = 300     # nicht bei JEDEM 0.5s-Loop-Tick pruefen (sqlite bleibt unbelastet)
 
 _LOG_FH = None  # offener Datei-Handle fuer app.log (nur gesetzt, wenn wir selbst schreiben)
 
@@ -734,6 +736,72 @@ def _redirect_output_if_windowless() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Native Desktop-Erinnerung ("X Karten sind faellig") - bewusst KEIN Smartphone-
+# Push (der Rechner laeuft waehrend der Sitzung ohnehin schon, siehe UX-Analyse):
+# hoechstens einmal pro Tag, ab settings.STREAK_RISK_HOUR, nur wenn heute noch
+# nichts geuebt wurde. Reines Best-Effort-Feature ohne neue pip-Abhaengigkeit
+# (gleiches Prinzip wie das optionale ffmpeg beim Hoerbuch-Export) - nutzt nur,
+# was das jeweilige Betriebssystem schon mitbringt; jeder Fehler wird
+# verschluckt und darf den Starter nie stoppen.
+# --------------------------------------------------------------------------- #
+def _notify_desktop(title: str, message: str) -> None:
+    try:
+        if sys.platform.startswith("linux"):
+            subprocess.run(["notify-send", "-a", "RAG-Lernsystem", title, message],
+                          timeout=5, check=False)
+        elif sys.platform == "darwin":
+            script = f'display notification "{message}" with title "{title}"'
+            subprocess.run(["osascript", "-e", script], timeout=5, check=False)
+        elif os.name == "nt":
+            # NotifyIcon-Sprechblase per PowerShell - braucht kein Zusatzmodul
+            # (anders als z. B. win10toast), funktioniert seit Windows 10.
+            ps = (
+                "Add-Type -AssemblyName System.Windows.Forms;"
+                "Add-Type -AssemblyName System.Drawing;"
+                "$n = New-Object System.Windows.Forms.NotifyIcon;"
+                "$n.Icon = [System.Drawing.SystemIcons]::Information;"
+                "$n.Visible = $true;"
+                f"$n.ShowBalloonTip(10000, '{title}', '{message}', "
+                "[System.Windows.Forms.ToolTipIcon]::Info);"
+                "Start-Sleep -Seconds 10;"
+                "$n.Dispose()"
+            )
+            subprocess.run(["powershell", "-NoProfile", "-WindowStyle", "Hidden",
+                           "-Command", ps], timeout=15, check=False,
+                          creationflags=_no_window_flag())
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _maybe_remind_due_cards() -> None:
+    """Hoechstens EINMAL pro Kalendertag: ab der konfigurierten Uhrzeit pruefen,
+    ob es faellige Karten gibt UND heute noch gar nicht geuebt wurde - falls ja,
+    eine native Erinnerung zeigen. Schreibt den Erinnerungs-Zeitpunkt erst NACH
+    einer tatsaechlich gezeigten Erinnerung fest (nicht schon beim blossen
+    Pruefen) - sonst wuerde ein frueher Check an einem ruhigen Tag (noch keine
+    Karten faellig) spaetere, tatsaechlich noetige Erinnerungen desselben Tages
+    verhindern. Rein additiv - ein Fehler hier darf den Starter nie stoppen."""
+    try:
+        now = time.localtime()
+        from ragapp.config import settings
+        if not settings.DESKTOP_REMINDERS_ENABLED or now.tm_hour < int(settings.STREAK_RISK_HOUR):
+            return
+        today_iso = time.strftime("%Y-%m-%d", now)
+        if REMINDER_STATE_FILE.exists() and REMINDER_STATE_FILE.read_text(
+                encoding="utf-8").strip() == today_iso:
+            return
+        from ragapp import analytics
+        ov = analytics.overview(None)
+        if ov["due"] > 0 and ov["reviews_today"] == 0:
+            _notify_desktop(
+                "RAG-Lernsystem",
+                f"{ov['due']} Karte(n) sind fällig – heute noch nichts geübt.")
+            REMINDER_STATE_FILE.write_text(today_iso, encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# --------------------------------------------------------------------------- #
 # Hauptablauf
 # --------------------------------------------------------------------------- #
 def main() -> int:
@@ -863,6 +931,7 @@ def main() -> int:
                 pass
 
     print("Laeuft. Fenster schliessen oder in der App 'Beenden' druecken zum Stoppen.")
+    _last_reminder_check = 0.0
     try:
         while True:
             if win is not None and win.poll() is not None:
@@ -871,6 +940,12 @@ def main() -> int:
                 break                                   # Oberflaeche beendet
             if SHUTDOWN_SENTINEL.exists():
                 break                                   # Beenden-Button
+
+            # Native Erinnerung an faellige Karten - gedrosselt (nicht bei jedem
+            # 0.5s-Tick), siehe _maybe_remind_due_cards()-Docstring.
+            if time.time() - _last_reminder_check >= REMINDER_CHECK_INTERVAL_SEC:
+                _last_reminder_check = time.time()
+                _maybe_remind_due_cards()
 
             # Button in der App: zusaetzliches Fenster (2. Bildschirm) oeffnen.
             if OPEN_WINDOW_FILE.exists():
