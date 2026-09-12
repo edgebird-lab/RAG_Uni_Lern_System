@@ -553,6 +553,21 @@ with card("player"):
                             "„💾 Speichern & nur Audio neu erzeugen“ klicken, um es auch zu hören.")
                     st.rerun()
 
+    # key= haelt den Auf/Zu-Zustand fest - ohne key faellt der Expander sonst schon
+    # beim Tippen im Textfeld (loest beim Verlassen des Felds einen Rerun aus) wieder
+    # zu, bevor "Titel speichern" ueberhaupt geklickt werden kann.
+    with st.expander("✏️ Umbenennen", key=f"audio_rename_expander_{_active_id}"):
+        _new_title_val = st.text_input("Titel", value=_active["title"],
+                                       key=f"audio_rename_{_active_id}")
+        if st.button("💾 Titel speichern", key=f"audio_rename_save_{_active_id}"):
+            _clean_title = _new_title_val.strip()
+            if _clean_title:
+                manifest.update_audio_overview(_active_id, title=_clean_title)
+                st.success("Titel gespeichert.")
+                st.rerun()
+            else:
+                st.warning("Titel darf nicht leer sein.")
+
     with st.expander("🗑️ Löschen"):
         if st.button("Audio-Overview löschen", key=f"audio_delete_{_active_id}"):
             manifest.delete_audio_overview(_active_id)

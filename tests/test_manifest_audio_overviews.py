@@ -83,6 +83,18 @@ def test_update_audio_overview_changes_only_given_fields(isolated_db):
     assert row["audio_path"] == "a.wav"
 
 
+def test_update_audio_overview_kann_titel_umbenennen(isolated_db):
+    # Grundlage der "✏️ Umbenennen"-Aktion auf der Audio-Overview-Seite.
+    oid = manifest.create_audio_overview(
+        title="Alter Titel", subject="mathe", doc_ids=[], script_text="x", audio_path="a.wav")
+    manifest.update_audio_overview(oid, title="Neuer Titel")
+    row = manifest.get_audio_overview(oid)
+    assert row["title"] == "Neuer Titel"
+    # Andere Felder bleiben dabei unangetastet.
+    assert row["subject"] == "mathe"
+    assert row["audio_path"] == "a.wav"
+
+
 def test_update_audio_overview_reused_id_would_have_crashed_via_create(isolated_db):
     # Regression: die "Neu generieren"-Seite rief zuerst faelschlich
     # create_audio_overview() mit einer bereits existierenden ID auf - das ist
