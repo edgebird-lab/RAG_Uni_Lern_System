@@ -468,32 +468,79 @@ with st.expander("📋 Karten & Fragen verwalten (auswählen, bearbeiten, lösch
         st.info("Keine Karten für diese Auswahl.")
     else:
         _orig = {r["card_id"]: r for r in _mv_rows}
-        _df = pd.DataFrame([{
-            "✓": False,
-            "Frage": r["front"],
-            "Antwort": r.get("answer") or "",
-            "Thema": r.get("topic") or "",
-            "Fach": _fach_label(r.get("subject") or ""),
-            "Stapel": r.get("deck") or "",
-            "Abfrage": bool(r.get("use_flashcard", 1)),
-            "Embedding": bool(r.get("use_embedding", 1)),
-            "_id": r["card_id"],
-        } for r in _mv_rows])
-        _edited = st.data_editor(
-            _df, hide_index=True, use_container_width=True, key="mv_editor",
-            column_config={
-                "✓": st.column_config.CheckboxColumn(width="small"),
-                "Frage": st.column_config.TextColumn(width="large"),
-                "Antwort": st.column_config.TextColumn(width="large"),
-                "Thema": st.column_config.TextColumn(disabled=True, width="medium"),
-                "Fach": st.column_config.TextColumn(disabled=True),
-                "Stapel": st.column_config.TextColumn(help="Stapelname (leer = kein Stapel)"),
-                "Abfrage": st.column_config.CheckboxColumn(),
-                "Embedding": st.column_config.CheckboxColumn(),
-                "_id": None,
-            },
-        )
-        _sel = [row["_id"] for _, row in _edited.iterrows() if row["✓"]]
+        # Kompakte Listenansicht statt breiter Tabelle: ein Live-Test bei
+        # Handy-Breite (375px) zeigte, dass die 8-spaltige Tabelle dort nur
+        # noch die "Frage"-Spalte zeigt - der Rest liegt hinter einem
+        # Scroll-im-Scroll (die Tabelle scrollt seitlich INNERHALB einer
+        # Seite, die selbst hoch/runter scrollt), was auf dem Handy leicht zu
+        # Fehlbedienung fuehrt. Als Toggle (nicht automatisch erkannt -
+        # Streamlit kennt die Bildschirmbreite serverseitig nicht) statt
+        # Ersatz, damit die schnelle Tabellen-Bearbeitung am Desktop bleibt.
+        _compact = st.toggle("📱 Kompakte Liste (statt Tabelle – besser für schmale Bildschirme)",
+                             key="mv_compact")
+        if _compact:
+            st.caption('Tipp: „Max. Zeilen" oben klein halten, dann bleibt die Liste kurz.')
+            _sel: list[str] = []
+            _rows_for_save: list[dict] = []
+            for r in _mv_rows:
+                cid = r["card_id"]
+                with st.container(border=True):
+                    _c1, _c2 = st.columns([5, 1])
+                    _c1.caption(f"{_fach_label(r.get('subject') or '')}"
+                               + (f" · {r['topic']}" if r.get("topic") else ""))
+                    _checked = _c2.checkbox("✓", key=f"mv_cv_sel_{cid}", label_visibility="collapsed")
+                    _front = st.text_area("Frage", value=r["front"], key=f"mv_cv_front_{cid}",
+                                          height=80, label_visibility="collapsed")
+                    _answer = st.text_area("Antwort", value=r.get("answer") or "",
+                                           key=f"mv_cv_answer_{cid}", height=80,
+                                           label_visibility="collapsed",
+                                           placeholder="Antwort …")
+                    _d1, _d2, _d3 = st.columns([2, 1, 1])
+                    _deck = _d1.text_input("Stapel", value=r.get("deck") or "",
+                                           key=f"mv_cv_deck_{cid}", label_visibility="collapsed",
+                                           placeholder="Stapel …")
+                    _use_fc = _d2.checkbox("Abfrage", value=bool(r.get("use_flashcard", 1)),
+                                           key=f"mv_cv_fc_{cid}")
+                    _use_em = _d3.checkbox("Embed.", value=bool(r.get("use_embedding", 1)),
+                                          key=f"mv_cv_em_{cid}")
+                if _checked:
+                    _sel.append(cid)
+                _rows_for_save.append({
+                    "_id": cid, "Frage": _front, "Antwort": _answer, "Stapel": _deck,
+                    "Abfrage": _use_fc, "Embedding": _use_em,
+                })
+        else:
+            _df = pd.DataFrame([{
+                "✓": False,
+                "Frage": r["front"],
+                "Antwort": r.get("answer") or "",
+                "Thema": r.get("topic") or "",
+                "Fach": _fach_label(r.get("subject") or ""),
+                "Stapel": r.get("deck") or "",
+                "Abfrage": bool(r.get("use_flashcard", 1)),
+                "Embedding": bool(r.get("use_embedding", 1)),
+                "_id": r["card_id"],
+            } for r in _mv_rows])
+            _edited = st.data_editor(
+                _df, hide_index=True, use_container_width=True, key="mv_editor",
+                column_config={
+                    "✓": st.column_config.CheckboxColumn(width="small"),
+                    "Frage": st.column_config.TextColumn(width="large"),
+                    "Antwort": st.column_config.TextColumn(width="large"),
+                    "Thema": st.column_config.TextColumn(disabled=True, width="medium"),
+                    "Fach": st.column_config.TextColumn(disabled=True),
+                    "Stapel": st.column_config.TextColumn(help="Stapelname (leer = kein Stapel)"),
+                    "Abfrage": st.column_config.CheckboxColumn(),
+                    "Embedding": st.column_config.CheckboxColumn(),
+                    "_id": None,
+                },
+            )
+            _sel = [row["_id"] for _, row in _edited.iterrows() if row["✓"]]
+            _rows_for_save = [
+                {"_id": row["_id"], "Frage": row["Frage"], "Antwort": row["Antwort"],
+                 "Stapel": row["Stapel"], "Abfrage": row["Abfrage"], "Embedding": row["Embedding"]}
+                for _, row in _edited.iterrows()
+            ]
         st.caption(f"{len(_sel)} ausgewählt · {len(_mv_rows)} angezeigt · {_mv_total} gesamt "
                    "(mit dieser Filterung)")
 
@@ -502,7 +549,7 @@ with st.expander("📋 Karten & Fragen verwalten (auswählen, bearbeiten, lösch
             from ragapp.retrieval.vectorstore import get_vectorstore
             _n_edit = _emb_changed = 0
             _emb_ids: list[str] = []
-            for _, row in _edited.iterrows():
+            for row in _rows_for_save:
                 cid = row["_id"]
                 o = _orig.get(cid)
                 if o is None:
@@ -1033,10 +1080,21 @@ else:
     if (!doc.__ragSwipeBound) {
       doc.__ragSwipeBound = true;
       var sx = null, sy = null, st0 = 0;
+      var EDGE = 24; // px - siehe Kommentar unten
       doc.addEventListener('touchstart', function(e) {
         var el = e.target && e.target.closest ? e.target.closest('.karte-frage') : null;
         if (!el || !e.touches || !e.touches.length) { sx = null; return; }
-        sx = e.touches[0].clientX; sy = e.touches[0].clientY; st0 = Date.now();
+        var x = e.touches[0].clientX;
+        // Touches, die ganz am Bildschirmrand starten, NICHT als Wisch-
+        // Bewertung behandeln: auf iOS Safari loest ein Wisch von der
+        // aeussersten Kante (unabhaengig davon, was dort gerendert ist) die
+        // systemweite "Zurueck"-Geste aus, BEVOR unser Skript ueberhaupt
+        // greift. Indem wir dort gar nicht erst reagieren, konkurriert
+        // unsere Geste nicht mit der des Betriebssystems - der Nutzer landet
+        // einfach zuverlaessig bei der einen oder der anderen, nie bei einem
+        // Konflikt zwischen beiden.
+        if (x < EDGE || x > (doc.documentElement.clientWidth - EDGE)) { sx = null; return; }
+        sx = x; sy = e.touches[0].clientY; st0 = Date.now();
       }, {passive: true});
       doc.addEventListener('touchend', function(e) {
         if (sx === null || !e.changedTouches || !e.changedTouches.length) { return; }

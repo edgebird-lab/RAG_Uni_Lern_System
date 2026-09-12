@@ -482,6 +482,12 @@ html.rag-dark .stFormSubmitButton > button:hover {{
   .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {{
     min-height:44px;
   }}
+  /* Der native Chat-Senden-Knopf (st.chat_input) ist mit 32x32px der am
+     haeufigsten getippte Button der App und blieb bei der obigen Regel aussen
+     vor (kein .stButton, sondern ein eigenes Streamlit-Element). */
+  [data-testid="stChatInputSubmitButton"] {{
+    min-width:44px !important; min-height:44px !important;
+  }}
 }}
 
 /* Skeleton-Ladeplatzhalter (siehe ragapp.ui._loading.skeleton()) - schimmernde
