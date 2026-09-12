@@ -56,7 +56,7 @@ PAGE_REGISTRY: list[dict] = [
      "target": "pages/5_📈_Fortschritt.py", "category": "Fortschritt"},
     {"key": "lernzeit", "icon": "⏱️", "title": "Lernzeit", "subtitle": "Pomodoro & Zeittracking",
      "target": "pages/10_⏱️_Lernzeit.py", "category": "Fortschritt"},
-    {"key": "ingestion", "icon": "📥", "title": "Ingestion", "subtitle": "Dokumente einlesen",
+    {"key": "ingestion", "icon": "📥", "title": "Import", "subtitle": "Dokumente einlesen",
      "target": "pages/1_📥_Ingestion.py", "category": "Verwalten"},
     {"key": "dokumente", "icon": "🗃️", "title": "Dokumente", "subtitle": "Bibliothek verwalten",
      "target": "pages/9_🗃️_Dokumentenmanager.py", "category": "Verwalten"},
@@ -70,7 +70,10 @@ PAGE_REGISTRY: list[dict] = [
 _PAGE_BY_KEY = {p["key"]: p for p in PAGE_REGISTRY}
 
 # Hamburger-Kurzwahl: die 4 meistgenutzten Seiten (Home immer als erste dabei).
-HAMBURGER_KEYS = ["home", "chat", "lernen", "lernplan"]
+HAMBURGER_KEYS = ["home", "chat", "lernen", "fortschritt"]
+
+# Home: zuerst die alltagsrelevanten Kacheln; Rest hinter "Mehr".
+HOME_PIN_KEYS = ["lernen", "chat", "fortschritt", "lernplan", "organisation", "pruefung"]
 
 # --------------------------------------------------------------------------- #
 # Pastell-Palette je Seite (Akzent + weicher Hintergrundton + Anzeigename).
@@ -180,6 +183,42 @@ h1, h2, h3, h4, h5, h6 {
    Inkonsistenz, OHNE die Emoji-Identitaet der App aufzugeben oder einen
    zusaetzlichen Font-Download (der die Offline-Faehigkeit gefaehrden wuerde). */
 html, body { font-variant-emoji: emoji; }
+/* Streamlit-Kennzahlen (st.metric): Default-Schriftgroesse (~2.25rem) + unsere
+   etwas breitere Body-Schrift (Nunito) + Streamlits text-overflow:ellipsis
+   schneiden in engen Spalten (4er-Karten auf Lernen/Home/Fortschritt) Werte
+   wie "302" oder "20/20" zu "3 0 2 …" / "2 0 /…" ab. Kompakter, engeres
+   Tracking, kein Ellipsis - gilt app-weit fuer JEDE Seite mit Zahlen. */
+[data-testid="stMetricValue"],
+[data-testid="stMetricValue"] * {
+  font-size: 1.35rem !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.03em !important;
+  line-height: 1.15 !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
+  font-variant-numeric: tabular-nums !important;
+  max-width: none !important;
+}
+[data-testid="stMetricLabel"],
+[data-testid="stMetricDelta"] {
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+[data-testid="stMetric"],
+[data-testid="stMetricContainer"],
+div[data-testid="metric-container"],
+[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+  overflow: visible !important;
+}
+/* Datums-/Zahlenzeilen in Ueberschriften (z. B. Home "Heute · Sa, 12.09.2026"):
+   Fredoka (Heading) ist rund und breit - ohne engeres Tracking und normalen
+   Umbruch wirken Datumsangaben abgehakt oder gequetscht. */
+h2, h3, h4, h5, h6 {
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
 /* Streamlits Icon-Glyphen (Sidebar-Pfeil, Expander-Chevron, Button-Icons wie
    "keyboard_double_arrow_right"/"expand_more") sind KEIN Text, sondern
    Ligaturen der "Material Symbols Rounded"-Iconschrift - ein zu breiter
@@ -374,31 +413,53 @@ html.rag-dark .rag-bubble::after {{background:#0f2440; border-color:rgba(231,237
 html.rag-dark .rag-heute-chip {{background:#132b4d; border-color:{accent}66; color:#e7edf5;}}
 .rag-heute-row {{font-size:.88rem; opacity:.85; margin:.15rem 0;}}
 
-/* Lernmaskottchen (siehe ragapp.ui._mascot) - Grundgeruest + drei
-   Bewegungs-Varianten (float/wave/run, je nach Pose der Seite) plus
-   Augen-Ausdruck (Blinzeln/Zwinkern/schlaefrig) und Pupillen-Tracking. */
+/* Lernmaskottchen (siehe ragapp.ui._mascot) - Grundgeruest + Bewegungs-
+   Varianten (float/wave/run/shake) plus Augen, Props und Sparkles. */
 .rag-mascot svg {{display:block; margin:0 auto; filter:drop-shadow(0 10px 14px rgba(43,32,54,.16));
   overflow:visible;}}
 .ragm-pupil-l, .ragm-pupil-r {{transition:transform .09s linear;}}
 
-/* Variante 1: sanftes Schweben (Standard-Idle). */
-.rag-mascot-float {{animation:ragMascotFloat 3.6s ease-in-out infinite;}}
-@keyframes ragMascotFloat {{
-  0%,100% {{transform:translateY(0) rotate(-1.5deg);}}
-  50%     {{transform:translateY(-9px) rotate(1.5deg);}}
+/* Idle: Atmen + leichtes Schweben (lebiger als reines Float). */
+.rag-mascot-float {{animation:ragMascotBreathe 3.6s ease-in-out infinite;}}
+@keyframes ragMascotBreathe {{
+  0%,100% {{transform:translateY(0) rotate(-1.2deg) scale(1);}}
+  50%     {{transform:translateY(-8px) rotate(1.2deg) scale(1.02);}}
+}}
+.rag-mascot-float .ragm-body {{animation:ragmBodyPulse 3.6s ease-in-out infinite;}}
+@keyframes ragmBodyPulse {{
+  0%,100% {{transform:scale(1); transform-origin:110px 128px;}}
+  50%     {{transform:scale(1.015); transform-origin:110px 128px;}}
+}}
+.rag-mascot-float .ragm-prop,
+.rag-mascot-wave .ragm-prop {{animation:ragmPropBob 2.8s ease-in-out infinite;}}
+@keyframes ragmPropBob {{
+  0%,100% {{transform:translateY(0);}}
+  50%     {{transform:translateY(-4px);}}
 }}
 
-/* Variante 2: Schweben + der rechte Arm winkt (Begruessungs-Pose). */
-.rag-mascot-wave {{animation:ragMascotFloat 3.6s ease-in-out infinite;}}
+/* Begruessung: Schweben + rechter Arm winkt, linker Arm leicht gegenphasig. */
+.rag-mascot-wave {{animation:ragMascotBreathe 3.6s ease-in-out infinite;}}
 .rag-mascot-wave .ragm-arm-r {{animation:ragmArmWave 1.15s ease-in-out infinite;}}
+.rag-mascot-wave .ragm-arm-l {{animation:ragmArmWaveSoft 1.15s ease-in-out infinite .2s;}}
 @keyframes ragmArmWave {{
   0%,100% {{transform:rotate(0deg);}}
   30%     {{transform:rotate(-26deg);}}
   60%     {{transform:rotate(-6deg);}}
 }}
+@keyframes ragmArmWaveSoft {{
+  0%,100% {{transform:rotate(0deg);}}
+  40%     {{transform:rotate(12deg);}}
+}}
 
-/* Variante 3: huepfender "Renn"-Bounce, Beine wechseln sich ab (Lernzeit-
-   Seite - passt zum Pomodoro-Timer-Tempo). */
+/* Besorgt: leichtes Zittern (Streak/Leeches). */
+.rag-mascot-shake {{animation:ragmShake .55s ease-in-out infinite;}}
+@keyframes ragmShake {{
+  0%,100% {{transform:translateX(0) rotate(-2deg);}}
+  25%     {{transform:translateX(-3px) rotate(-4deg);}}
+  75%     {{transform:translateX(3px) rotate(1deg);}}
+}}
+
+/* Huepfender "Renn"-Bounce (Lernzeit / Pomodoro). */
 .rag-mascot-run {{animation:ragmRunBounce .62s ease-in-out infinite;}}
 @keyframes ragmRunBounce {{
   0%,100% {{transform:translateY(0) rotate(-3deg);}}
@@ -411,40 +472,66 @@ html.rag-dark .rag-heute-chip {{background:#132b4d; border-color:{accent}66; col
   50%     {{transform:translateY(-6px);}}
 }}
 
-/* Augen: natuerliches beidseitiges Blinzeln (selten, kurz)... */
+/* Cheer-Sparkles: leichte Puls-/Drehung. */
+.ragm-sparkle {{animation:ragmSparkle 1.8s ease-in-out infinite; transform-origin:110px 60px;}}
+@keyframes ragmSparkle {{
+  0%,100% {{opacity:.7; transform:scale(1) rotate(0deg);}}
+  50%     {{opacity:1; transform:scale(1.12) rotate(8deg);}}
+}}
+
 .ragm-blink {{animation:ragmBlink 5.4s ease-in-out infinite;}}
 @keyframes ragmBlink {{
   0%, 92%, 100% {{transform:scaleY(1);}}
   95%           {{transform:scaleY(.12);}}
 }}
-/* ...das linke Auge zwinkert bei verspielten Posen stattdessen SELTENER,
-   dafuer einzeln (Wink statt Blink) - laeuft bewusst NICHT synchron zum
-   rechten Auge (andere Dauer), damit es wie ein bewusster Zwinker wirkt. */
 .ragm-wink-loop {{animation:ragmWink 6.8s ease-in-out infinite;}}
 @keyframes ragmWink {{
   0%, 90%, 100% {{transform:scaleY(1);}}
   94%           {{transform:scaleY(.08);}}
 }}
-/* Schlaefrig (Lernzeit im "run"-Pomodoro-Kontext): Augen bleiben schlicht
-   halb geschlossen statt zu animieren. */
 .ragm-sleepy {{transform:scaleY(.45);}}
 @media (prefers-reduced-motion: reduce) {{
-  .rag-mascot-float, .rag-mascot-wave, .rag-mascot-run,
-  .rag-mascot-wave .ragm-arm-r, .rag-mascot-run .ragm-leg-l, .rag-mascot-run .ragm-leg-r,
-  .ragm-blink, .ragm-wink-loop {{animation:none !important;}}
+  .rag-mascot-float, .rag-mascot-wave, .rag-mascot-run, .rag-mascot-shake,
+  .rag-mascot-wave .ragm-arm-r, .rag-mascot-wave .ragm-arm-l,
+  .rag-mascot-run .ragm-leg-l, .rag-mascot-run .ragm-leg-r,
+  .rag-mascot-float .ragm-body, .rag-mascot-float .ragm-prop, .rag-mascot-wave .ragm-prop,
+  .ragm-blink, .ragm-wink-loop, .ragm-sparkle {{animation:none !important;}}
 }}
 
-/* Kleines Ecken-Maskottchen auf allen Nicht-Home-Seiten (siehe
-   apply_page_style()) - fix unten RECHTS (unten links waere die Sidebar,
-   die optisch ueber allem liegt und die Figur verdecken wuerde),
-   klickdurchlaessig (blockiert nie Inhalte dahinter). Auf schmalen/kurzen
-   Fenstern ausgeblendet, damit es auf dem Handy keinen Platz wegnimmt. */
+/* Home: Maskottchen + Sprechblase als eine Einheit (Blase zeigt nach rechts). */
+.rag-mascot-hero-unit {{
+  display:flex; flex-direction:column; align-items:center; gap:.35rem;
+}}
+.rag-bubble-mascot {{
+  position:relative; border:2px solid rgba(43,32,54,.16); border-radius:16px;
+  background:#ffffff; padding:.55rem .85rem; margin:0 0 .2rem;
+  font-size:.88rem; font-weight:600; line-height:1.35; text-align:center;
+  box-shadow:0 2px 0 rgba(43,32,54,.05); max-width:220px;
+}}
+.rag-bubble-mascot::after {{
+  content:""; position:absolute; left:50%; bottom:-8px; width:14px; height:14px;
+  margin-left:-7px; background:#ffffff; border-right:2px solid rgba(43,32,54,.16);
+  border-bottom:2px solid rgba(43,32,54,.16); transform:rotate(45deg);
+}}
+html.rag-dark .rag-bubble-mascot {{background:#0f2440; border-color:rgba(231,237,245,.16); color:#e7edf5;}}
+html.rag-dark .rag-bubble-mascot::after {{background:#0f2440; border-color:rgba(231,237,245,.16);}}
+
+.rag-heute-schedule {{list-style:none; padding:0; margin:.35rem 0 .55rem;}}
+.rag-heute-schedule li {{
+  font-size:.88rem; opacity:.9; padding:.2rem 0; border-bottom:1px solid rgba(43,32,54,.06);
+}}
+html.rag-dark .rag-heute-schedule li {{border-bottom-color:rgba(231,237,245,.08);}}
+
 .rag-mascot-corner {{
   position:fixed; right:16px; bottom:10px; z-index:5; pointer-events:none;
   opacity:.92;
 }}
 @media (max-height: 620px), (max-width: 700px) {{
   .rag-mascot-corner {{display:none;}}
+}}
+@media (max-width: 480px) {{
+  .rag-mascot-hero-unit .rag-mascot svg {{width:110px !important; height:auto !important;}}
+  .rag-bubble-mascot {{max-width:100%; font-size:.82rem;}}
 }}
 
 /* Einheitliches Hover-/Klick-Gefuehl fuer ALLE normalen Buttons app-weit -
@@ -1063,6 +1150,32 @@ def speech_bubble(text: str, *, icon: str = "💡") -> None:
     kurze, feste Hinweistexte reinsollen, keine Nutzereingaben."""
     st.markdown(f'<div class="rag-bubble">{icon} {html_escape(text)}</div>',
                 unsafe_allow_html=True)
+
+
+def speech_bubble_mascot(text: str, *, icon: str = "👋") -> None:
+    """Sprechblase direkt UEBER dem Maskottchen (Pfeil nach unten zur Figur)."""
+    st.markdown(
+        f'<div class="rag-bubble-mascot">{icon} {html_escape(text)}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def empty_state(message: str, *, cta_label: str, page_key: str,
+                icon: str = "📭", key: str | None = None) -> None:
+    """Einheitlicher Leerzustand: Hinweis + Primaerbutton zu einer Registry-Seite."""
+    st.info(f"{icon} {message}")
+    page = _PAGE_BY_KEY.get(page_key)
+    if not page or not page.get("target"):
+        return
+    btn_key = key or f"empty_cta_{page_key}"
+    if st.button(cta_label, type="primary", key=btn_key, use_container_width=True):
+        st.switch_page(page["target"])
+
+
+def page_title(page_key: str) -> str:
+    """Anzeigename aus PAGE_REGISTRY (fuer konsistente Texte)."""
+    p = _PAGE_BY_KEY.get(page_key) or {}
+    return f'{p.get("icon", "")} {p.get("title", page_key)}'.strip()
 
 
 # --------------------------------------------------------------------------- #

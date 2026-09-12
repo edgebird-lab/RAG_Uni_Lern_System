@@ -55,8 +55,14 @@ _all_docs = [dict(d) for d in manifest.list_documents()
 _subjects_with_docs = sorted({d["subject"] for d in _all_docs if d["subject"]})
 
 if not _subjects_with_docs:
-    st.info("Noch keine indexierten Dokumente (im RAG) vorhanden. Gehe zu "
-            "**📥 Ingestion**, um welche hinzuzufügen.")
+    from ragapp.ui._style import empty_state, page_title as _pt
+    empty_state(
+        "Noch keine indexierten Dokumente vorhanden.",
+        cta_label=f"Zu {_pt('ingestion')}",
+        page_key="ingestion",
+        icon="📥",
+        key="uebung_empty_ingestion",
+    )
     st.stop()
 
 # --------------------------------------------------------------------------- #

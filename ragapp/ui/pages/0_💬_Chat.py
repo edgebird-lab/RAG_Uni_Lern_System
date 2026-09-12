@@ -224,12 +224,19 @@ with st.sidebar:
         st.session_state.messages = []
         st.session_state["_chat_pending_choice"] = None
         st.rerun()
-    st.caption("Seiten links: **Ingestion**, **Evaluation**, **Einstellungen**")
+    st.caption("Weitere Bereiche über ☰ Menü oder die Startseite.")
 
 
 if stats["chunks"] == 0:
-    st.info("Noch keine Dokumente indexiert. Gehe zu **📥 Ingestion** und starte den "
-            "Import oder lege Dateien in den Ordner *Zusammenfassungen SoSE26*.")
+    from ragapp.ui._style import empty_state, page_title as _pt
+    empty_state(
+        "Noch keine Dokumente indexiert. Starte den Import oder lege Dateien in den "
+        "Quellordner.",
+        cta_label=f"Zu {_pt('ingestion')}",
+        page_key="ingestion",
+        icon="📥",
+        key="chat_empty_ingestion",
+    )
 
 
 from ragapp.ui import _docviewer
@@ -391,11 +398,11 @@ def _save_card_button(question: str, answer: str, meta: dict,
         return
     if st.button("➕ Als Karteikarte speichern", key=key,
                  help="Legt aus dieser Frage + Antwort eine Karteikarte an "
-                      "(üben auf der Seite 🎓 Lernen)."):
+                      "(üben auf 🎓 Karteikarten)."):
         from ragapp import study
         subj = subject_filter or ((sources or [{}])[0].get("subject") if sources else None)
         cid = study.card_from_chat(question, answer, subject=subj, sources=sources)
-        st.toast("📇 Als Karteikarte gespeichert – üben auf 🎓 Lernen!"
+        st.toast("📇 Als Karteikarte gespeichert – üben auf 🎓 Karteikarten!"
                  if cid else "Konnte keine Karte anlegen.")
 
 

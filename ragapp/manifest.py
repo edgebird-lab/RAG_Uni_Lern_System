@@ -907,26 +907,59 @@ def review_counts(subject: Optional[str] = None, deck: Optional[str] = None,
         }
 
 
+# FSRS-State-Werte (fsrs.State): Learning=1, Review=2, Relearning=3.
+_FSRS_LEARNING_STATES = (1, 3)
+
+
 def due_breakdown(subject: Optional[str] = None, deck: Optional[str] = None,
                   decks: Optional[list[str]] = None) -> dict:
-    """Faellige Karten AUFGETEILT in echte Wiederholungen (``reps>0``, wirklich
-    vom FSRS-Algorithmus faellig gestellt) und brandneue, noch nie geuebte
-    Karten (``reps=0``, per Definition SOFORT ab Erstellung technisch
-    "faellig"). Grundlage von ``effective_due_count()`` - getrennt, damit ein
-    Aufrufer (z. B. die Lernen-Seite mit ihrem live einstellbaren
-    Tages-Regler) das Neue-Karten-Limit selbst anwenden kann, statt sich auf
-    den gespeicherten Standardwert zu verlassen."""
+    """Faellige Karten in Anki-Warteschlangen: Lernen / Wiederholen / Neu.
+
+    * ``due_learning`` – ``fsrs_state`` Learning/Relearning und ``due<=jetzt``
+      (oft Minuten, gleiche Sitzung).
+    * ``due_review`` – schon graduierte bzw. Legacy-Wiederholungen (nicht in
+      Lernen/Relearning), ``due<=jetzt``.
+    * ``due_new`` – nie geuebt (``reps=0``, kein Lern-Schritt), technisch
+      sofort faellig ab Erstellung; Tageslimit greift erst in
+      ``effective_due_count`` / ``gather_study_cards``.
+
+    Die drei Mengen sind disjunkt. Grundlage der Stapel-Uebersicht und von
+    ``effective_due_count()``."""
     now = time.time()
     fsql, fargs = _scope(subject, deck, decks)
     where = "WHERE suspended=0 AND use_flashcard=1" + fsql
+    learn_in = ",".join("?" * len(_FSRS_LEARNING_STATES))
     with _connect() as conn:
         def one(extra, a):
             return conn.execute(f"SELECT COUNT(*) AS c FROM review_items {where}{extra}",
                                 fargs + a).fetchone()["c"]
+        due_learning = one(
+            f" AND due<=? AND fsrs_state IN ({learn_in})",
+            [now, *_FSRS_LEARNING_STATES])
+        due_review = one(
+            f" AND due<=? AND reps>0 AND (fsrs_state IS NULL OR fsrs_state NOT IN ({learn_in}))",
+            [now, *_FSRS_LEARNING_STATES])
+        due_new = one(
+            f" AND due<=? AND reps=0 AND (fsrs_state IS NULL OR fsrs_state NOT IN ({learn_in}))",
+            [now, *_FSRS_LEARNING_STATES])
         return {
-            "due_review": one(" AND due<=? AND reps>0", [now]),
-            "due_new": one(" AND due<=? AND reps=0", [now]),
+            "due_learning": due_learning,
+            "due_review": due_review,
+            "due_new": due_new,
         }
+
+
+def remaining_new_quota(subject: Optional[str] = None, deck: Optional[str] = None,
+                        decks: Optional[list[str]] = None,
+                        new_per_day: Optional[int] = None) -> Optional[int]:
+    """Verbleibendes Tageskontingent neuer Karten (``None`` = unbegrenzt)."""
+    if new_per_day is None:
+        from ragapp.config import settings
+        new_per_day = int(getattr(settings, "SRS_NEW_PER_DAY", 20))
+    if new_per_day <= 0:
+        return None
+    neu_heute = count_new_today(subject, deck=deck, decks=decks)
+    return max(0, int(new_per_day) - neu_heute)
 
 
 def effective_due_count(subject: Optional[str] = None, deck: Optional[str] = None,
@@ -937,19 +970,13 @@ def effective_due_count(subject: Optional[str] = None, deck: Optional[str] = Non
     noch nie geuebte Karte mitgezaehlt (die zeigte z. B. "80 Karten fällig",
     obwohl an dem Tag schon das volle Tages-Limit von 20 neuen Karten gelernt
     wurde - das sieht wie ein Rueckstand aus, ist aber genau das gewollte
-    Limit). Zaehlt echte faellige Wiederholungen PLUS neue faellige Karten,
-    aber neue nur bis zum heute noch UEBRIGEN Neue-Karten-Kontingent
-    (``new_per_day`` - Default: ``settings.SRS_NEW_PER_DAY``; ``<= 0`` =
-    unbegrenzt, wie beim bestehenden Regler auf der Lernen-Seite)."""
+    Limit). Zaehlt Lernen + Wiederholen PLUS neue Karten nur bis zum heute
+    noch UEBRIGEN Neue-Karten-Kontingent (``new_per_day`` - Default:
+    ``settings.SRS_NEW_PER_DAY``; ``<= 0`` = unbegrenzt)."""
     b = due_breakdown(subject, deck, decks)
-    if new_per_day is None:
-        from ragapp.config import settings
-        new_per_day = int(getattr(settings, "SRS_NEW_PER_DAY", 20))
-    if new_per_day <= 0:
-        return b["due_review"] + b["due_new"]
-    neu_heute = count_new_today(subject, deck=deck, decks=decks)
-    rest = max(0, new_per_day - neu_heute)
-    return b["due_review"] + min(b["due_new"], rest)
+    rest = remaining_new_quota(subject, deck=deck, decks=decks, new_per_day=new_per_day)
+    new_part = b["due_new"] if rest is None else min(b["due_new"], rest)
+    return b["due_learning"] + b["due_review"] + new_part
 
 
 def _interleave_by_topic(cards: list[dict]) -> list[dict]:
@@ -972,26 +999,82 @@ def _interleave_by_topic(cards: list[dict]) -> list[dict]:
     return out
 
 
+def gather_study_cards(subject: Optional[str] = None, deck: Optional[str] = None,
+                       decks: Optional[list[str]] = None,
+                       new_per_day: Optional[int] = None,
+                       limit: Optional[int] = None,
+                       now: Optional[float] = None,
+                       order: str = "due") -> list[dict]:
+    """Anki-artige Sitzungs-Queue: Lernen, dann Wiederholen, dann Neu.
+
+    Neue Karten nur bis zum verbleibenden Tageskontingent
+    (``SRS_NEW_PER_DAY`` minus heute schon eingefuehrte). ``limit`` deckelt
+    nur als Sicherheitsgrenze (Default: ``SRS_MAX_PER_SESSION``), nicht als
+    Runden-Groesse. Kein Cram – das bleibt bei ``get_due_cards`` / Challenge."""
+    now = now if now is not None else time.time()
+    if limit is None:
+        from ragapp.config import settings
+        limit = int(getattr(settings, "SRS_MAX_PER_SESSION", 100))
+    limit = max(1, int(limit))
+    rest_new = remaining_new_quota(subject, deck=deck, decks=decks, new_per_day=new_per_day)
+    ssql, sargs = _scope(subject, deck, decks)
+    learn_in = ",".join("?" * len(_FSRS_LEARNING_STATES))
+    base = "SELECT * FROM review_items WHERE suspended=0 AND use_flashcard=1"
+    with _connect() as conn:
+        learning = [dict(r) for r in conn.execute(
+            f"{base} AND due<=? AND fsrs_state IN ({learn_in})" + ssql
+            + " ORDER BY due ASC",
+            [now, *_FSRS_LEARNING_STATES] + sargs).fetchall()]
+        reviews = [dict(r) for r in conn.execute(
+            f"{base} AND due<=? AND reps>0 AND (fsrs_state IS NULL OR "
+            f"fsrs_state NOT IN ({learn_in}))" + ssql + " ORDER BY due ASC",
+            [now, *_FSRS_LEARNING_STATES] + sargs).fetchall()]
+        news = [dict(r) for r in conn.execute(
+            f"{base} AND due<=? AND reps=0 AND (fsrs_state IS NULL OR "
+            f"fsrs_state NOT IN ({learn_in}))" + ssql + " ORDER BY due ASC",
+            [now, *_FSRS_LEARNING_STATES] + sargs).fetchall()]
+    if rest_new is not None:
+        news = news[: int(rest_new)]
+    out: list[dict] = []
+    for bucket in (learning, reviews, news):
+        for card in bucket:
+            out.append(card)
+            if len(out) >= limit:
+                break
+        if len(out) >= limit:
+            break
+    if order == "interleave" and len(out) > 2:
+        out = _interleave_by_topic(out)
+    return out
+
+
 def get_due_cards(subject: Optional[str] = None, limit: int = 20,
                   now: Optional[float] = None, deck: Optional[str] = None,
                   decks: Optional[list[str]] = None,
                   new_limit: Optional[int] = None, order: str = "due",
                   cram: bool = False) -> list[dict]:
-    """Faellige Karten (Wiederholungen zuerst, dann neue), aufsteigend nach Faelligkeit.
-    ``decks`` erlaubt Mehrfachauswahl von Stapeln; ``new_limit`` deckelt die Zahl NEUER
-    (nie geuebter) Karten in dieser Auswahl (Tages-/Runden-Limit). ``order='interleave'``
-    mischt die ausgewaehlten Karten verschraenkt nach Thema (bessere Unterscheidung).
-    ``cram=True`` (Klausur-Modus): fuellt die Runde bei zu wenig Faelligen mit den
-    SCHWAECHSTEN noch-nicht-faelligen Karten auf (wenige reps / niedrige Ease)."""
+    """Faellige Karten fuer Challenge/Probeklausur/Planner.
+
+    Standardpfad zum Lernen: ``gather_study_cards``. Hier zusaetzlich
+    ``cram=True`` (schwache, noch nicht faellige Karten) und explizites
+    ``new_limit`` / Runden-``limit``. Reihenfolge: Lernen → Wiederholen → Neu."""
     now = now if now is not None else time.time()
+    if new_limit is None:
+        new_limit = remaining_new_quota(subject, deck=deck, decks=decks)
     ssql, sargs = _scope(subject, deck, decks)
-    q = ("SELECT * FROM review_items WHERE suspended=0 AND use_flashcard=1 AND due<=?" + ssql
-         + " ORDER BY CASE WHEN reps>0 THEN 0 ELSE 1 END, due ASC")
+    learn_in = ",".join("?" * len(_FSRS_LEARNING_STATES))
+    q = ("SELECT * FROM review_items WHERE suspended=0 AND use_flashcard=1 AND due<=?"
+         + ssql +
+         f" ORDER BY CASE WHEN fsrs_state IN ({learn_in}) THEN 0 "
+         "WHEN reps>0 THEN 1 ELSE 2 END, due ASC")
     with _connect() as conn:
-        rows = [dict(r) for r in conn.execute(q, [now] + sargs).fetchall()]
+        rows = [dict(r) for r in conn.execute(
+            q, [now] + sargs + list(_FSRS_LEARNING_STATES)).fetchall()]
     out, new_count = [], 0
     for r in rows:
-        if r.get("reps", 0) == 0:
+        is_learning = r.get("fsrs_state") in _FSRS_LEARNING_STATES
+        is_new = (not is_learning) and int(r.get("reps") or 0) == 0
+        if is_new:
             if new_limit is not None and new_count >= int(new_limit):
                 continue
             new_count += 1
@@ -1001,9 +1084,10 @@ def get_due_cards(subject: Optional[str] = None, limit: int = 20,
     if cram and len(out) < int(limit):
         have = {c["card_id"] for c in out}
         eq = ("SELECT * FROM review_items WHERE suspended=0 AND use_flashcard=1 AND due>?"
-              + ssql + " ORDER BY reps ASC, ease ASC, due ASC LIMIT ?")
+              + ssql + " ORDER BY reps ASC, difficulty DESC, ease ASC, due ASC LIMIT ?")
         with _connect() as conn:
-            extra = [dict(r) for r in conn.execute(eq, [now] + sargs + [int(limit)]).fetchall()]
+            extra = [dict(r) for r in conn.execute(
+                eq, [now] + sargs + [int(limit)]).fetchall()]
         for r in extra:
             if r["card_id"] in have:
                 continue
@@ -1521,17 +1605,37 @@ def rename_deck(old_name: str, new_name: str) -> int:
         return cur.rowcount
 
 
-def deck_overview(subject: Optional[str] = None) -> list[dict]:
-    """Pro Stapel: Kartenzahl, faellig, betroffene Faecher (fuer hierarchische UI)."""
+def deck_overview(subject: Optional[str] = None,
+                  only_flashcard: bool = False) -> list[dict]:
+    """Pro Stapel: Kartenzahl und Anki-Queues (Neu / Lernen / Wiederholen).
+
+    ``due`` bleibt die Summe der drei Queue-Zaehler (ohne Tageslimit auf Neu),
+    damit die Stapel-Verwaltung den Rohbestand sieht. Fuer "Jetzt lernen"
+    ``effective_due_count`` / ``due_breakdown`` verwenden. ``only_flashcard``
+    blendet abgewählte Karten aus (Lern-Uebersicht)."""
     now = time.time()
+    learn_in = ",".join("?" * len(_FSRS_LEARNING_STATES))
     sql = (
         "SELECT COALESCE(deck,'') AS deck, "
         "COUNT(*) AS total, "
         "SUM(CASE WHEN due<=? THEN 1 ELSE 0 END) AS due, "
+        f"SUM(CASE WHEN due<=? AND fsrs_state IN ({learn_in}) THEN 1 ELSE 0 END) "
+        "AS learning, "
+        f"SUM(CASE WHEN due<=? AND reps>0 AND (fsrs_state IS NULL OR "
+        f"fsrs_state NOT IN ({learn_in})) THEN 1 ELSE 0 END) AS review, "
+        f"SUM(CASE WHEN due<=? AND reps=0 AND (fsrs_state IS NULL OR "
+        f"fsrs_state NOT IN ({learn_in})) THEN 1 ELSE 0 END) AS new, "
+        "SUM(CASE WHEN use_flashcard=1 THEN 1 ELSE 0 END) AS active, "
         "GROUP_CONCAT(DISTINCT subject) AS subjects "
         "FROM review_items WHERE suspended=0"
     )
-    args: list = [now]
+    args: list = [
+        now, now, *_FSRS_LEARNING_STATES,
+        now, *_FSRS_LEARNING_STATES,
+        now, *_FSRS_LEARNING_STATES,
+    ]
+    if only_flashcard:
+        sql += " AND use_flashcard=1"
     if subject:
         sql += " AND subject=?"; args.append(subject)
     sql += " GROUP BY COALESCE(deck,'') ORDER BY deck"
@@ -1542,8 +1646,12 @@ def deck_overview(subject: Optional[str] = None) -> list[dict]:
             subjs = [s for s in (r["subjects"] or "").split(",") if s]
             out.append({
                 "deck": r["deck"] or None,
-                "total": r["total"],
-                "due": r["due"],
+                "total": int(r["total"] or 0),
+                "due": int(r["due"] or 0),
+                "new": int(r["new"] or 0),
+                "learning": int(r["learning"] or 0),
+                "review": int(r["review"] or 0),
+                "active": int(r["active"] or 0),
                 "subjects": sorted(set(subjs)),
             })
         return out

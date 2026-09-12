@@ -20,8 +20,8 @@ for _anc in _p.parents:
 import streamlit as st
 
 from ragapp.ui._loading import page_boot, skeleton
-page_boot("📥 Dokumente & Ingestion", page_title="Dokumente & Ingestion",
-          icon="📥", layout="wide", accent="ingestion")
+page_boot("📥 Import", page_title="Import", icon="📥", layout="wide",
+          accent="ingestion")
 
 from ragapp.ui._style import card
 
@@ -326,7 +326,7 @@ with card("anreicherung"):
     st.subheader("🧠 Fragen-Anreicherung")
     st.caption(
         "Erzeugt mit dem LLM hypothetische Fragen je Chunk und indexiert sie. Das "
-        "**erhöht die Trefferquote** und liefert **Karteikarten** für die 🎓 Lernen-Seite. "
+        "**erhöht die Trefferquote** und liefert **Karteikarten** für die 🎓 Karteikarten-Seite. "
         "Weil dafür **pro Chunk ein LLM-Aufruf** nötig ist (nicht nur ein Embedding), kostet "
         "es **ohne GPU ~20 s pro Chunk** (mit GPU schneller) – deshalb gedeckelt (Limit) und "
         "resumierbar (bereits angereicherte Chunks werden übersprungen)."
@@ -419,12 +419,29 @@ with card("anreicherung"):
             else:
                 st.success(
                     f"✅ **{r['questions']} Fragen** für {r['processed']} Chunk(s) erzeugt und "
-                    "indexiert. Tipp: auf **🎓 Lernen** die Karten aktualisieren, dann üben.")
+                    "indexiert.")
+                from ragapp import study as _study_h
+                _study_h.mark_needs_card_harvest()
                 st.session_state["_needs_card_harvest"] = True
                 _rows = [{"Datei": v["filename"], "Fragen erzeugt": v["questions"]}
                          for v in r.get("per_doc", {}).values() if v["questions"]]
                 if _rows:
                     st.dataframe(pd.DataFrame(_rows), hide_index=True, use_container_width=True)
+                _hb1, _hb2 = st.columns(2)
+                if _hb1.button("📇 Jetzt Karten erstellen", type="primary",
+                               key="ingest_harvest_now", use_container_width=True):
+                    with st.status("Erstelle Karteikarten …", expanded=True) as s:
+                        _hres = _study_h.harvest_cards(progress=lambda m: s.update(label=m))
+                        s.update(label=f"Fertig: {_hres['neu']} neu", state="complete")
+                    if _hres.get("neu"):
+                        st.success(f"➕ {_hres['neu']} Karteikarten angelegt.")
+                    else:
+                        st.info("Kartenbestand ist aktuell.")
+                from ragapp.ui._style import PAGE_REGISTRY as _PR
+                _lernen_target = next(p["target"] for p in _PR if p["key"] == "lernen")
+                if _hb2.button("▶ Zu Karteikarten", key="ingest_to_lernen",
+                               use_container_width=True):
+                    st.switch_page(_lernen_target)
 
 st.divider()
 

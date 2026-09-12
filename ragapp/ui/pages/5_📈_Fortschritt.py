@@ -64,8 +64,14 @@ st.caption("Dein objektiver Lernstand aus den echten Wiederholungen – damit du
 # --------------------------------------------------------------------------- #
 subjects = manifest.study_subjects()
 if not subjects:
-    st.info("Noch keine Karteikarten vorhanden. Erzeuge zuerst auf der Seite "
-            "**🎓 Lernen** Karten aus deinen Unterlagen – dann erscheint hier dein Fortschritt.")
+    from ragapp.ui._style import empty_state, page_title as _pt
+    empty_state(
+        "Noch keine Karteikarten vorhanden. Erzeuge zuerst Karten aus deinen Unterlagen.",
+        cta_label=f"Zu {_pt('lernen')}",
+        page_key="lernen",
+        icon="🎓",
+        key="fortschritt_empty_lernen",
+    )
     st.stop()
 
 col_f, _ = st.columns([1, 2])
@@ -75,24 +81,19 @@ with col_f:
 subject = None if fach == "Alle Fächer" else fach
 
 # --------------------------------------------------------------------------- #
-# Kernkennzahlen
+# Kernkennzahlen (2×3 statt 5 Spalten – mobil lesbar)
 # --------------------------------------------------------------------------- #
 with card("kennzahlen"):
     ov = analytics.overview(subject)
-    c1, c2, c3, c4, c5 = st.columns(5)
+    c1, c2, c3 = st.columns(3)
     c1.metric("Karten", ov["total"], help="Aktive Abfrage-Karten in der Auswahl.")
     c2.metric("Sitzt", f'{ov["mastery_pct"]} %',
               help=f'Anteil Karten mit ≥ {settings.MASTERY_TARGET_REPS} Wiederholungen in Folge.')
-    # Gauge-Balken UNTER der nackten Prozentzahl - anders als die Sparkline
-    # weiter unten (Verlauf ueber Zeit, erst ab 2 Tagen Historie) zeigt das
-    # sofort "wie voll ist das GERADE JETZT", ohne auf Historie zu warten.
     c2.markdown(_charts.progress_bar(ov["mastery_pct"], color=_theme["accent"]),
                unsafe_allow_html=True)
     c3.metric("Fällig", ov["due"], help="Jetzt zur Wiederholung anstehend.")
+    c4, c5, c6 = st.columns(3)
     c4.metric("Streak", f'{ov["streak"]} 🔥', help="Zusammenhängende Lerntage.")
-    # Kleine Sparkline direkt unter der nackten Streak-Zahl: zeigt auf einen
-    # Blick, WIE die Zahl zustande kam (an welchen der letzten 7 Tage
-    # tatsächlich geübt wurde), statt nur ein isoliertes "2 🔥" hinzuwerfen.
     _last7 = analytics.retention_trend(7, subject)
     c4.markdown(_charts.sparkline([d["wiederholungen"] for d in _last7],
                                   color=_theme["accent"], height=28),
@@ -100,13 +101,8 @@ with card("kennzahlen"):
     acc = "–" if ov["accuracy_7d"] is None else f'{ov["accuracy_7d"]} %'
     c5.metric("Treffer (7 T.)", acc,
               help=f'Anteil „gewusst" der letzten 7 Tage · {ov["reviews_7d"]} Wiederholungen.')
-    # Heutigen Stand als Schnappschuss festhalten (ueberschreibt sich am selben
-    # Tag) - Grundlage der beiden Verlaufs-Sparklines direkt unten, siehe
-    # analytics.record_progress_snapshot()-Docstring.
     analytics.record_progress_snapshot(subject)
     _snap_trend = analytics.progress_snapshot_trend(subject, days=14)
-    # Sparkline unter "Sitzt" nur zusaetzlich, wenn schon mind. 2 Tage Historie
-    # vorliegen (bei genau 1 Punkt wirkt ein Balken irrefuehrend "voll").
     if len(_snap_trend) >= 2:
         c2.markdown(_charts.sparkline([d["mastery_pct"] for d in _snap_trend],
                                       color=_theme["accent"], height=24),
@@ -114,11 +110,13 @@ with card("kennzahlen"):
     if ov["leeches"]:
         st.caption(f'⚠️ {ov["leeches"]} Dauerpatzer (Leech-Karten) in der Auswahl – siehe unten.')
 
-    # Klausur-Bereitschaft + Tagesziel-Ampel
     _ready = analytics.subject_readiness(subject)["readiness_pct"]
     _goal = analytics.daily_goal_status(subject)
     _ampel = {"grün": "🟢", "gelb": "🟡", "rot": "🔴"}.get(_goal["ampel"], "🟢")
-    gc1, gc2 = st.columns(2)
+    c6.metric("Heute-Ziel", f'{_goal["done_today"]} / {_goal["goal"]}',
+              delta=f'{_ampel} {_goal["due"]} fällig', delta_color="off",
+              help="Heute geübte Wiederholungen vs. Tagesziel · Ampel = Backlog.")
+    gc1, _gc2 = st.columns(2)
     gc1.metric("Klausur-Bereitschaft (Schätzung)", f"{_ready} %",
                help="Geschätzte mittlere Abrufwahrscheinlichkeit über alle Karten "
                     "(Vergessenskurve aus FSRS-6). Eine Schätzung, keine Garantie.")
@@ -129,14 +127,13 @@ with card("kennzahlen"):
                    unsafe_allow_html=True)
     else:
         gc1.caption("📈 Verlauf sammelt sich – ab morgen siehst du hier den Trend.")
-    gc2.metric("Heute-Ziel", f'{_goal["done_today"]} / {_goal["goal"]}',
-               delta=f'{_ampel} {_goal["due"]} fällig', delta_color="off",
-               help="Heute geübte Wiederholungen vs. Tagesziel · Ampel = Backlog "
-                    "(🟢 im Griff, 🟡 viel, 🔴 sehr viel fällig).")
     if ov["reviews_7d"] == 0:
-        st.caption("💡 Noch keine Wiederholung in den letzten 7 Tagen – die Zahlen oben "
-                   "sind noch nicht aussagekräftig. Starte auf **🎓 Lernen** deine erste "
-                   "Lernrunde, dann füllen sie sich mit echten Werten.")
+        from ragapp.ui._style import page_title as _pt
+        st.caption(f"💡 Noch keine Wiederholung in den letzten 7 Tagen – starte auf "
+                   f"**{_pt('lernen')}** deine erste Sitzung.")
+        if st.button("▶ Jetzt lernen", key="fp_to_lernen"):
+            from ragapp.ui._style import PAGE_REGISTRY as _PR
+            st.switch_page(next(p["target"] for p in _PR if p["key"] == "lernen"))
 
 # --------------------------------------------------------------------------- #
 # Errungenschaften: Katalog lebt in ragapp/achievements.py, hier nur Anzeige +
@@ -498,7 +495,7 @@ with card("leeches"):
             n = manifest.assign_deck("Schwachstellen",
                                      card_ids=[c["card_id"] for c in leeches])
             st.success(f'{n} Karten dem Stapel „Schwachstellen" zugeordnet – jetzt gezielt '
-                       "auf 🎓 Lernen üben.")
+                       "auf 🎓 Karteikarten üben.")
             st.rerun()
         if lb3.button(f"📋 Fokus-Lernplan ({len(_leech_doc_ids)} Dok.)", use_container_width=True,
                      disabled=not _leech_doc_ids,

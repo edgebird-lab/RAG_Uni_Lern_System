@@ -68,7 +68,7 @@ EXAM = "_exam"        # aktive Probeklausur (dict: cards, answers, start, limit)
 
 subjects = manifest.study_subjects()
 if not subjects:
-    st.info("Noch keine Karteikarten vorhanden – erstelle sie zuerst auf **🎓 Lernen**.")
+    st.info("Noch keine Karteikarten vorhanden – erstelle sie zuerst auf **🎓 Karteikarten**.")
     st.stop()
 
 # --------------------------------------------------------------------------- #

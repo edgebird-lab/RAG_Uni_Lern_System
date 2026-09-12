@@ -765,12 +765,23 @@ with st.form("srs_form"):
         help="Obergrenze für den Abstand zwischen zwei Wiederholungen, auch bei sehr "
              "leichten Karten.")
     _d1, _d2 = st.columns(2)
-    _v_npd = _d1.number_input("Neue Karten pro Tag", min_value=0, max_value=500,
-                              value=int(settings.SRS_NEW_PER_DAY), step=5,
-                              key="cfg_SRS_NEW_PER_DAY", help="0 = unbegrenzt.")
-    _v_mps = _d2.number_input("Max. Karten pro Runde", min_value=5, max_value=1000,
-                              value=int(settings.SRS_MAX_PER_SESSION), step=5,
-                              key="cfg_SRS_MAX_PER_SESSION")
+    _v_npd = _d1.number_input(
+        "Neue Karten pro Tag", min_value=0, max_value=500,
+        value=int(settings.SRS_NEW_PER_DAY), step=5,
+        key="cfg_SRS_NEW_PER_DAY",
+        help="Tageskontingent für brandneue Karten (wie bei Anki). Schon gelernte, "
+             "fällige Wiederholungen kommen zusätzlich. Eine zweite Lernsitzung am "
+             "selben Tag erhöht dieses Kontingent nicht. 0 = unbegrenzt.")
+    _v_mps = _d2.number_input(
+        "Max. Karten pro Sitzung", min_value=5, max_value=1000,
+        value=int(settings.SRS_MAX_PER_SESSION), step=5,
+        key="cfg_SRS_MAX_PER_SESSION",
+        help="Sicherheitsdeckel, falls sehr viele Karten fällig sind – keine "
+             "Rundengröße, die du vor jeder Sitzung einstellen musst.")
+    st.caption("**Neue Karten pro Tag** gilt global fürs normale Lernen (Stapel → "
+               "Jetzt lernen). Es ist **kein** Quiz von 20 immer gleichen Karten: "
+               "fällige Wiederholungen haben Vorrang; neue Karten werden nur "
+               "eingeführt, bis das Tageskontingent voll ist.")
     _sc1, _sc2 = st.columns(2)
     _srs_save = _sc1.form_submit_button("💾 Speichern", type="primary")
     _srs_reset = _sc2.form_submit_button("↩︎ Auf Standard zurücksetzen")

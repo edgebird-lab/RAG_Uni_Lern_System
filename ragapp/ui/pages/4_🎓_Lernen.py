@@ -24,7 +24,7 @@ from ragapp.ui._loading import page_boot, skeleton
 
 # set_page_config -> PIN-Gate -> Theme -> und rendert SOFORT den Seitentitel,
 # damit beim Seitenwechsel kein weisser Bildschirm entsteht.
-page_boot("🎓 Lernen", page_title="Lernen", icon="🎓", layout="wide", accent="lernen")
+page_boot("🎓 Karteikarten", page_title="Karteikarten", icon="🎓", layout="wide", accent="lernen")
 
 from ragapp.ui._style import card
 
@@ -38,9 +38,9 @@ h1 {font-weight:750; letter-spacing:-0.5px;}
 """, unsafe_allow_html=True)
 
 
-st.caption("Karteikarten aus deinen eigenen Unterlagen – aktives Abfragen mit "
-           "automatischer Wiederholungs-Planung (Spaced Repetition). Das ist der "
-           "wirksamste Klausur-Hebel.")
+st.caption("Karteikarten aus deinen eigenen Unterlagen – wie bei Anki: Stapel wählen, "
+           "**Jetzt lernen**, FSRS plant die Wiederholungen. Kein Rätselraten vor jeder "
+           "Sitzung, welches Limit was bedeutet.")
 
 # Schwere Importe/Datenabfragen unter kleinem Ladehinweis; die import-Statements
 # binden im Modulscope, daher funktionieren alle spaeteren Verwendungen unveraendert.
@@ -68,41 +68,66 @@ if _mv_flash:
     st.success(_mv_flash)
 
 if _counts["total"] == 0:
-    st.info("📇 Noch keine Karteikarten vorhanden. Sie entstehen aus deinen "
-            "**generierten Fragen** und dem **Klausur-Lernkatalog**.")
-    with st.spinner("Suche vorhandenes Fragenmaterial …"):
-        pass
-    if st.button("📇 Karten aus meinen Unterlagen erstellen", type="primary"):
+    from ragapp.ui._style import empty_state, page_title as _pt
+    empty_state(
+        "Noch keine Karteikarten vorhanden. Sie entstehen aus generierten Fragen "
+        "und dem Klausur-Lernkatalog.",
+        cta_label=f"Zu {_pt('ingestion')}",
+        page_key="ingestion",
+        icon="📇",
+        key="empty_to_ingestion",
+    )
+    if st.button("📇 Karten aus meinen Unterlagen erstellen", type="primary",
+                 key="empty_harvest"):
         with st.status("Erstelle Karteikarten …", expanded=True) as s:
             res = study.harvest_cards(progress=lambda m: s.update(label=m))
             s.update(label=f"Fertig: {res['neu']} Karten erstellt", state="complete")
         if res["gefunden"] == 0:
-            st.warning("Es wurde **kein** Fragenmaterial gefunden. Erzeuge zuerst Fragen: "
-                       "Seite **📥 Import** → Fragen generieren bzw. Klausur-Lernkatalog "
+            st.warning("Es wurde **kein** Fragenmaterial gefunden. Erzeuge zuerst Fragen unter "
+                       f"**{_pt('ingestion')}** → Fragen generieren bzw. Klausur-Lernkatalog "
                        "erstellen. Danach hier erneut Karten erstellen.")
         else:
             st.rerun()
     st.stop()
 
-# Kopfzeile mit Zahlen
+# Kopfzeile mit Zahlen (Anki-Queues)
+_bd_all = manifest.due_breakdown()
+_rest_neu_all = manifest.remaining_new_quota()
+_new_show = (_bd_all["due_new"] if _rest_neu_all is None
+             else min(_bd_all["due_new"], _rest_neu_all))
 with card("kopfzeile"):
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Karten gesamt", _counts["total"])
-    # NICHT _counts["due"] (roh): das zaehlt jede je erstellte, nie geuebte
-    # Karte sofort als "faellig" mit, auch wenn das Neue-Karten-Tageslimit
-    # sie zurueckhaelt - effective_due_count() zieht das ab (siehe dortigen
-    # Docstring), damit hier wirklich nur steht, was JETZT dran ist.
     c2.metric("Jetzt fällig", manifest.effective_due_count(),
-             help="Fällige Wiederholungen + neue Karten bis zum heutigen "
-                  "Neue-Karten-Limit (siehe unten) - nicht einfach jede je "
-                  "erstellte, noch nie geübte Karte.")
-    c3.metric("Neu", _counts["neu"])
-    c4.metric("Schon geübt", _counts["gelernt"])
+             help="Lernen + Wiederholen + neue Karten bis zum Tageskontingent "
+                  "(Einstellungen → Neue Karten pro Tag).")
+    c3.metric("Neu heute", _new_show,
+              help="Brandneue Karten, die heute noch eingeführt werden können "
+                   f"(Tageskontingent: "
+                   f"{'unbegrenzt' if int(getattr(settings, 'SRS_NEW_PER_DAY', 20)) <= 0 else int(getattr(settings, 'SRS_NEW_PER_DAY', 20))}"
+                   "). Nicht die Rundengröße.")
+    c4.metric("Wiederholen", _bd_all["due_review"] + _bd_all["due_learning"],
+              help="Fällige Wiederholungen inkl. Lern-/Relearn-Schritte.")
 
-# Hinweis nach Import/Fragen-Anreicherung: Karten oft noch nicht geerntet
-if st.session_state.pop("_needs_card_harvest", None):
-    st.info("Neue Fragen wurden indexiert. Tippe **🔄 Karten aktualisieren** unten, "
-            "damit sie in der Lernrunde erscheinen.")
+# Persistenter Harvest-Hinweis (oben, mit Aktion – nicht nur unten in Verwaltung)
+_needs_harvest = study.needs_card_harvest() or st.session_state.pop("_needs_card_harvest", None)
+if _needs_harvest:
+    _nh1, _nh2 = st.columns([3, 1])
+    _nh1.info("Neue Fragen wurden indexiert. Übernimm sie jetzt als Karteikarten.")
+    if _nh2.button("🔄 Karten aktualisieren", type="primary", key="top_harvest",
+                   use_container_width=True):
+        with st.status("Aktualisiere …", expanded=True) as s:
+            res = study.harvest_cards(progress=lambda m: s.update(label=m))
+            s.update(label="Aktualisierung fertig", state="complete")
+        if res["gefunden"] == 0:
+            st.warning("Kein Fragenmaterial gefunden.")
+        elif res["neu"] == 0:
+            st.info("Alles aktuell – keine neuen Karten.")
+            st.rerun()
+        else:
+            st.success(f"➕ {res['neu']} neue Karten hinzugefügt.")
+            st.rerun()
+
 _offen_global = manifest.count_cards(source="question", only_unanswered=True)
 if _offen_global > 0:
     _aw1, _aw2 = st.columns([3, 1])
@@ -124,24 +149,44 @@ if _offen_global > 0:
 st.divider()
 
 # --------------------------------------------------------------------------- #
-# Lernrunde
+# Lernen (Anki-artig) / aktive Sitzung
 # --------------------------------------------------------------------------- #
 Q = "_study_queue"
 ACTIVE = "_study_active"
 REVEAL = "_study_reveal"
 TALLY = "_study_tally"
 ROUND = "_study_round"
+_MODE_MAP = {"👁️ Aufdecken": "reveal", "✍️ Tippen & benoten": "type",
+             "🧩 Lückentext": "cloze", "🔤 Multiple Choice": "mcq"}
+_MODE_LABELS = list(_MODE_MAP.keys())
+
+
+def _start_study(karten: list, mode: str) -> None:
+    """Gemeinsamer Sitzungsstart fuer Standard-Lernen und Challenge."""
+    st.session_state[Q] = karten
+    st.session_state[ACTIVE] = True
+    st.session_state[REVEAL] = False
+    st.session_state[TALLY] = {"gewusst": 0, "halb": 0, "nicht": 0}
+    st.session_state["_study_combo"] = 0
+    st.session_state["_study_combo_best"] = 0
+    st.session_state["_study_leech_cleared"] = 0
+    st.session_state[ROUND] = len(karten)
+    st.session_state["_study_mode"] = mode
+
 
 if not st.session_state.get(ACTIVE):
-    st.subheader("Lernrunde zusammenstellen")
-    # 1) Fach
+    st.subheader("Stapel")
+    st.caption("Wie bei Anki: Stapel ankreuzen und **Jetzt lernen** – fällige "
+               "Wiederholungen zuerst, dann neue Karten bis zum Tageskontingent. "
+               "Einstellungen (Neue/Tag) unter ⚙️.")
+
     _faecher = manifest.study_subjects()
     _subj_pick = st.selectbox(
         "Fach", ["Alle Fächer"] + _faecher,
-        format_func=lambda s: "Alle Fächer" if s == "Alle Fächer" else _fach_label(s))
+        format_func=lambda s: "Alle Fächer" if s == "Alle Fächer" else _fach_label(s),
+        key="study_subj")
     subj = None if _subj_pick == "Alle Fächer" else _subj_pick
 
-    # Klausur-Countdown (falls für dieses Fach ein Termin gesetzt ist)
     if subj:
         from ragapp import planner, analytics
         _ex = manifest.get_exam(subj)
@@ -151,123 +196,216 @@ if not st.session_state.get(ACTIVE):
             st.info(f"🗓️ Klausur **{_fach_label(subj)}**: {planner.humanize_days(_dte)} "
                     f"({_ex['exam_date']}) · Bereitschaft **{_rd} %**")
 
-    # 2) Stapel-Mehrfachauswahl (welche der Stapel dieses Fachs)
-    _decks_here = manifest.list_decks(subj)
-    _deck_opts = list(_decks_here) + ["— ohne Stapel —"]
-    _deck_pick = st.multiselect(
-        "Stapel (leer = alle)", _deck_opts, placeholder="Alle",
-        help="Wähle gezielt einzelne Stapel – z. B. 2 von 5 Themen eines Fachs. "
-             "Leer lassen = alle Karten des Fachs.")
-    decks = None
-    if _deck_pick:
-        decks = ["__none__" if d == "— ohne Stapel —" else d for d in _deck_pick]
+    # Stapel-Zeilen mit Checkboxen (persistente Auswahl in session_state)
+    _ov_rows = manifest.deck_overview(subject=subj, only_flashcard=True)
+    _deck_keys: list[str] = []
+    for _o in _ov_rows:
+        _deck_keys.append("__none__" if not _o.get("deck") else str(_o["deck"]))
 
-    # 3) Zahlen zur Auswahl
-    _fc = manifest.review_counts(subj, decks=decks)
-    _breakdown = manifest.due_breakdown(subj, decks=decks)
-    _neu_heute = manifest.count_new_today(subj, decks=decks)
+    _sel_key = f"_study_deck_sel::{subj or '__all__'}"
+    if _sel_key not in st.session_state:
+        st.session_state[_sel_key] = set(_deck_keys)
 
-    # 4) Tages-Limit neuer Karten
-    _c1, _c2 = st.columns(2)
-    _new_per_day = _c1.number_input(
-        "Neue Karten pro Tag", min_value=0, max_value=500,
-        value=int(getattr(settings, "SRS_NEW_PER_DAY", 20)), step=5,
-        help="0 = unbegrenzt. Bereits heute gelernte neue Karten werden angerechnet.")
-    _rest_neu = None if _new_per_day == 0 else max(0, int(_new_per_day) - _neu_heute)
-    _c2.metric("Heute neu gelernt", _neu_heute,
-               help="Zählt gegen dein Tages-Limit neuer Karten.")
+    _sa1, _sa2 = st.columns(2)
+    if _sa1.button("Alle Stapel", key="deck_sel_all", use_container_width=True):
+        st.session_state[_sel_key] = set(_deck_keys)
+        for _dk in _deck_keys:
+            st.session_state[f"deck_cb_{subj or 'all'}_{_dk}"] = True
+        st.rerun()
+    if _sa2.button("Keine Stapel", key="deck_sel_none", use_container_width=True):
+        st.session_state[_sel_key] = set()
+        for _dk in _deck_keys:
+            st.session_state[f"deck_cb_{subj or 'all'}_{_dk}"] = False
+        st.rerun()
 
-    # "faellig" ist BEWUSST NICHT _fc["due"] (das zaehlt jede je erstellte,
-    # nie geuebte Karte sofort mit) - stattdessen echte faellige Wiederholungen
-    # PLUS neue Karten NUR bis zum gerade oben eingestellten Tageslimit
-    # (_rest_neu). Genau das entscheidet auch, wie viele Karten "▶️ Lernrunde
-    # starten" gleich tatsaechlich zieht (new_limit=_rest_neu weiter unten) -
-    # die Anzeige stimmt so IMMER mit dem tatsaechlichen Rundeninhalt ueberein.
-    faellig = _breakdown["due_review"] + (
-        _breakdown["due_new"] if _rest_neu is None else min(_breakdown["due_new"], _rest_neu))
+    _selected: list[str] = []
+    if not _ov_rows:
+        st.info("Keine Karten in dieser Auswahl.")
+    else:
+        _h1, _h2, _h3, _h4, _h5 = st.columns([0.5, 3.5, 1, 1, 1])
+        _h1.caption("")
+        _h2.caption("Stapel")
+        _h3.caption("Neu")
+        _h4.caption("Lernen")
+        _h5.caption("Wiederholen")
+        for _o in _ov_rows:
+            _dk = "__none__" if not _o.get("deck") else str(_o["deck"])
+            _label = "— ohne Stapel —" if _dk == "__none__" else _dk
+            _c1, _c2, _c3, _c4, _c5 = st.columns([0.5, 3.5, 1, 1, 1])
+            _checked = _c1.checkbox(
+                "✓", key=f"deck_cb_{subj or 'all'}_{_dk}",
+                value=_dk in st.session_state[_sel_key],
+                label_visibility="collapsed")
+            if _checked:
+                _selected.append(_dk)
+            _c2.markdown(f"**{_label}** · {_o['total']} Karten")
+            _c3.write(str(_o["new"]))
+            _c4.write(str(_o["learning"]))
+            _c5.write(str(_o["review"]))
+        st.session_state[_sel_key] = set(_selected)
 
-    _total_avail = _fc.get("total", 0)
-    _srs_max = int(getattr(settings, "SRS_MAX_PER_SESSION", 100))
-    _ck1, _ck2 = st.columns(2)
-    _interleave = _ck1.checkbox(
-        "🔀 Themen mischen (Interleaving)", value=False,
-        help="Mischt die Karten verschränkt über Themen statt blockweise. Trainiert "
-             "das Erkennen, welcher Ansatz/welche Formel zu welcher Aufgabe gehört – "
-             "genau das prüft eine Klausur, deren Aufgaben ungeordnet kommen.")
-    _cram = _ck2.checkbox(
-        "🔥 Klausur-Modus (Cram)", value=False,
-        help="Füllt die Runde auch mit den schwächsten NOCH NICHT fälligen Karten auf – "
-             "für die heiße Phase kurz vor der Klausur (auch wenn gerade nichts fällig ist).")
+    decks = _selected if _selected else None
+    # Leere Auswahl = bewusst nichts lernen (nicht "alle")
+    if _ov_rows and not _selected:
+        decks = []
+
+    _breakdown = (manifest.due_breakdown(subj, decks=decks)
+                  if decks is not None else
+                  {"due_learning": 0, "due_review": 0, "due_new": 0})
+    _neu_heute = (manifest.count_new_today(subj, decks=decks)
+                  if decks is not None else 0)
+    _rest_neu = manifest.remaining_new_quota(subj, decks=decks) if decks is not None else 0
+    _new_eff = (0 if decks is None or decks == []
+                else (_breakdown["due_new"] if _rest_neu is None
+                      else min(_breakdown["due_new"], _rest_neu)))
+    faellig = (_breakdown["due_learning"] + _breakdown["due_review"] + _new_eff
+               if decks is not None else 0)
+
+    _npd = int(getattr(settings, "SRS_NEW_PER_DAY", 20))
+    _npd_txt = "unbegrenzt" if _npd <= 0 else str(_npd)
+    st.info(
+        f"Heute **{_breakdown.get('due_review', 0)}** Wiederholungen · "
+        f"**{_breakdown.get('due_learning', 0)}** in Lernen · "
+        f"noch **{_new_eff}** von {_npd_txt} neuen"
+        + (f" (heute schon {_neu_heute} eingeführt)" if _neu_heute else "")
+        + "."
+    )
+
     _mode_lbl = st.radio(
         "Übungsmodus",
-        ["👁️ Aufdecken", "✍️ Tippen & benoten", "🧩 Lückentext", "🔤 Multiple Choice"],
+        _MODE_LABELS,
         horizontal=True,
-        help="**Aufdecken**: klassisch, du bewertest dich selbst. **Tippen & benoten**: "
-             "du formulierst die Antwort frei, die KI vergibt Teilpunkte und nennt, was "
-             "fehlt (stärkster Lerneffekt). **Lückentext**: fülle den fehlenden Fachbegriff "
-             "(sofort, ohne KI). **Multiple Choice**: wähle aus plausiblen Optionen "
-             "(objektives Ergebnis, trainiert Unterscheidung).")
-    _mode_map = {"👁️ Aufdecken": "reveal", "✍️ Tippen & benoten": "type",
-                 "🧩 Lückentext": "cloze", "🔤 Multiple Choice": "mcq"}
+        key="study_mode_pref",
+        help="**Aufdecken**: klassisch. **Tippen & benoten**: KI-Teilpunkte. "
+             "**Lückentext** / **Multiple Choice**: andere Abfrageformen.")
 
-    # Fächerübergreifende Prüfungsphasen-Runde (nur sinnvoll bei ≥ 2 Fächern)
-    if len(_faecher) >= 2:
-        with st.container(border=True):
-            st.markdown("**🎓 Prüfungsphase** – alle Fächer gemischt, nach Klausurnähe & "
-                        "Wissenslücke priorisiert (fächerübergreifendes Interleaving).")
-            _pp1, _pp2, _pp3 = st.columns([1, 1, 1])
-            _pp_n = _pp1.number_input("Karten", min_value=5, max_value=_srs_max, value=20,
-                                      step=5, key="phase_n")
-            _pp_cram = _pp2.checkbox("🔥 Cram", key="phase_cram",
-                                     help="Auch noch nicht fällige, schwache Karten ziehen.")
-            if _pp3.button("▶️ Prüfungsphase", key="phase_start", use_container_width=True):
-                from ragapp import planner as _pl
-                _pk = _pl.phase_round(limit=int(_pp_n), cram=bool(_pp_cram))
-                if not _pk:
-                    st.info("Gerade fächerübergreifend nichts fällig – aktiviere 🔥 Cram.")
-                else:
-                    st.session_state[Q] = _pk
-                    st.session_state[ACTIVE] = True
-                    st.session_state[REVEAL] = False
-                    st.session_state[TALLY] = {"gewusst": 0, "halb": 0, "nicht": 0}
-                    st.session_state["_study_combo"] = 0
-                    st.session_state["_study_combo_best"] = 0
-                    st.session_state["_study_leech_cleared"] = 0
-                    st.session_state[ROUND] = len(_pk)
-                    st.session_state["_study_mode"] = _mode_map[_mode_lbl]
+    if decks == []:
+        st.warning("Kein Stapel ausgewählt – klicke mindestens einen an.")
+    elif faellig == 0:
+        st.success("✅ Für diese Auswahl ist gerade **nichts fällig** – gut gemacht! "
+                   "Komm später wieder, oder nutze die **Challenge** unten "
+                   "(Klausur-Modus), um trotzdem zu üben.")
+    if st.button("▶️ Jetzt lernen", type="primary", use_container_width=True,
+                 disabled=not decks or faellig == 0,
+                 help="Zieht Lernen → Wiederholen → neue Karten bis zum Tageskontingent."):
+        karten = manifest.gather_study_cards(subj, decks=decks)
+        if not karten:
+            st.warning("Für diese Auswahl wurden keine Karten gefunden.")
+        else:
+            _start_study(karten, _MODE_MAP[_mode_lbl])
+            st.rerun()
+
+    # --- Karten ankreuzen (dauerhaft use_flashcard) ---
+    with st.expander("Karten fürs Lernen ankreuzen", expanded=False):
+        st.caption("Abgewählte Karten bleiben gespeichert, erscheinen aber nicht in "
+                   "Lernsitzungen (wie Anki Suspend / Browser).")
+        if not decks:
+            st.caption("Zuerst oben mindestens einen Stapel ankreuzen.")
+        else:
+            _browse = []
+            for _dk in decks:
+                _browse.extend(manifest.list_cards(
+                    subject=subj, deck=_dk, limit=200))
+            # Dedup by card_id
+            _seen_ids: set[str] = set()
+            _browse_u = []
+            for _r in _browse:
+                if _r["card_id"] in _seen_ids:
+                    continue
+                _seen_ids.add(_r["card_id"])
+                _browse_u.append(_r)
+            if not _browse_u:
+                st.caption("Keine Karten in den gewählten Stapeln.")
+            else:
+                _bdf = pd.DataFrame([{
+                    "Lernen": bool(r.get("use_flashcard", 1)),
+                    "Frage": (r.get("front") or "")[:120],
+                    "Stapel": r.get("deck") or "—",
+                    "_id": r["card_id"],
+                } for r in _browse_u[:150]])
+                _bed = st.data_editor(
+                    _bdf, hide_index=True, use_container_width=True,
+                    key="browse_flash_editor",
+                    column_config={
+                        "Lernen": st.column_config.CheckboxColumn(width="small"),
+                        "Frage": st.column_config.TextColumn(disabled=True),
+                        "Stapel": st.column_config.TextColumn(disabled=True),
+                        "_id": None,
+                    },
+                )
+                if st.button("Auswahl speichern", key="browse_flash_save"):
+                    _on = [row["_id"] for _, row in _bed.iterrows() if row["Lernen"]]
+                    _off = [row["_id"] for _, row in _bed.iterrows() if not row["Lernen"]]
+                    if _on:
+                        manifest.set_card_usage(_on, use_flashcard=True)
+                    if _off:
+                        manifest.set_card_usage(_off, use_flashcard=False)
+                    st.success("Gespeichert.")
                     st.rerun()
 
-    if faellig == 0 and not _cram:
-        st.success("✅ Für diese Auswahl ist gerade **nichts fällig** – gut gemacht! "
-                   "Komm später wieder, wähle etwas anderes, oder aktiviere den "
-                   "🔥 **Klausur-Modus**, um trotzdem die schwächsten Karten zu üben.")
-    else:
-        _cap = _total_avail if _cram else faellig
-        _maxr = int(max(1, min(_cap, _srs_max)))
-        anzahl = st.slider("Karten in dieser Runde", min_value=1, max_value=_maxr,
-                           value=int(min(20, _maxr)))
-        _hinweis = (f"{anzahl} · {faellig} fällig"
-                    + (f" · max. {_rest_neu} neue" if _rest_neu is not None else "")
-                    + (" · 🔥 Cram" if _cram else ""))
-        if st.button(f"▶️ Lernrunde starten ({_hinweis})",
-                     type="primary", use_container_width=True):
-            karten = manifest.get_due_cards(subj, limit=int(anzahl), deck=None,
-                                            decks=decks, new_limit=_rest_neu,
-                                            order="interleave" if _interleave else "due",
-                                            cram=_cram)
-            if not karten:
-                st.warning("Für diese Auswahl wurden keine Karten gefunden.")
-            else:
-                st.session_state[Q] = karten
-                st.session_state[ACTIVE] = True
-                st.session_state[REVEAL] = False
-                st.session_state[TALLY] = {"gewusst": 0, "halb": 0, "nicht": 0}
-                st.session_state["_study_combo"] = 0
-                st.session_state["_study_combo_best"] = 0
-                st.session_state["_study_leech_cleared"] = 0
-                st.session_state[ROUND] = len(karten)
-                st.session_state["_study_mode"] = _mode_map[_mode_lbl]
-                st.rerun()
+    # --- Challenge: bisheriger Runden-Baukasten ---
+    with st.expander("🏆 Challenge – Runde manuell zusammenstellen", expanded=False):
+        st.caption("Optional: feste Rundengröße, Cram, Interleaving, Prüfungsphase. "
+                   "Fürs tägliche Lernen brauchst du das nicht.")
+        _srs_max = int(getattr(settings, "SRS_MAX_PER_SESSION", 100))
+        _ch_decks = decks if decks else None
+        _ch_fc = manifest.review_counts(subj, decks=_ch_decks) if _ch_decks is not None else {"total": 0}
+        _ch_bd = (manifest.due_breakdown(subj, decks=_ch_decks)
+                  if _ch_decks is not None else
+                  {"due_learning": 0, "due_review": 0, "due_new": 0})
+        _ch_rest = (manifest.remaining_new_quota(subj, decks=_ch_decks)
+                    if _ch_decks is not None else 0)
+        _ch_faellig = (
+            _ch_bd["due_learning"] + _ch_bd["due_review"]
+            + (_ch_bd["due_new"] if _ch_rest is None else min(_ch_bd["due_new"], _ch_rest or 0))
+        )
+        _ck1, _ck2 = st.columns(2)
+        _interleave = _ck1.checkbox(
+            "🔀 Themen mischen (Interleaving)", value=False, key="ch_interleave",
+            help="Mischt Karten verschränkt über Themen statt blockweise.")
+        _cram = _ck2.checkbox(
+            "🔥 Klausur-Modus (Cram)", value=False, key="ch_cram",
+            help="Auch noch nicht fällige, schwache Karten ziehen.")
+        if len(_faecher) >= 2:
+            with st.container(border=True):
+                st.markdown("**🎓 Prüfungsphase** – alle Fächer gemischt.")
+                _pp1, _pp2, _pp3 = st.columns([1, 1, 1])
+                _pp_n = _pp1.number_input(
+                    "Karten", min_value=5, max_value=_srs_max, value=20,
+                    step=5, key="phase_n")
+                _pp_cram = _pp2.checkbox("🔥 Cram", key="phase_cram")
+                if _pp3.button("▶️ Prüfungsphase", key="phase_start",
+                               use_container_width=True):
+                    from ragapp import planner as _pl
+                    _pk = _pl.phase_round(limit=int(_pp_n), cram=bool(_pp_cram))
+                    if not _pk:
+                        st.info("Nichts fällig – aktiviere 🔥 Cram.")
+                    else:
+                        _start_study(_pk, _MODE_MAP[_mode_lbl])
+                        st.rerun()
+        if _ch_faellig == 0 and not _cram:
+            st.caption("Nichts fällig – Cram aktivieren oder später wiederkommen.")
+        else:
+            _cap = _ch_fc.get("total", 0) if _cram else max(1, _ch_faellig)
+            _maxr = int(max(1, min(_cap, _srs_max)))
+            anzahl = st.slider(
+                "Karten in dieser Challenge", min_value=1, max_value=_maxr,
+                value=int(min(20, _maxr)), key="ch_anzahl")
+            if st.button(
+                f"▶️ Challenge starten ({anzahl}"
+                + (" · 🔥 Cram" if _cram else "") + ")",
+                use_container_width=True, key="ch_start",
+                disabled=_ch_decks is None or _ch_decks == [],
+            ):
+                karten = manifest.get_due_cards(
+                    subj, limit=int(anzahl), decks=_ch_decks,
+                    new_limit=_ch_rest, order="interleave" if _interleave else "due",
+                    cram=_cram)
+                if not karten:
+                    st.warning("Keine Karten für diese Challenge.")
+                else:
+                    _start_study(karten, _MODE_MAP[_mode_lbl])
+                    st.rerun()
 
 else:
     queue = st.session_state.get(Q) or []
@@ -519,8 +657,9 @@ else:
               "halb" if rating == study.HALB else "nicht"] += 1
             q = st.session_state[Q]
             q.pop(0)
-            if rating == study.NICHT:
-                # In derselben Runde erneut ueben (mit zurueckgesetztem Zustand).
+            # Anki: Learning/Relearning mit kurzem due bleibt in der Sitzung
+            # (nicht nur bei "Nicht gewusst").
+            if study.should_requeue_in_session(nxt):
                 q.append({**karte, **nxt})
             st.session_state[REVEAL] = False
             # Alle Modus-Zustaende fuer die naechste Karte zuruecksetzen.
@@ -582,7 +721,11 @@ else:
       var sx = null, sy = null, st0 = 0;
       var EDGE = 24; // px - siehe Kommentar unten
       doc.addEventListener('touchstart', function(e) {
-        var el = e.target && e.target.closest ? e.target.closest('.karte-frage') : null;
+        var el = e.target && e.target.closest
+          ? e.target.closest('.karte, .karte-frage, [data-testid="stHorizontalBlock"]')
+          : null;
+        // Nur werten, wenn eine Karte sichtbar ist (Bewertungsbuttons existieren)
+        if (!doc.querySelector('.st-key-rate_gewusst button')) { sx = null; return; }
         if (!el || !e.touches || !e.touches.length) { sx = null; return; }
         var x = e.touches[0].clientX;
         // Touches, die ganz am Bildschirmrand starten, NICHT als Wisch-
@@ -714,7 +857,9 @@ if _active_tab == "🗂️ Stapel verwalten":
             st.caption(
                 f"Ohne Stapel in {_fach_label(_dk_subj)}: "
                 f"**{_ov_all_unassigned['total']}** Karten "
-                f"({_ov_all_unassigned['due']} fällig)."
+                f"(Neu {_ov_all_unassigned.get('new', 0)} · "
+                f"Lernen {_ov_all_unassigned.get('learning', 0)} · "
+                f"Wiederholen {_ov_all_unassigned.get('review', 0)})."
             )
         if _ov:
             st.markdown(f"**Stapel in {_fach_label(_dk_subj)}:**")
@@ -722,7 +867,9 @@ if _active_tab == "🗂️ Stapel verwalten":
                 _d = _o["deck"]
                 _dc1, _dc2, _dc3, _dc4 = st.columns([3, 1, 1, 1])
                 _dc1.markdown(
-                    f"🗂️ **{_d}** · {_o['total']} Karten · {_o['due']} fällig"
+                    f"🗂️ **{_d}** · {_o['total']} Karten · "
+                    f"N {_o.get('new', 0)} / L {_o.get('learning', 0)} / "
+                    f"W {_o.get('review', 0)}"
                 )
                 if _dc2.button("Auflösen", key=f"dissolve_{_dk_subj}_{_d}",
                                use_container_width=True,

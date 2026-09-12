@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from ragapp.ui._style import (
     HAMBURGER_KEYS,
+    HOME_PIN_KEYS,
     PAGE_REGISTRY,
     PAGE_THEMES,
     TECHNICAL_PAGE_KEYS,
@@ -18,6 +19,7 @@ from ragapp.ui._style import (
     _technical_override_css,
     celebration_effects_html,
     combo_pulse_html,
+    page_title,
     theme_for,
 )
 
@@ -105,9 +107,22 @@ def test_jede_seite_ausser_home_hat_eine_kategorie():
 
 
 def test_hamburger_keys_verweisen_auf_existierende_seiten():
-    _keys = {p["key"] for p in PAGE_REGISTRY}
+    _keys = {p["key"]: p for p in PAGE_REGISTRY}
     for key in HAMBURGER_KEYS:
         assert key in _keys
+
+
+def test_home_pin_keys_existieren_und_sind_alltagsrelevant():
+    _keys = {p["key"] for p in PAGE_REGISTRY}
+    for key in HOME_PIN_KEYS:
+        assert key in _keys
+    assert "lernen" in HOME_PIN_KEYS
+    assert "fortschritt" in HOME_PIN_KEYS
+
+
+def test_ingestion_heisst_import_lernen_heisst_karteikarten():
+    assert page_title("ingestion").endswith("Import")
+    assert "Karteikarten" in page_title("lernen")
 
 
 def test_jede_seite_ist_genau_einmal_in_page_registry():

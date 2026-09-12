@@ -253,9 +253,13 @@ class Settings:
                                             # Faelligkeitstag noch zu wissen (0.7-0.97)
     FSRS_MAX_INTERVAL_DAYS: int = 365      # Obergrenze fuer den Abstand zwischen zwei
                                             # Wiederholungen (auch bei sehr leichten Karten)
-    # Tages-/Runden-Limits (algorithmus-unabhaengig, bleiben unveraendert)
-    SRS_NEW_PER_DAY: int = 20              # neue Karten pro Tag (0 = unbegrenzt)
-    SRS_MAX_PER_SESSION: int = 100         # Obergrenze fuer eine Lernrunde
+    # Tages-/Sitzungs-Limits (algorithmus-unabhaengig)
+    SRS_NEW_PER_DAY: int = 20              # Tageskontingent brandneuer Karten (0 = unbegrenzt);
+                                            # faellige Wiederholungen kommen zusaetzlich
+    SRS_MAX_PER_SESSION: int = 100         # Sicherheitsdeckel pro Sitzung (nicht Runden-UI)
+    # Interner UX-Hinweis (nicht in Einstellungen-UI): Fragen indexiert, aber
+    # noch nicht als Karteikarten geerntet - ueberlebt Session-Neustarts.
+    NEEDS_CARD_HARVEST: bool = False
 
     # ------------------------------------------------------------------ #
     # Lernplanung, Analytik & Datensicherung (Fortschritt / Klausurtermin)

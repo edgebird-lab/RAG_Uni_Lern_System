@@ -147,7 +147,7 @@ def _view_doc_dialog(d: dict) -> None:
 
 _docs = [dict(d) for d in manifest.list_documents()]
 if not _docs:
-    st.info("Noch keine Dokumente indexiert. Gehe zu **📥 Ingestion**, um welche hinzuzufügen.")
+    st.info("Noch keine Dokumente indexiert. Gehe zu **📥 Import**, um welche hinzuzufügen.")
     st.stop()
 
 # --------------------------------------------------------------------------- #
@@ -283,7 +283,7 @@ with tab_liste:
     else:
         st.caption("Kategorien in Serie vergeben (kommagetrennt) und/oder mehrere "
                    "Dokumente für den ZIP-Download markieren. Fach und RAG-Auswahl "
-                   "änderst du auf der Seite **📥 Ingestion**.")
+                   "änderst du auf der Seite **📥 Import**.")
         _list_orig = {d["doc_id"]: d for d in _filtered}
         _list_df = pd.DataFrame([{
             "✓": False, "Dateiname": d["filename"], "Fach": _fach(d.get("subject")),

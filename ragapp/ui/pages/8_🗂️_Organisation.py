@@ -191,9 +191,6 @@ _known_subjects = sorted(
 with card("heute"):
     st.subheader("📊 Heute im Blick")
 
-    # Gemeinsame Grundlage mit dem "Heute"-Block auf der Startseite (siehe
-    # planner.today_snapshot) - dieselbe Funktion, damit die Zahlen nie
-    # auseinanderlaufen.
     _snap = planner.today_snapshot()
     _today_classes = _snap["today_classes"]
     _overdue = _snap["overdue_tasks"]
@@ -204,11 +201,9 @@ with card("heute"):
     _plan_min_today = _snap["plan_min_today"]
     _plan_done_today = _snap["plan_done_today"]
 
-    # Zwei Reihen zu je drei Spalten statt sechs nebeneinander - bei sechs
-    # Spalten wurde "Heute Vorlesungen" (und "Nächste Klausur: <Fach>" bei
-    # langen Fachnamen) auf normaler Desktop-Breite abgeschnitten.
     d1, d2, d3 = st.columns(3)
-    d1.metric("Heute Vorlesungen", len(_today_classes))
+    d1.metric("Karten fällig", _snap.get("due_cards") or 0,
+              help="Fällige Karteikarten (Tageskontingent neuer Karten eingerechnet).")
     d2.metric("Fällig heute", len(_due_today))
     d3.metric("Überfällig", len(_overdue))
     d4, d5, d6 = st.columns(3)
@@ -221,20 +216,44 @@ with card("heute"):
     else:
         d6.metric("Nächste Klausur", "–")
 
+    if _snap.get("streak_at_risk"):
+        st.error(f"🔥 Streak ({_snap.get('streak', 0)} Tage) heute gefährdet – kurz üben!")
+    if _snap.get("leeches"):
+        st.caption(f"🐛 {_snap['leeches']} Problemkarten in der Auswahl.")
+
     if _today_classes:
-        st.caption("**Heute:** " + " · ".join(
-            f"{s['start_time']}–{s['end_time']} {_fach(s['subject'])}"
-            + (f" ({s['room']})" if s.get("room") else "")
-            for s in _today_classes))
+        st.markdown(
+            '<ul class="rag-heute-schedule">'
+            + "".join(
+                f"<li>🗓️ {s['start_time']}–{s['end_time']} {_fach(s['subject'])}"
+                + (f" ({s['room']})" if s.get("room") else "")
+                + "</li>"
+                for s in _today_classes)
+            + "</ul>",
+            unsafe_allow_html=True,
+        )
     if _plan_blocks_today:
-        st.caption("**Lernplan heute:** " + " · ".join(
-            f"{'✅' if b['done'] else '⬜'} {b['section_title'] or 'Abschnitt'} "
-            f"({b['plan_title']}, {b['planned_min']} Min)" for b in _plan_blocks_today))
+        st.markdown(
+            '<ul class="rag-heute-schedule">'
+            + "".join(
+                f"<li>{'✅' if b['done'] else '⬜'} {b['section_title'] or 'Abschnitt'} "
+                f"({b['plan_title']}, {b['planned_min']} Min)</li>"
+                for b in _plan_blocks_today)
+            + "</ul>",
+            unsafe_allow_html=True,
+        )
     if _overdue:
         _txt = ", ".join(f"{t['title']} ({_fach(t.get('subject'))})" for t in _overdue[:6])
         if len(_overdue) > 6:
             _txt += f" … +{len(_overdue) - 6} weitere"
         st.warning(f"⚠️ Überfällig: {_txt}")
+
+    from ragapp.ui._style import PAGE_REGISTRY as _PR_ORG
+    _lernen_t = next(p["target"] for p in _PR_ORG if p["key"] == "lernen")
+    if (_snap.get("due_cards") or 0) > 0:
+        if st.button("▶ Jetzt lernen", type="primary", key="org_jetzt_lernen",
+                     use_container_width=True):
+            st.switch_page(_lernen_t)
 
 st.divider()
 

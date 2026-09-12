@@ -15,7 +15,7 @@ def _inner_svg(html: str) -> str:
 
 
 @pytest.mark.parametrize("pose", list(_MOUTHS.keys()))
-@pytest.mark.parametrize("animation", ["float", "wave", "run"])
+@pytest.mark.parametrize("animation", ["float", "wave", "run", "shake"])
 @pytest.mark.parametrize("prop", list(_PROPS.keys()))
 def test_mascot_svg_ist_fuer_jede_kombination_gueltiges_xml(pose, animation, prop):
     html = mascot_svg("#FF8FA3", pose=pose, animation=animation, prop=prop)
@@ -36,7 +36,7 @@ def test_pose_for_liefert_tuple_fuer_jede_registrierte_seite():
     for key in POSES:
         pose, animation, prop = pose_for(key)
         assert pose in _MOUTHS
-        assert animation in ("float", "wave", "run")
+        assert animation in ("float", "wave", "run", "shake")
         assert prop is None or prop in _PROPS
 
 
@@ -63,16 +63,38 @@ def test_home_mood_feiert_bei_neuer_errungenschaft_vor_allem_anderen():
 
 
 def test_home_mood_ist_besorgt_bei_reissendem_streak():
-    assert home_mood({"streak_at_risk": True, "leeches": 0}) == ("worried", "float", None)
+    assert home_mood({"streak_at_risk": True, "leeches": 0}) == ("worried", "shake", None)
 
 
 def test_home_mood_ist_besorgt_bei_vielen_problemkarten():
-    assert home_mood({"streak_at_risk": False, "leeches": 5}) == ("worried", "float", None)
+    assert home_mood({"streak_at_risk": False, "leeches": 5}) == ("worried", "shake", None)
 
 
 def test_home_mood_ignoriert_wenige_problemkarten():
-    assert home_mood({"streak_at_risk": False, "leeches": 4}) == ("cheer", "wave", None)
+    assert home_mood({"streak_at_risk": False, "leeches": 4, "due_cards": 0}) == \
+        ("idle", "float", None)
+
+
+def test_home_mood_faellige_karten_sind_fokussiert():
+    assert home_mood({"due_cards": 3, "leeches": 0}) == ("focused", "float", "book")
+
+
+def test_home_mood_harvest_braucht_birne():
+    assert home_mood({"due_cards": 0}, needs_harvest=True) == ("focused", "float", "bulb")
 
 
 def test_home_mood_ohne_snapshot_ist_neutral_froehlich():
     assert home_mood(None) == ("cheer", "wave", None)
+
+
+def test_home_mood_line_nennt_faellige_karten():
+    from ragapp.ui._mascot import home_mood_line
+    icon, text = home_mood_line({"due_cards": 3})
+    assert icon == "🎴"
+    assert "3" in text
+
+
+def test_mascot_svg_prop_hat_ragm_prop_klasse():
+    html = mascot_svg("#FF8FA3", prop="book")
+    assert 'class="ragm-prop"' in html
+    assert "ragm-body" in html

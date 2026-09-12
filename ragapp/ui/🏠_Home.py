@@ -174,18 +174,14 @@ _components.html(
 # ragapp.ui._style.render_nav_tile) - PAGE_REGISTRY dort ist die einzige
 # Quelle der Wahrheit fuer Titel/Icon/Zielpfad/Gruppierung.
 # --------------------------------------------------------------------------- #
-from ragapp.ui._style import (apply_page_style, PAGE_REGISTRY, render_nav_tile,
-                               render_hero_title, card, speech_bubble)
-from ragapp.ui._mascot import render_mascot, home_mood
+from ragapp.ui._style import (apply_page_style, PAGE_REGISTRY, HOME_PIN_KEYS,
+                               render_nav_tile, render_hero_title, card,
+                               speech_bubble_mascot)
+from ragapp.ui._mascot import render_mascot, home_mood, home_mood_line
 _theme = apply_page_style("home")
 
 # --------------------------------------------------------------------------- #
-# Lernstand VOR dem Maskottchen laden: seine Pose soll den aktuellen Stand
-# widerspiegeln (siehe home_mood()) statt fest "cheer" zu sein - und eine neu
-# freigeschaltete Errungenschaft (ragapp/achievements.py) verdient den
-# staerksten Jubel-Moment der ganzen Seite (Balloons + Cheer-Pose), nicht nur
-# eine stille Zeile auf Fortschritt. Beides rein informativ/optional: schlaegt
-# etwas fehl, faellt die Seite einfach auf den neutralen Standard zurueck.
+# Lernstand VOR dem Maskottchen laden (Mood + Heute-CTA).
 # --------------------------------------------------------------------------- #
 try:
     import datetime as _dt
@@ -204,14 +200,32 @@ except Exception:  # noqa: BLE001
     _achievements = None
     _newly_unlocked = []
 
-_hero_l, _hero_r = st.columns([3, 1])
+try:
+    from ragapp import study as _study
+    _needs_harvest = _study.needs_card_harvest()
+except Exception:  # noqa: BLE001
+    _needs_harvest = False
+
+_unlocked_title = (_newly_unlocked[0].title if _newly_unlocked else None)
+_mood_pose, _mood_anim, _mood_prop = home_mood(
+    _snap, celebrate=bool(_newly_unlocked), needs_harvest=_needs_harvest)
+_mood_icon, _mood_text = home_mood_line(
+    _snap, celebrate=bool(_newly_unlocked), needs_harvest=_needs_harvest,
+    unlocked_title=_unlocked_title)
+
+_target = {p["key"]: p["target"] for p in PAGE_REGISTRY}
+
+# Compact hero: kurze Begruessung links, Maskottchen+Blase rechts (eine Einheit)
+_hero_l, _hero_r = st.columns([2.4, 1.2])
 with _hero_l:
-    render_hero_title("Willkommen zurück 👋", accent=_theme["accent"])
-    speech_bubble("Wähle unten einen Bereich – oder nutze das ☰-Menü links für die Kurzwahl.",
-                  icon="✨")
+    render_hero_title("Willkommen zurück", accent=_theme["accent"])
+    st.caption("Was willst du heute tun?")
 with _hero_r:
-    _mood_pose, _mood_anim, _mood_prop = home_mood(_snap, celebrate=bool(_newly_unlocked))
-    render_mascot(_theme["accent"], pose=_mood_pose, animation=_mood_anim, prop=_mood_prop)
+    st.markdown('<div class="rag-mascot-hero-unit">', unsafe_allow_html=True)
+    speech_bubble_mascot(_mood_text, icon=_mood_icon)
+    render_mascot(_theme["accent"], size=140, pose=_mood_pose,
+                  animation=_mood_anim, prop=_mood_prop)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 if _newly_unlocked:
     st.balloons()
@@ -220,24 +234,25 @@ if _newly_unlocked:
     for _na in _newly_unlocked:
         st.success(f"**Neu freigeschaltet:** {_na.icon} {_na.title} – {_na.description}")
 elif _achievements is not None:
-    # Verlust-/Naeheframing wie die Streak-Warnung unten, nur positiv gewendet:
-    # nur zeigen, wenn wirklich etwas GREIFBAR nah ist (siehe nearest_locked()
-    # Docstring) - sonst nervt eine taegliche Erinnerung an alles, was noch
-    # weit weg ist.
     _nudge = _achievements.nearest_locked()
     if _nudge:
         _left = _nudge["target"] - _nudge["current"]
-        st.info(f"🎯 Noch **{_left:g}** bis {_nudge['icon']} **{_nudge['title']}**!")
+        st.caption(f"🎯 Noch **{_left:g}** bis {_nudge['icon']} **{_nudge['title']}**")
         from ragapp.ui import _charts
         st.markdown(_charts.progress_bar(_nudge["pct"], color=_theme["accent"]),
                    unsafe_allow_html=True)
 
+# Persistenter Harvest-Hinweis (ueberlebt Session-Neustarts)
+if _needs_harvest:
+    _hv1, _hv2 = st.columns([3, 1])
+    _hv1.warning("📇 Neue Fragen sind indexiert, aber noch **nicht als Karteikarten** "
+                 "übernommen.")
+    if _hv2.button("Karten aktualisieren", type="primary", key="home_harvest",
+                   use_container_width=True):
+        st.switch_page(_target["lernen"])
+
 # --------------------------------------------------------------------------- #
-# "Heute"-Briefing: das Wichtigste des Tages auf einen Blick, statt es sich aus
-# fuenf Seiten (Lernen/Fortschritt/Lernplan/Organisation/Lernzeit) zusammen-
-# suchen zu muessen. Nutzt dieselbe planner.today_snapshot()-Funktion wie
-# Organisation's "Heute im Blick" (siehe dort) - damit laufen die Zahlen nie
-# auseinander.
+# "Heute"-Briefing ZUERST (Hauptinhalt des ersten Viewports)
 # --------------------------------------------------------------------------- #
 if _snap:
     _WOCHENTAGE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag",
@@ -248,9 +263,6 @@ if _snap:
         st.markdown(f"#### 🌞 Heute · {_WOCHENTAGE[_today.weekday()]}, "
                     f"{_today.strftime('%d.%m.%Y')}")
 
-        # Cram-Modus: kurz vor der Klausur bekommt die Seite bewusst eine
-        # dringlichere Note statt einer weiteren Chip zwischen den anderen -
-        # das soll auffallen, nicht nur mitlaufen (siehe CRAM_MODE_DAYS).
         if _snap["cram_active"] and _snap["next_exam"]:
             _cram_subj = _html_escape(SUBJECT_LABELS.get(
                 _snap["next_exam"]["subject"], _snap["next_exam"]["subject"]))
@@ -258,66 +270,80 @@ if _snap:
                       f"{planner.humanize_days(_snap['days_to_exam'])} – "
                       "jetzt zählt jede Wiederholung.")
 
-        # Streak-Warnung: bewusst SEPARAT von den Chips (Verlust-Framing statt
-        # nur einer weiteren neutralen Info) - nur ab STREAK_RISK_HOUR und nur,
-        # wenn heute wirklich noch nichts geuebt wurde (siehe today_snapshot()).
         if _snap["streak_at_risk"]:
             st.error(f"🔥 Dein Streak von {_snap['streak']} Tag(en) reißt heute, "
                     "wenn du jetzt nicht noch kurz lernst.")
 
-        _chips: list[str] = []
+        # Dringlichkeit zuerst; max. 4 Chips, Rest unter "Mehr"
+        _chips_priority: list[str] = []
+        _chips_rest: list[str] = []
         if _snap["due_cards"]:
-            _chips.append(f"🎴 {_snap['due_cards']} Karten fällig")
+            _chips_priority.append(f"🎴 {_snap['due_cards']} Karten fällig")
         if _snap["leeches"]:
-            _chips.append(f"🐛 {_snap['leeches']} Problemkarten")
+            _chips_priority.append(f"🐛 {_snap['leeches']} Problemkarten")
+        if _snap["overdue_tasks"]:
+            _chips_priority.append(f"⚠️ {len(_snap['overdue_tasks'])} überfällig")
+        if _snap["due_today_tasks"]:
+            _chips_priority.append(f"✅ {len(_snap['due_today_tasks'])} Aufgabe(n) heute")
         if _snap["next_exam"] and _snap["days_to_exam"] is not None:
             _ex_subj = _html_escape(SUBJECT_LABELS.get(
                 _snap["next_exam"]["subject"], _snap["next_exam"]["subject"]))
-            _chips.append(f"📝 {_ex_subj}: {planner.humanize_days(_snap['days_to_exam'])}")
-        if _snap["overdue_tasks"]:
-            _chips.append(f"⚠️ {len(_snap['overdue_tasks'])} überfällige Aufgabe(n)")
-        if _snap["due_today_tasks"]:
-            _chips.append(f"✅ {len(_snap['due_today_tasks'])} Aufgabe(n) heute fällig")
+            _chips_rest.append(f"📝 {_ex_subj}: {planner.humanize_days(_snap['days_to_exam'])}")
         if _snap["overdue_plan_blocks"]:
-            _chips.append(f"📋 {len(_snap['overdue_plan_blocks'])} Lernplan-Block(e) "
-                          f"im Rückstand ({_snap['overdue_plan_min']} Min)")
+            _chips_rest.append(
+                f"📋 {len(_snap['overdue_plan_blocks'])} Lernplan-Block(e) im Rückstand")
         if _snap["study_min_today"]:
-            _chips.append(f"⏱️ {_snap['study_min_today']} Min heute gelernt")
+            _chips_rest.append(f"⏱️ {_snap['study_min_today']} Min heute gelernt")
 
-        if _chips:
+        _show = _chips_priority[:4]
+        _overflow = _chips_priority[4:] + _chips_rest
+        if len(_show) < 4 and _overflow:
+            _need = 4 - len(_show)
+            _show += _overflow[:_need]
+            _overflow = _overflow[_need:]
+
+        if _show:
             st.markdown(
                 '<div class="rag-heute-chips">'
-                + "".join(f'<span class="rag-heute-chip">{c}</span>' for c in _chips)
+                + "".join(f'<span class="rag-heute-chip">{c}</span>' for c in _show)
                 + "</div>",
                 unsafe_allow_html=True,
             )
+            if _overflow:
+                with st.expander(f"Mehr heute ({len(_overflow)})", expanded=False):
+                    st.markdown(
+                        '<div class="rag-heute-chips">'
+                        + "".join(f'<span class="rag-heute-chip">{c}</span>'
+                                  for c in _overflow)
+                        + "</div>",
+                        unsafe_allow_html=True,
+                    )
         else:
             st.caption("Für heute liegt nichts Dringendes an – gute Gelegenheit, "
                         "freiwillig etwas zu wiederholen.")
 
-        _rows: list[str] = []
+        _sched: list[str] = []
         for _s in _snap["today_classes"]:
             _room = f" ({_html_escape(_s['room'])})" if _s.get("room") else ""
             _cls_subj = _html_escape(SUBJECT_LABELS.get(_s["subject"], _s["subject"]))
-            _rows.append(f"🗓️ {_s['start_time']}–{_s['end_time']} {_cls_subj}{_room}")
+            _sched.append(f"🗓️ {_s['start_time']}–{_s['end_time']} {_cls_subj}{_room}")
         for _b in _snap["plan_blocks_today"]:
             _mark = "✅" if _b["done"] else "📋"
             _sec_title = _html_escape(_b["section_title"] or "Abschnitt")
             _plan_title = _html_escape(_b["plan_title"])
-            _rows.append(f"{_mark} {_sec_title} ({_plan_title}, {_b['planned_min']} Min)")
-        if _rows:
-            st.markdown(f'<div class="rag-heute-row">{" · ".join(_rows)}</div>',
-                        unsafe_allow_html=True)
+            _sched.append(f"{_mark} {_sec_title} ({_plan_title}, {_b['planned_min']} Min)")
+        if _sched:
+            st.markdown(
+                '<ul class="rag-heute-schedule">'
+                + "".join(f"<li>{row}</li>" for row in _sched)
+                + "</ul>",
+                unsafe_allow_html=True,
+            )
 
-        # CTA: springt zur Seite, die heute am meisten weiterhilft - fällige
-        # Karten zuerst (staerkster FSRS-Hebel), dann offene Aufgaben, dann der
-        # Lernplan, sonst das Fach mit der hoechsten Prioritaet (siehe
-        # planner.all_priorities()). Zielpfade kommen bewusst aus PAGE_REGISTRY
-        # (die "einzige Quelle der Wahrheit", siehe Modul-Docstring von
-        # _style.py) statt als eigene String-Literale - damit ein spaeter
-        # umbenannter Dateiname nicht still zwei Stellen auseinanderlaufen laesst.
-        _target = {p["key"]: p["target"] for p in PAGE_REGISTRY}
-        if _snap["due_cards"]:
+        # CTA: Harvest vor due_cards, wenn noetig
+        if _needs_harvest:
+            _cta_label, _cta_target = "📇 Karten aktualisieren", _target["lernen"]
+        elif _snap["due_cards"]:
             _cta_label, _cta_target = "▶ Jetzt lernen", _target["lernen"]
         elif _snap["overdue_tasks"] or _snap["due_today_tasks"]:
             _cta_label, _cta_target = "🗂️ Aufgaben ansehen", _target["organisation"]
@@ -325,8 +351,6 @@ if _snap:
               or (_snap["plan_blocks_today"] and _snap["plan_done_today"] < _snap["plan_min_today"])):
             _cta_label, _cta_target = "📋 Lernplan ansehen", _target["lernplan"]
         elif _snap["cram_active"]:
-            # Keine faelligen Karten mehr, Klausur aber ganz nah -> aktiv eine
-            # Probeklausur unter Zeitdruck anbieten statt nur "nichts zu tun".
             _cta_label, _cta_target = "📝 Probeklausur starten", _target["pruefung"]
         elif _snap["top_priority"]:
             _tp_subj = SUBJECT_LABELS.get(_snap["top_priority"]["subject"],
@@ -337,45 +361,16 @@ if _snap:
             _cta_label, _cta_target = None, None
 
         if _cta_label:
-            if st.button(_cta_label, key="heute_cta", type="primary"):
+            if st.button(_cta_label, key="heute_cta", type="primary",
+                         use_container_width=True):
                 st.switch_page(_cta_target)
 
-from ragapp.ui._loading import skeleton
-with skeleton("Wird geladen ..."):
-    from ragapp import manifest
-
-try:
-    _stats = manifest.stats()
-    with card("stats"):
-        _s1, _s2, _s3, _s4 = st.columns(4)
-        _s1.metric("📄 Dokumente", _stats["documents"])
-        _s2.metric("🧩 Textstellen", _stats["chunks"])
-        _s3.metric("❓ Fragen", _stats["questions"])
-        _s4.metric("🏷️ Fächer", _stats["subjects"])
-except Exception:  # noqa: BLE001 - Statistik ist ein Bonus, nie blockierend
-    pass
-
-# --------------------------------------------------------------------------- #
-# Einheitliche Suche (siehe ragapp/search.py): "wo hab ich das nochmal
-# gesehen" war bisher eine Ratefrage zwischen Notiz/Chat/Zusammenfassung -
-# durchsucht jetzt alle drei gleichzeitig. Bewusst auf der Startseite (nicht
-# irgendwo tief in einer Einzelseite versteckt), da sie der naheliegendste
-# Ausgangspunkt fuer "ich weiss nicht mehr, wo" ist.
-# --------------------------------------------------------------------------- #
+# Schlanke Suche (kein voller Titel-Block)
 with card("suche"):
-    st.markdown("#### 🔎 Überall suchen")
-    st.caption("Tipp: **Strg/Cmd+K** springt von jeder Seite aus direkt hierher.")
     _search_q = st.text_input(
-        "Notizen, Chats und Zusammenfassungen durchsuchen", key="global_search_query",
-        placeholder="z. B. FSRS, Docker, Schnittmenge …", label_visibility="collapsed")
-    # Sprungziel von Strg/Cmd+K auf einer ANDEREN Seite (siehe
-    # _style._command_palette_shortcut_html): das dort gesetzte sessionStorage-
-    # Flag zeigt an, dass GERADE deswegen navigiert wurde - einmalig
-    # fokussieren und das Flag sofort loeschen, sonst stiehlt ein spaeterer
-    # Rerun auf dieser Seite (z. B. beim Tippen selbst) staendig erneut den
-    # Fokus. Unconditional injiziert (billig) statt an einen Query-Parameter
-    # gekoppelt, der aus dem sandboxed Iframe heraus nicht sicher zu setzen
-    # waere (siehe Docstring von _command_palette_shortcut_html).
+        "🔎 Überall suchen", key="global_search_query",
+        placeholder="Notizen, Chats, Zusammenfassungen …  (Strg/Cmd+K)",
+        label_visibility="visible")
     _components.html("""
 <script>
 (function() {
@@ -384,14 +379,11 @@ with card("suche"):
     if (win.sessionStorage.getItem('ragFocusSearch') !== '1') { return; }
     win.sessionStorage.removeItem('ragFocusSearch');
     var doc = win.document;
-    // Kurz nach der Navigation kann das Eingabefeld noch nicht im DOM stehen
-    // (Streamlit rendert asynchron nach) - deshalb kurz nachfassen statt nur
-    // einmalig zu pruefen, statt einer festen Wartezeit, die mal zu kurz und
-    // mal unnoetig lang waere.
     var tries = 0;
     var iv = win.setInterval(function() {
       tries++;
-      var input = doc.querySelector('input[aria-label*="Notizen, Chats und Zusammenfassungen"]');
+      var input = doc.querySelector('input[aria-label*="Überall suchen"]')
+        || doc.querySelector('input[aria-label*="Notizen, Chats"]');
       if (input) {
         input.scrollIntoView({block: 'center'});
         input.focus();
@@ -407,10 +399,6 @@ with card("suche"):
     if _search_q and len(_search_q.strip()) >= 2:
         from ragapp import search as _search
         from ragapp.config import PROJECT_ROOT as _PROJECT_ROOT
-        # Eigenstaendig neu aufgebaut (nicht auf das "_target" aus dem Heute-
-        # Briefing oben verlassen) - das existiert nur, wenn today_snapshot()
-        # dort erfolgreich lief; diese Suche soll davon unabhaengig sein.
-        _target = {p["key"]: p["target"] for p in PAGE_REGISTRY}
         _results = _search.search_everything(_search_q)
         _total_hits = sum(len(v) for v in _results.values())
         if _total_hits == 0:
@@ -442,18 +430,42 @@ with card("suche"):
                             mime="text/markdown", key=f"gsearch_zsf_{_r['id']}",
                             help="Zusammenfassung herunterladen")
 
+# Bibliothek-Stats nach hinten (Expander)
+from ragapp.ui._loading import skeleton
+with skeleton("Wird geladen ..."):
+    from ragapp import manifest
+
+try:
+    _stats = manifest.stats()
+    with st.expander("📚 Bibliothek", expanded=False):
+        _s1, _s2, _s3, _s4 = st.columns(4)
+        _s1.metric("Dokumente", _stats["documents"])
+        _s2.metric("Textstellen", _stats["chunks"])
+        _s3.metric("Fragen", _stats["questions"])
+        _s4.metric("Fächer", _stats["subjects"])
+except Exception:  # noqa: BLE001
+    pass
+
 st.write("")
+st.markdown("#### Heute nützlich")
+_pin_cols = st.columns(3)
+for _i, _key in enumerate(HOME_PIN_KEYS):
+    with _pin_cols[_i % 3]:
+        render_nav_tile(_key)
 
-_categories: list[str] = []
-for _pg in PAGE_REGISTRY:
-    if _pg["category"] and _pg["category"] not in _categories:
-        _categories.append(_pg["category"])
-
-for _cat in _categories:
-    st.markdown(f"#### {_cat}")
-    _pages_in_cat = [p for p in PAGE_REGISTRY if p["category"] == _cat]
-    _cols = st.columns(3)
-    for _i, _pg in enumerate(_pages_in_cat):
-        with _cols[_i % 3]:
-            render_nav_tile(_pg["key"])
-    st.write("")
+_more_pages = [p for p in PAGE_REGISTRY
+               if p.get("category") and p["key"] not in HOME_PIN_KEYS]
+if _more_pages:
+    with st.expander("Mehr Bereiche", expanded=False):
+        _categories: list[str] = []
+        for _pg in _more_pages:
+            if _pg["category"] not in _categories:
+                _categories.append(_pg["category"])
+        for _cat in _categories:
+            st.caption(_cat)
+            _pages_in_cat = [p for p in _more_pages if p["category"] == _cat]
+            _cols = st.columns(3)
+            for _i, _pg in enumerate(_pages_in_cat):
+                with _cols[_i % 3]:
+                    render_nav_tile(_pg["key"])
+            st.write("")

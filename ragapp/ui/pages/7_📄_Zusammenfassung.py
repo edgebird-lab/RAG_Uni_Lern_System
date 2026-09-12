@@ -45,7 +45,7 @@ st.caption("Erzeugt aus einem indexierten Dokument oder einem ganzen Fach eine "
 
 docs = manifest.list_documents()
 if not docs:
-    st.info("Noch keine Dokumente indexiert – lege zuerst welche über **📥 Ingestion** an.")
+    st.info("Noch keine Dokumente indexiert – lege zuerst welche über **📥 Import** an.")
     st.stop()
 
 subjects = sorted({d["subject"] for d in docs if d["subject"]})

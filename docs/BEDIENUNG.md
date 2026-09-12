@@ -225,11 +225,21 @@ Die App erntet Karteikarten aus deinem vorhandenen Fragenmaterial (dem
 **Klausur-Lernkatalog** und den per `enrich` **generierten Fragen**) und plant die
 Wiederholung mit **FSRS-6** (demselben Algorithmus, auf den Anki inzwischen
 standardmäßig umgestiegen ist – verteiltes Wiederholen, aus echten Daten gelernt statt
-fester Formeln). Beim ersten Besuch
-einmal **„Karten aus meinen Unterlagen erstellen"** klicken; danach zeigt die Seite,
-wie viele Karten **fällig**, **neu** oder **schon geübt** sind, und fragt sie der
-Reihe nach ab. Gibt es noch kein Fragenmaterial, zuerst auf **📥 Ingestion** Fragen
-generieren bzw. den Lernkatalog erstellen.
+fester Formeln). Beim ersten Besuch einmal **„Karten aus meinen Unterlagen erstellen"**
+klicken.
+
+**Täglich lernen (wie Anki):** Auf der Lernen-Seite siehst du deine **Stapel** mit den
+drei Warteschlangen **Neu · Lernen · Wiederholen**. Stapel ankreuzen und
+**Jetzt lernen** – fertig. Schon gelernte Karten kommen erst wieder, wenn FSRS sie
+fällig stellt; neue Karten nur bis zum Tageskontingent (**⚙️ Einstellungen → Neue
+Karten pro Tag**). Eine zweite Sitzung am selben Tag bringt **keine** weiteren neuen
+Karten, sondern nur noch fällige Wiederholungen bzw. Lern-Schritte.
+
+Unter **Karten fürs Lernen ankreuzen** kannst du einzelne Karten dauerhaft aus der
+Abfrage nehmen (sie bleiben gespeichert). Die **Challenge** ist optional für feste
+Rundengröße, Cram oder Prüfungsphase – für den Alltag nicht nötig. Gibt es noch kein
+Fragenmaterial, zuerst auf **📥 Ingestion** Fragen generieren bzw. den Lernkatalog
+erstellen.
 
 ### 📈 Fortschritt (Lern-Analytik & Klausurplanung)
 

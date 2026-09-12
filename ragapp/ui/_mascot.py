@@ -98,24 +98,57 @@ def pose_for(page_key: str) -> tuple[str, str, "str | None"]:
 _HOME_WORRIED_LEECH_THRESHOLD = 5
 
 
-def home_mood(snapshot: "dict | None", *, celebrate: bool = False) -> tuple[str, str, "str | None"]:
-    """Bestimmt Pose/Animation/Requisit des GROSSEN Home-Maskottchens aus dem
-    aktuellen Lernstand (``planner.today_snapshot()``) statt einer fest
-    verdrahteten Pose - macht die Figur zu einem echten Feedback-Element
-    statt reiner Deko (vorher: IMMER "cheer"/"wave", egal was gerade los
-    ist). Prioritaet: eine frisch freigeschaltete Errungenschaft (``celebrate``)
-    schlaegt alles - das ist der einzige Moment, der uneingeschraenkte Freude
-    verdient; danach ein akut reissender Streak (die Mimik soll dieselbe
-    Verlustaversion zeigen wie die Textwarnung, siehe Home); danach ein
-    spuerbarer Leech-Rueckstau; sonst der freundliche Standard-Gruss."""
+def home_mood(snapshot: "dict | None", *, celebrate: bool = False,
+              needs_harvest: bool = False) -> tuple[str, str, "str | None"]:
+    """Pose/Animation/Requisit des Home-Maskottchens aus dem Lernstand.
+
+    Prioritaet: Feiern → Streak/Leeches (besorgt + Zittern) → Harvest noetig →
+    Cram → faellige Karten (fokussiert) → ruhiger Tag (idle) → freundlicher Gruss."""
     if celebrate:
         return ("cheer", "wave", "star")
     if snapshot:
         if snapshot.get("streak_at_risk"):
-            return ("worried", "float", None)
+            return ("worried", "shake", None)
         if (snapshot.get("leeches") or 0) >= _HOME_WORRIED_LEECH_THRESHOLD:
-            return ("worried", "float", None)
+            return ("worried", "shake", None)
+    if needs_harvest:
+        return ("focused", "float", "bulb")
+    if snapshot:
+        if snapshot.get("cram_active"):
+            return ("focused", "float", "clock")
+        if snapshot.get("due_cards"):
+            return ("focused", "float", "book")
+        if (snapshot.get("study_min_today") or 0) > 0 or not (
+                snapshot.get("due_cards") or snapshot.get("overdue_tasks")
+                or snapshot.get("due_today_tasks")):
+            return ("idle", "float", None)
     return ("cheer", "wave", None)
+
+
+def home_mood_line(snapshot: "dict | None", *, celebrate: bool = False,
+                   needs_harvest: bool = False,
+                   unlocked_title: "str | None" = None) -> tuple[str, str]:
+    """Kurzer Sprechblasen-Text (icon, text) passend zu ``home_mood``."""
+    if celebrate:
+        title = unlocked_title or "eine Errungenschaft"
+        return ("🎉", f"Geschafft – {title} freigeschaltet!")
+    if snapshot and snapshot.get("streak_at_risk"):
+        n = int(snapshot.get("streak") or 0)
+        return ("🔥", f"Dein Streak ({n} Tage) reißt heute – kurz üben rettet ihn!")
+    if snapshot and (snapshot.get("leeches") or 0) >= _HOME_WORRIED_LEECH_THRESHOLD:
+        return ("🐛", f"{snapshot['leeches']} Problemkarten warten – die lohnen sich besonders.")
+    if needs_harvest:
+        return ("📇", "Neue Fragen sind da – einmal Karten aktualisieren, dann üben!")
+    if snapshot and snapshot.get("cram_active") and snapshot.get("next_exam"):
+        return ("⏰", "Klausur nah – jede Wiederholung zählt jetzt.")
+    if snapshot and snapshot.get("due_cards"):
+        n = int(snapshot["due_cards"])
+        return ("🎴", f"{n} Karte{'n' if n != 1 else ''} fällig – bereit zum Lernen?")
+    if snapshot and (snapshot.get("overdue_tasks") or snapshot.get("due_today_tasks")):
+        return ("✅", "Aufgaben warten heute – schauen wir kurz in die Organisation.")
+    if snapshot and (snapshot.get("study_min_today") or 0) > 0:
+        return ("✨", "Schon geübt – starke Arbeit. Pause ist auch Lernen.")
+    return ("👋", "Schön, dass du da bist – such dir unten aus, womit du starten willst.")
 
 
 def mascot_svg(accent: str, *, size: int = 200, ink: str = "#2b2036",
@@ -124,21 +157,36 @@ def mascot_svg(accent: str, *, size: int = 200, ink: str = "#2b2036",
     """Rundlicher, freundlicher "Mochi-Geist" mit Doktorhut - grosse Anime-
     Sparkle-Augen, rosa Wangen, dezenter Tuschestrich (``ink``). ``pose``
     waehlt Mund-/Augen-Ausdruck, ``animation`` die Bewegungs-Variante
-    (``float``/``wave``/``run``), ``prop`` ein optionales Requisit-Icon.
+    (``float``/``wave``/``run``/``shake``), ``prop`` ein optionales Requisit.
     Reines HTML/CSS (kein Skript) - fuer das Pupillen-Tracking siehe
     ``render_mascot()``, das zusaetzlich das noetige Skript injiziert."""
     mouth = _MOUTHS.get(pose, _MOUTHS["idle"]).format(ink=ink)
-    prop_html = _PROPS.get(prop, "").format(ink=ink)
-    # Augen-Ausdruck je Pose: "idle"/"cheer" zwinkert gelegentlich verspielt
-    # (nur links, eigene seltenere Keyframe-Animation), "focused" blinzelt nur
-    # ganz natuerlich (beidseitig), "sleepy" haelt die Augen dauerhaft halb
-    # geschlossen statt zu animieren (muede Wirkung).
+    prop_raw = _PROPS.get(prop, "").format(ink=ink)
+    prop_html = f'<g class="ragm-prop">{prop_raw}</g>' if prop_raw else ""
     if pose == "sleepy":
         left_eye_cls = right_eye_cls = "ragm-sleepy"
     elif pose in ("idle", "cheer"):
         left_eye_cls, right_eye_cls = "ragm-wink-loop", "ragm-blink"
     else:
         left_eye_cls = right_eye_cls = "ragm-blink"
+
+    sparkle = ""
+    if pose == "cheer":
+        sparkle = (
+            '<g class="ragm-sparkle" opacity=".95">'
+            '<path d="M 176 44 l 4 10 l 10 4 l -10 4 l -4 10 l -4 -10 l -10 -4 l 10 -4 Z" '
+            f'fill="{accent}"/>'
+            '<path d="M 26 74 l 3 7 l 7 3 l -7 3 l -3 7 l -3 -7 l -7 -3 l 7 -3 Z" '
+            f'fill="{accent}"/>'
+            '</g>'
+        )
+    else:
+        sparkle = (
+            f'<g opacity=".9">'
+            f'<path d="M 176 44 l 4 10 l 10 4 l -10 4 l -4 10 l -4 -10 l -10 -4 l 10 -4 Z" fill="{accent}"/>'
+            f'<path d="M 26 74 l 3 7 l 7 3 l -7 3 l -3 7 l -3 -7 l -7 -3 l 7 -3 Z" fill="{accent}"/>'
+            f'</g>'
+        )
 
     return f"""
 <div class="rag-mascot rag-mascot-{animation} {extra_class}">
@@ -147,9 +195,11 @@ def mascot_svg(accent: str, *, size: int = 200, ink: str = "#2b2036",
   <ellipse cx="110" cy="205" rx="58" ry="10" fill="{ink}" opacity=".08"/>
   <g class="ragm-leg-l"><ellipse cx="82" cy="198" rx="19" ry="11" fill="{accent}" stroke="{ink}" stroke-width="2.5"/></g>
   <g class="ragm-leg-r"><ellipse cx="138" cy="198" rx="19" ry="11" fill="{accent}" stroke="{ink}" stroke-width="2.5"/></g>
-  <g class="ragm-arm-l"><circle cx="32" cy="128" r="17" fill="{accent}" stroke="{ink}" stroke-width="2.5"/></g>
-  <circle cx="110" cy="128" r="80" fill="{accent}" stroke="{ink}" stroke-width="3"/>
-  <circle cx="110" cy="128" r="80" fill="white" opacity=".14"/>
+  <g class="ragm-arm-l" style="transform-origin:32px 118px"><circle cx="32" cy="128" r="17" fill="{accent}" stroke="{ink}" stroke-width="2.5"/></g>
+  <g class="ragm-body">
+    <circle cx="110" cy="128" r="80" fill="{accent}" stroke="{ink}" stroke-width="3"/>
+    <circle cx="110" cy="128" r="80" fill="white" opacity=".14"/>
+  </g>
   <polygon points="55,68 128,46 178,66 108,86" fill="{ink}"/>
   <rect x="86" y="80" width="46" height="12" rx="4" fill="{accent}" stroke="{ink}" stroke-width="2.5"/>
   <circle cx="108" cy="66" r="6" fill="{ink}"/>
@@ -172,10 +222,7 @@ def mascot_svg(accent: str, *, size: int = 200, ink: str = "#2b2036",
     <circle cx="188" cy="128" r="17" fill="{accent}" stroke="{ink}" stroke-width="2.5"/>
   </g>
   {prop_html}
-  <g opacity=".9">
-    <path d="M 176 44 l 4 10 l 10 4 l -10 4 l -4 10 l -4 -10 l -10 -4 l 10 -4 Z" fill="{accent}"/>
-    <path d="M 26 74 l 3 7 l 7 3 l -7 3 l -3 7 l -3 -7 l -7 -3 l 7 -3 Z" fill="{accent}"/>
-  </g>
+  {sparkle}
 </svg>
 </div>
 """

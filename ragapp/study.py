@@ -123,7 +123,38 @@ def harvest_cards(subject: "str | None" = None, max_per_chunk: "int | None" = No
     if progress:
         progress(f"Speichere {len(cards)} Karten …")
     neu = manifest.upsert_review_items(cards)
+    # Harvest-Hinweis loeschen, sobald wir einmal erfolgreich abgeglichen haben
+    # (auch bei neu=0: Bestand ist dann aktuell).
+    try:
+        from ragapp.config import settings
+        if getattr(settings, "NEEDS_CARD_HARVEST", False):
+            settings.update(NEEDS_CARD_HARVEST=False)
+            settings.save()
+    except Exception:  # noqa: BLE001
+        pass
     return {"gefunden": len(cards), "neu": neu}
+
+
+def mark_needs_card_harvest() -> None:
+    """Persistenter Hinweis: Fragen indexiert, Karten noch nicht geerntet."""
+    from ragapp.config import settings
+    settings.update(NEEDS_CARD_HARVEST=True)
+    settings.save()
+
+
+def needs_card_harvest() -> bool:
+    """True, wenn Karten-Ernte noetig ist (Flag oder Fragen ohne Karten)."""
+    from ragapp.config import settings
+    if bool(getattr(settings, "NEEDS_CARD_HARVEST", False)):
+        return True
+    try:
+        st = manifest.stats()
+        cards = manifest.review_counts().get("total", 0)
+        if int(st.get("questions") or 0) > 0 and int(cards) == 0:
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
 
 
 def generate_answers(subject: "str | None" = None, deck: "str | None" = None,
@@ -308,6 +339,27 @@ def humanize_due(due: float, now: "float | None" = None) -> str:
     if d < 365:
         return f"in {round(d / 30)} Monaten"
     return f"in {round(d / 365, 1)} Jahren"
+
+
+# Lern-/Relearn-Karten mit kurzem Intervall wieder in dieselbe Sitzung
+# einreihen (Anki: Learning-Queue). 20 Minuten deckt typische FSRS-Steps.
+_SESSION_REQUEUE_SECONDS = 20 * 60
+
+
+def should_requeue_in_session(nxt: dict, now: "float | None" = None,
+                              window_sec: float = _SESSION_REQUEUE_SECONDS) -> bool:
+    """True, wenn die Karte nach der Bewertung noch in dieser Sitzung dran ist.
+
+    Wie Anki: Learning/Relearning mit nahem ``due`` bleibt in der Queue;
+    graduierte Reviews mit Tages-/Wochenintervall fallen raus."""
+    now = now if now is not None else time.time()
+    state = nxt.get("fsrs_state")
+    due = nxt.get("due")
+    if due is None:
+        return False
+    if state not in (int(State.Learning), int(State.Relearning)):
+        return False
+    return float(due) <= float(now) + float(window_sec)
 
 
 def deadline_cap_days(subject: "str | None") -> "float | None":
