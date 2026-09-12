@@ -420,6 +420,16 @@ with st.expander("📋 Karten & Fragen verwalten (auswählen, bearbeiten, lösch
     st.caption("Frage/Antwort direkt in der Tabelle bearbeiten. Häkchen setzen, um Karten "
                "zu löschen, einem Stapel zuzuordnen oder Antworten zu erzeugen. "
                "**Abfrage** = in der Lernrunde zeigen · **Embedding** = Frage im Suchindex halten.")
+    # Erfolgsmeldungen dieser Sektion ueberleben den direkt folgenden
+    # st.rerun() (der die Karten-/Filterliste neu laedt) NICHT, wenn man sie
+    # wie ueblich sofort mit st.success() anzeigt - die Meldung wird noch vor
+    # dem ersten Bildschirm-Update wieder verworfen, der Nutzer sieht sie nie
+    # (bestaetigt: verschwand auch schon im unveraenderten Tabellen-Pfad).
+    # Deshalb im session_state zwischenspeichern (Muster wie "_dl_msg" in
+    # Einstellungen.py) und HIER, ganz am Anfang des naechsten Laufs, zeigen.
+    _mv_flash = st.session_state.pop("_mv_flash", None)
+    if _mv_flash:
+        st.success(_mv_flash)
     _mf1, _mf2, _mf3, _mf4 = st.columns(4)
     _mv_subj = _mf1.selectbox("Fach", ["Alle"] + manifest.study_subjects(),
                               format_func=lambda s: "Alle" if s == "Alle" else _fach_label(s),
@@ -579,8 +589,9 @@ with st.expander("📋 Karten & Fragen verwalten (auswählen, bearbeiten, lösch
             if _emb_ids:
                 _r = study.apply_embedding_flags(_emb_ids)
                 _emb_changed = _r["removed"] + _r["added"]
-            st.success(f"Gespeichert. {_n_edit} Frage/Antwort-Änderung(en), "
-                       f"{_emb_changed} Index-Anpassung(en).")
+            st.session_state["_mv_flash"] = (
+                f"Gespeichert. {_n_edit} Frage/Antwort-Änderung(en), "
+                f"{_emb_changed} Index-Anpassung(en).")
             st.rerun()
 
         _also_chroma = _b2.checkbox("beim Löschen auch aus Suchindex", key="mv_delchroma",
@@ -593,8 +604,9 @@ with st.expander("📋 Karten & Fragen verwalten (auswählen, bearbeiten, lösch
                     get_vectorstore().delete_by_ids(_chroma)
                 except Exception:  # noqa: BLE001
                     pass
-            st.success(f"{len(_sel)} Karte(n) gelöscht"
-                       + (" (auch aus dem Suchindex)." if _also_chroma else "."))
+            st.session_state["_mv_flash"] = (
+                f"{len(_sel)} Karte(n) gelöscht"
+                + (" (auch aus dem Suchindex)." if _also_chroma else "."))
             st.rerun()
 
         if _b3.button("🤖 Antworten für Auswahl", use_container_width=True, disabled=not _sel):
@@ -606,19 +618,19 @@ with st.expander("📋 Karten & Fragen verwalten (auswählen, bearbeiten, lösch
             elif _ar["filled"] == 0:
                 st.info("Nichts zu erzeugen (Auswahl hat schon Antworten oder ergab keine).")
             else:
-                st.success(f"✅ {_ar['filled']} Antwort(en) erzeugt.")
+                st.session_state["_mv_flash"] = f"✅ {_ar['filled']} Antwort(en) erzeugt."
                 st.rerun()
 
         if _b4.button("⏸️ Auswahl pausieren", use_container_width=True, disabled=not _sel,
                       help="Pausierte Karten erscheinen nicht in Lernrunden (können später "
                            "wieder aktiviert werden)."):
             n = manifest.set_suspended(_sel, True)
-            st.success(f"{n} Karte(n) pausiert.")
+            st.session_state["_mv_flash"] = f"{n} Karte(n) pausiert."
             st.rerun()
         if st.button("▶️ Auswahl wieder aktivieren", disabled=not _sel,
                      help="Hebt die Pause für die ausgewählten Karten auf."):
             n = manifest.set_suspended(_sel, False)
-            st.success(f"{n} Karte(n) wieder aktiv.")
+            st.session_state["_mv_flash"] = f"{n} Karte(n) wieder aktiv."
             st.rerun()
 
         _asg1, _asg2 = st.columns([2, 1])
@@ -627,7 +639,8 @@ with st.expander("📋 Karten & Fragen verwalten (auswählen, bearbeiten, lösch
         if _asg2.button("➕ zu Stapel", use_container_width=True,
                         disabled=not _sel or not _asg_name.strip()):
             _n = manifest.assign_deck(_asg_name.strip(), card_ids=_sel)
-            st.success(f"{_n} Karte(n) dem Stapel „{_asg_name.strip()}“ zugeordnet.")
+            st.session_state["_mv_flash"] = (
+                f"{_n} Karte(n) dem Stapel „{_asg_name.strip()}“ zugeordnet.")
             st.rerun()
 
 st.divider()
