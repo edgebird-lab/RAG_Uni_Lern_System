@@ -882,7 +882,16 @@ def _scope(subject: Optional[str], deck: Optional[str],
 
 def review_counts(subject: Optional[str] = None, deck: Optional[str] = None,
                   decks: Optional[list[str]] = None) -> dict:
-    """Zaehlt Karten: gesamt / faellig / neu (nie geuebt) / gelernt (schon geuebt)."""
+    """Zaehlt Karten: gesamt / faellig / neu (nie geuebt) / gelernt (schon geuebt).
+
+    ACHTUNG bei "faellig": das ist der ROHE ``due<=jetzt``-Wert, der brandneue
+    (nie geuebte) Karten NICHT vom taeglichen Neue-Karten-Limit abzieht - eine
+    frisch geerntete Karte bekommt ``due=Erstellungszeitpunkt`` (siehe
+    ``upsert_review_items``) und ist damit SOFORT technisch faellig, auch wenn
+    das Tageslimit sie absichtlich zurueckhaelt. Fuer eine Anzeige, die dem
+    Nutzer sagt "das ist JETZT dran", ``effective_due_count()`` verwenden
+    (siehe dortigen Docstring) - dieser rohe Wert bleibt fuer Faelle, die
+    wirklich die reine Datenbank-Zahl brauchen."""
     now = time.time()
     fsql, fargs = _scope(subject, deck, decks)
     where = "WHERE suspended=0 AND use_flashcard=1" + fsql
@@ -896,6 +905,51 @@ def review_counts(subject: Optional[str] = None, deck: Optional[str] = None,
             "neu": one(" AND reps=0", []),
             "gelernt": one(" AND reps>0", []),
         }
+
+
+def due_breakdown(subject: Optional[str] = None, deck: Optional[str] = None,
+                  decks: Optional[list[str]] = None) -> dict:
+    """Faellige Karten AUFGETEILT in echte Wiederholungen (``reps>0``, wirklich
+    vom FSRS-Algorithmus faellig gestellt) und brandneue, noch nie geuebte
+    Karten (``reps=0``, per Definition SOFORT ab Erstellung technisch
+    "faellig"). Grundlage von ``effective_due_count()`` - getrennt, damit ein
+    Aufrufer (z. B. die Lernen-Seite mit ihrem live einstellbaren
+    Tages-Regler) das Neue-Karten-Limit selbst anwenden kann, statt sich auf
+    den gespeicherten Standardwert zu verlassen."""
+    now = time.time()
+    fsql, fargs = _scope(subject, deck, decks)
+    where = "WHERE suspended=0 AND use_flashcard=1" + fsql
+    with _connect() as conn:
+        def one(extra, a):
+            return conn.execute(f"SELECT COUNT(*) AS c FROM review_items {where}{extra}",
+                                fargs + a).fetchone()["c"]
+        return {
+            "due_review": one(" AND due<=? AND reps>0", [now]),
+            "due_new": one(" AND due<=? AND reps=0", [now]),
+        }
+
+
+def effective_due_count(subject: Optional[str] = None, deck: Optional[str] = None,
+                        decks: Optional[list[str]] = None,
+                        new_per_day: Optional[int] = None) -> int:
+    """Die Zahl, die einem Nutzer ehrlich sagt "das ist JETZT dran" - im
+    Unterschied zu ``review_counts()['due']`` NICHT einfach jede je erstellte,
+    noch nie geuebte Karte mitgezaehlt (die zeigte z. B. "80 Karten fällig",
+    obwohl an dem Tag schon das volle Tages-Limit von 20 neuen Karten gelernt
+    wurde - das sieht wie ein Rueckstand aus, ist aber genau das gewollte
+    Limit). Zaehlt echte faellige Wiederholungen PLUS neue faellige Karten,
+    aber neue nur bis zum heute noch UEBRIGEN Neue-Karten-Kontingent
+    (``new_per_day`` - Default: ``settings.SRS_NEW_PER_DAY``; ``<= 0`` =
+    unbegrenzt, wie beim bestehenden Regler auf der Lernen-Seite)."""
+    b = due_breakdown(subject, deck, decks)
+    if new_per_day is None:
+        from ragapp.config import settings
+        new_per_day = int(getattr(settings, "SRS_NEW_PER_DAY", 20))
+    if new_per_day <= 0:
+        return b["due_review"] + b["due_new"]
+    neu_heute = count_new_today(subject, deck=deck, decks=decks)
+    rest = max(0, new_per_day - neu_heute)
+    return b["due_review"] + min(b["due_new"], rest)
 
 
 def _interleave_by_topic(cards: list[dict]) -> list[dict]:

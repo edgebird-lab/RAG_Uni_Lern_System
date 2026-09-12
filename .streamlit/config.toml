@@ -12,8 +12,17 @@ maxUploadSize = 500
 # damit das Handy die App "zum Home-Bildschirm hinzufuegen" kann
 enableStaticServing = true
 
-[theme]
-base = "light"
+# Bewusst KEIN [theme]/base mehr gesetzt: das legte Streamlits eigenes,
+# internes Theme (Farben fuer native Widgets) serverweit/GLOBAL auf "hell"
+# fest - fuer JEDES Geraet, das sich verbindet, unabhaengig von dessen
+# eigener OS-/Browser-Einstellung (Nutzer-Feedback: "Handy hat Darkmode,
+# will aber Whitemode - ist gesperrt, richtet sich nach der globalen
+# Einstellung"). Ohne "base" erkennt Streamlit selbst PRO BROWSER/GERAET
+# (ueber prefers-color-scheme, genau wie unser eigener Umschalter unten)
+# und macht die App wirklich pro Geraet unabhaengig hell/dunkel waehlbar -
+# siehe ragapp/ui/_style.py (_theme_toggle_html) fuer den manuellen
+# Umschalt-Knopf, der zusaetzlich (localStorage, ebenfalls pro Geraet) das
+# eigene "rag-dark"-Stylesheet steuert.
 
 [client]
 # Kein "Deploy"-Button und kein Entwickler-Menue oben rechts (wirkt wie eine echte App)

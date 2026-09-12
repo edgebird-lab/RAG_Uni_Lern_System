@@ -530,9 +530,36 @@ with card("player"):
     else:
         _audio_bytes = _audio_path.read_bytes()
         st.audio(_audio_bytes, format="audio/wav")
-        st.download_button("⬇️ Herunterladen", data=_audio_bytes,
-                           file_name=f"{_active['title']}.wav", mime="audio/wav",
-                           use_container_width=True)
+
+        # Nutzer-Wunsch: weg von reinem WAV, Dateityp beim Download waehlbar
+        # machen ("eigene Converter integrieren") - nutzt denselben
+        # torchaudio/ffmpeg-Weg, der sich beim Hoerbuch-Export schon bewaehrt
+        # hat (siehe ragapp/audio_convert.py). Ergebnis pro (Overview, Format)
+        # zwischengespeichert, damit ein Klick auf "Herunterladen" (das selbst
+        # einen Rerun ausloest) nicht jedes Mal neu konvertiert.
+        from ragapp import audio_convert
+        _dl_format = st.selectbox(
+            "Format zum Herunterladen", list(audio_convert.SUPPORTED_FORMATS.keys()),
+            format_func=lambda f: audio_convert.SUPPORTED_FORMATS[f]["label"],
+            key=f"audio_dl_format_{_active_id}")
+        _dl_spec = audio_convert.SUPPORTED_FORMATS[_dl_format]
+        _cache_key = f"_audio_dl_cache_{_active_id}_{_dl_format}"
+        if _dl_format == "wav":
+            st.session_state[_cache_key] = _audio_bytes
+        elif _cache_key not in st.session_state:
+            with st.spinner(f"Wandle nach {_dl_format.upper()} um …"):
+                try:
+                    st.session_state[_cache_key] = audio_convert.convert_wav_bytes(
+                        _audio_bytes, _dl_format)
+                except audio_convert.AudioConvertError as exc:
+                    st.session_state[_cache_key] = None
+                    st.error(str(exc))
+        _dl_bytes = st.session_state.get(_cache_key)
+        if _dl_bytes:
+            st.download_button(
+                f"⬇️ Herunterladen ({_dl_spec['ext'].upper()})", data=_dl_bytes,
+                file_name=f"{_active['title']}.{_dl_spec['ext']}", mime=_dl_spec["mime"],
+                use_container_width=True, key=f"audio_dl_go_{_active_id}_{_dl_format}")
 
     st.markdown("##### 📝 Skript bearbeiten")
     st.caption("Text kürzen, falsche Angaben rausnehmen oder frei umschreiben - „Speichern & "

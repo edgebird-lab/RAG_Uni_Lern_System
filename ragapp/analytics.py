@@ -107,7 +107,13 @@ def overview(subject: Optional[str] = None) -> dict:
         def n(extra: str, a: list = []) -> int:
             return c.execute(f"SELECT COUNT(*) AS x {base}{extra}", sa + a).fetchone()["x"]
         total = n("")
-        due = n(" AND due<=?", [now])
+        # NICHT der rohe "due<=jetzt"-Wert: der zaehlt jede je erstellte, nie
+        # geuebte Karte sofort mit, obwohl das taegliche Neue-Karten-Limit sie
+        # absichtlich zurueckhaelt (siehe manifest.effective_due_count()-
+        # Docstring - das war die Ursache von "80 Karten fällig", obwohl das
+        # Tageslimit schon erfuellt war).
+        from ragapp import manifest as _manifest
+        due = _manifest.effective_due_count(subject)
         neu = n(" AND reps=0")
         gelernt = n(" AND reps>0")
         sitzt = n(" AND reps>=?", [tgt])
@@ -397,7 +403,12 @@ def progress_snapshot_trend(subject: Optional[str] = None, days: int = 14) -> li
 
 
 def daily_goal_status(subject: Optional[str] = None) -> dict:
-    """Heutiges Tagesziel + Backlog-Ampel: heute geuebt vs. Ziel, faellige Karten."""
+    """Heutiges Tagesziel + Backlog-Ampel: heute geuebt vs. Ziel, faellige Karten.
+
+    "faellige Karten" ist die um das Neue-Karten-Tageslimit BEREINIGTE Zahl
+    (siehe manifest.effective_due_count()) - sonst koennte die Ampel faelschlich
+    Rot zeigen, nur weil viele brandneue, noch nie geuebte Karten existieren,
+    obwohl das Tageslimit sie ohnehin zurueckhaelt."""
     goal = max(1, int(getattr(settings, "DAILY_REVIEW_GOAL", 40)))
     now = time.time()
     sc, sa = _subj_clause(subject)
@@ -405,9 +416,8 @@ def daily_goal_status(subject: Optional[str] = None) -> dict:
         today = c.execute(
             "SELECT COUNT(*) AS r FROM review_log WHERE reviewed_at>=?" + sc,
             [_day_start(now)] + sa).fetchone()["r"] or 0
-        due = c.execute(
-            "SELECT COUNT(*) AS d FROM review_items WHERE suspended=0 AND use_flashcard=1 "
-            "AND due<=?" + sc, [now] + sa).fetchone()["d"] or 0
+    from ragapp import manifest as _manifest
+    due = _manifest.effective_due_count(subject)
     ampel = "grün" if due <= goal else ("gelb" if due <= 2 * goal else "rot")
     return {"goal": goal, "done_today": today, "due": due,
             "goal_reached": today >= goal, "ampel": ampel}
