@@ -124,7 +124,7 @@ if exam.get("done"):
         _sc = it.get("score")
         _icon = "✅" if (_sc or 0) >= 75 else ("🟡" if (_sc or 0) >= 40 else "❌")
         with st.expander(f"{_icon} Aufgabe {i} · {_sc if _sc is not None else '—'} % · "
-                         f"{_fach(it.get('subject') or '')}"):
+                         f"{_fach(it.get('subject') or '')}", key=f"pruefung_item_{i}"):
             st.markdown(f"**Frage:** {it['front']}")
             st.markdown(f"**Deine Antwort:** {it.get('typed') or '_(leer)_'}")
             if it.get("feedback"):
@@ -133,6 +133,26 @@ if exam.get("done"):
                 st.caption("Fehlt: " + " · ".join(it["fehlt"]))
             with st.popover("Musterlösung"):
                 st.markdown(it.get("reference") or "—")
+            # Bei einer schwachen Antwort direkt eine klaerende Notiz anlegen
+            # koennen - gleiches Prefill-Muster wie beim Chat ("Als Notiz
+            # speichern") - hier zusaetzlich mit Fach/Dokument/Thema vorbelegt,
+            # weil eine Klausur-Karte diese Zuordnung (anders als eine freie
+            # Chat-Antwort) bereits kennt.
+            if (_sc or 0) < 75 and st.button("📝 Notiz schreiben", key=f"pruefung_note_{i}",
+                                             help="Öffnet die Notizen-Seite mit dieser "
+                                                  "Aufgabe als Ausgangstext."):
+                _note_body = (
+                    f"**Frage:** {it['front']}\n\n"
+                    f"**Meine Antwort:** {it.get('typed') or '(leer)'}\n\n"
+                    + (f"**Feedback:** {it['feedback']}\n\n" if it.get("feedback") else "")
+                    + f"**Musterlösung:** {it.get('reference') or '—'}"
+                )
+                st.session_state["note_prefill"] = {
+                    "subject": it.get("subject"), "doc_id": it.get("doc_id"),
+                    "topic": it.get("topic"), "title": it["front"][:80],
+                    "body": _note_body,
+                }
+                st.switch_page("pages/12_🗒️_Notizen.py")
     if st.button("🔁 Neue Probeklausur", use_container_width=True):
         del st.session_state[EXAM]
         st.rerun()
@@ -170,7 +190,8 @@ def _auswerten():
         study.rate_card(card, rating)   # Ergebnis fließt in die Wiederholungs-Planung
         items.append({"front": card.get("front"), "subject": card.get("subject"),
                       "typed": typed, "reference": ref, "score": g.get("score"),
-                      "feedback": g.get("feedback"), "fehlt": g.get("fehlt")})
+                      "feedback": g.get("feedback"), "fehlt": g.get("fehlt"),
+                      "doc_id": card.get("doc_id"), "topic": card.get("topic")})
         if g.get("score") is not None:
             scored.append(g["score"])
         prog.progress(j / len(exam["cards"]), text=f"Benotet {j}/{len(exam['cards'])} …")
