@@ -227,24 +227,68 @@ _active_id = st.session_state.get("audio_choice")
 
 # --------------------------------------------------------------------------- #
 # Dauerhaft gemerkte Ausspracheregeln (siehe _render_pronunciation_hints/
-# manifest.pronunciation_fixes) - Uebersicht + Loeschen, falls sich eine
-# Korrektur im Nachhinein als falsch herausstellt. Nur sichtbar, wenn es
-# ueberhaupt welche gibt, damit die Seite ohne gespeicherte Korrekturen nicht
-# unnoetig Platz braucht.
+# manifest.pronunciation_fixes) - Uebersicht mit Bearbeiten/Loeschen, falls
+# sich eine Korrektur im Nachhinein als falsch herausstellt, PLUS die
+# Moeglichkeit, eigene Regeln unabhaengig von einer KI-Erkennung neu
+# anzulegen (z. B. ein Fachbegriff, den die KI noch nie als falsch
+# ausgesprochen gemeldet hat). Der Expander bleibt daher immer sichtbar,
+# auch ohne bereits gespeicherte Regeln.
 # --------------------------------------------------------------------------- #
+# Nach erfolgreichem Hinzufuegen die beiden Eingabefelder leeren - MUSS vor der
+# Widget-Erzeugung passieren (siehe unten): st.session_state[key] direkt nach
+# dem Klick zu setzen, waere zu spaet und wirft StreamlitAPIException
+# ("cannot be modified after the widget ... is instantiated"), weil die
+# Widgets in DEMSELBEN Skriptlauf schon vorher gerendert wurden - deshalb der
+# Umweg ueber einen "pending"-Schluessel (gleiches Muster wie
+# "_audio_pending_choice" oben).
+if st.session_state.pop("_pron_new_clear_pending", False):
+    st.session_state["pron_new_word"] = ""
+    st.session_state["pron_new_replacement"] = ""
+
 _pron_fixes = manifest.list_pronunciation_fixes()
-if _pron_fixes:
-    with st.expander(f"🔤 {len(_pron_fixes)} gespeicherte Ausspracheregel(n) verwalten",
-                     key="pron_manage_expander"):
-        st.caption("Gilt automatisch für alle Audio-Overviews (KI-generiert, selbst "
-                   "geschrieben oder neu vertont).")
+_pron_label = (f"🔤 {len(_pron_fixes)} gespeicherte Ausspracheregel(n) verwalten"
+              if _pron_fixes else "🔤 Ausspracheregeln verwalten")
+with st.expander(_pron_label, key="pron_manage_expander"):
+    st.caption("Gilt automatisch für alle Audio-Overviews (KI-generiert, selbst "
+               "geschrieben oder neu vertont).")
+    if _pron_fixes:
         for _word, _replacement in _pron_fixes.items():
-            _pc1, _pc2, _pc3 = st.columns([2, 3, 1])
+            _pc1, _pc2, _pc3, _pc4 = st.columns([2, 3, 1, 1])
             _pc1.markdown(f"**{_word}**")
-            _pc2.caption(f"→ {_replacement}")
-            if _pc3.button("🗑️", key=f"pron_del_{_word}", help="Regel löschen"):
+            _new_repl = _pc2.text_input(
+                "Ersetzung", value=_replacement, key=f"pron_edit_{_word}",
+                label_visibility="collapsed")
+            if _pc3.button("💾", key=f"pron_save_{_word}", help="Änderung speichern"):
+                _clean_repl = (_new_repl or "").strip()
+                if _clean_repl:
+                    manifest.upsert_pronunciation_fix(_word, _clean_repl)
+                    st.success(f"„{_word}“ aktualisiert.")
+                    st.rerun()
+                else:
+                    st.warning("Ersetzung darf nicht leer sein.")
+            if _pc4.button("🗑️", key=f"pron_del_{_word}", help="Regel löschen"):
                 manifest.delete_pronunciation_fix(_word)
                 st.rerun()
+        st.divider()
+
+    st.markdown("**➕ Neue Regel hinzufügen**")
+    st.caption("Für eigene Sprachregeln - z. B. ein Fachbegriff, den die KI falsch vorschlägt "
+              "oder noch gar nicht erkannt hat.")
+    _npc1, _npc2, _npc3 = st.columns([2, 3, 1])
+    _new_word_val = _npc1.text_input("Wort/Ausdruck", key="pron_new_word",
+                                     placeholder="z. B. nmap")
+    _new_repl_val = _npc2.text_input("Gesprochene Ersetzung", key="pron_new_replacement",
+                                     placeholder="z. B. en map")
+    if _npc3.button("➕ Hinzufügen", key="pron_add_new", use_container_width=True):
+        _w = (_new_word_val or "").strip()
+        _r = (_new_repl_val or "").strip()
+        if not _w or not _r:
+            st.warning("Bitte Wort UND Ersetzung eingeben.")
+        else:
+            manifest.upsert_pronunciation_fix(_w, _r)
+            st.session_state["_pron_new_clear_pending"] = True
+            st.success(f"Regel für „{_w}“ gespeichert.")
+            st.rerun()
 
 # --------------------------------------------------------------------------- #
 # Hörbuch-Export: mehrere Audio-Overviews in gewählter Reihenfolge zu einem
