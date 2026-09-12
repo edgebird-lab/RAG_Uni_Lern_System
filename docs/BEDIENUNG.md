@@ -279,8 +279,11 @@ Aus gewählten Unterlagen entsteht ein **Marp-Markdown-Vortrag** plus separates
    URL setzen und „Verbindung testen“; oft nur per VPN/LAN erreichbar. Treffer
    werden gegen eine Domain-Allowlist gefiltert (arxiv, PubMed, Nature, …) und
    als **Zusatzwissen** in Folien/Skript eingearbeitet (nicht nur Literaturliste).
-3. Folien & Skript prüfen/bearbeiten, speichern, mit der **gleichen Stimme** wie
-   beim Audio-Overview vertonen.
+3. Folien & Skript prüfen/bearbeiten (inkl. Aussprache-Korrekturen wie beim
+   Audio-Overview), speichern, mit der **gleichen Stimme** vertonen.
+   Erzeugung läuft **abschnittweise** (wie Audio-Overview): jedes Kapitel bekommt
+   eigene Folien + ausführliches Sprecher-Skript; optionale SearXNG-Treffer einen
+   eigenen „Zusatzwissen“-Lauf – kein einzelnes Riesen-JSON mehr.
 4. Export: Marp-`.md`, WAV, optional HTML (Marp-CLI) und **MP4** (PNG-Folien +
    Audio per ffmpeg). Ohne installiertes Marp-CLI bleiben MD + Audio nutzbar.
 
