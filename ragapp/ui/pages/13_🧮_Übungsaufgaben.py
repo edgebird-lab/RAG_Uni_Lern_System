@@ -58,10 +58,10 @@ if not _subjects_with_docs:
     from ragapp.ui._style import empty_state, page_title as _pt
     empty_state(
         "Noch keine indexierten Dokumente vorhanden.",
-        cta_label=f"Zu {_pt('ingestion')}",
-        page_key="ingestion",
+        cta_label=f"Zu {_pt('dokumente')}",
+        page_key="dokumente",
         icon="📥",
-        key="uebung_empty_ingestion",
+        key="uebung_empty_dokumente",
     )
     st.stop()
 

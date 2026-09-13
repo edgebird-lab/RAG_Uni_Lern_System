@@ -60,7 +60,7 @@ PAGE_REGISTRY: list[dict] = [
      "target": "pages/10_⏱️_Lernzeit.py", "category": "Fortschritt"},
     {"key": "ingestion", "icon": "📥", "title": "Import", "subtitle": "Dokumente einlesen",
      "target": "pages/1_📥_Ingestion.py", "category": "Verwalten"},
-    {"key": "dokumente", "icon": "🗃️", "title": "Dokumente", "subtitle": "Bibliothek verwalten",
+    {"key": "dokumente", "icon": "🗃️", "title": "Dokumente", "subtitle": "Hochladen, Ordner, Bibliothek",
      "target": "pages/9_🗃️_Dokumentenmanager.py", "category": "Verwalten"},
     {"key": "organisation", "icon": "🗂️", "title": "Organisation", "subtitle": "Stundenplan & Fächer",
      "target": "pages/8_🗂️_Organisation.py", "category": "Verwalten"},
@@ -78,7 +78,7 @@ HAMBURGER_KEYS = ["home", "chat", "lernen", "fortschritt"]
 HOME_PIN_KEYS = ["lernen", "chat", "fortschritt", "lernplan", "organisation", "pruefung"]
 
 # Operator-Seiten: nicht im Studenten-Alltag (Home/Hamburger-Gruppen).
-HIDDEN_PAGE_KEYS = {"evaluation"}
+HIDDEN_PAGE_KEYS = {"evaluation", "ingestion"}
 
 # --------------------------------------------------------------------------- #
 # Pastell-Palette je Seite (Akzent + weicher Hintergrundton + Anzeigename).

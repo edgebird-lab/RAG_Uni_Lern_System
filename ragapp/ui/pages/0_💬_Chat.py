@@ -244,12 +244,12 @@ with st.sidebar:
 if stats["chunks"] == 0:
     from ragapp.ui._style import empty_state, page_title as _pt
     empty_state(
-        "Noch keine Dokumente indexiert. Starte den Import oder lege Dateien in den "
-        "Quellordner.",
-        cta_label=f"Zu {_pt('ingestion')}",
-        page_key="ingestion",
+        "Noch keine Dokumente indexiert. Lade Dateien unter **Dokumente** hoch "
+        "oder lege sie in den Quellordner.",
+        cta_label=f"Zu {_pt('dokumente')}",
+        page_key="dokumente",
         icon="📥",
-        key="chat_empty_ingestion",
+        key="chat_empty_dokumente",
     )
 
 

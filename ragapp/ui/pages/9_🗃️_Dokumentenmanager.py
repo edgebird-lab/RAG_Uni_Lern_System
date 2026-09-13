@@ -1,10 +1,8 @@
 """
-RAG-Lernsystem: Seite „Dokumentenmanager" (Kacheln, Vorschau, Kategorien)
-============================================================================
-Paperless-ngx-artige Übersicht über ALLE registrierten Dokumente (auch die nur
-archivierten, ohne RAG) - mit Vorschau-Kacheln, Ansehen, Download und frei
-vergebenen Kategorien. Fach & RAG-Auswahl bleiben auf der Seite "Ingestion"
-(dort mit dem Import verzahnt); hier geht es um Durchblättern/Wiederfinden.
+RAG-Lernsystem: Seite „Dokumentenmanager" (Ordner, Upload, Bibliothek)
+=======================================================================
+Fach-Ordner, Hochladen/Indexieren, Vorschau-Kacheln, Seitenzahl, Löschen.
+Fragen-Anreicherung und Karten-Ernte liegen bei den Karteikarten.
 """
 from __future__ import annotations
 
@@ -32,14 +30,16 @@ h1 {font-weight: 750; letter-spacing:-0.5px;}
 </style>
 """, unsafe_allow_html=True)
 
-st.caption("Alle Dokumente auf einen Blick – ansehen, herunterladen, Kategorien "
-           "vergeben. Auch archivierte (nicht im RAG) Dokumente tauchen hier auf.")
+st.caption("Ordner = Fächer. Lade Dokumente direkt in ein Fach, sieh sie an "
+           "(inkl. Seitenzahl), lösche sie hier. Auch archivierte (nicht im RAG) "
+           "Dokumente tauchen auf. Fragen und Karteikarten erzeugst du unter "
+           "**🎓 Karteikarten**.")
 
 with skeleton("Dokumentenmanager wird geladen ..."):
     import pandas as pd
     from ragapp import manifest
     from ragapp.config import SUBJECT_LABELS, PROJECT_ROOT
-    from ragapp.ui import _docviewer
+    from ragapp.ui import _docviewer, _ingest_ui
     from ragapp.ui._thumbnails import get_thumbnail, get_text_preview
 
 _ICONS = {"pdf": "📕", "docx": "📄", "pptx": "📊", "md": "📝", "txt": "📄", "catalog": "🗒️"}
@@ -81,25 +81,36 @@ def _build_zip(docs: list[dict]) -> bytes:
 
 
 def _selection_bar(selected: list[dict], key_prefix: str) -> None:
-    """Zeigt - wenn welche ausgewählt sind - Anzahl + ZIP-Download-Button. Kacheln
+    """Zeigt - wenn welche ausgewählt sind - Anzahl, ZIP und Löschen. Kacheln
     und Liste führen ihre Auswahl bewusst UNABHÄNGIG (eigene Widgets, eigene
     Zustände) - einfacher und ohne Session-State-Konflikte zwischen den beiden
     Tabs (ein data_editor darf den Wert eines anderswo instanziierten Checkbox-
     Widgets nicht überschreiben)."""
     if not selected:
         return
-    c1, c2 = st.columns([3, 2])
+    c1, c2, c3 = st.columns([2, 2, 2])
     c1.info(f"🗂️ {len(selected)} Dokument(e) ausgewählt.")
     with c2:
         st.download_button(
-            f"⬇️ Als ZIP herunterladen ({len(selected)})", data=_build_zip(selected),
+            f"⬇️ Als ZIP ({len(selected)})", data=_build_zip(selected),
             file_name="dokumente.zip", mime="application/zip",
             key=f"{key_prefix}_zip", use_container_width=True)
+    _ok = c3.checkbox("Ja, löschen", key=f"{key_prefix}_del_ok")
+    if c3.button(f"🗑️ {len(selected)} löschen", type="secondary",
+                 disabled=not _ok, key=f"{key_prefix}_del",
+                 use_container_width=True):
+        _n, _err = _ingest_ui.delete_documents([d["doc_id"] for d in selected])
+        if _err:
+            st.warning(" · ".join(_err[:4]))
+        st.success(f"{_n} Dokument(e) gelöscht.")
+        st.rerun()
 
 
 @st.dialog("📄 Dokument ansehen", width="large")
 def _view_doc_dialog(d: dict) -> None:
+    _pages = _ingest_ui.document_page_label(d)
     st.markdown(f"**{d['filename']}**  ·  Fach: {_fach(d['subject'])}"
+               + f"  ·  {_pages}"
                + ("  ·  ⚪ archiviert (nicht im RAG)" if not d.get("use_rag", 1) else ""))
     path = PROJECT_ROOT / (d.get("source_path") or "")
     if not path.is_file():
@@ -108,6 +119,7 @@ def _view_doc_dialog(d: dict) -> None:
 
     if (d.get("filetype") or "").lower() == "pdf":
         n_pages = _docviewer.pdf_page_count(path)
+        st.caption(f"PDF · **{n_pages} Seite(n)**" if n_pages else "PDF · Seitenzahl unbekannt")
         page = (st.number_input("Seite", min_value=1, max_value=max(1, n_pages), value=1,
                                 key=f"docmgr_page_{d['doc_id']}")
                if n_pages > 1 else 1)
@@ -144,7 +156,7 @@ def _view_doc_dialog(d: dict) -> None:
         }
         st.switch_page("pages/12_🗒️_Notizen.py")
     st.markdown("##### Fach & RAG")
-    _subj_opts = sorted({x.get("subject") for x in manifest.list_documents() if x.get("subject")})
+    _subj_opts = sorted({x.get("subject") for x in _ingest_ui._document_dicts() if x.get("subject")})
     if d.get("subject") and d["subject"] not in _subj_opts:
         _subj_opts.insert(0, d["subject"])
     _new_subj = st.selectbox("Fach", _subj_opts or [d.get("subject") or "–"],
@@ -187,10 +199,75 @@ def _view_doc_dialog(d: dict) -> None:
         st.session_state["audio_prefill_subject"] = d.get("subject")
         st.switch_page("pages/15_🎧_Audio-Overview.py")
 
+    st.divider()
+    st.markdown("##### 🗑️ Dokument löschen")
+    st.caption("Entfernt Datei, Chunks und Fragen aus Bibliothek und Suchindex.")
+    _del_ok = st.checkbox("Ja, dieses Dokument wirklich löschen",
+                          key=f"docmgr_del_ok_{d['doc_id']}")
+    if st.button("🗑️ Dokument löschen", type="secondary", disabled=not _del_ok,
+                 key=f"docmgr_del_{d['doc_id']}", use_container_width=True):
+        _n, _err = _ingest_ui.delete_documents([d["doc_id"]])
+        if _err:
+            st.error(" · ".join(_err))
+        else:
+            st.success(f"„{d['filename']}“ gelöscht.")
+            st.rerun()
+
+
+# --------------------------------------------------------------------------- #
+# Ordner (= Fächer) + Upload, bevor die Bibliothek kommt – auch bei 0 Dokumenten
+# --------------------------------------------------------------------------- #
+_all_docs = [dict(d) for d in manifest.list_documents()]
+_folder_names = sorted({d["subject"] for d in _all_docs if d.get("subject")}
+                       | set(_ingest_ui.extra_folders()))
+_folder = st.session_state.get("doc_folder")
+if _folder and _folder not in _folder_names:
+    _folder_names = [_folder] + _folder_names
+
+with card("ordner"):
+    st.subheader("📁 Fächer als Ordner")
+    st.caption("Wähle einen Ordner – neue Uploads landen dort. Ein leerer Ordner "
+               "bleibt nach dem Löschen aller Dateien ausgewählt.")
+    _chip_labels = ["Alle"] + _folder_names
+    _per = 6
+    for _row_i in range(0, len(_chip_labels), _per):
+        _row = _chip_labels[_row_i:_row_i + _per]
+        _chip_cols = st.columns(len(_row))
+        for _col, _name in zip(_chip_cols, _row):
+            _here = (_name == "Alle" and not _folder) or (_name == _folder)
+            if _col.button(
+                f"{'📂' if _name == 'Alle' else '📁'} "
+                f"{'Alle' if _name == 'Alle' else _fach(_name)}",
+                type="primary" if _here else "secondary",
+                key=f"doc_folder_chip_{_name}",
+                use_container_width=True,
+            ):
+                st.session_state["doc_folder"] = None if _name == "Alle" else _name
+                st.rerun()
+    _nf1, _nf2 = st.columns([3, 1])
+    _new_folder = _nf1.text_input("Neuer Ordner (Fachname)", key="doc_new_folder",
+                                  placeholder="z. B. BWL oder Statistik")
+    if _nf2.button("➕ Ordner", use_container_width=True, key="doc_new_folder_go",
+                   disabled=not (_new_folder or "").strip()):
+        _ingest_ui.remember_folder(_new_folder.strip())
+        st.rerun()
+
+_ingest_ui.render_upload(default_subject=st.session_state.get("doc_folder"))
+_ingest_ui.render_ocr_warnings()
+with st.expander("Weitere Importwege (Inbox, Quellordner)", expanded=False):
+    _ingest_ui.render_inbox_scan()
+    _ingest_ui.render_source_folder()
 
 _docs = [dict(d) for d in manifest.list_documents()]
+_folder = st.session_state.get("doc_folder")
+if _folder:
+    _docs = [d for d in _docs if d.get("subject") == _folder]
 if not _docs:
-    st.info("Noch keine Dokumente indexiert. Gehe zu **📥 Import**, um welche hinzuzufügen.")
+    if _folder:
+        st.info(f"Ordner **{_fach(_folder)}** ist leer. Lade oben Dateien hoch – "
+                "sie werden diesem Fach zugeordnet.")
+    else:
+        st.info("Noch keine Dokumente. Lade oben welche hoch und wähle ein Fach.")
     st.stop()
 
 # --------------------------------------------------------------------------- #
@@ -281,7 +358,7 @@ with tab_kacheln:
                             f"padding:16px 0;'>{_icon}</div>", unsafe_allow_html=True)
                     st.caption(f"**{d['filename']}**")
                     _badge = "🟢 im RAG" if d.get("use_rag", 1) else "⚪ archiviert"
-                    st.caption(f"{_fach(d.get('subject'))} · {_badge}")
+                    st.caption(f"{_fach(d.get('subject'))} · {_ingest_ui.document_page_label(d)} · {_badge}")
                     if d.get("tags"):
                         st.caption(f"🏷️ {d['tags']}")
                     st.checkbox("Auswählen", key=f"docmgr_sel_{d['doc_id']}",
@@ -324,12 +401,13 @@ with tab_liste:
     if not _filtered:
         st.info("Keine Dokumente für diese Filterung.")
     else:
-        st.caption("Kategorien in Serie vergeben (kommagetrennt) und/oder mehrere "
-                   "Dokumente für den ZIP-Download markieren. Fach und RAG-Auswahl "
-                   "änderst du auf der Seite **📥 Import**.")
+        st.caption("Kategorien in Serie vergeben (kommagetrennt), markieren für "
+                   "ZIP-Download oder Löschen. Fach und RAG änderst du im Dialog "
+                   "**Ansehen**.")
         _list_orig = {d["doc_id"]: d for d in _filtered}
         _list_df = pd.DataFrame([{
             "✓": False, "Dateiname": d["filename"], "Fach": _fach(d.get("subject")),
+            "Seiten": _ingest_ui.document_page_label(d),
             "Im RAG": "🟢" if d.get("use_rag", 1) else "⚪",
             "Kategorien": d.get("tags") or "", "_id": d["doc_id"],
         } for d in _filtered])
@@ -339,6 +417,7 @@ with tab_liste:
                 "✓": st.column_config.CheckboxColumn(width="small"),
                 "Dateiname": st.column_config.TextColumn(disabled=True),
                 "Fach": st.column_config.TextColumn(disabled=True),
+                "Seiten": st.column_config.TextColumn(disabled=True, width="small"),
                 "Im RAG": st.column_config.TextColumn(disabled=True, width="small"),
                 "_id": None,
             },
@@ -360,3 +439,6 @@ with tab_liste:
         _liste_selected = [_list_orig[row["_id"]] for _, row in _list_edited.iterrows()
                           if row["✓"] and row["_id"] in _list_orig]
         _selection_bar(_liste_selected, "docmgr_liste")
+
+with st.expander("Nur Fragen löschen (Dokumente bleiben)", expanded=False):
+    _ingest_ui.render_question_cleanup()

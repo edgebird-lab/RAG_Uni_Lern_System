@@ -429,7 +429,7 @@ def _doc_context(doc_ids: list[str], *, max_chars: int = 14000) -> str:
     if not granular:
         raise TalkError(
             "Keine indexierten Abschnitte gefunden. Die gewählten Dokumente "
-            "müssen im RAG sein (Seite Import → ‚Im RAG‘-Häkchen).")
+            "müssen im RAG sein (Dokumente → Ansehen → ‚Im RAG‘).")
     parts: list[str] = []
     total = 0
     for label, title, body in granular:
@@ -694,7 +694,7 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
     if not granular:
         raise TalkError(
             "Keine indexierten Abschnitte gefunden. Die gewählten Dokumente "
-            "müssen im RAG sein (Seite Import → ‚Im RAG‘-Häkchen).")
+            "müssen im RAG sein (Dokumente → Ansehen → ‚Im RAG‘).")
 
     used_model = model or settings.author_model()
     llm_obj = get_llm(used_model)

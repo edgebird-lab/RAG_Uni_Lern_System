@@ -130,6 +130,13 @@ def test_evaluation_ist_im_studenten_alltag_versteckt():
 def test_ingestion_heisst_import_lernen_heisst_karteikarten():
     assert page_title("ingestion").endswith("Import")
     assert "Karteikarten" in page_title("lernen")
+    assert "Dokumente" in page_title("dokumente")
+
+
+def test_ingestion_ist_im_studenten_alltag_versteckt():
+    assert "ingestion" in HIDDEN_PAGE_KEYS
+    assert "ingestion" not in HOME_PIN_KEYS
+    assert "ingestion" not in HAMBURGER_KEYS
 
 
 def test_jede_seite_ist_genau_einmal_in_page_registry():

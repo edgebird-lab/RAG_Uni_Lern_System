@@ -299,6 +299,40 @@ def save_voice_reference(audio_bytes: bytes) -> str:
     return str(dest)
 
 
+def keep_filter_option(current: Optional[str], available: list[str],
+                       *, all_label: str = "Alle") -> list[str]:
+    """Hält den gewählten Filter, auch wenn nach dem Löschen keine Karten mehr da sind.
+
+    Sonst springt ein Selectbox auf „Alle“ und der nächste Klick löscht fremde Karten.
+    """
+    opts = [all_label]
+    for s in available:
+        if s and s not in opts:
+            opts.append(s)
+    if current and current not in opts and current != all_label:
+        opts.insert(1, current)
+    return opts
+
+
+def card_wipe_message(*, deleted: int, remaining: int, subject: Optional[str] = None,
+                      subject_label: Optional[str] = None,
+                      document: Optional[str] = None) -> str:
+    """Meldung nach dem Löschen – besonders wenn ein Fach/Dokument jetzt leer ist."""
+    scope: list[str] = []
+    if subject:
+        scope.append(f"Fach „{subject_label or subject}“")
+    if document:
+        scope.append(f"Dokument „{document}“")
+    where = " und ".join(scope) if scope else "dieser Auswahl"
+    if deleted <= 0:
+        return "Keine Karten gelöscht."
+    if remaining <= 0:
+        if scope:
+            return f"Alle {deleted} Karteikarten von {where} wurden gelöscht."
+        return f"Alle {deleted} Karteikarten wurden gelöscht."
+    return f"{deleted} Karteikarte(n) von {where} gelöscht. Es bleiben {remaining}."
+
+
 def scan_inbox_once(progress=None) -> dict:
     """Liest neue Dateien aus dem Inbox-Ordner einmalig ein."""
     from pathlib import Path

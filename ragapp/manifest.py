@@ -1311,6 +1311,28 @@ def get_cards_by_ids(card_ids: list[str]) -> list[dict]:
             f"SELECT * FROM review_items WHERE card_id IN ({ph})", list(card_ids)).fetchall()]
 
 
+def list_card_ids_matching(*, subject: Optional[str] = None,
+                           doc_ids: Optional[list[str]] = None,
+                           topics: Optional[list[str]] = None,
+                           deck: Optional[str] = None) -> list[str]:
+    """Alle card_ids zum Filter – ohne Anzeige-Limit, inkl. pausierter Karten."""
+    if doc_ids or topics:
+        rows = find_cards(
+            subject=subject, doc_ids=doc_ids, topics=topics, deck=deck,
+            exclude_suspended=False, limit=100_000)
+        return [r["card_id"] for r in rows]
+    return [r["card_id"] for r in list_cards(subject=subject, deck=deck)]
+
+
+def delete_cards_matching(*, subject: Optional[str] = None,
+                          doc_ids: Optional[list[str]] = None,
+                          topics: Optional[list[str]] = None,
+                          deck: Optional[str] = None) -> list[str]:
+    """Löscht alle Karten eines Filters (Fach/Dokument/Thema/Stapel)."""
+    return delete_card_ids(list_card_ids_matching(
+        subject=subject, doc_ids=doc_ids, topics=topics, deck=deck))
+
+
 def delete_card_ids(card_ids: list[str]) -> list[str]:
     """Loescht einzelne Karten (+ deren Log). Gibt die zugehoerigen Chroma-IDs zurueck,
     damit der Aufrufer die Frage bei Bedarf auch aus dem Vektorindex entfernen kann."""

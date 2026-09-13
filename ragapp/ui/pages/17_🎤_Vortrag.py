@@ -97,7 +97,7 @@ _active_id = st.session_state.get("talk_choice")
 if _active_id is None:
     st.markdown("##### Neuen Vortrag anlegen")
     if not _subjects_with_docs:
-        st.info("Noch keine indexierten Dokumente vorhanden. Gehe zu **📥 Import**.")
+        st.info("Noch keine indexierten Dokumente vorhanden. Gehe zu **🗃️ Dokumente**.")
         st.stop()
 
     _draft = st.session_state.get("_talk_draft")

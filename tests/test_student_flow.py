@@ -139,6 +139,48 @@ def test_notes_context_lists_body(isolated_db):
     assert "Eigene Notiz" in ctx
 
 
+def test_keep_filter_option_haelt_leeres_fach():
+    assert student_flow.keep_filter_option("BWL", []) == ["Alle", "BWL"]
+    assert student_flow.keep_filter_option("Alle", ["Mathe"]) == ["Alle", "Mathe"]
+    assert student_flow.keep_filter_option("BWL", ["BWL", "Mathe"]) == ["Alle", "BWL", "Mathe"]
+    assert student_flow.keep_filter_option(None, ["Mathe"]) == ["Alle", "Mathe"]
+
+
+def test_card_wipe_message_alle_weg():
+    msg = student_flow.card_wipe_message(
+        deleted=12, remaining=0, subject="BWL", subject_label="Betriebswirtschaft")
+    assert "Alle 12" in msg
+    assert "Betriebswirtschaft" in msg
+    rest = student_flow.card_wipe_message(
+        deleted=3, remaining=7, subject="BWL", document="Skript.pdf")
+    assert "Es bleiben 7" in rest
+    assert "Skript.pdf" in rest
+    alle = student_flow.card_wipe_message(deleted=5, remaining=0)
+    assert "Alle 5 Karteikarten wurden gelöscht." == alle
+
+
+def test_delete_cards_matching_nur_ein_fach(isolated_db):
+    student_flow.card_from_text("Q1", "A", subject="BWL")
+    student_flow.card_from_text("Q2", "A", subject="BWL")
+    student_flow.card_from_text("Q3", "A", subject="Mathe")
+    manifest.delete_cards_matching(subject="BWL")
+    assert manifest.count_cards(subject="BWL") == 0
+    assert manifest.count_cards(subject="Mathe") == 1
+    assert student_flow.keep_filter_option("BWL", manifest.study_subjects())[1] == "BWL"
+
+
+def test_delete_cards_matching_nur_ein_dokument(isolated_db):
+    student_flow.card_from_text("Q1", "A", subject="BWL", doc_id="docA")
+    student_flow.card_from_text("Q2", "A", subject="BWL", doc_id="docB")
+    student_flow.card_from_text("Q3", "A", subject="BWL", doc_id="docA")
+    ids = manifest.list_card_ids_matching(subject="BWL", doc_ids=["docA"])
+    assert len(ids) == 2
+    manifest.delete_cards_matching(subject="BWL", doc_ids=["docA"])
+    left = manifest.list_cards(subject="BWL")
+    assert len(left) == 1
+    assert left[0]["doc_id"] == "docB"
+
+
 def test_set_document_subject(isolated_db):
     manifest.upsert_document(
         doc_id="d1", content_hash="h", source_path="x.pdf", filename="x.pdf",

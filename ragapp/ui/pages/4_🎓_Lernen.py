@@ -67,27 +67,78 @@ _mv_flash = st.session_state.pop("_mv_flash", None)
 if _mv_flash:
     st.success(_mv_flash)
 
+def _render_karten_erstellen() -> None:
+    """Fragen anreichern, Katalog, Ernten – auch im leeren Zustand sichtbar."""
+    from ragapp.ui import _ingest_ui
+
+    st.caption("Karten kommen aus dem generierten Fragenmaterial. Wähle, aus welchem "
+               "Fach und wie viele Fragen je Textabschnitt du aufnimmst.")
+    cc1, cc2, cc3 = st.columns(3)
+    _hv_subj = cc1.selectbox("Fach", ["Alle Fächer"] + manifest.study_subjects(),
+                             format_func=lambda s: "Alle Fächer" if s == "Alle Fächer"
+                             else _fach_label(s), key="hv_subj")
+    _hv_max = cc2.number_input("Max. Fragen pro Chunk", min_value=0, max_value=20, value=0,
+                               step=1, key="hv_max",
+                               help="0 = alle vorhandenen Fragen aufnehmen.")
+    _hv_subj_arg = None if _hv_subj == "Alle Fächer" else _hv_subj
+    _hv_max_arg = int(_hv_max) or None
+    if cc3.button("🔄 Karten aktualisieren", use_container_width=True):
+        with st.status("Aktualisiere …", expanded=True) as s:
+            res = study.harvest_cards(subject=_hv_subj_arg, max_per_chunk=_hv_max_arg,
+                                      progress=lambda m: s.update(label=m))
+            s.update(label="Aktualisierung fertig", state="complete")
+        if res["gefunden"] == 0:
+            st.warning("Kein Fragenmaterial gefunden – zuerst unten Fragen anreichern "
+                       "oder den Klausur-Lernkatalog erzeugen. Dokumente liegen unter "
+                       "**🗃️ Dokumente**.")
+        elif res["neu"] == 0:
+            st.info("Alles aktuell – keine neuen Karten.")
+        else:
+            st.success(f"➕ {res['neu']} neue Karten hinzugefügt.")
+            st.rerun()
+
+    st.divider()
+    _offen = manifest.count_cards(subject=_hv_subj_arg, source="question", only_unanswered=True)
+    st.caption(f"**Musterlösungen erzeugen:** {_offen} Karte(n) zeigen bisher nur den "
+               "Originaltext. Die KI erzeugt daraus echte Antworten (~20 s pro Karte).")
+    ca1, ca2 = st.columns([1, 2])
+    _ans_n = ca1.number_input("Anzahl", min_value=1, max_value=500,
+                              value=min(20, max(1, _offen)), step=5, key="ans_n",
+                              disabled=_offen == 0)
+    if ca2.button(f"🤖 Antworten erzeugen ({_offen} offen)", disabled=_offen == 0,
+                  use_container_width=True):
+        with st.status("Erzeuge Musterlösungen …", expanded=True) as s:
+            ares = study.generate_answers(subject=_hv_subj_arg, limit=int(_ans_n),
+                                          progress=lambda m: s.update(label=m))
+            s.update(label="Fertig", state="complete")
+        if ares["status"] == "llm_error":
+            st.error(f"❌ Modellfehler: {ares.get('error_msg', '')} – prüfe unter "
+                     "**⚙️ Einstellungen** ein laufendes Modell (z. B. `gemma3:4b`).")
+        elif ares["status"] == "nothing_to_do":
+            st.info("Alle Karten haben bereits eine Antwort.")
+        elif ares["filled"] == 0:
+            st.warning("Es konnte keine Antwort erzeugt werden (der Text gab nichts her).")
+        else:
+            st.success(f"✅ {ares['filled']} Musterlösung(en) erzeugt.")
+            st.rerun()
+
+    st.divider()
+    _ingest_ui.render_enrich()
+    _ingest_ui.render_exam_catalog()
+
+
 if _counts["total"] == 0:
     from ragapp.ui._style import empty_state, page_title as _pt
     empty_state(
-        "Noch keine Karteikarten. Lege sie aus Fragen, dem Lernkatalog (Seite Import) "
-        "oder aus Chat/Notizen an.",
-        cta_label=f"Zu {_pt('ingestion')}",
-        page_key="ingestion",
+        "Noch keine Karteikarten. Lade zuerst Unterlagen unter **Dokumente** hoch "
+        "und erzeuge danach hier Fragen bzw. den Lernkatalog.",
+        cta_label=f"Zu {_pt('dokumente')}",
+        page_key="dokumente",
         icon="📇",
-        key="empty_to_ingestion",
+        key="empty_to_dokumente",
     )
-    if st.button("📇 Karten aus meinen Unterlagen erstellen", type="primary",
-                 key="empty_harvest"):
-        with st.status("Erstelle Karteikarten …", expanded=True) as s:
-            res = study.harvest_cards(progress=lambda m: s.update(label=m))
-            s.update(label=f"Fertig: {res['neu']} Karten erstellt", state="complete")
-        if res["gefunden"] == 0:
-            st.warning("Kein Fragenmaterial gefunden. Unter **Import** Fragen erzeugen "
-                       "oder den **Klausur-Lernkatalog** starten – danach hier erneut "
-                       "Karten erstellen.")
-        else:
-            st.rerun()
+    st.markdown("##### Karten erstellen")
+    _render_karten_erstellen()
     st.stop()
 
 # Kopfzeile mit Zahlen (Anki-Queues)
@@ -826,60 +877,13 @@ st.divider()
 # ob der Rerun automatisch oder explizit ausgeloest wird.
 _active_tab = st.segmented_control(
     "Verwaltungsbereich",
-    ["🌾 Ernten & Musterlösungen", "🗂️ Stapel verwalten", "📋 Bearbeiten & Löschen"],
-    default="🌾 Ernten & Musterlösungen", key="lernen_verwaltung_tab",
+    ["🌾 Karten erstellen", "🗂️ Stapel verwalten", "📋 Bearbeiten & Löschen"],
+    default="🌾 Karten erstellen", key="lernen_verwaltung_tab",
     label_visibility="collapsed", required=True,
 )
 
-if _active_tab == "🌾 Ernten & Musterlösungen":
-    st.caption("Karten kommen aus dem generierten Fragenmaterial. Wähle, aus welchem "
-               "Fach und wie viele Fragen je Textabschnitt du aufnimmst.")
-    cc1, cc2, cc3 = st.columns(3)
-    _hv_subj = cc1.selectbox("Fach", ["Alle Fächer"] + manifest.study_subjects(),
-                             format_func=lambda s: "Alle Fächer" if s == "Alle Fächer"
-                             else _fach_label(s), key="hv_subj")
-    _hv_max = cc2.number_input("Max. Fragen pro Chunk", min_value=0, max_value=20, value=0,
-                               step=1, key="hv_max",
-                               help="0 = alle vorhandenen Fragen aufnehmen.")
-    _hv_subj_arg = None if _hv_subj == "Alle Fächer" else _hv_subj
-    _hv_max_arg = int(_hv_max) or None
-    if cc3.button("🔄 Karten aktualisieren", use_container_width=True):
-        with st.status("Aktualisiere …", expanded=True) as s:
-            res = study.harvest_cards(subject=_hv_subj_arg, max_per_chunk=_hv_max_arg,
-                                      progress=lambda m: s.update(label=m))
-            s.update(label="Aktualisierung fertig", state="complete")
-        if res["gefunden"] == 0:
-            st.warning("Kein Fragenmaterial gefunden – erst auf **📥 Import** Fragen "
-                       "anreichern bzw. den Klausur-Lernkatalog erzeugen.")
-        elif res["neu"] == 0:
-            st.info("Alles aktuell – keine neuen Karten.")
-        else:
-            st.success(f"➕ {res['neu']} neue Karten hinzugefügt.")
-
-    st.divider()
-    _offen = manifest.count_cards(subject=_hv_subj_arg, source="question", only_unanswered=True)
-    st.caption(f"**Musterlösungen erzeugen:** {_offen} Karte(n) zeigen bisher nur den "
-               "Originaltext. Die KI erzeugt daraus echte Antworten (~20 s pro Karte).")
-    ca1, ca2 = st.columns([1, 2])
-    _ans_n = ca1.number_input("Anzahl", min_value=1, max_value=500,
-                              value=min(20, max(1, _offen)), step=5, key="ans_n",
-                              disabled=_offen == 0)
-    if ca2.button(f"🤖 Antworten erzeugen ({_offen} offen)", disabled=_offen == 0,
-                  use_container_width=True):
-        with st.status("Erzeuge Musterlösungen …", expanded=True) as s:
-            ares = study.generate_answers(subject=_hv_subj_arg, limit=int(_ans_n),
-                                          progress=lambda m: s.update(label=m))
-            s.update(label="Fertig", state="complete")
-        if ares["status"] == "llm_error":
-            st.error(f"❌ Modellfehler: {ares.get('error_msg', '')} – prüfe unter "
-                     "**⚙️ Einstellungen** ein laufendes Modell (z. B. `gemma3:4b`).")
-        elif ares["status"] == "nothing_to_do":
-            st.info("Alle Karten haben bereits eine Antwort.")
-        elif ares["filled"] == 0:
-            st.warning("Es konnte keine Antwort erzeugt werden (der Text gab nichts her).")
-        else:
-            st.success(f"✅ {ares['filled']} Musterlösung(en) erzeugt.")
-            st.rerun()
+if _active_tab == "🌾 Karten erstellen":
+    _render_karten_erstellen()
 
 if _active_tab == "🗂️ Stapel verwalten":
     st.caption(
@@ -1143,8 +1147,12 @@ if _active_tab == "📋 Bearbeiten & Löschen":
                "**Abfrage** = in der Lernrunde zeigen · **Embedding** = Frage im Suchindex halten.")
     # Erfolgsmeldung fuer diese Sektion wird ganz oben im Skript angezeigt
     # (vor dem "keine Karten"-Abbruch) - siehe Kommentar dort.
+    from ragapp.student_flow import card_wipe_message, keep_filter_option
+
     _mf1, _mf2, _mf3, _mf4 = st.columns(4)
-    _mv_subj = _mf1.selectbox("Fach", ["Alle"] + manifest.study_subjects(),
+    _cur_subj = st.session_state.get("mv_subj")
+    _subj_opts = keep_filter_option(_cur_subj, manifest.study_subjects())
+    _mv_subj = _mf1.selectbox("Fach", _subj_opts,
                               format_func=lambda s: "Alle" if s == "Alle" else _fach_label(s),
                               key="mv_subj")
     _mv_subj_arg = None if _mv_subj == "Alle" else _mv_subj
@@ -1152,14 +1160,21 @@ if _active_tab == "📋 Bearbeiten & Löschen":
     _mv_deck = _mf2.selectbox("Stapel", ["Alle", "— ohne Stapel —"] + _mv_decks, key="mv_deck")
     _mv_docs = manifest.list_docs_with_cards(subject=_mv_subj_arg)
     _mv_doc_map = {d["doc_id"]: d["filename"] for d in _mv_docs if d.get("doc_id")}
+    _cur_doc = st.session_state.get("mv_doc")
+    if _cur_doc and _cur_doc not in _mv_doc_map and _cur_doc != "Alle":
+        _mv_doc_map[_cur_doc] = st.session_state.get("mv_doc_label") or _cur_doc
     _mv_doc = _mf3.selectbox(
         "Dokument",
-        ["Alle"] + list(_mv_doc_map.keys()),
+        keep_filter_option(_cur_doc, list(_mv_doc_map.keys())),
         format_func=lambda k: "Alle" if k == "Alle" else _mv_doc_map.get(k, k),
         key="mv_doc",
     )
-    _mv_limit = _mf4.number_input("Max. Zeilen", min_value=10, max_value=2000, value=200,
-                                  step=10, key="mv_limit")
+    if _mv_doc != "Alle":
+        st.session_state["mv_doc_label"] = _mv_doc_map.get(_mv_doc, _mv_doc)
+    _mv_limit = _mf4.number_input("Max. Zeilen", min_value=10, max_value=10000, value=500,
+                                  step=50, key="mv_limit",
+                                  help="Nur die Anzeige. ‚Alle im Filter löschen‘ trifft "
+                                       "trotzdem jede Karte der Filterung, nicht nur diese Zeilen.")
     _mv_deck_arg = (None if _mv_deck == "Alle"
                     else "__none__" if _mv_deck.startswith("—") else _mv_deck)
     _mv_topics = manifest.list_topics(
@@ -1174,6 +1189,7 @@ if _active_tab == "📋 Bearbeiten & Löschen":
             doc_ids=None if _mv_doc == "Alle" else [_mv_doc],
             topics=_mv_topic or None,
             deck=_mv_deck_arg,
+            exclude_suspended=False,
             limit=int(_mv_limit),
         )
         _mv_total = manifest.count_find_cards(
@@ -1181,14 +1197,41 @@ if _active_tab == "📋 Bearbeiten & Löschen":
             doc_ids=None if _mv_doc == "Alle" else [_mv_doc],
             topics=_mv_topic or None,
             deck=_mv_deck_arg,
+            exclude_suspended=False,
         )
     else:
         _mv_rows = manifest.list_cards(subject=_mv_subj_arg, deck=_mv_deck_arg,
                                        limit=int(_mv_limit))
         _mv_total = manifest.count_cards(subject=_mv_subj_arg, deck=_mv_deck_arg)
 
+    _mv_doc_ids = None if _mv_doc == "Alle" else [_mv_doc]
+    _mv_doc_name = None if _mv_doc == "Alle" else _mv_doc_map.get(_mv_doc)
+    _mv_wipe_kw = dict(
+        subject=_mv_subj_arg, doc_ids=_mv_doc_ids,
+        topics=_mv_topic or None, deck=_mv_deck_arg,
+    )
+
+    def _flash_card_wipe(deleted: int, remaining: int) -> None:
+        st.session_state["_mv_flash"] = card_wipe_message(
+            deleted=deleted, remaining=remaining,
+            subject=_mv_subj_arg,
+            subject_label=_fach_label(_mv_subj_arg) if _mv_subj_arg else None,
+            document=_mv_doc_name,
+        )
+
+    if _mv_total > len(_mv_rows):
+        st.warning(
+            f"Es werden nur {len(_mv_rows)} von {_mv_total} Karten angezeigt. "
+            f"‚Alle im Filter löschen‘ entfernt trotzdem alle {_mv_total} "
+            "Karten dieser Filterung – nicht nur die sichtbaren Zeilen."
+        )
+
     if not _mv_rows:
-        st.info("Keine Karten für diese Auswahl.")
+        if _mv_subj_arg or _mv_doc != "Alle":
+            st.info("Keine Karten mehr für diese Filterung. Der Filter bleibt stehen, "
+                    "damit du nicht versehentlich ein anderes Fach oder Dokument löschst.")
+        else:
+            st.info("Keine Karten für diese Auswahl.")
     else:
         _orig = {r["card_id"]: r for r in _mv_rows}
 
@@ -1301,7 +1344,8 @@ if _active_tab == "📋 Bearbeiten & Löschen":
                 for _, row in _edited.iterrows()
             ]
         st.caption(f"{len(_sel)} ausgewählt · {len(_mv_rows)} angezeigt · {_mv_total} gesamt "
-                   "(mit dieser Filterung)")
+                   "in dieser Filterung. Die Anzeige-Grenze gilt nur für die Tabelle – "
+                   "löschen kannst du unten alle Treffer auf einmal.")
 
         _b1, _b2, _b3, _b4 = st.columns(4)
         if _b1.button("💾 Änderungen speichern", use_container_width=True):
@@ -1353,9 +1397,34 @@ if _active_tab == "📋 Bearbeiten & Löschen":
                     get_vectorstore().delete_by_ids(_chroma)
                 except Exception:  # noqa: BLE001
                     pass
-            st.session_state["_mv_flash"] = (
-                f"{len(_sel)} Karte(n) gelöscht"
-                + (" (auch aus dem Suchindex)." if _also_chroma else "."))
+            _flash_card_wipe(len(_sel), max(0, _mv_total - len(_sel)))
+            st.rerun()
+
+        _wipe_scope = []
+        if _mv_subj_arg:
+            _wipe_scope.append(f"Fach „{_fach_label(_mv_subj_arg)}“")
+        if _mv_doc_name:
+            _wipe_scope.append(f"Dokument „{_mv_doc_name}“")
+        _wipe_where = " und ".join(_wipe_scope) if _wipe_scope else "der aktuellen Filterung"
+        _wipe_all_ok = st.checkbox(
+            f"Ja, wirklich ALLE {_mv_total} Karten {_wipe_where} löschen",
+            key="mv_wipe_all_ok",
+            help="Unabhängig von der Zeilen-Anzeige. Der Filter bleibt danach stehen.")
+        if not _wipe_scope:
+            st.caption("Ohne Fach- oder Dokumentfilter betrifft das **alle** Karteikarten.")
+        if st.button(f"🗑️ Alle {_mv_total} im Filter löschen", type="secondary",
+                     use_container_width=True, disabled=not _wipe_all_ok or _mv_total == 0,
+                     key="mv_wipe_all"):
+            _wipe_ids = manifest.list_card_ids_matching(**_mv_wipe_kw)
+            _chroma = manifest.delete_card_ids(_wipe_ids)
+            if _also_chroma and _chroma:
+                try:
+                    from ragapp.retrieval.vectorstore import get_vectorstore
+                    get_vectorstore().delete_by_ids(_chroma)
+                except Exception:  # noqa: BLE001
+                    pass
+            _flash_card_wipe(len(_wipe_ids), 0)
+            st.session_state["mv_wipe_all_ok"] = False
             st.rerun()
 
         if _b3.button("🤖 Antworten für Auswahl", use_container_width=True, disabled=not _sel):

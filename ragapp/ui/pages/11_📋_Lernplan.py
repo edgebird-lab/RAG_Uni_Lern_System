@@ -190,10 +190,10 @@ if _active_plan_id is None:
         from ragapp.ui._style import empty_state, page_title as _pt
         empty_state(
             "Noch keine indexierten Dokumente vorhanden.",
-            cta_label=f"Zu {_pt('ingestion')}",
-            page_key="ingestion",
+            cta_label=f"Zu {_pt('dokumente')}",
+            page_key="dokumente",
             icon="📥",
-            key="lernplan_empty_ingestion",
+            key="lernplan_empty_dokumente",
         )
         st.stop()
 
