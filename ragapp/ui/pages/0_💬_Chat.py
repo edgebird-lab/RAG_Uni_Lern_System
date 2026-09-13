@@ -530,11 +530,12 @@ if prompt:
         _streamed = False
 
         # --- Pre-Flight: genug freier Grafikspeicher (VRAM) fuer das Modell? ------
-        # Ist zu wenig frei (z. B. weil eine zweite GPU-App laeuft), wuerde Ollama das
-        # Modell zaeh auf die CPU auslagern -> Antwort dauert Minuten. Dann lieber
-        # SOFORT eine klare Meldung statt stiller Blockade. (Best-effort; bei
-        # 'unknown'/'ok' laeuft alles normal weiter, es wird NICHT blockiert.)
-        from ragapp.llm import vram_preflight
+        # Reste der letzten KI-Aufgabe (Uebung, Karten, Semesterplan, …) zuerst
+        # entladen, sonst misst der Check belegten Speicher und Chat wuerde
+        # obendrauf laden -> OOM. Ist danach zu wenig frei (zweite GPU-App),
+        # lieber SOFORT eine klare Meldung statt stiller CPU-Auslagerung.
+        from ragapp.llm import release_llm, vram_preflight
+        release_llm()
         _pf = vram_preflight()
         _vram_low = _pf.get("status") == "low"
         if _vram_low:

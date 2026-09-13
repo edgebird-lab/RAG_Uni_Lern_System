@@ -25,7 +25,7 @@ from typing import Optional, Callable
 from ragapp.config import settings, PROJECT_ROOT, SUBJECT_LABELS
 from ragapp import manifest
 from ragapp.retrieval.vectorstore import get_vectorstore
-from ragapp.llm import get_llm
+from ragapp.llm import get_llm, llm_task
 
 _log = logging.getLogger(__name__)
 
@@ -231,8 +231,6 @@ def write_summary(
     if progress:
         progress(f"{len(sections)} Abschnitte aus {len(chunks)} Chunks – Modell `{_author_model()}`")
 
-    llm = get_llm(_author_model())            # grosses Autoren-Modell
-
     out: list[str] = [
         f"# Zusammenfassung: {label}\n",
         f"*KI-generierte, gegroundete Zusammenfassung aus deinen indexierten "
@@ -241,39 +239,41 @@ def write_summary(
     ]
 
     total = len(sections)
-    for i, (title, body) in enumerate(sections, 1):
-        if len(body) < _MIN_SECTION_CHARS:
-            stats.skipped_short += 1
-            # Auch fuer uebersprungene Abschnitte progress() aufrufen (nicht nur
-            # fuer tatsaechlich zusammengefasste) - sonst bleibt ein daraus
-            # abgeleiteter Fortschrittsbalken bei vielen kurzen Abschnitten
-            # scheinbar haengen, obwohl laengst alles fertig ist.
+    with llm_task(_author_model()):
+        llm = get_llm(_author_model())            # grosses Autoren-Modell
+        for i, (title, body) in enumerate(sections, 1):
+            if len(body) < _MIN_SECTION_CHARS:
+                stats.skipped_short += 1
+                # Auch fuer uebersprungene Abschnitte progress() aufrufen (nicht nur
+                # fuer tatsaechlich zusammengefasste) - sonst bleibt ein daraus
+                # abgeleiteter Fortschrittsbalken bei vielen kurzen Abschnitten
+                # scheinbar haengen, obwohl laengst alles fertig ist.
+                if progress:
+                    progress(f"'{title[:40]}' übersprungen (zu kurz) ({i}/{total}) …")
+                continue
             if progress:
-                progress(f"'{title[:40]}' übersprungen (zu kurz) ({i}/{total}) …")
-            continue
-        if progress:
-            progress(f"Zusammenfassung {label}: '{title[:40]}' ({i}/{total}) …")
-        prompt = _PROMPT.format(
-            doc_label=label, title=title, section=body[:_SECTION_CHAR_BUDGET],
-        )
-        try:
-            md = _summarize_section(llm, prompt)
-        except Exception as exc:  # noqa: BLE001
-            msg = f"{title[:60]}: {exc}"
-            _log.warning("Zusammenfassung Abschnitt fehlgeschlagen: %s", msg)
-            stats.failed += 1
-            stats.last_error = str(exc)
-            if len(stats.errors) < 5:
-                stats.errors.append(msg)
-            if progress:
-                progress(f"Fehler bei '{title[:40]}': {exc}")
-            continue
-        if _is_empty_section(md):
-            stats.skipped_empty += 1
-            continue
-        out.append(f"\n## {title}\n")
-        out.append(md + "\n")
-        stats.written += 1
+                progress(f"Zusammenfassung {label}: '{title[:40]}' ({i}/{total}) …")
+            prompt = _PROMPT.format(
+                doc_label=label, title=title, section=body[:_SECTION_CHAR_BUDGET],
+            )
+            try:
+                md = _summarize_section(llm, prompt)
+            except Exception as exc:  # noqa: BLE001
+                msg = f"{title[:60]}: {exc}"
+                _log.warning("Zusammenfassung Abschnitt fehlgeschlagen: %s", msg)
+                stats.failed += 1
+                stats.last_error = str(exc)
+                if len(stats.errors) < 5:
+                    stats.errors.append(msg)
+                if progress:
+                    progress(f"Fehler bei '{title[:40]}': {exc}")
+                continue
+            if _is_empty_section(md):
+                stats.skipped_empty += 1
+                continue
+            out.append(f"\n## {title}\n")
+            out.append(md + "\n")
+            stats.written += 1
 
     if stats.written == 0:
         detail = stats.last_error or "leer/Fehler"

@@ -40,7 +40,7 @@ class Embedder:
         for attempt in range(retries):
             try:
                 resp = self._client.embed(model=self.model, input=texts,
-                                          keep_alive=settings.keep_alive_seconds())
+                                          keep_alive=0)
                 embs = resp["embeddings"]
                 return [_l2_normalize(list(e)) for e in embs]
             except Exception as exc:  # pragma: no cover - Netzwerk/Ollama

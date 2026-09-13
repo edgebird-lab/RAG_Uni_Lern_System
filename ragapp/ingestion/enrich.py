@@ -22,7 +22,7 @@ from ragapp.config import settings
 from ragapp import manifest
 from ragapp.retrieval.vectorstore import get_vectorstore
 from ragapp.retrieval.embeddings import get_embedder
-from ragapp.ingestion.question_gen import generate_questions, generate_answer, QuestionGenError
+from ragapp.llm import require_vram, release_llm, VramLowError
 from ragapp.hardware import probe_model
 
 _SUMMARY_HINTS = ("zusammenfassung", "kompakt", "spickzettel", "klausur")
@@ -82,70 +82,79 @@ def enrich_questions(limit: Optional[int] = None,
                 "error_msg": f"Modell '{settings.LLM_MODEL_FAST}' laeuft nicht: {msg}",
                 "per_doc": {}}
 
+    try:
+        require_vram(settings.LLM_MODEL_FAST)
+    except VramLowError as exc:
+        return {"status": "llm_error", "processed": 0, "questions": 0, "errors": 0,
+                "error_msg": str(exc), "per_doc": {}}
+
     total_q = 0
     errors = 0
     error_msg: Optional[str] = None
     per_doc: dict[str, dict] = {}
-    for i, ch in enumerate(chunks, 1):
-        did = ch["meta"].get("doc_id")
-        slot = per_doc.setdefault(did, {"filename": ch["meta"].get("filename"),
-                                        "questions": 0, "chunks": 0, "errors": 0})
-        if progress:
-            progress(f"Anreicherung {i}/{len(chunks)} · {ch['meta'].get('filename', '?')}")
-        try:
-            qs = generate_questions(ch["document"], n=n_per_chunk)
-        except QuestionGenError as exc:          # echter LLM-Fehler -> sichtbar machen
-            errors += 1
-            slot["errors"] += 1
-            if error_msg is None:
-                error_msg = str(exc)
-            if errors >= 3 and total_q == 0:     # Fail-fast: nicht endlos ins Leere
-                return {"status": "llm_error", "processed": i, "questions": total_q,
-                        "errors": errors, "error_msg": error_msg, "per_doc": per_doc}
-            continue
-        slot["chunks"] += 1
-        if not qs:
-            continue
-        # Optional: zu jeder Frage gleich eine Musterloesung erzeugen (kostet extra Zeit).
-        answers: list[str] = []
-        if with_answers:
-            for q in qs:
-                try:
-                    answers.append(generate_answer(ch["document"], q))
-                except QuestionGenError as exc:
-                    answers.append("")
-                    if error_msg is None:
-                        error_msg = str(exc)
-        q_embs = embedder.embed_texts(qs)
-        ids, embeddings, documents, metadatas = [], [], [], []
-        for j, (q, qe) in enumerate(zip(qs, q_embs)):
-            qmeta = {k: v for k, v in ch["meta"].items()}
-            qmeta["type"] = "question"
-            qmeta["parent_id"] = ch["id"]
-            if with_answers and j < len(answers) and answers[j]:
-                qmeta["answer"] = answers[j]
-            ids.append(f"{ch['id']}::eq{j}")
-            embeddings.append(qe)
-            documents.append(q)
-            metadatas.append(qmeta)
-        store.add(ids, embeddings, documents, metadatas)
-        total_q += len(qs)
-        slot["questions"] += len(qs)
+    try:
+        for i, ch in enumerate(chunks, 1):
+            did = ch["meta"].get("doc_id")
+            slot = per_doc.setdefault(did, {"filename": ch["meta"].get("filename"),
+                                            "questions": 0, "chunks": 0, "errors": 0})
+            if progress:
+                progress(f"Anreicherung {i}/{len(chunks)} · {ch['meta'].get('filename', '?')}")
+            try:
+                qs = generate_questions(ch["document"], n=n_per_chunk)
+            except QuestionGenError as exc:          # echter LLM-Fehler -> sichtbar machen
+                errors += 1
+                slot["errors"] += 1
+                if error_msg is None:
+                    error_msg = str(exc)
+                if errors >= 3 and total_q == 0:     # Fail-fast: nicht endlos ins Leere
+                    return {"status": "llm_error", "processed": i, "questions": total_q,
+                            "errors": errors, "error_msg": error_msg, "per_doc": per_doc}
+                continue
+            slot["chunks"] += 1
+            if not qs:
+                continue
+            # Optional: zu jeder Frage gleich eine Musterloesung erzeugen (kostet extra Zeit).
+            answers: list[str] = []
+            if with_answers:
+                for q in qs:
+                    try:
+                        answers.append(generate_answer(ch["document"], q))
+                    except QuestionGenError as exc:
+                        answers.append("")
+                        if error_msg is None:
+                            error_msg = str(exc)
+            q_embs = embedder.embed_texts(qs)
+            ids, embeddings, documents, metadatas = [], [], [], []
+            for j, (q, qe) in enumerate(zip(qs, q_embs)):
+                qmeta = {k: v for k, v in ch["meta"].items()}
+                qmeta["type"] = "question"
+                qmeta["parent_id"] = ch["id"]
+                if with_answers and j < len(answers) and answers[j]:
+                    qmeta["answer"] = answers[j]
+                ids.append(f"{ch['id']}::eq{j}")
+                embeddings.append(qe)
+                documents.append(q)
+                metadatas.append(qmeta)
+            store.add(ids, embeddings, documents, metadatas)
+            total_q += len(qs)
+            slot["questions"] += len(qs)
 
-    # Manifest-Zähler aktualisieren
-    for did, slot in per_doc.items():
-        n = slot["questions"]
-        if n <= 0:
-            continue
-        d = manifest.get_document(did)
-        if d:
-            manifest.upsert_document(
-                doc_id=did, content_hash=d["content_hash"], source_path=d["source_path"],
-                filename=d["filename"], subject=d["subject"], filetype=d["filetype"],
-                num_chunks=d["num_chunks"], num_questions=(d["num_questions"] or 0) + n,
-                char_count=d["char_count"], status=d["status"],
-            )
+        # Manifest-Zähler aktualisieren
+        for did, slot in per_doc.items():
+            n = slot["questions"]
+            if n <= 0:
+                continue
+            d = manifest.get_document(did)
+            if d:
+                manifest.upsert_document(
+                    doc_id=did, content_hash=d["content_hash"], source_path=d["source_path"],
+                    filename=d["filename"], subject=d["subject"], filetype=d["filetype"],
+                    num_chunks=d["num_chunks"], num_questions=(d["num_questions"] or 0) + n,
+                    char_count=d["char_count"], status=d["status"],
+                )
 
-    status = "ok" if total_q > 0 else ("llm_error" if errors else "empty")
-    return {"status": status, "processed": len(chunks), "questions": total_q,
-            "errors": errors, "error_msg": error_msg, "per_doc": per_doc}
+        status = "ok" if total_q > 0 else ("llm_error" if errors else "empty")
+        return {"status": status, "processed": len(chunks), "questions": total_q,
+                "errors": errors, "error_msg": error_msg, "per_doc": per_doc}
+    finally:
+        release_llm()

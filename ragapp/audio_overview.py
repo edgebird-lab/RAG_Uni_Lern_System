@@ -59,7 +59,7 @@ kurze_beschriftung)`` - z. B. ``(3, 8, "Abschnitt 3")`` oder ``(12, 40, "Satz
 fuer Fortschrittsbalken + Restzeit-Schaetzung."""
 
 from ragapp.config import settings, PROJECT_ROOT, AUDIO_DIR
-from ragapp.llm import get_llm
+from ragapp.llm import get_llm, llm_task
 from ragapp import manifest
 from ragapp.study_plan import _granular_sections
 
@@ -165,55 +165,56 @@ def generate_overview_script(doc_ids: list[str], subject: Optional[str],
             "müssen im RAG sein (Seite Ingestion -> 'Im RAG'-Häkchen).")
 
     used_model = model or settings.author_model()
-    llm_obj = get_llm(used_model)
-    hard_cap = int(settings.AUDIO_MAX_SCRIPT_CHARS)
-    total = len(granular)
+    with llm_task(used_model):
+        llm_obj = get_llm(used_model)
+        hard_cap = int(settings.AUDIO_MAX_SCRIPT_CHARS)
+        total = len(granular)
 
-    parts: list[str] = []
-    any_truncated = False
-    total_len = 0
-    hit_hard_cap = False
-    for i, (label, title, body) in enumerate(granular):
-        if len(body.strip()) < _MIN_SECTION_CHARS:
+        parts: list[str] = []
+        any_truncated = False
+        total_len = 0
+        hit_hard_cap = False
+        for i, (label, title, body) in enumerate(granular):
+            if len(body.strip()) < _MIN_SECTION_CHARS:
+                if on_progress:
+                    on_progress(i + 1, total, title)
+                continue
+            try:
+                piece, truncated = _narrate_section(llm_obj, label, title, body)
+            except Exception:  # noqa: BLE001 - ein fehlgeschlagener Abschnitt darf den Rest nicht kippen
+                if on_progress:
+                    on_progress(i + 1, total, title)
+                continue
             if on_progress:
                 on_progress(i + 1, total, title)
-            continue
-        try:
-            piece, truncated = _narrate_section(llm_obj, label, title, body)
-        except Exception:  # noqa: BLE001 - ein fehlgeschlagener Abschnitt darf den Rest nicht kippen
-            if on_progress:
-                on_progress(i + 1, total, title)
-            continue
-        if on_progress:
-            on_progress(i + 1, total, title)
-        any_truncated = any_truncated or truncated
-        if not piece:
-            continue
-        parts.append(piece)
-        total_len += len(piece)
-        if total_len >= hard_cap:
-            hit_hard_cap = True
-            break
+            any_truncated = any_truncated or truncated
+            if not piece:
+                continue
+            parts.append(piece)
+            total_len += len(piece)
+            if total_len >= hard_cap:
+                hit_hard_cap = True
+                break
 
-    if not parts:
-        raise AudioOverviewError(
-            "Aus den gewählten Abschnitten ließ sich kein Skript erzeugen (kein "
-            "erklärbarer Inhalt gefunden oder das Modell antwortete nicht). Prüfe "
-            "unter ⚙️ Einstellungen, ob ein Modell läuft, und versuche es erneut.")
+        if not parts:
+            raise AudioOverviewError(
+                "Aus den gewählten Abschnitten ließ sich kein Skript erzeugen (kein "
+                "erklärbarer Inhalt gefunden oder das Modell antwortete nicht). Prüfe "
+                "unter ⚙️ Einstellungen, ob ein Modell läuft, und versuche es erneut.")
 
-    script = "\n\n".join(parts)
+        script = "\n\n".join(parts)
 
-    warning: Optional[str] = None
-    if any_truncated:
-        warning = ("⚠️ Mindestens ein Abschnitt wurde vermutlich am Token-Budget "
-                  "abgeschnitten und endet eventuell mitten im Satz.")
-    if hit_hard_cap:
-        cap_msg = (f"Das Skript wurde bei ca. {hard_cap} Zeichen "
-                  "gekappt (sehr viele/lange Dokumente ausgewählt) - für vollständige "
-                  "Abdeckung weniger Dokumente auf einmal wählen.")
-        warning = f"{warning} {cap_msg}" if warning else cap_msg
+        warning: Optional[str] = None
+        if any_truncated:
+            warning = ("⚠️ Mindestens ein Abschnitt wurde vermutlich am Token-Budget "
+                      "abgeschnitten und endet eventuell mitten im Satz.")
+        if hit_hard_cap:
+            cap_msg = (f"Das Skript wurde bei ca. {hard_cap} Zeichen "
+                      "gekappt (sehr viele/lange Dokumente ausgewählt) - für vollständige "
+                      "Abdeckung weniger Dokumente auf einmal wählen.")
+            warning = f"{warning} {cap_msg}" if warning else cap_msg
 
-    return script, warning
+        return script, warning
 
 
 # --------------------------------------------------------------------------- #
@@ -556,10 +557,11 @@ def suggest_pronunciations(text: str, *, model: Optional[str] = None) -> dict[st
         return {}
     used_model = model or settings.author_model()
     try:
-        llm_obj = get_llm(used_model)
-        data = llm_obj.generate_json(
-            _PRONUNCIATION_SUGGEST_PROMPT.format(text=text),
-            system=_PRONUNCIATION_SUGGEST_SYSTEM, temperature=0.2)
+        with llm_task(used_model):
+            llm_obj = get_llm(used_model)
+            data = llm_obj.generate_json(
+                _PRONUNCIATION_SUGGEST_PROMPT.format(text=text),
+                system=_PRONUNCIATION_SUGGEST_SYSTEM, temperature=0.2)
     except Exception:  # noqa: BLE001
         return {}
     if not isinstance(data, dict):

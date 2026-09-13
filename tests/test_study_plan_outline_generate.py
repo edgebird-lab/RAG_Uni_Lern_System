@@ -80,6 +80,7 @@ def generate_outline_funcs(load_functions, ragapp_dir):
                 "OutlineError": RuntimeError,
                 "Optional": None,
                 "time": __import__("time"),
+                "llm_task": lambda model=None: __import__("contextlib").nullcontext(),
             },
             const_names=["_OUTLINE_SYSTEM", "_OUTLINE_PROMPT"],
         )["generate_outline"]

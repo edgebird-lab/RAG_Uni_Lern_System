@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from ragapp.config import settings, TALK_DIR
-from ragapp.llm import get_llm
+from ragapp.llm import get_llm, llm_task
 from ragapp import manifest
 from ragapp.study_plan import _granular_sections
 
@@ -451,17 +451,19 @@ def extract_search_queries(doc_ids: list[str], *, title: str = "",
                            model: Optional[str] = None) -> list[str]:
     """LLM extrahiert 3–6 Suchqueries aus dem Dokumentkontext."""
     ctx = _doc_context(doc_ids, max_chars=6000)
-    llm_obj = get_llm(model or settings.author_model())
-    raw = llm_obj.generate_json(
-        _QUERY_PROMPT.format(
-            title=title or "Vortrag",
-            subject=subject or "–",
-            context=ctx,
-        ),
-        system=_QUERY_SYSTEM,
-        temperature=0.2,
-        num_predict=400,
-    )
+    used_model = model or settings.author_model()
+    with llm_task(used_model):
+        llm_obj = get_llm(used_model)
+        raw = llm_obj.generate_json(
+            _QUERY_PROMPT.format(
+                title=title or "Vortrag",
+                subject=subject or "–",
+                context=ctx,
+            ),
+            system=_QUERY_SYSTEM,
+            temperature=0.2,
+            num_predict=400,
+        )
     queries: list[str] = []
     if isinstance(raw, list):
         queries = [str(x).strip() for x in raw if str(x).strip()]
@@ -697,189 +699,190 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
             "müssen im RAG sein (Dokumente → Ansehen → ‚Im RAG‘).")
 
     used_model = model or settings.author_model()
-    llm_obj = get_llm(used_model)
-    hard_cap = int(settings.TALK_MAX_SCRIPT_CHARS)
-    max_slides = int(max_slides or settings.TALK_MAX_SLIDES)
-    sources = list(sources or [])
+    with llm_task(used_model):
+        llm_obj = get_llm(used_model)
+        hard_cap = int(settings.TALK_MAX_SCRIPT_CHARS)
+        max_slides = int(max_slides or settings.TALK_MAX_SLIDES)
+        sources = list(sources or [])
 
-    usable = [(lab, tit, body) for lab, tit, body in granular
-              if len((body or "").strip()) >= _MIN_SECTION_CHARS]
-    if max_slides <= 8:
-        usable = usable[:max(1, max_slides - 2)]
-    steps_total = 1 + max(1, len(usable)) + (1 if sources else 0)
-    step = 0
+        usable = [(lab, tit, body) for lab, tit, body in granular
+                  if len((body or "").strip()) >= _MIN_SECTION_CHARS]
+        if max_slides <= 8:
+            usable = usable[:max(1, max_slides - 2)]
+        steps_total = 1 + max(1, len(usable)) + (1 if sources else 0)
+        step = 0
 
-    slide_chunks: list[str] = []
-    script_parts: list[str] = []
-    any_truncated = False
-    hit_hard_cap = False
-    hit_slide_cap = False
-    skipped_invalid = 0
+        slide_chunks: list[str] = []
+        script_parts: list[str] = []
+        any_truncated = False
+        hit_hard_cap = False
+        hit_slide_cap = False
+        skipped_invalid = 0
 
-    toc, excerpts = _thematic_toc_and_excerpts(usable)
-    open_slides, open_script, trunc = _llm_slides_script(
-        llm_obj,
-        _OPENING_PROMPT.format(
-            title=title, subject=subject or "–", toc=toc, excerpts=excerpts[:3500]),
-        system=_SECTION_SYSTEM,
-        num_predict=1600,
-        body_chars=len(excerpts),
-    )
-    any_truncated = any_truncated or trunc
-    if not open_slides:
-        # Thematischer Fallback ohne „Seite N“
-        agenda_points = []
-        for _lab, tit, body in usable[:6]:
-            if _BAD_AGENDA_TITLE_RE.match((tit or "").strip()):
-                words = re.findall(r"[A-Za-zÄÖÜäöüß]{4,}", body or "")
-                agenda_points.append(" ".join(words[:5]) or "Kernaussage des Abschnitts")
-            else:
-                agenda_points.append(tit.strip())
-        if not agenda_points:
-            agenda_points = ["Zentrale Begriffe", "Zusammenhänge", "Praxisbezug"]
-        subj_line = f'<p class="eyebrow">{subject or "Lernvortrag"}</p>\n\n' if subject else ""
-        open_slides = (
-            f"<!-- _class: lead -->\n\n{subj_line}# {title}\n\n"
-            f"### Was du heute mitnimmst\n\n"
-            f"---\n\n<!-- _class: agenda -->\n\n## Heute lernen wir\n\n"
-            + "\n".join(f"{i}. {p}" for i, p in enumerate(agenda_points, 1))
-        )
-    if not open_script:
-        open_script = (
-            f"Willkommen zum Vortrag „{title}“. Wir klären die zentralen Ideen "
-            "und gehen den Stoff Schritt für Schritt durch."
-        )
-    slide_chunks.append(open_slides)
-    script_parts.append(open_script)
-    step += 1
-    if on_progress:
-        on_progress(step, steps_total, "Eröffnung")
-
-    total_script = len(open_script)
-
-    for label, sec_title, body in usable:
-        if total_script >= hard_cap:
-            hit_hard_cap = True
-            step += 1
-            if on_progress:
-                on_progress(step, steps_total, sec_title)
-            break
-        if _count_slides(_join_slide_chunks(slide_chunks)) >= max_slides - (2 if sources else 0):
-            hit_slide_cap = True
-            step += 1
-            if on_progress:
-                on_progress(step, steps_total, sec_title)
-            break
-        display_title = sec_title
-        if _BAD_AGENDA_TITLE_RE.match((sec_title or "").strip()):
-            words = re.findall(r"[A-Za-zÄÖÜäöüß]{4,}", body or "")
-            display_title = " ".join(words[:6]) or sec_title
-        prompt = _SECTION_PROMPT.format(
-            title=display_title, label=label, body=(body or "")[:_SECTION_CHAR_BUDGET])
-        try:
-            slides, script, trunc = _llm_slides_script(
-                llm_obj, prompt, system=_SECTION_SYSTEM,
-                body_chars=len(body or ""))
-        except Exception:  # noqa: BLE001
-            skipped_invalid += 1
-            step += 1
-            if on_progress:
-                on_progress(step, steps_total, sec_title)
-            continue
-        any_truncated = any_truncated or trunc
-        step += 1
-        if on_progress:
-            on_progress(step, steps_total, sec_title)
-        if not slides and not script:
-            skipped_invalid += 1
-            continue
-        if slides:
-            slide_chunks.append(slides)
-        if script:
-            script_parts.append(script)
-            total_script += len(script)
-
-    if sources and not hit_hard_cap:
-        local_summary = " | ".join(
-            (t if not _BAD_AGENDA_TITLE_RE.match((t or "").strip()) else "Abschnitt")
-            for _l, t, _b in usable[:12])
-        src_slides, src_script, trunc = _llm_slides_script(
+        toc, excerpts = _thematic_toc_and_excerpts(usable)
+        open_slides, open_script, trunc = _llm_slides_script(
             llm_obj,
-            _SOURCES_PROMPT.format(
-                title=title,
-                local_summary=local_summary[:2000],
-                sources=_format_sources_block(sources),
-            ),
-            system=_SOURCES_SYSTEM,
-            num_predict=2800,
-            body_chars=len(_format_sources_block(sources)),
+            _OPENING_PROMPT.format(
+                title=title, subject=subject or "–", toc=toc, excerpts=excerpts[:3500]),
+            system=_SECTION_SYSTEM,
+            num_predict=1600,
+            body_chars=len(excerpts),
         )
         any_truncated = any_truncated or trunc
-        if not src_slides:
-            lines = ["<!-- _class: sources -->\n\n## Quellen\n"]
-            for s in sources:
-                lines.append(f"- [{s.get('title') or 'Quelle'}]({s.get('url') or '#'})")
-            src_slides = (
-                "<!-- _class: accent -->\n\n## Forschungsblick\n\n"
-                "- Zusätzliche wissenschaftliche Perspektiven zum Thema\n\n"
-                "---\n\n" + "\n".join(lines)
+        if not open_slides:
+            # Thematischer Fallback ohne „Seite N“
+            agenda_points = []
+            for _lab, tit, body in usable[:6]:
+                if _BAD_AGENDA_TITLE_RE.match((tit or "").strip()):
+                    words = re.findall(r"[A-Za-zÄÖÜäöüß]{4,}", body or "")
+                    agenda_points.append(" ".join(words[:5]) or "Kernaussage des Abschnitts")
+                else:
+                    agenda_points.append(tit.strip())
+            if not agenda_points:
+                agenda_points = ["Zentrale Begriffe", "Zusammenhänge", "Praxisbezug"]
+            subj_line = f'<p class="eyebrow">{subject or "Lernvortrag"}</p>\n\n' if subject else ""
+            open_slides = (
+                f"<!-- _class: lead -->\n\n{subj_line}# {title}\n\n"
+                f"### Was du heute mitnimmst\n\n"
+                f"---\n\n<!-- _class: agenda -->\n\n## Heute lernen wir\n\n"
+                + "\n".join(f"{i}. {p}" for i, p in enumerate(agenda_points, 1))
             )
-            if not src_script:
-                src_script = (
-                    "Zum Abschluss erweitern wir den Stoff um wissenschaftliche "
-                    "Perspektiven aus den ausgewählten Quellen."
+        if not open_script:
+            open_script = (
+                f"Willkommen zum Vortrag „{title}“. Wir klären die zentralen Ideen "
+                "und gehen den Stoff Schritt für Schritt durch."
+            )
+        slide_chunks.append(open_slides)
+        script_parts.append(open_script)
+        step += 1
+        if on_progress:
+            on_progress(step, steps_total, "Eröffnung")
+
+        total_script = len(open_script)
+
+        for label, sec_title, body in usable:
+            if total_script >= hard_cap:
+                hit_hard_cap = True
+                step += 1
+                if on_progress:
+                    on_progress(step, steps_total, sec_title)
+                break
+            if _count_slides(_join_slide_chunks(slide_chunks)) >= max_slides - (2 if sources else 0):
+                hit_slide_cap = True
+                step += 1
+                if on_progress:
+                    on_progress(step, steps_total, sec_title)
+                break
+            display_title = sec_title
+            if _BAD_AGENDA_TITLE_RE.match((sec_title or "").strip()):
+                words = re.findall(r"[A-Za-zÄÖÜäöüß]{4,}", body or "")
+                display_title = " ".join(words[:6]) or sec_title
+            prompt = _SECTION_PROMPT.format(
+                title=display_title, label=label, body=(body or "")[:_SECTION_CHAR_BUDGET])
+            try:
+                slides, script, trunc = _llm_slides_script(
+                    llm_obj, prompt, system=_SECTION_SYSTEM,
+                    body_chars=len(body or ""))
+            except Exception:  # noqa: BLE001
+                skipped_invalid += 1
+                step += 1
+                if on_progress:
+                    on_progress(step, steps_total, sec_title)
+                continue
+            any_truncated = any_truncated or trunc
+            step += 1
+            if on_progress:
+                on_progress(step, steps_total, sec_title)
+            if not slides and not script:
+                skipped_invalid += 1
+                continue
+            if slides:
+                slide_chunks.append(slides)
+            if script:
+                script_parts.append(script)
+                total_script += len(script)
+
+        if sources and not hit_hard_cap:
+            local_summary = " | ".join(
+                (t if not _BAD_AGENDA_TITLE_RE.match((t or "").strip()) else "Abschnitt")
+                for _l, t, _b in usable[:12])
+            src_slides, src_script, trunc = _llm_slides_script(
+                llm_obj,
+                _SOURCES_PROMPT.format(
+                    title=title,
+                    local_summary=local_summary[:2000],
+                    sources=_format_sources_block(sources),
+                ),
+                system=_SOURCES_SYSTEM,
+                num_predict=2800,
+                body_chars=len(_format_sources_block(sources)),
+            )
+            any_truncated = any_truncated or trunc
+            if not src_slides:
+                lines = ["<!-- _class: sources -->\n\n## Quellen\n"]
+                for s in sources:
+                    lines.append(f"- [{s.get('title') or 'Quelle'}]({s.get('url') or '#'})")
+                src_slides = (
+                    "<!-- _class: accent -->\n\n## Forschungsblick\n\n"
+                    "- Zusätzliche wissenschaftliche Perspektiven zum Thema\n\n"
+                    "---\n\n" + "\n".join(lines)
                 )
-        if "_class: sources" not in src_slides:
-            lines = ["<!-- _class: sources -->\n\n## Quellen\n"]
-            for s in sources:
-                lines.append(f"- [{s.get('title') or 'Quelle'}]({s.get('url') or '#'})")
-            src_slides = src_slides.rstrip() + "\n\n---\n\n" + "\n".join(lines)
-        slide_chunks.append(src_slides)
-        if src_script:
-            script_parts.append(src_script)
-            total_script += len(src_script)
-        step += 1
-        if on_progress:
-            on_progress(step, steps_total, "Zusatzwissen")
-    elif sources:
-        step += 1
-        if on_progress:
-            on_progress(step, steps_total, "Zusatzwissen")
+                if not src_script:
+                    src_script = (
+                        "Zum Abschluss erweitern wir den Stoff um wissenschaftliche "
+                        "Perspektiven aus den ausgewählten Quellen."
+                    )
+            if "_class: sources" not in src_slides:
+                lines = ["<!-- _class: sources -->\n\n## Quellen\n"]
+                for s in sources:
+                    lines.append(f"- [{s.get('title') or 'Quelle'}]({s.get('url') or '#'})")
+                src_slides = src_slides.rstrip() + "\n\n---\n\n" + "\n".join(lines)
+            slide_chunks.append(src_slides)
+            if src_script:
+                script_parts.append(src_script)
+                total_script += len(src_script)
+            step += 1
+            if on_progress:
+                on_progress(step, steps_total, "Zusatzwissen")
+        elif sources:
+            step += 1
+            if on_progress:
+                on_progress(step, steps_total, "Zusatzwissen")
 
-    if not script_parts:
-        raise TalkError(
-            "Aus den Abschnitten ließ sich kein Vortrag erzeugen. Prüfe unter "
-            "⚙️ Einstellungen, ob ein Modell läuft, und versuche es erneut.")
+        if not script_parts:
+            raise TalkError(
+                "Aus den Abschnitten ließ sich kein Vortrag erzeugen. Prüfe unter "
+                "⚙️ Einstellungen, ob ein Modell läuft, und versuche es erneut.")
 
-    body = _join_slide_chunks(slide_chunks)
-    marp_md = validate_marp_markdown(
-        "---\nmarp: true\npaginate: true\n---\n\n" + body)
-    script = "\n\n".join(script_parts)
-    if len(script) > hard_cap:
-        script = script[:hard_cap].rsplit(" ", 1)[0] + "…"
-        hit_hard_cap = True
+        body = _join_slide_chunks(slide_chunks)
+        marp_md = validate_marp_markdown(
+            "---\nmarp: true\npaginate: true\n---\n\n" + body)
+        script = "\n\n".join(script_parts)
+        if len(script) > hard_cap:
+            script = script[:hard_cap].rsplit(" ", 1)[0] + "…"
+            hit_hard_cap = True
 
-    n_slides = _count_slides(body)
-    warning_parts: list[str] = []
-    if any_truncated:
+        n_slides = _count_slides(body)
+        warning_parts: list[str] = []
+        if any_truncated:
+            warning_parts.append(
+                "⚠️ Mindestens ein Abschnitt wurde vermutlich am Token-Budget abgeschnitten.")
+        if hit_hard_cap:
+            warning_parts.append(
+                f"Skript bei ca. {hard_cap} Zeichen gekappt – für vollständige "
+                "Abdeckung weniger Dokumente wählen.")
+        if hit_slide_cap:
+            warning_parts.append(
+                f"Folienzahl am Limit ({max_slides}) – weitere Abschnitte ausgelassen.")
+        if skipped_invalid:
+            warning_parts.append(
+                f"{skipped_invalid} Abschnitt(e) nach JSON-Kontrolle verworfen/übersprungen.")
         warning_parts.append(
-            "⚠️ Mindestens ein Abschnitt wurde vermutlich am Token-Budget abgeschnitten.")
-    if hit_hard_cap:
-        warning_parts.append(
-            f"Skript bei ca. {hard_cap} Zeichen gekappt – für vollständige "
-            "Abdeckung weniger Dokumente wählen.")
-    if hit_slide_cap:
-        warning_parts.append(
-            f"Folienzahl am Limit ({max_slides}) – weitere Abschnitte ausgelassen.")
-    if skipped_invalid:
-        warning_parts.append(
-            f"{skipped_invalid} Abschnitt(e) nach JSON-Kontrolle verworfen/übersprungen.")
-    warning_parts.append(
-        f"{n_slides} Folien · {len(script)} Zeichen Skript "
-        f"(~{max(1, len(script) // 1000)} Min. grob).")
-    warning = " ".join(warning_parts)
+            f"{n_slides} Folien · {len(script)} Zeichen Skript "
+            f"(~{max(1, len(script) // 1000)} Min. grob).")
+        warning = " ".join(warning_parts)
 
-    return marp_md, script, used_model, warning
+        return marp_md, script, used_model, warning
 
 
 def talk_dir(talk_id: str) -> Path:

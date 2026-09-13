@@ -353,11 +353,13 @@ class Settings:
     PLAN_ETA_BASE_SEC: float = 30.0
     PLAN_ETA_SEC_PER_1000_CHARS: float = 8.0
 
-    # Semesterplan-Import (siehe ragapp/syllabus_import.py): Obergrenze fuer den
-    # Dokumenttext im Extraktions-Prompt - gleiches Prinzip wie PLAN_MAX_TOC_CHARS
-    # (ohne Deckel wuerde ein sehr grosses Modulhandbuch das Kontextfenster
-    # sprengen, das Modell saehe nur einen abgeschnittenen Rest).
-    SYLLABUS_IMPORT_MAX_CHARS: int = 12000
+    # Semesterplan-Import (siehe ragapp/syllabus_import.py): Zeichen je
+    # Extraktions-Durchgang. Lange Dokumente (z. B. 70-Seiten-PDF) werden in
+    # überlappende Chunks dieser Größe zerlegt und mehrstufig gelesen – ein
+    # einzelner Prompt würde das Kontextfenster sprengen bzw. den VRAM
+    # (num_ctx=32768 + großes Modell) überlaufen.
+    SYLLABUS_IMPORT_MAX_CHARS: int = 8000
+    SYLLABUS_CHUNK_OVERLAP: int = 700
 
     # ------------------------------------------------------------------ #
     # Retrieval-Deduplizierung (gegen doppelte Informationen in der Antwort)

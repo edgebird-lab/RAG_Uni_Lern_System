@@ -291,6 +291,7 @@ def suggest_fn(load_functions, ragapp_dir):
                 "settings": settings_obj,
                 "get_llm": lambda model: _FakeLLM(),
                 "Optional": None,
+                "llm_task": lambda model=None: __import__("contextlib").nullcontext(),
             },
             const_names=["_PRONUNCIATION_SUGGEST_SYSTEM", "_PRONUNCIATION_SUGGEST_PROMPT"],
         )

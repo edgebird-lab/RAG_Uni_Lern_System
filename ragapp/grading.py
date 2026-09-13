@@ -20,7 +20,7 @@ import re
 from typing import Optional
 
 from ragapp.config import settings
-from ragapp.llm import get_llm
+from ragapp.llm import get_llm, llm_task
 
 # Bewertungen (Spiegel von study.py, ohne Import gegen Zyklen)
 _NICHT, _HALB, _GEWUSST = 0, 1, 2
@@ -75,9 +75,10 @@ def grade_typed_answer(question: str, reference: str, student: str,
     if not ref:
         return {"score": None, "fehlt": [], "feedback": "", "suggested_rating": _HALB, "ok": False}
     try:
-        data = get_llm(model or settings.LLM_MODEL).generate_json(
-            _GRADE_PROMPT.format(frage=q, referenz=ref[:3000], student=stu[:3000]),
-            system=_GRADE_SYSTEM, temperature=0.1)
+        with llm_task(model or settings.LLM_MODEL):
+            data = get_llm(model or settings.LLM_MODEL).generate_json(
+                _GRADE_PROMPT.format(frage=q, referenz=ref[:3000], student=stu[:3000]),
+                system=_GRADE_SYSTEM, temperature=0.1)
     except Exception:  # noqa: BLE001
         return {"score": None, "fehlt": [], "feedback": "", "suggested_rating": _HALB, "ok": False}
     if not isinstance(data, dict):
@@ -217,17 +218,22 @@ def generate_mcq(question: str, answer: str, model: Optional[str] = None,
         random.shuffle(opts)
         return {"options": opts, "correct": cached["correct"]}
 
-    llm = get_llm(model or settings.LLM_MODEL_FAST)
     prompt = _MCQ_PROMPT.format(frage=(question or "")[:400], antwort=ans[:800])
     data = None
+    used_model = model or settings.LLM_MODEL_FAST
     # Bei leerer/trunkierter Antwort (Reasoning-Modelle) einmal mit mehr Budget erneut.
-    for np in (settings.LLM_NUM_PREDICT, 2048):
-        try:
-            data = llm.generate_json(prompt, system=_MCQ_SYSTEM, temperature=0.6, num_predict=np)
-        except Exception:  # noqa: BLE001
-            data = None
-        if isinstance(data, dict) and (data.get("distraktoren") or data.get("richtig")):
-            break
+    try:
+        with llm_task(used_model):
+            llm = get_llm(used_model)
+            for np in (settings.LLM_NUM_PREDICT, 2048):
+                try:
+                    data = llm.generate_json(prompt, system=_MCQ_SYSTEM, temperature=0.6, num_predict=np)
+                except Exception:  # noqa: BLE001
+                    data = None
+                if isinstance(data, dict) and (data.get("distraktoren") or data.get("richtig")):
+                    break
+    except Exception:  # noqa: BLE001
+        return None
     if not isinstance(data, dict):
         return None
     correct = str(data.get("richtig") or "").strip() or ans.split("\n")[0][:200]

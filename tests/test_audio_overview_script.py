@@ -70,6 +70,7 @@ def generate_script_funcs(load_functions, ragapp_dir):
                 "_granular_sections": _fake_granular_sections_factory(sections),
                 "AudioOverviewError": RuntimeError,
                 "Optional": None,
+                "llm_task": lambda model=None: __import__("contextlib").nullcontext(),
             },
             const_names=["_SECTION_SYSTEM", "_SECTION_PROMPT", "_SECTION_CHAR_BUDGET",
                         "_MIN_SECTION_CHARS", "_SECTION_NUM_PREDICT",

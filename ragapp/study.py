@@ -185,33 +185,43 @@ def generate_answers(subject: "str | None" = None, deck: "str | None" = None,
         return {"status": "llm_error", "processed": 0, "filled": 0, "errors": 0,
                 "error_msg": f"Modell '{settings.LLM_MODEL_FAST}' laeuft nicht: {msg}"}
 
+    from ragapp.llm import require_vram, release_llm, VramLowError
+    try:
+        require_vram(settings.LLM_MODEL_FAST)
+    except VramLowError as exc:
+        return {"status": "llm_error", "processed": 0, "filled": 0, "errors": 0,
+                "error_msg": str(exc)}
+
     filled = errors = ungrounded = 0
     error_msg = None
-    for i, card in enumerate(todo, 1):
-        if progress:
-            progress(f"Antwort {i}/{len(todo)} · {(card.get('front') or '')[:50]} …")
-        try:
-            ans = generate_answer(card.get("back") or "", card.get("front") or "")
-        except QuestionGenError as exc:
-            errors += 1
-            if error_msg is None:
-                error_msg = str(exc)
-            if errors >= 3 and filled == 0:      # Fail-fast statt endlos ins Leere
-                return {"status": "llm_error", "processed": i, "filled": filled,
-                        "errors": errors, "error_msg": error_msg}
-            continue
-        if ans:
-            if check_grounding:
-                from ragapp import grading
-                if not grading.is_grounded(card.get("front") or "", ans, card.get("back") or ""):
-                    ungrounded += 1
-                    continue   # nicht belegte Antwort NICHT speichern (Qualitaetsgate)
-            manifest.set_answer(card["card_id"], ans)
-            filled += 1
+    try:
+        for i, card in enumerate(todo, 1):
+            if progress:
+                progress(f"Antwort {i}/{len(todo)} · {(card.get('front') or '')[:50]} …")
+            try:
+                ans = generate_answer(card.get("back") or "", card.get("front") or "")
+            except QuestionGenError as exc:
+                errors += 1
+                if error_msg is None:
+                    error_msg = str(exc)
+                if errors >= 3 and filled == 0:      # Fail-fast statt endlos ins Leere
+                    return {"status": "llm_error", "processed": i, "filled": filled,
+                            "errors": errors, "error_msg": error_msg}
+                continue
+            if ans:
+                if check_grounding:
+                    from ragapp import grading
+                    if not grading.is_grounded(card.get("front") or "", ans, card.get("back") or ""):
+                        ungrounded += 1
+                        continue   # nicht belegte Antwort NICHT speichern (Qualitaetsgate)
+                manifest.set_answer(card["card_id"], ans)
+                filled += 1
 
-    status = "ok" if filled > 0 else ("llm_error" if errors else "empty")
-    return {"status": status, "processed": len(todo), "filled": filled,
-            "errors": errors, "ungrounded": ungrounded, "error_msg": error_msg}
+        status = "ok" if filled > 0 else ("llm_error" if errors else "empty")
+        return {"status": status, "processed": len(todo), "filled": filled,
+                "errors": errors, "ungrounded": ungrounded, "error_msg": error_msg}
+    finally:
+        release_llm()
 
 
 def apply_embedding_flags(card_ids: "list[str]", progress=None) -> dict:

@@ -45,7 +45,8 @@ _TMP_DIR = DATA_DIR / "_syllabus_import_tmp"
 st.caption(
     "Lade einen Semesterplan, ein Modulhandbuch oder deine Studien-/Prüfungsordnung "
     "hoch (PDF, Word, Text oder Markdown) - die KI schlägt daraus Fächer mit "
-    "Klausurtermin, ECTS und Vorlesungszeiten vor. Du siehst und bearbeitest den "
+    "Klausurtermin, ECTS und Vorlesungszeiten vor. Lange PDFs werden abschnittweise "
+    "gelesen (nicht nur die ersten Seiten). Du siehst und bearbeitest den "
     "Vorschlag, BEVOR irgendetwas gespeichert wird."
 )
 
@@ -91,7 +92,14 @@ with card("upload"):
             finally:
                 _reporter.clear()
             with st.spinner("KI liest Fächer/Termine/Zeiten aus dem Dokument …"):
-                _subjects = syllabus_import.extract_syllabus(_doc.text, model=_model_choice)
+                _status = st.empty()
+
+                def _syllabus_progress(i, n):
+                    _status.caption(f"KI liest Abschnitt {i} von {n} …")
+
+                _subjects = syllabus_import.extract_syllabus(
+                    _doc.text, model=_model_choice, progress=_syllabus_progress)
+                _status.empty()
         except (syllabus_import.SyllabusImportError, ValueError) as exc:
             st.error(str(exc))
         except Exception as exc:  # noqa: BLE001

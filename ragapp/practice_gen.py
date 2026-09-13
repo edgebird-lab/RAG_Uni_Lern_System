@@ -22,7 +22,7 @@ import re
 from typing import Optional
 
 from ragapp.config import settings
-from ragapp.llm import get_llm
+from ragapp.llm import get_llm, llm_task
 from ragapp import manifest
 from ragapp.retrieval.vectorstore import get_vectorstore
 from ragapp.ingestion.summarize import _sections_from_chunks
@@ -277,9 +277,10 @@ def generate_practice_problem(
     used_model = model or _author_model()
 
     try:
-        data = get_llm(used_model).generate_json(
-            prompt_template.format(source=source, fach=fach, topic_hint=topic_hint),
-            system=_PRACTICE_SYSTEM, temperature=0.4)
+        with llm_task(used_model):
+            data = get_llm(used_model).generate_json(
+                prompt_template.format(source=source, fach=fach, topic_hint=topic_hint),
+                system=_PRACTICE_SYSTEM, temperature=0.4)
     except Exception as exc:  # noqa: BLE001
         raise PracticeGenError(f"KI-Aufgabengenerierung fehlgeschlagen: {exc}") from exc
 
@@ -324,9 +325,10 @@ def generate_formelsammlung(subject: str, *, model: Optional[str] = None) -> str
 
     used_model = model or _author_model()
     try:
-        raw = get_llm(used_model).generate(
-            _FORMELSAMMLUNG_PROMPT.format(source=source, fach=subject),
-            system=_FORMELSAMMLUNG_SYSTEM, temperature=0.2)
+        with llm_task(used_model):
+            raw = get_llm(used_model).generate(
+                _FORMELSAMMLUNG_PROMPT.format(source=source, fach=subject),
+                system=_FORMELSAMMLUNG_SYSTEM, temperature=0.2)
     except Exception as exc:  # noqa: BLE001
         raise PracticeGenError(f"Formelsammlung fehlgeschlagen: {exc}") from exc
     if not raw.strip():

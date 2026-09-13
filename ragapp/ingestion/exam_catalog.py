@@ -41,7 +41,7 @@ from ragapp.ingestion.loaders import load_document
 from ragapp.ingestion import dedup
 from ragapp.retrieval.embeddings import get_embedder
 from ragapp.retrieval.vectorstore import get_vectorstore
-from ragapp.llm import get_llm
+from ragapp.llm import get_llm, require_vram, release_llm
 
 _HEADER_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 
@@ -169,57 +169,66 @@ def build_exam_catalog(
     sections = _split_sections(md_text)
     hints = _exam_hints(exam_files)
 
-    llm = get_llm(settings.author_model())  # Autoren-Modell (gross) für gute Erklärqualität
-    embedder = get_embedder()
-    store = get_vectorstore()
-
-    doc_id = dedup.doc_id_for(f"lernkatalog::{subject}")
-    catalog_md = [f"# Klausur-Lernkatalog: {subject}\n",
-                  f"*KI-generierter Lernkatalog aus deiner Zusammenfassung + Altklausuren. "
-                  f"Grundlage: `{summary_path.name}`. Im Zweifel immer mit der Zusammenfassung "
-                  f"abgleichen.*\n"]
-
     ids, embeddings, documents, metadatas = [], [], [], []
+    catalog_md: list[str] = []
+    embedder = store = None
+    doc_id = ""
     total_pairs = 0
-    idx = 0
+    require_vram(settings.author_model())
+    try:
+        llm = get_llm(settings.author_model())  # Autoren-Modell (gross) für gute Erklärqualität
+        embedder = get_embedder()
+        store = get_vectorstore()
 
-    # Nur inhaltlich relevante Abschnitte (überspringe reine Kurzcheck-/Ergebnislisten)
-    for title, body in sections:
-        if len(body) < 150:
-            continue
-        if progress:
-            progress(f"Lernkatalog {subject}: '{title[:40]}' …")
-        exam_hint = _match_hint(title, hints)
-        try:
-            raw = llm.generate(
-                _PROMPT.format(section=body[:3500], exam_hint=exam_hint, n=n_per_section),
-                system=_SYSTEM, temperature=0.2,
-            )
-        except Exception:
-            continue
-        pairs = _parse_pairs(raw)  # LaTeX-sicher (kein JSON)
-        if not pairs:
-            continue
+        doc_id = dedup.doc_id_for(f"lernkatalog::{subject}")
+        catalog_md = [f"# Klausur-Lernkatalog: {subject}\n",
+                      f"*KI-generierter Lernkatalog aus deiner Zusammenfassung + Altklausuren. "
+                      f"Grundlage: `{summary_path.name}`. Im Zweifel immer mit der Zusammenfassung "
+                      f"abgleichen.*\n"]
 
-        catalog_md.append(f"\n## {title}\n")
-        for pair in pairs:
-            frage = (pair.get("frage") or "").strip()
-            antwort = (pair.get("antwort") or "").strip()
-            if not frage or not antwort:
+        ids, embeddings, documents, metadatas = [], [], [], []
+        total_pairs = 0
+        idx = 0
+
+        # Nur inhaltlich relevante Abschnitte (überspringe reine Kurzcheck-/Ergebnislisten)
+        for title, body in sections:
+            if len(body) < 150:
                 continue
-            # frage-förmiger, selbst-enthaltender Chunk für gutes Retrieval
-            doc = (f"[Klausur-Lernkatalog · {subject} · {title}]\n"
-                   f"FRAGE: {frage}\n\nERKLÄRUNG (Vorgehen):\n{antwort}")
-            ids.append(f"{doc_id}::qa{idx}")
-            documents.append(doc)
-            metadatas.append({
-                "type": "chunk", "doc_id": doc_id, "subject": subject,
-                "filename": f"Lernkatalog_{subject}.md", "source_path": f"docs/Lernkatalog_{subject}.md",
-                "location": title, "header_path": title, "kind": "exam_qa",
-            })
-            catalog_md.append(f"**F: {frage}**\n\n{antwort}\n")
-            idx += 1
-            total_pairs += 1
+            if progress:
+                progress(f"Lernkatalog {subject}: '{title[:40]}' …")
+            exam_hint = _match_hint(title, hints)
+            try:
+                raw = llm.generate(
+                    _PROMPT.format(section=body[:3500], exam_hint=exam_hint, n=n_per_section),
+                    system=_SYSTEM, temperature=0.2,
+                )
+            except Exception:
+                continue
+            pairs = _parse_pairs(raw)  # LaTeX-sicher (kein JSON)
+            if not pairs:
+                continue
+
+            catalog_md.append(f"\n## {title}\n")
+            for pair in pairs:
+                frage = (pair.get("frage") or "").strip()
+                antwort = (pair.get("antwort") or "").strip()
+                if not frage or not antwort:
+                    continue
+                # frage-förmiger, selbst-enthaltender Chunk für gutes Retrieval
+                doc = (f"[Klausur-Lernkatalog · {subject} · {title}]\n"
+                       f"FRAGE: {frage}\n\nERKLÄRUNG (Vorgehen):\n{antwort}")
+                ids.append(f"{doc_id}::qa{idx}")
+                documents.append(doc)
+                metadatas.append({
+                    "type": "chunk", "doc_id": doc_id, "subject": subject,
+                    "filename": f"Lernkatalog_{subject}.md", "source_path": f"docs/Lernkatalog_{subject}.md",
+                    "location": title, "header_path": title, "kind": "exam_qa",
+                })
+                catalog_md.append(f"**F: {frage}**\n\n{antwort}\n")
+                idx += 1
+                total_pairs += 1
+    finally:
+        release_llm()
 
     if not ids:
         return {"status": "empty", "subject": subject}

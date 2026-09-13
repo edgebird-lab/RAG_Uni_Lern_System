@@ -18,6 +18,12 @@ def isolated_db(tmp_path, monkeypatch):
     return db_path
 
 
+@pytest.fixture(autouse=True)
+def _skip_vram_guard(monkeypatch):
+    from contextlib import nullcontext
+    monkeypatch.setattr(practice_gen, "llm_task", lambda model=None: nullcontext())
+
+
 class _FakeLLM:
     def __init__(self, *, result=None, raise_exc=None):
         self._result = result

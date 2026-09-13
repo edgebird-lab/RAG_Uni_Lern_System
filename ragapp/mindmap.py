@@ -17,7 +17,7 @@ import re
 from typing import Optional
 
 from ragapp.config import settings
-from ragapp.llm import get_llm
+from ragapp.llm import get_llm, llm_task
 from ragapp import manifest
 from ragapp.study_plan import _granular_sections, _cap_granular_for_prompt, _toc_with_excerpts
 
@@ -299,27 +299,31 @@ def generate_mindmap(doc_ids: list[str], subject: Optional[str],
     toc = _toc_with_excerpts(capped, settings.MINDMAP_PROMPT_BUDGET_CHARS)
     fach = subject or "unbekannt"
     used_model = model or _author_model()
-    llm_obj = get_llm(used_model)
-
+    last_reason = None
+    last_tokens = None
     try:
-        data = llm_obj.generate_json(
-            _MINDMAP_PROMPT.format(
-                fach=fach, n=len(capped), toc=toc,
-                max_topics=max(1, int(settings.MINDMAP_MAX_TOPICS)),
-                max_sub=max(1, int(settings.MINDMAP_MAX_SUBTOPICS)),
-                max_links=max(0, int(settings.MINDMAP_MAX_LINKS))),
-            system=_MINDMAP_SYSTEM, temperature=0.2)
+        with llm_task(used_model):
+            llm_obj = get_llm(used_model)
+            data = llm_obj.generate_json(
+                _MINDMAP_PROMPT.format(
+                    fach=fach, n=len(capped), toc=toc,
+                    max_topics=max(1, int(settings.MINDMAP_MAX_TOPICS)),
+                    max_sub=max(1, int(settings.MINDMAP_MAX_SUBTOPICS)),
+                    max_links=max(0, int(settings.MINDMAP_MAX_LINKS))),
+                system=_MINDMAP_SYSTEM, temperature=0.2)
+            last_reason = llm_obj.last_done_reason
+            last_tokens = llm_obj.last_completion_tokens
     except Exception as exc:  # noqa: BLE001
         raise MindmapError(f"KI-Mindmap fehlgeschlagen: {exc}") from exc
 
     warning: Optional[str] = None
     graph = _repair_mindmap(data, len(capped))
     if graph is None:
-        if data is None and llm_obj.last_done_reason == "length":
+        if data is None and last_reason == "length":
             warning = (
                 f"Das Modell „{used_model}“ ist bei {len(capped)} Abschnitten "
                 f"nicht fertig geworden (zu viel interne Verarbeitung, nach "
-                f"{llm_obj.last_completion_tokens} Tokens abgebrochen) - "
+                f"{last_tokens} Tokens abgebrochen) - "
                 "stattdessen wird jeder Abschnitt einzeln aufgeführt. Versuche "
                 "ein anderes Modell oder wähle weniger Dokumente.")
         # Nie ganz scheitern: ein Knoten je Abschnitt, flach unter der Wurzel.

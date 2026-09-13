@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from contextlib import contextmanager
 from typing import Any, Iterator
 
 import ollama
@@ -28,6 +29,10 @@ try:  # zentrales Logging (von logging_setup bereitgestellt)
 except Exception:  # Modul evtl. noch nicht vorhanden -> Standard-Logging als Fallback
     import logging
     _log = logging.getLogger(__name__)
+
+
+class VramLowError(RuntimeError):
+    """Zu wenig freier Grafikspeicher – das Modell wird bewusst nicht geladen."""
 
 
 # --------------------------------------------------------------------------- #
@@ -59,6 +64,8 @@ def diagnose_error(exc: Exception) -> str:
         * zu wenig Speicher / Backend-Absturz (VRAM/OOM/500)
     Unbekannte Fehler werden mit ihrer Originalmeldung durchgereicht.
     """
+    if isinstance(exc, VramLowError):
+        return str(exc)
     msg = (str(exc) or exc.__class__.__name__).strip()
     low = msg.lower()
     status = getattr(exc, "status_code", None)
@@ -535,6 +542,60 @@ def vram_preflight(model: "str | None" = None) -> dict:
         return {"status": "unknown", "model": model}
 
 
+def vram_low_message(pf: dict) -> str:
+    """Klartext fuer UI/Exceptions, wenn ``vram_preflight`` ``status=low`` liefert."""
+    free = pf.get("free_gb")
+    need = pf.get("need_gb")
+    model = pf.get("model") or settings.LLM_MODEL
+    return (
+        f"Zu wenig freier Grafikspeicher (VRAM). Aktuell sind nur {free} GB frei, "
+        f"aber das Modell `{model}` braucht ~{need} GB. Bitte andere GPU-Programme "
+        "schließen und es danach erneut versuchen."
+    )
+
+
+def release_llm() -> int:
+    """Entlaedt eigene in Ollama residente Modelle (Antwort-LLM, Embedder, …).
+
+    Nach einer abgeschlossenen Aufgabe aufrufen, damit die naechste Seite
+    (Chat, Karten, Uebung, Semesterplan) nicht auf belegten VRAM stoesst und
+    OOM laeuft. Fremde Modelle anderer lokaler Apps bleiben unberuehrt."""
+    try:
+        from ragapp.scripts.stop_ollama_standby import unload_resident_models
+        return int(unload_resident_models(settings.OLLAMA_BASE_URL) or 0)
+    except Exception:  # noqa: BLE001 - Entladen darf den Aufrufer nie kippen
+        return 0
+
+
+def require_vram(model: str | None = None) -> dict:
+    """Vor dem Laden: eigene Reste freigeben, dann pruefen ob genug VRAM frei ist.
+
+    Wirft ``VramLowError`` mit konkreter GB-Angabe, statt das Modell in den
+    Ueberlauf zu zwingen (beobachtet: Uebungsaufgabe liess das Autoren-Modell
+    Minuten liegen, Chat/Semesterplan luden obendrauf -> OOM)."""
+    model = model or settings.LLM_MODEL
+    # Messung nur auf wirklich freiem Speicher: was die letzte Aufgabe noch
+    # haelt, zaehlt nicht als "verfuegbar".
+    release_llm()
+    pf = vram_preflight(model)
+    if pf.get("status") == "low":
+        raise VramLowError(vram_low_message(pf))
+    return pf
+
+
+@contextmanager
+def llm_task(model: str | None = None):
+    """Kontext fuer eine abgeschlossene KI-Aufgabe: VRAM-Check, danach Entladen.
+
+    Mehrere LLM-Aufrufe INNERHALB des Blocks behalten das Modell (keep_alive),
+    nach dem Block ist der Grafikspeicher wieder frei – auch bei Fehlern."""
+    require_vram(model)
+    try:
+        yield
+    finally:
+        release_llm()
+
+
 # --------------------------------------------------------------------------- #
 # Manuelle Modell-Steuerung (Sidebar-Button): selbst entscheiden, wann das
 # Antwort-LLM laedt, statt nur passiv auf den ersten Kaltstart zu warten.
@@ -558,6 +619,9 @@ def warm_llm(model: str | None = None) -> None:
     model = model or settings.LLM_MODEL
     client = ollama.Client(host=settings.OLLAMA_BASE_URL, timeout=settings.LLM_TIMEOUT)
     try:
+        require_vram(model)
         client.generate(model=model, prompt="", keep_alive=settings.keep_alive_seconds())
+    except VramLowError:
+        raise
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(diagnose_error(exc)) from exc

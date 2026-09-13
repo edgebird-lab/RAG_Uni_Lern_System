@@ -24,7 +24,7 @@ class _FakeLLM:
         self._raise_exc = raise_exc
         self.last_done_reason = "stop"
 
-    def generate_json(self, prompt, system=None, temperature=None):
+    def generate_json(self, prompt, system=None, temperature=None, **kwargs):
         self.last_prompt = prompt
         if self._raise_exc:
             raise self._raise_exc
@@ -113,9 +113,48 @@ def test_parse_subjects_kein_list_input_gibt_leere_liste():
     assert si._parse_subjects(None) == []
 
 
-# --------------------------------------------------------------------------- #
-# extract_syllabus()
-# --------------------------------------------------------------------------- #
+def test_chunk_syllabus_text_ueberlappt_und_deckt_das_ende():
+    text = "".join(chr(65 + (i % 26)) for i in range(20000))
+    chunks = si._chunk_syllabus_text(text, 8000, 700)
+    assert len(chunks) >= 3
+    assert chunks[0] == text[:8000]
+    assert chunks[-1].endswith(text[-20:])
+    for a, b in zip(chunks, chunks[1:]):
+        assert a[-700:] == b[:700]
+
+
+def test_chunk_syllabus_text_bevorzugt_seitengrenzen():
+    pages = [f"Seite{i} " + ("x" * 80) for i in range(6)]
+    text = "\f".join(pages)
+    chunks = si._chunk_syllabus_text(text, size=250, overlap=40)
+    joined = "\n".join(chunks)
+    for i in range(6):
+        assert f"Seite{i}" in joined
+
+
+def test_merge_subject_lists_fuellt_luecken_und_vorlesungen():
+    a = [si.ExtractedSubject(
+        code="DSA", label="DSA", exam_date=None, ects=None,
+        lectures=[si.ExtractedLecture(1, "10:00", "12:00", "H1")])]
+    b = [si.ExtractedSubject(
+        code="DSA", label="Algorithmen", exam_date="2026-07-20", ects=6.0,
+        lectures=[si.ExtractedLecture(3, "14:00", "16:00", None)])]
+    out = si._merge_subject_lists([a, b])
+    assert len(out) == 1
+    s = out[0]
+    assert s.label == "Algorithmen"
+    assert s.exam_date == "2026-07-20" and s.ects == 6.0
+    assert len(s.lectures) == 2
+
+
+@pytest.fixture(autouse=True)
+def _skip_vram_guard(monkeypatch):
+    """extract_syllabus() nutzt llm_task (VRAM-Check + Entladen) – in Unit-Tests
+    ohne echten Ollama-Aufruf ueberspringen."""
+    from contextlib import nullcontext
+    monkeypatch.setattr(si, "llm_task", lambda model=None: nullcontext())
+
+
 def test_extract_syllabus_ohne_text_wirft_fehler(monkeypatch):
     with pytest.raises(si.SyllabusImportError):
         si.extract_syllabus("   ")
@@ -142,13 +181,29 @@ def test_extract_syllabus_erfolgsfall(monkeypatch):
     assert subjects[0].code == "DSA"
 
 
-def test_extract_syllabus_kappt_text_am_zeichenbudget(monkeypatch):
-    fake = _FakeLLM(result=[{"code": "X", "label": "X"}])
-    monkeypatch.setattr(si, "get_llm", lambda model=None: fake)
-    monkeypatch.setattr(si.settings, "SYLLABUS_IMPORT_MAX_CHARS", 20)
-    si.extract_syllabus("A" * 500)
-    assert "A" * 500 not in fake.last_prompt
-    assert "A" * 20 in fake.last_prompt
+def test_extract_syllabus_liest_langen_text_in_mehreren_chunks(monkeypatch):
+    """70-Seiten-PDFs passen nicht in einen Prompt: jeder Chunk wird gelesen,
+    Faecher aus allen Abschnitten werden zusammengefuehrt."""
+    calls: list[str] = []
+
+    class _ChunkLLM:
+        last_done_reason = "stop"
+
+        def generate_json(self, prompt, system=None, temperature=None, **kwargs):
+            calls.append(prompt)
+            if "FachAlpha" in prompt:
+                return [{"code": "A", "label": "FachAlpha"}]
+            return [{"code": "B", "label": "FachBeta", "exam_date": "2026-07-20", "ects": 5}]
+
+    monkeypatch.setattr(si, "get_llm", lambda model=None: _ChunkLLM())
+    monkeypatch.setattr(si.settings, "SYLLABUS_IMPORT_MAX_CHARS", 800)
+    monkeypatch.setattr(si.settings, "SYLLABUS_CHUNK_OVERLAP", 80)
+    text = ("FachAlpha Modulbeschreibung " * 80) + ("FachBeta Klausur 20.07. " * 80)
+    subjects = si.extract_syllabus(text)
+    assert len(calls) >= 2
+    assert {s.code for s in subjects} == {"A", "B"}
+    beta = next(s for s in subjects if s.code == "B")
+    assert beta.exam_date == "2026-07-20" and beta.ects == 5.0
 
 
 # --------------------------------------------------------------------------- #

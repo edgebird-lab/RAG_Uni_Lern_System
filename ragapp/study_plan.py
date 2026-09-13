@@ -19,7 +19,7 @@ from datetime import date, timedelta
 from typing import Optional
 
 from ragapp.config import settings
-from ragapp.llm import get_llm
+from ragapp.llm import get_llm, llm_task
 from ragapp import analytics, manifest
 from ragapp.retrieval.vectorstore import get_vectorstore
 from ragapp.ingestion.summarize import _sections_from_chunks
@@ -327,13 +327,18 @@ def generate_outline(
     fach = subject or "unbekannt"
     used_model = model or _author_model()
 
-    llm = get_llm(used_model)
+    last_reason = None
+    last_tokens = None
     _t0 = time.monotonic()
     try:
-        data = llm.generate_json(
-            _OUTLINE_PROMPT.format(fach=fach, n=len(capped), toc=toc,
-                                   max_sections=max_sections, max_idx=len(capped) - 1),
-            system=_OUTLINE_SYSTEM, temperature=0.2)
+        with llm_task(used_model):
+            llm = get_llm(used_model)
+            data = llm.generate_json(
+                _OUTLINE_PROMPT.format(fach=fach, n=len(capped), toc=toc,
+                                       max_sections=max_sections, max_idx=len(capped) - 1),
+                system=_OUTLINE_SYSTEM, temperature=0.2)
+            last_reason = llm.last_done_reason
+            last_tokens = llm.last_completion_tokens
     except Exception as exc:  # noqa: BLE001
         raise OutlineError(f"KI-Gliederung fehlgeschlagen: {exc}") from exc
     # Echte Dauer als Messwert sichern -> kalibriert die ETA-Schaetzung der
@@ -347,11 +352,11 @@ def generate_outline(
     warning: Optional[str] = None
     sections = _repair_outline(data, len(capped))
     if sections is None:
-        if data is None and llm.last_done_reason == "length":
+        if data is None and last_reason == "length":
             warning = (
                 f"Das Modell „{used_model}“ ist bei {len(capped)} Abschnitten "
                 f"nicht fertig geworden (zu viel interne Verarbeitung, nach "
-                f"{llm.last_completion_tokens} Tokens abgebrochen) - "
+                f"{last_tokens} Tokens abgebrochen) - "
                 "stattdessen wird jeder Abschnitt einzeln aufgeführt. Versuche "
                 "ein anderes Modell oder wähle weniger Dokumente.")
         # Nie ganz scheitern: granulare Abschnitte 1:1 als Gliederung uebernehmen.

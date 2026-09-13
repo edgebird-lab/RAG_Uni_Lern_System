@@ -77,6 +77,7 @@ def generate_mindmap_funcs(load_functions, ragapp_dir):
                 "MindmapError": RuntimeError,
                 "Optional": None,
                 "re": re,
+                "llm_task": lambda model=None: __import__("contextlib").nullcontext(),
             },
             const_names=["_MINDMAP_SYSTEM", "_MINDMAP_PROMPT", "_GENERIC_TITLE_RE"],
         )["generate_mindmap"]

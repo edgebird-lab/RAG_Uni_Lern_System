@@ -410,15 +410,20 @@ def ingest_file(
 
     # Fragen erzeugen + einbetten (Batch für Effizienz)
     if settings.ENABLE_QUESTION_INDEXING:
+        from ragapp.llm import require_vram, release_llm
         p("Generiere Indexierungs-Fragen (Trefferquote ↑) …")
         all_questions: list[tuple[str, str, dict]] = []  # (parent_id, question, base_meta)
-        for ch, chunk_id in zip(kept_chunks, ids):
-            qs = generate_questions(ch.text)
-            for q in qs:
-                qmeta = {k: v for k, v in ch.meta.items() if not k.startswith("_")}
-                qmeta["type"] = "question"
-                qmeta["parent_id"] = chunk_id
-                all_questions.append((chunk_id, q, qmeta))
+        require_vram(settings.LLM_MODEL_FAST)
+        try:
+            for ch, chunk_id in zip(kept_chunks, ids):
+                qs = generate_questions(ch.text)
+                for q in qs:
+                    qmeta = {k: v for k, v in ch.meta.items() if not k.startswith("_")}
+                    qmeta["type"] = "question"
+                    qmeta["parent_id"] = chunk_id
+                    all_questions.append((chunk_id, q, qmeta))
+        finally:
+            release_llm()
         if all_questions:
             q_embs = embedder.embed_texts([q for _, q, _ in all_questions])
             for (parent_id, q, qmeta), qe in zip(all_questions, q_embs):

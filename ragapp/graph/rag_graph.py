@@ -33,7 +33,7 @@ from typing import Optional, TypedDict
 from langgraph.graph import StateGraph, START, END
 
 from ragapp.config import settings
-from ragapp.llm import get_llm, diagnose_error
+from ragapp.llm import get_llm, diagnose_error, llm_task
 from ragapp.retrieval.hybrid import retrieve
 from ragapp.retrieval.reranker import get_reranker
 from ragapp.graph.prompts import (
@@ -815,34 +815,35 @@ def answer_query(question: str, subject: Optional[str] = None,
     ``subject`` auf genau diese Dokumente ein (z. B. der an eine Mindmap
     gebundene Chat - siehe ragapp/ui/pages/14_🧠_Mindmap.py)."""
     t0 = time.time()
-    mode = chat_mode if chat_mode in _CHAT_MODES else "strict"
-    syllabus = _is_syllabus_intent(question)
-    search_query = question
-    if history and _looks_followup(question):
-        search_query = _condense_query(question, history)
-    # Syllabus/Ueberblick: kein teures Decompose (breiteres Retrieval reicht)
-    do_decompose = decompose and _is_broad(question) and not syllabus
-    sub_queries = _decompose_query(search_query) if do_decompose else []
-    # Tutor/Sokratisch: Faithfulness default aus, sofern nicht explizit gesetzt
-    faith = check_faithfulness
-    if mode in ("tutor", "sokratisch") and faith is None:
-        faith = False
-    state: RAGState = {"question": question, "search_query": search_query,
-                       "sub_queries": sub_queries, "subject": subject,
-                       "doc_ids": doc_ids, "chat_mode": mode, "history": history or [],
-                       "syllabus": syllabus, "use_reranker": use_reranker,
-                       "check_faithfulness": faith, "include_notes": bool(include_notes),
-                       "mode": "answer"}
-    result = get_graph().invoke(state)
-    if search_query != question:
-        result["search_query"] = search_query
-    if sub_queries:
-        result["sub_queries"] = sub_queries
-    result["chat_mode"] = mode
-    result["syllabus"] = syllabus
-    result["total_time"] = round(time.time() - t0, 2)
-    _log_query(question, subject, result)
-    return result
+    with llm_task():
+        mode = chat_mode if chat_mode in _CHAT_MODES else "strict"
+        syllabus = _is_syllabus_intent(question)
+        search_query = question
+        if history and _looks_followup(question):
+            search_query = _condense_query(question, history)
+        # Syllabus/Ueberblick: kein teures Decompose (breiteres Retrieval reicht)
+        do_decompose = decompose and _is_broad(question) and not syllabus
+        sub_queries = _decompose_query(search_query) if do_decompose else []
+        # Tutor/Sokratisch: Faithfulness default aus, sofern nicht explizit gesetzt
+        faith = check_faithfulness
+        if mode in ("tutor", "sokratisch") and faith is None:
+            faith = False
+        state: RAGState = {"question": question, "search_query": search_query,
+                           "sub_queries": sub_queries, "subject": subject,
+                           "doc_ids": doc_ids, "chat_mode": mode, "history": history or [],
+                           "syllabus": syllabus, "use_reranker": use_reranker,
+                           "check_faithfulness": faith, "include_notes": bool(include_notes),
+                           "mode": "answer"}
+        result = get_graph().invoke(state)
+        if search_query != question:
+            result["search_query"] = search_query
+        if sub_queries:
+            result["sub_queries"] = sub_queries
+        result["chat_mode"] = mode
+        result["syllabus"] = syllabus
+        result["total_time"] = round(time.time() - t0, 2)
+        _log_query(question, subject, result)
+        return result
 
 
 def answer_query_stream(question: str, subject: Optional[str] = None,
@@ -888,127 +889,128 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
         flushed = False
         accumulated: list[str] = []
         try:
-            search_query = question
-            if history and _looks_followup(question):
-                search_query = _condense_query(question, history)
-            do_decompose = decompose and _is_broad(question) and not syllabus
-            sub_queries = _decompose_query(search_query) if do_decompose else []
-            queries = [search_query] + [q for q in sub_queries if q]
+            with llm_task():
+                search_query = question
+                if history and _looks_followup(question):
+                    search_query = _condense_query(question, history)
+                do_decompose = decompose and _is_broad(question) and not syllabus
+                sub_queries = _decompose_query(search_query) if do_decompose else []
+                queries = [search_query] + [q for q in sub_queries if q]
 
-            tr = time.time()
-            pool = _pool_fusion_candidates(queries, subject, doc_ids)
-            if syllabus:
-                pool = _pedagogical_boost(pool)
-            top_k = (_TUTOR_SYLLABUS_TOP_K if (syllabus and subject)
-                     else settings.FINAL_TOP_K)
-            candidates = get_reranker().rerank(
-                queries[0], pool, top_k=top_k, use_reranker=use_reranker)
-            relevance_ok = _relevance_ok(
-                candidates, relaxed=(mode in ("tutor", "sokratisch")), subject=subject)
-            timings = {"retrieve": round(time.time() - tr, 2)}
+                tr = time.time()
+                pool = _pool_fusion_candidates(queries, subject, doc_ids)
+                if syllabus:
+                    pool = _pedagogical_boost(pool)
+                top_k = (_TUTOR_SYLLABUS_TOP_K if (syllabus and subject)
+                         else settings.FINAL_TOP_K)
+                candidates = get_reranker().rerank(
+                    queries[0], pool, top_k=top_k, use_reranker=use_reranker)
+                relevance_ok = _relevance_ok(
+                    candidates, relaxed=(mode in ("tutor", "sokratisch")), subject=subject)
+                timings = {"retrieve": round(time.time() - tr, 2)}
 
-            base: dict = {"question": question, "subject": subject,
-                          "candidates": candidates, "relevance_ok": relevance_ok,
-                          "chat_mode": mode, "syllabus": syllabus}
-            if search_query != question:
-                base["search_query"] = search_query
-            if sub_queries:
-                base["sub_queries"] = sub_queries
+                base: dict = {"question": question, "subject": subject,
+                              "candidates": candidates, "relevance_ok": relevance_ok,
+                              "chat_mode": mode, "syllabus": syllabus}
+                if search_query != question:
+                    base["search_query"] = search_query
+                if sub_queries:
+                    base["sub_queries"] = sub_queries
 
-            allow_weak = (mode in ("tutor", "sokratisch") and bool(candidates))
-            if not relevance_ok and not allow_weak:
-                fb = fallback_node({"candidates": candidates})
-                yield fb.get("answer", "")
-                holder.update(base)
-                holder.update(fb)
-                holder["faith_checked"] = False
-                holder["timings"] = timings
-                return
-
-            max_chars = (_TUTOR_SYLLABUS_MAX_CHARS
-                         if (syllabus and subject) else None)
-            extra = (_load_existing_summary_md(subject)
-                     if (syllabus and subject) else "")
-            if include_notes:
-                from ragapp.student_flow import notes_context
-                extra = (notes_context(subject, question)
-                         + ("\n\n" + extra if extra else ""))
-            context, sources = _build_context(
-                candidates, max_chars=max_chars, extra_prefix=extra)
-            history_messages: Optional[list[dict]] = None
-            if mode in ("sokratisch", "tutor"):
-                # Tutor UND Sokratisch fuehren wie in generate_node ein echtes
-                # Gespraech: Historie budget-bewusst kompaktiert (siehe
-                # _history_for_chat), nicht nur ein einzelner system+user-Turn.
-                system, prompt_template = ((SOKRATISCH_SYSTEM, SOKRATISCH_PROMPT)
-                                            if mode == "sokratisch"
-                                            else (TUTOR_SYSTEM, TUTOR_PROMPT))
-                prompt = prompt_template.format(context=context, question=question)
-                if mode == "sokratisch" and _sokratisch_force_resolve(question, history):
-                    # Code-seitig erzwungene Aufloesung statt einer weiteren
-                    # Rueckfrage - siehe _sokratisch_force_resolve.
-                    prompt += SOKRATISCH_RESOLVE_HINWEIS
-                history_messages = ([{"role": "system", "content": system}]
-                                     + _history_for_chat(history)
-                                     + [{"role": "user", "content": prompt}])
-                stream_kwargs = {"messages": history_messages}
-                guard_sentinel = False
-            else:
-                prompt = ANSWER_PROMPT.format(
-                    context=context, question=question, no_answer=NO_ANSWER_TOKEN)
-                stream_kwargs = {"prompt": prompt, "system": ANSWER_SYSTEM}
-                guard_sentinel = True
-            tg = time.time()
-
-            head = ""
-            guard = len(NO_ANSWER_TOKEN) + 12
-            no_answer = False
-            llm_obj = get_llm()
-            for delta in llm_obj.generate_stream(**stream_kwargs):
-                accumulated.append(delta)
-                if flushed:
-                    yield delta
-                    continue
-                head += delta
-                if guard_sentinel and NO_ANSWER_TOKEN in head:
-                    no_answer = True
-                    break
-                if len(head) >= guard:
-                    flushed = True
-                    yield head
-            if not no_answer and not flushed:
-                if guard_sentinel and NO_ANSWER_TOKEN in head:
-                    no_answer = True
-                else:
-                    flushed = True
-                    yield head
-
-            timings["generate"] = round(time.time() - tg, 2)
-            if history_messages is not None:
-                _log_token_sample(llm_obj, history_messages)
-            answer = "".join(accumulated).replace(NO_ANSWER_TOKEN, "").strip()
-
-            if no_answer or not answer:
-                fb = fallback_node({"candidates": candidates, "sources": sources})
-                if not flushed:
+                allow_weak = (mode in ("tutor", "sokratisch") and bool(candidates))
+                if not relevance_ok and not allow_weak:
+                    fb = fallback_node({"candidates": candidates})
                     yield fb.get("answer", "")
-                holder.update(base)
-                holder.update(fb)
-                holder["faith_checked"] = False
-                holder["timings"] = timings
-                return
+                    holder.update(base)
+                    holder.update(fb)
+                    holder["faith_checked"] = False
+                    holder["timings"] = timings
+                    return
 
-            holder.update(base)
-            holder.update({
-                "answer": answer,
-                "context": context,
-                "sources": sources,
-                "mode": "answer",
-                "grounded": True,
-                "faith_checked": False,
-                "confidence": "ungeprueft",
-                "timings": timings,
-            })
+                max_chars = (_TUTOR_SYLLABUS_MAX_CHARS
+                             if (syllabus and subject) else None)
+                extra = (_load_existing_summary_md(subject)
+                         if (syllabus and subject) else "")
+                if include_notes:
+                    from ragapp.student_flow import notes_context
+                    extra = (notes_context(subject, question)
+                             + ("\n\n" + extra if extra else ""))
+                context, sources = _build_context(
+                    candidates, max_chars=max_chars, extra_prefix=extra)
+                history_messages: Optional[list[dict]] = None
+                if mode in ("sokratisch", "tutor"):
+                    # Tutor UND Sokratisch fuehren wie in generate_node ein echtes
+                    # Gespraech: Historie budget-bewusst kompaktiert (siehe
+                    # _history_for_chat), nicht nur ein einzelner system+user-Turn.
+                    system, prompt_template = ((SOKRATISCH_SYSTEM, SOKRATISCH_PROMPT)
+                                                if mode == "sokratisch"
+                                                else (TUTOR_SYSTEM, TUTOR_PROMPT))
+                    prompt = prompt_template.format(context=context, question=question)
+                    if mode == "sokratisch" and _sokratisch_force_resolve(question, history):
+                        # Code-seitig erzwungene Aufloesung statt einer weiteren
+                        # Rueckfrage - siehe _sokratisch_force_resolve.
+                        prompt += SOKRATISCH_RESOLVE_HINWEIS
+                    history_messages = ([{"role": "system", "content": system}]
+                                         + _history_for_chat(history)
+                                         + [{"role": "user", "content": prompt}])
+                    stream_kwargs = {"messages": history_messages}
+                    guard_sentinel = False
+                else:
+                    prompt = ANSWER_PROMPT.format(
+                        context=context, question=question, no_answer=NO_ANSWER_TOKEN)
+                    stream_kwargs = {"prompt": prompt, "system": ANSWER_SYSTEM}
+                    guard_sentinel = True
+                tg = time.time()
+
+                head = ""
+                guard = len(NO_ANSWER_TOKEN) + 12
+                no_answer = False
+                llm_obj = get_llm()
+                for delta in llm_obj.generate_stream(**stream_kwargs):
+                    accumulated.append(delta)
+                    if flushed:
+                        yield delta
+                        continue
+                    head += delta
+                    if guard_sentinel and NO_ANSWER_TOKEN in head:
+                        no_answer = True
+                        break
+                    if len(head) >= guard:
+                        flushed = True
+                        yield head
+                if not no_answer and not flushed:
+                    if guard_sentinel and NO_ANSWER_TOKEN in head:
+                        no_answer = True
+                    else:
+                        flushed = True
+                        yield head
+
+                timings["generate"] = round(time.time() - tg, 2)
+                if history_messages is not None:
+                    _log_token_sample(llm_obj, history_messages)
+                answer = "".join(accumulated).replace(NO_ANSWER_TOKEN, "").strip()
+
+                if no_answer or not answer:
+                    fb = fallback_node({"candidates": candidates, "sources": sources})
+                    if not flushed:
+                        yield fb.get("answer", "")
+                    holder.update(base)
+                    holder.update(fb)
+                    holder["faith_checked"] = False
+                    holder["timings"] = timings
+                    return
+
+                holder.update(base)
+                holder.update({
+                    "answer": answer,
+                    "context": context,
+                    "sources": sources,
+                    "mode": "answer",
+                    "grounded": True,
+                    "faith_checked": False,
+                    "confidence": "ungeprueft",
+                    "timings": timings,
+                })
         except Exception as exc:  # noqa: BLE001
             _log.warning("Streaming-Antwort fehlgeschlagen: %s", exc)
             msg = diagnose_error(exc)
