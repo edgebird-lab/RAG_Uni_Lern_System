@@ -14,7 +14,8 @@ Datei ergänzt nur den "Marken"-Layer obendrauf.
 
 ``PAGE_REGISTRY`` ist die EINE Quelle der Wahrheit für: Seiten-Akzentfarbe,
 die Home-Kachel-Übersicht UND die Hamburger-Kurzwahl - neue Seiten werden hier
-einmal eingetragen, nicht an drei Stellen gepflegt.
+einmal eingetragen, nicht an drei Stellen gepflegt. Kategorien sind die fünf
+Zielgruppen Heute, Kurse, Lernen, Organisation, Fortschritt.
 """
 from __future__ import annotations
 
@@ -25,49 +26,54 @@ import streamlit.components.v1 as components
 
 # --------------------------------------------------------------------------- #
 # Seiten-Register: (key, icon, titel, untertitel, zielpfad, kategorie)
-# zielpfad=None -> Home selbst (kein Sprung noetig). Kategorien gruppieren die
-# Home-Kacheln; Reihenfolge hier = Anzeige-Reihenfolge auf der Home-Seite.
+# zielpfad=None -> Home selbst (kein Sprung noetig). Kategorien sind die fünf
+# studentischen Zielgruppen (GOAL_CATEGORIES); Reihenfolge hier = Anzeige-
+# Reihenfolge in Hamburger und Home-Mehr. PAGE_REGISTRY bleibt die einzige
+# Navigationsquelle - HAMBURGER_KEYS / HOME_PIN_KEYS / HIDDEN_PAGE_KEYS
+# verweisen nur auf Keys aus dieser Liste.
 # --------------------------------------------------------------------------- #
+GOAL_CATEGORIES = ("Heute", "Kurse", "Lernen", "Organisation", "Fortschritt")
+
 PAGE_REGISTRY: list[dict] = [
     {"key": "home", "icon": "🏠", "title": "Home", "subtitle": "Alle Bereiche auf einen Blick",
      "target": None, "category": None},
-    {"key": "chat", "icon": "💬", "title": "Chat", "subtitle": "Frag deine Unterlagen",
-     "target": "pages/0_💬_Chat.py", "category": "Lernen & Fragen"},
+    {"key": "lernplan", "icon": "📋", "title": "Lernplan", "subtitle": "KI-Gliederung + Zeitplan",
+     "target": "pages/11_📋_Lernplan.py", "category": "Heute"},
+    {"key": "lernzeit", "icon": "⏱️", "title": "Lernzeit", "subtitle": "Pomodoro & Zeittracking",
+     "target": "pages/10_⏱️_Lernzeit.py", "category": "Heute"},
+    {"key": "organisation", "icon": "🗂️", "title": "Organisation", "subtitle": "Stundenplan & Fächer",
+     "target": "pages/8_🗂️_Organisation.py", "category": "Kurse"},
+    {"key": "semesterplan", "icon": "📚", "title": "Semesterplan", "subtitle": "Fächer & Termine importieren",
+     "target": "pages/16_📚_Semesterplan.py", "category": "Kurse"},
+    {"key": "dokumente", "icon": "🗃️", "title": "Dokumente", "subtitle": "Hochladen, Ordner, Bibliothek",
+     "target": "pages/9_🗃️_Dokumentenmanager.py", "category": "Kurse"},
     {"key": "lernen", "icon": "🎓", "title": "Karteikarten", "subtitle": "Wiederholen mit FSRS",
-     "target": "pages/4_🎓_Lernen.py", "category": "Lernen & Fragen"},
-    {"key": "mindmap", "icon": "🧠", "title": "Mindmap", "subtitle": "Themen visuell verknüpfen",
-     "target": "pages/14_🧠_Mindmap.py", "category": "Lernen & Fragen"},
+     "target": "pages/4_🎓_Lernen.py", "category": "Lernen"},
+    {"key": "chat", "icon": "💬", "title": "Chat", "subtitle": "Frag deine Unterlagen",
+     "target": "pages/0_💬_Chat.py", "category": "Lernen"},
     {"key": "uebungsaufgaben", "icon": "🧮", "title": "Übungsaufgaben",
      "subtitle": "Rechnen, Begründen, Anwenden", "target": "pages/13_🧮_Übungsaufgaben.py",
-     "category": "Lernen & Fragen"},
+     "category": "Lernen"},
     {"key": "pruefung", "icon": "📝", "title": "Probeklausur", "subtitle": "Echte Prüfungssimulation",
-     "target": "pages/6_📝_Prüfung.py", "category": "Lernen & Fragen"},
-    {"key": "lernplan", "icon": "📋", "title": "Lernplan", "subtitle": "KI-Gliederung + Zeitplan",
-     "target": "pages/11_📋_Lernplan.py", "category": "Erstellen"},
+     "target": "pages/6_📝_Prüfung.py", "category": "Lernen"},
+    {"key": "mindmap", "icon": "🧠", "title": "Mindmap", "subtitle": "Themen visuell verknüpfen",
+     "target": "pages/14_🧠_Mindmap.py", "category": "Lernen"},
     {"key": "zusammenfassung", "icon": "📄", "title": "Zusammenfassung", "subtitle": "Grounded auf den Stoff",
-     "target": "pages/7_📄_Zusammenfassung.py", "category": "Erstellen"},
+     "target": "pages/7_📄_Zusammenfassung.py", "category": "Lernen"},
     {"key": "audio", "icon": "🎧", "title": "Audio-Overview", "subtitle": "Vorgelesen mit deiner Stimme",
-     "target": "pages/15_🎧_Audio-Overview.py", "category": "Erstellen"},
+     "target": "pages/15_🎧_Audio-Overview.py", "category": "Lernen"},
     {"key": "vortrag", "icon": "🎤", "title": "Vortrag", "subtitle": "Marp-Folien + Lernvideo",
-     "target": "pages/17_🎤_Vortrag.py", "category": "Erstellen"},
-    {"key": "semesterplan", "icon": "📚", "title": "Semesterplan", "subtitle": "Fächer & Termine importieren",
-     "target": "pages/16_📚_Semesterplan.py", "category": "Erstellen"},
+     "target": "pages/17_🎤_Vortrag.py", "category": "Lernen"},
     {"key": "notizen", "icon": "🗒️", "title": "Notizen", "subtitle": "Eigene Gedanken",
-     "target": "pages/12_🗒️_Notizen.py", "category": "Erstellen"},
+     "target": "pages/12_🗒️_Notizen.py", "category": "Organisation"},
+    {"key": "einstellungen", "icon": "⚙️", "title": "Einstellungen", "subtitle": "Modelle & Feintuning",
+     "target": "pages/3_⚙️_Einstellungen.py", "category": "Organisation"},
+    {"key": "ingestion", "icon": "📥", "title": "Import", "subtitle": "Dokumente einlesen",
+     "target": "pages/1_📥_Ingestion.py", "category": "Organisation"},
     {"key": "fortschritt", "icon": "📈", "title": "Fortschritt", "subtitle": "Dein Lernfortschritt",
      "target": "pages/5_📈_Fortschritt.py", "category": "Fortschritt"},
-    {"key": "lernzeit", "icon": "⏱️", "title": "Lernzeit", "subtitle": "Pomodoro & Zeittracking",
-     "target": "pages/10_⏱️_Lernzeit.py", "category": "Fortschritt"},
-    {"key": "ingestion", "icon": "📥", "title": "Import", "subtitle": "Dokumente einlesen",
-     "target": "pages/1_📥_Ingestion.py", "category": "Verwalten"},
-    {"key": "dokumente", "icon": "🗃️", "title": "Dokumente", "subtitle": "Hochladen, Ordner, Bibliothek",
-     "target": "pages/9_🗃️_Dokumentenmanager.py", "category": "Verwalten"},
-    {"key": "organisation", "icon": "🗂️", "title": "Organisation", "subtitle": "Stundenplan & Fächer",
-     "target": "pages/8_🗂️_Organisation.py", "category": "Verwalten"},
     {"key": "evaluation", "icon": "📊", "title": "Evaluation", "subtitle": "Retrieval-Qualität messen",
-     "target": "pages/2_📊_Evaluation.py", "category": "Verwalten"},
-    {"key": "einstellungen", "icon": "⚙️", "title": "Einstellungen", "subtitle": "Modelle & Feintuning",
-     "target": "pages/3_⚙️_Einstellungen.py", "category": "Verwalten"},
+     "target": "pages/2_📊_Evaluation.py", "category": "Fortschritt"},
 ]
 _PAGE_BY_KEY = {p["key"]: p for p in PAGE_REGISTRY}
 

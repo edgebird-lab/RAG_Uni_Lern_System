@@ -8,6 +8,7 @@ Karten-/Titel-Optik bekommen statt der verspielten "Cozy Kawaii"-Basis-Optik.
 from __future__ import annotations
 
 from ragapp.ui._style import (
+    GOAL_CATEGORIES,
     HAMBURGER_KEYS,
     HIDDEN_PAGE_KEYS,
     HOME_PIN_KEYS,
@@ -153,6 +154,42 @@ def test_kategorien_gruppieren_alle_nicht_home_seiten_lueckenlos():
     _grouped_keys = {k for keys in _by_category.values() for k in keys}
     _all_non_home = {p["key"] for p in PAGE_REGISTRY if p["key"] != "home"}
     assert _grouped_keys == _all_non_home
+
+
+def test_kategorien_sind_die_fuenf_zielgruppen_in_dieser_reihenfolge():
+    assert GOAL_CATEGORIES == (
+        "Heute", "Kurse", "Lernen", "Organisation", "Fortschritt",
+    )
+    seen: list[str] = []
+    for page in PAGE_REGISTRY:
+        cat = page["category"]
+        if cat and cat not in seen:
+            seen.append(cat)
+    assert seen == list(GOAL_CATEGORIES)
+    for page in PAGE_REGISTRY:
+        if page["key"] == "home":
+            continue
+        assert page["category"] in GOAL_CATEGORIES, page["key"]
+
+
+def test_jede_zielgruppe_hat_mindestens_eine_sichtbare_seite():
+    visible = [p for p in PAGE_REGISTRY
+               if p["category"] and p["key"] not in HIDDEN_PAGE_KEYS]
+    for cat in GOAL_CATEGORIES:
+        assert any(p["category"] == cat for p in visible), cat
+
+
+def test_kurse_haelt_stundenplan_semesterplan_und_dokumente():
+    by_key = {p["key"]: p["category"] for p in PAGE_REGISTRY}
+    assert by_key["organisation"] == "Kurse"
+    assert by_key["semesterplan"] == "Kurse"
+    assert by_key["dokumente"] == "Kurse"
+
+
+def test_generatoren_gehoeren_zu_lernen():
+    by_key = {p["key"]: p["category"] for p in PAGE_REGISTRY}
+    for key in ("mindmap", "zusammenfassung", "audio", "vortrag"):
+        assert by_key[key] == "Lernen"
 
 
 # --------------------------------------------------------------------------- #
