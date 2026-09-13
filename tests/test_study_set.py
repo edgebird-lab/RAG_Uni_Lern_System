@@ -110,3 +110,31 @@ def test_create_study_set_expertenparameter_optional(isolated_db, monkeypatch):
     out = study.create_study_set(["d1"], n_per_chunk=2, max_per_chunk=5)
     assert out["status"] == "ok"
     assert out["cards_new"] == 1
+    assert "preview" in out
+
+
+def test_study_set_preview_mit_fixture_karten(isolated_db):
+    manifest.upsert_review_items([
+        {"card_id": "c1", "source": "question", "chroma_id": "c1",
+         "subject": "BWL", "topic": "Kosten", "front": "Was sind Fixkosten?",
+         "back": "unabhängig von der Menge", "answer": "", "doc_id": "d1"},
+        {"card_id": "c2", "source": "question", "chroma_id": "c2",
+         "subject": "BWL", "topic": "Kosten", "front": "Was sind variable Kosten?",
+         "back": "steigen mit der Menge", "answer": "steigen mit der Menge",
+         "doc_id": "d1"},
+        {"card_id": "c3", "source": "exam_qa", "chroma_id": "c3",
+         "subject": "BWL", "topic": "Preis", "front": "Was ist die Preisuntergrenze?",
+         "back": "variable Kosten", "answer": "variable Kosten", "doc_id": "d1"},
+        {"card_id": "c4", "source": "question", "chroma_id": "c4",
+         "subject": "BWL", "topic": "Anderes", "front": "Andere Datei",
+         "back": "x", "answer": "x", "doc_id": "d2"},
+    ])
+    prev = study.study_set_preview(doc_ids=["d1"])
+    assert prev["cards"] == 3
+    assert prev["unanswered"] == 1
+    assert set(prev["topics"]) == {"Kosten", "Preis"}
+    assert len(prev["examples"]) == 3
+    assert prev["examples"][0]["front"]
+    other = study.study_set_preview(doc_ids=["d2"])
+    assert other["cards"] == 1
+    assert other["topics"] == ["Anderes"]

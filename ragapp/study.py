@@ -307,6 +307,39 @@ def create_study_set(doc_ids: list[str], *, progress=None,
         "status": "ok", "questions": questions_n, "cards_new": neu,
         "answers": answers_n, "error_msg": None,
         "enrich": enrich, "harvest": harvest, "generate": generate,
+        "preview": study_set_preview(doc_ids=ids),
+    }
+
+
+def study_set_preview(doc_ids: "list[str] | None" = None,
+                      subject: "str | None" = None) -> dict:
+    """Qualitaetsvorschau als reines Datenobjekt: Anzahl, unbeantwortet, Themen,
+    drei Beispielkarten. Keine UI."""
+    cards = manifest.list_cards(subject=subject)
+    if doc_ids:
+        wanted = set(doc_ids)
+        cards = [c for c in cards if c.get("doc_id") in wanted]
+    unanswered = [
+        c for c in cards
+        if c.get("source") == "question" and not (c.get("answer") or "").strip()
+    ]
+    topics: list[str] = []
+    seen: set[str] = set()
+    for c in cards:
+        t = (c.get("topic") or "").strip()
+        if t and t not in seen:
+            seen.add(t)
+            topics.append(t)
+    examples = [{
+        "front": (c.get("front") or "")[:200],
+        "topic": c.get("topic"),
+        "card_id": c.get("card_id"),
+    } for c in cards[:3]]
+    return {
+        "cards": len(cards),
+        "unanswered": len(unanswered),
+        "topics": topics,
+        "examples": examples,
     }
 
 
