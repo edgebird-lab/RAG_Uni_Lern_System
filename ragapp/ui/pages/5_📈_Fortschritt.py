@@ -107,6 +107,7 @@ if _sektion == "Analyse":
         c1.metric("Karten", ov["total"], help="Aktive Abfrage-Karten in der Auswahl.")
         c2.metric("Sitzt", f'{ov["mastery_pct"]} %',
                   help=f'Anteil Karten mit ≥ {settings.MASTERY_TARGET_REPS} Wiederholungen in Folge.')
+        c2.caption("Sitzt: oft genug hintereinander gewusst, nicht nur einmal richtig.")
         c2.markdown(_charts.progress_bar(ov["mastery_pct"], color=_theme["accent"]),
                    unsafe_allow_html=True)
         c3.metric("Fällig", ov["due"], help="Jetzt zur Wiederholung anstehend.")
@@ -138,6 +139,7 @@ if _sektion == "Analyse":
         gc1.metric("Klausur-Bereitschaft (Schätzung)", f"{_ready} %",
                    help="Geschätzte mittlere Abrufwahrscheinlichkeit über alle Karten "
                         "(Vergessenskurve aus FSRS-6). Eine Schätzung, keine Garantie.")
+        gc1.caption("Bereitschaft: wie viel du morgen noch abrufen kannst.")
         gc1.markdown(_charts.progress_bar(_ready, color="#C08A2E"), unsafe_allow_html=True)
         if len(_snap_trend) >= 2:
             gc1.markdown(_charts.sparkline([d["readiness_pct"] for d in _snap_trend],
@@ -239,6 +241,7 @@ if _sektion == "Klausurstatus":
             "Bereitschaft", f"{_ready} %",
             help="Geschätzte mittlere Abrufwahrscheinlichkeit über die Karten "
                  "(Vergessenskurve aus FSRS-6). Eine Schätzung, keine Garantie.")
+        _ks1.caption("Bereitschaft: wie viel du morgen noch abrufen kannst – ohne Üben sinkt sie.")
         _ks1.markdown(_charts.progress_bar(_ready, color="#C08A2E"),
                       unsafe_allow_html=True)
         _gap_subj = _ks_subj
@@ -449,6 +452,7 @@ if _sektion == "Analyse":
     # --------------------------------------------------------------------------- #
     with card("mastery"):
         st.subheader("🎯 Mastery")
+        st.caption("Mastery ist der Anteil sitzender Karten je Fach oder Thema.")
         mcol1, mcol2 = st.columns([1, 1])
         with mcol1:
             st.caption("Anteil sitzender Karten je Fach")

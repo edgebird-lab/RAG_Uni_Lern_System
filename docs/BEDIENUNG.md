@@ -6,7 +6,7 @@ hinzufügen, plus eine Referenz aller CLI-Kommandos.
 
 ---
 
-## 1. Die Oberfläche starten
+## 1. Einstieg: Home und Zielgruppen
 
 **Einfachste Variante:** Doppelklick auf `Start_Oberflaeche.bat` im Projektordner.
 Der Browser öffnet sich unter `http://localhost:8501`.
@@ -19,33 +19,26 @@ cd d:\RAG
 streamlit run ragapp/ui/🏠_Home.py
 ```
 
-Die Startseite ist der **Chat** („Frag deine Zusammenfassungen"). In der linken
-Seitenleiste findest du:
+Die Startseite ist **Home**. Oben im Menü und auf den Kacheln findest du fünf
+Zielgruppen, nicht eine lange Werkzeugliste:
 
-- **Modell-/Statusanzeige** (verwendetes LLM und Embedding).
-- **Kennzahlen**: Anzahl Dokumente, Chunks, Fragen, Fächer.
-- **Fach filtern**: schränkt die Suche auf ein Fach ein (schneller & präziser).
-- **Quellen anzeigen** (Schalter): blendet die Quellenkarten ein/aus.
-- **Verlauf löschen**: leert die aktuelle Chat-Sitzung.
-
-Über die **linke Navigation** erreichst du alle weiteren Seiten:
-
-| Seite | Wofür |
+| Ziel | Wofür |
 | ----- | ----- |
-| **🏠 Chat** (Startseite) | Fragen an deine Unterlagen stellen (siehe unten). |
-| **📥 Ingestion** | Dokumente importieren/verwalten, Fragen-Anreicherung, Scan-Seiten per OCR nachlesen. |
-| **📊 Evaluation** | Trefferquote (Hit@k / MRR) messen und über die Zeit vergleichen. |
-| **⚙️ Einstellungen** | Tuning-Parameter, **hardwaregerechte Modellwahl** und Handy-Zugriff/PIN. |
-| **🎓 Lernen** | Karteikarten aus deinen Unterlagen – aktives Abfragen mit Spaced Repetition (FSRS-6). |
-| **📈 Fortschritt** | Objektiver Lernstand, Klausurplanung, Themen-Mastery, Fälligkeits-Prognose. |
-| **📝 Prüfung** | Getimte Probeklausur – die KI benotet am Ende alle Antworten auf einmal. |
-| **📄 Zusammenfassung** | Aus einem Dokument oder ganzen Fach eine klausurtaugliche Zusammenfassung schreiben. |
+| **Heute** | Was jetzt dran ist: Tagesplan, Timer, **Heute starten**. |
+| **Kurse** | Fächer, Stundenplan, Semesterplan, Unterlagen. |
+| **Lernen** | Karteikarten, Chat, Übungen, Probeklausur, Generatoren. |
+| **Organisation** | Notizen und Einstellungen. |
+| **Fortschritt** | Klausurstatus, Analyse, Errungenschaften, Datenexport. |
 
-Die aktiven Lern-Seiten (Lernen/Fortschritt/Prüfung) sind ausführlich in Abschnitt
-7 beschrieben, OCR/Modellwahl/Qualitäts-Gate in Abschnitt 8.
+**Heute starten** ist die Hauptaktion. Sprint und Fehlerheft liegen dahinter.
+Import und Evaluation sind Betreiber-Seiten und erscheinen nicht in der
+Alltags-Navigation.
 
-Ist noch nichts indexiert, weist die Oberfläche darauf hin, zuerst Dokumente zu
-importieren.
+Chat, Karteikarten, Fortschritt und Probeklausur sind in den Abschnitten 2–3
+bzw. 7 beschrieben. OCR, Modellwahl und Qualitäts-Gate stehen in Abschnitt 8.
+
+Ist noch nichts indexiert, weist die Oberfläche darauf hin, zuerst Dokumente
+über **Kurse → Dokumente** hinzuzufügen.
 
 ---
 
