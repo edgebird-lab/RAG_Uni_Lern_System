@@ -314,12 +314,16 @@ def record_error(*, source: str, source_id: Optional[str] = None,
     return eid
 
 
-def record_rating_outcome(card: dict, rating: int) -> None:
+def record_rating_outcome(card: dict, rating: int,
+                          confidence: Optional[str] = None) -> None:
     """Hängt Falsch/Richtig an das Fehlerheft (FSRS bleibt in study.rate_card)."""
     from ragapp.study import GEWUSST, NICHT
     cid = card.get("card_id")
     if rating <= NICHT:
-        record_error(source="card", card=card, detail="Beim Wiederholen nicht gewusst")
+        detail = ("Sicher eingeschätzt, aber nicht gewusst"
+                  if confidence == "sicher"
+                  else "Beim Wiederholen nicht gewusst")
+        record_error(source="card", card=card, detail=detail)
     elif rating >= GEWUSST and cid:
         manifest.resolve_errors_for_card(cid)
 
@@ -397,16 +401,29 @@ def daily_missions() -> list[dict]:
     snap = planner.today_snapshot()
     missions: list[dict] = []
 
+    overconfident = [
+        e for e in manifest.list_errors(limit=20)
+        if (e.get("detail") or "").startswith("Sicher eingeschätzt")
+    ]
     due = int(snap.get("due_cards") or 0)
     if due > 0:
+        preferred_subject = (
+            overconfident[0].get("subject") if overconfident
+            else (snap.get("top_priority") or {}).get("subject")
+        )
         missions.append({
             "id": "reviews",
             "kind": "reviews",
             "title": f"{due} fällige Karten",
             "minutes": max(8, min(due, cap)),
-            "reason": "Fällige Wiederholungen zuerst, sonst wächst der Stau.",
-            "subject": (snap.get("top_priority") or {}).get("subject"),
+            "reason": (
+                "Sicher-und-falsch-Karten zuerst: Diese Lücken werden leicht überschätzt."
+                if overconfident else
+                "Fällige Wiederholungen zuerst, sonst wächst der Stau."
+            ),
+            "subject": preferred_subject,
             "count": due,
+            "prefer_overconfidence": bool(overconfident),
         })
 
     subj = weak_subject()

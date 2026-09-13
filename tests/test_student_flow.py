@@ -78,6 +78,18 @@ def test_fehlerheft_open_and_resolve(isolated_db):
     cid = student_flow.card_from_text("Q", "A", source="chat", subject="X")
     student_flow.record_error(source="card", card_id=cid, front="Q", subject="X")
     assert manifest.count_open_errors() == 1
+
+
+def test_sicher_und_falsch_markiert_overconfidence_im_fehlerheft(isolated_db):
+    cid = student_flow.card_from_text(
+        "Was ist X?", "X ist Y.", source="note", subject="BWL")
+    card = manifest.get_cards_by_ids([cid])[0]
+    study.rate_card(card, study.NICHT, confidence="sicher")
+    errors = manifest.list_errors(subject="BWL")
+    assert len(errors) == 1
+    assert errors[0]["card_id"] == cid
+    assert errors[0]["detail"].startswith("Sicher eingeschätzt")
+    assert manifest.get_cards_by_ids([cid])[0]["deck"] == manifest.FEHLERHEFT_DECK
     cards = student_flow.fehlerheft_cards()
     assert any(c["card_id"] == cid for c in cards)
     study.rate_card(cards[0], study.GEWUSST)

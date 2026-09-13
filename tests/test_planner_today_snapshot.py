@@ -169,3 +169,20 @@ def test_daily_missions_faellige_karten_und_planblock(isolated_db, monkeypatch):
     assert len(missions) <= 3
     for m in missions:
         assert m["minutes"] > 0 and m["reason"]
+
+
+def test_daily_missions_bevorzugt_sicher_falsche_karte(isolated_db):
+    from ragapp import student_flow
+    now = _time.time()
+    with manifest._connect() as conn:
+        conn.execute(
+            "INSERT INTO review_items (card_id, subject, front, back, suspended, "
+            "use_flashcard, reps, created_at, due) VALUES (?,?,?,?,0,1,3,?,?)",
+            ("c-over", "BWL", "Frage", "Antwort", now, now - 3600))
+    student_flow.record_error(
+        source="card", card_id="c-over", subject="BWL", front="Frage",
+        detail="Sicher eingeschätzt, aber nicht gewusst")
+    mission = student_flow.daily_missions()[0]
+    assert mission["kind"] == "reviews"
+    assert mission["prefer_overconfidence"] is True
+    assert mission["subject"] == "BWL"

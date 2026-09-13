@@ -528,7 +528,7 @@ def rate_card(card: dict, rating: int, confidence: "str | None" = None) -> dict:
     )
     try:
         from ragapp.student_flow import record_rating_outcome
-        record_rating_outcome(card, rating)
+        record_rating_outcome(card, rating, confidence=confidence)
     except Exception:  # noqa: BLE001
         pass
     return nxt
