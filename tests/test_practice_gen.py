@@ -33,7 +33,9 @@ def gen_funcs(load_functions, ragapp_dir, technical_marker_re):
             ragapp_dir / "practice_gen.py",
             ["_pick_kind", "_pick_source_text", "_repair_problem"],
             {"settings": _fake_settings(**settings_overrides),
-             "_TECHNICAL_MARKER_RE": technical_marker_re},
+             "_TECHNICAL_MARKER_RE": technical_marker_re,
+             "re": re},
+            const_names=["_PROOF_HINT_RE"],
         )
     return _make
 
@@ -56,7 +58,33 @@ def test_pick_kind_erkennt_fliesstext_als_scenario(gen_funcs):
     assert f(text) == "scenario"
 
 
-def test_pick_kind_leerer_text_ist_scenario(gen_funcs):
+def test_pick_kind_erkennt_analysis_beweis_als_proof(gen_funcs):
+    f = gen_funcs()["_pick_kind"]
+    text = (
+        "Satz über stetige Funktionen: Zeige, dass jede auf einem kompakten "
+        "Intervall stetige Funktion ihr Maximum und Minimum annimmt. Der Beweis "
+        "nutzt die Kompaktheit des Bildes, ohne konkrete Zahlenwerte."
+    )
+    assert f(text) == "proof"
+
+
+def test_pick_kind_erkennt_linalg_ohne_zahlen_als_proof(gen_funcs):
+    f = gen_funcs()["_pick_kind"]
+    text = (
+        "Zeige, dass die angegebenen Vektoren linear unabhängig sind und eine "
+        "Basis des Kerns der linearen Abbildung bilden. Keine Matrix mit "
+        "eingetragenen Zahlen, nur die Argumentation."
+    )
+    assert f(text) == "proof"
+
+
+def test_pick_kind_rechnung_mit_zahlen_bleibt_numeric(gen_funcs):
+    f = gen_funcs()["_pick_kind"]
+    text = (
+        "Berechne das Integral von 0 bis 1 von 3x^2 + 5x dx. "
+        "x1=0, x2=1, Ergebnis=3.5. Zeige den Rechenweg."
+    )
+    assert f(text) == "numeric"
     f = gen_funcs()["_pick_kind"]
     assert f("") == "scenario"
     assert f(None) == "scenario"

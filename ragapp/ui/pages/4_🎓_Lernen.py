@@ -232,8 +232,12 @@ if _prefill and not st.session_state.get(ACTIVE):
     if _prefill.get("source") == "fehlerheft" or _prefill.get("deck") == "Fehlerheft":
         _pk = _sf.fehlerheft_cards(limit=_lim, subject=_prefill.get("subject"))
     elif _prefill.get("sprint") or _prefill.get("mode") == "sprint":
-        _pk = _sf.sprint_cards(subject=_prefill.get("subject"), limit=_lim)
+        _pk = _sf.sprint_cards(
+            subject=_prefill.get("subject"), limit=_lim,
+            decks=_prefill.get("decks"),
+            prefer=_prefill.get("prefer") or "auto")
         st.session_state["_study_sprint"] = True
+        st.session_state["_study_sprint_prefer"] = _prefill.get("prefer") or "auto"
     else:
         _pk = _sf.today_session_cards(
             subject=_prefill.get("subject"), limit=_lim,
@@ -380,13 +384,29 @@ if not st.session_state.get(ACTIVE):
             st.rerun()
         else:
             st.warning("Keine Karten für Cram.")
-    if _go3.button("⚡ Sprint", use_container_width=True, disabled=not decks):
+    if _go3.button("⚡ Sprint", use_container_width=True, disabled=not decks,
+                   help="Formel- und Definitionskarten der angekreuzten Stapel. "
+                        "Formeln zuerst, falls welche da sind – sonst kurze Definitionen."):
         from ragapp import student_flow as _sf
-        karten = _sf.sprint_cards(subject=subj, limit=12)
-        st.session_state["_study_sprint"] = True
-        if karten:
+        _inv = _sf.sprint_inventory(subject=subj, decks=decks)
+        if _inv["formula_n"]:
+            karten = _sf.sprint_cards(subject=subj, decks=decks, limit=12, prefer="auto")
+            st.session_state["_study_sprint"] = True
+            st.session_state["_study_sprint_prefer"] = "auto"
             _start_study(karten, "reveal")
             st.rerun()
+        elif _inv["definition_n"]:
+            karten = _sf.sprint_cards(subject=subj, decks=decks, limit=12,
+                                      prefer="definition")
+            st.session_state["_study_sprint"] = True
+            st.session_state["_study_sprint_prefer"] = "definition"
+            st.info(f"Keine Formeln in dieser Auswahl – Sprint mit "
+                    f"{_inv['definition_n']} kurzen Definitionen.")
+            _start_study(karten, "reveal")
+            st.rerun()
+        else:
+            st.warning("Keine Formeln und keine kurzen Definitionen in den "
+                       "angekreuzten Stapeln. Anderes Fach/anderen Stapel wählen.")
     if _go4.button("📒 Fehlerheft", use_container_width=True):
         from ragapp import student_flow as _sf
         karten = _sf.fehlerheft_cards(limit=15, subject=subj)
@@ -574,12 +594,19 @@ else:
     if _stopc.button("⏹ Beenden", use_container_width=True,
                      help="Lernrunde beenden und zurück zur Auswahl (Fach/Stapel "
                           "wechseln). Bereits bewertete Karten bleiben gespeichert."):
-        for _k in (Q, ACTIVE, REVEAL, TALLY, ROUND):
+        for _k in (Q, ACTIVE, REVEAL, TALLY, ROUND, "_study_sprint",
+                   "_study_sprint_prefer"):
             st.session_state.pop(_k, None)
         st.rerun()
 
     if st.session_state.get("_study_sprint"):
-        st.caption("⚡ Formel-/Definitionssprint – kurz und knapp, etwa 30 Sekunden pro Karte.")
+        _sp = st.session_state.get("_study_sprint_prefer") or "auto"
+        if _sp == "definition":
+            st.caption("⚡ Definitionssprint – kurze Begriffe, etwa 30 Sekunden pro Karte.")
+        elif _sp == "formula":
+            st.caption("⚡ Formelsprint – nur Formel-Karten, etwa 30 Sekunden pro Karte.")
+        else:
+            st.caption("⚡ Formel-/Definitionssprint – kurz und knapp, etwa 30 Sekunden pro Karte.")
 
     # Vorderseite
     st.markdown(f"<div class='karte karte-frage'>{karte['front']}</div>",

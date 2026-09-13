@@ -34,15 +34,19 @@ h1 {font-weight: 750; letter-spacing:-0.5px;}
 </style>
 """, unsafe_allow_html=True)
 
-st.caption("Mehrschrittige Rechenaufgaben und Anwendungsszenarien mit Musterlösung "
-           "aus deinen indexierten Dokumenten - mit progressiven Hinweisen statt "
-           "sofortiger Lösung.")
+st.caption("Mehrschrittige Übungen mit Musterlösung aus deinen Dokumenten: "
+           "rechnen, begründen/beweisen oder anwenden – auch in Fächern ohne Formeln. "
+           "Progressive Hinweise statt sofortiger Lösung.")
 
 with skeleton("Übungsaufgaben werden geladen ..."):
     from ragapp import manifest, practice_gen
     from ragapp.config import settings, SUBJECT_LABELS
 
-_KIND_LABEL = {"numeric": "🧮 Rechenaufgabe", "scenario": "📖 Anwendungsszenario"}
+_KIND_LABEL = {
+    "numeric": "🧮 Rechenaufgabe",
+    "proof": "📐 Begründung / Beweis",
+    "scenario": "📖 Anwendungsszenario",
+}
 _RATING_LABEL = {0: "❌ nicht gewusst", 1: "🟡 teilweise", 2: "✅ gewusst"}
 
 
@@ -109,8 +113,12 @@ with st.expander("➕ Neue Übungsaufgabe generieren",
     gc3, gc4 = st.columns(2)
     with gc3:
         _g_kind_choice = st.radio(
-            "Art", ["🤖 Automatisch", "🧮 Rechenaufgabe", "📖 Anwendungsszenario"],
-            horizontal=True, key="practice_gen_kind")
+            "Art",
+            ["🤖 Automatisch", "🧮 Rechenaufgabe", "📐 Begründung / Beweis",
+             "📖 Anwendungsszenario"],
+            horizontal=True, key="practice_gen_kind",
+            help="Automatisch erkennt Rechnen, Beweisaufgaben (höhere Mathe) "
+                 "und Fallbeispiele für nicht-mathelastige Fächer.")
     with gc4:
         _g_model_choice = st.radio(
             "Modell", ["🎯 Gründlich (langsamer)", "⚡ Schnell (gröber)"],
@@ -118,6 +126,7 @@ with st.expander("➕ Neue Übungsaufgabe generieren",
 
     if st.button("🧮 Aufgabe generieren", type="primary", disabled=not _g_doc_names):
         _kind_arg = {"🧮 Rechenaufgabe": "numeric",
+                    "📐 Begründung / Beweis": "proof",
                     "📖 Anwendungsszenario": "scenario"}.get(_g_kind_choice)
         _model_arg = settings.LLM_MODEL_FAST if "Schnell" in _g_model_choice else None
         _doc_ids = [_subj_docs[n] for n in _g_doc_names]
@@ -146,11 +155,14 @@ with fc1:
                               key="practice_filter_subject")
 with fc2:
     _f_kind_choice = st.selectbox(
-        "Art", ["Alle Arten", "🧮 Rechenaufgabe", "📖 Anwendungsszenario"],
+        "Art",
+        ["Alle Arten", "🧮 Rechenaufgabe", "📐 Begründung / Beweis",
+         "📖 Anwendungsszenario"],
         key="practice_filter_kind")
 
 _subj_arg = None if _f_subject == "Alle Fächer" else _f_subject
 _kind_arg = {"🧮 Rechenaufgabe": "numeric",
+            "📐 Begründung / Beweis": "proof",
             "📖 Anwendungsszenario": "scenario"}.get(_f_kind_choice)
 _problems = manifest.list_practice_problems(subject=_subj_arg, kind=_kind_arg)
 
@@ -339,11 +351,11 @@ with col_practice:
 # --------------------------------------------------------------------------- #
 if _subj_arg:
     with card("formelsammlung"):
-        st.subheader("📎 Formelsammlung")
-        st.caption(f"Fasst alle bisherigen Übungsaufgaben aus {_fach(_subj_arg)} zu einer "
-                  "kompakten Formel-/Methodenübersicht zusammen - ohne die konkreten "
+        st.subheader("📎 Formel- und Methodensammlung")
+        st.caption(f"Fasst alle bisherigen Übungsaufgaben aus {_fach(_subj_arg)} zusammen – "
+                  "Formeln, Methoden oder Merksätze, je nach Fach. Ohne die konkreten "
                   "Zahlenwerte einzelner Aufgaben.")
-        if st.button("📎 Formelsammlung erstellen/aktualisieren", key="formelsammlung_gen"):
+        if st.button("📎 Sammlung erstellen/aktualisieren", key="formelsammlung_gen"):
             with st.spinner("KI fasst die bisherigen Aufgaben zusammen …"):
                 try:
                     _fs_text = practice_gen.generate_formelsammlung(_subj_arg)

@@ -242,3 +242,41 @@ def test_set_document_subject(isolated_db):
     manifest.set_document_subject("d1", "Neu")
     docs = [dict(r) for r in manifest.list_documents()]
     assert docs[0]["subject"] == "Neu"
+
+
+def test_card_looks_like_formula_erkennt_latex_und_gleichung():
+    assert student_flow.card_looks_like_formula({
+        "front": r"$\int_0^1 x^2 dx$", "back": "1/3"})
+    assert student_flow.card_looks_like_formula({
+        "front": "f(x)=3x+2", "back": "Gerade"})
+    assert not student_flow.card_looks_like_formula({
+        "front": "Was ist ein Deckungsbeitrag?", "back": "Erlös minus variable Kosten."})
+
+
+def test_sprint_inventory_und_prefer_formula_vs_definition(isolated_db):
+    student_flow.card_from_text(
+        r"Ableitung von $x^2$", "2x", subject="Analysis", source="note")
+    student_flow.card_from_text(
+        "Was ist der Deckungsbeitrag?", "Erlös minus variable Kosten.",
+        subject="BWL", source="note")
+    student_flow.card_from_text(
+        "Eine sehr lange Frage, die bewusst keine kurze Merkliste ist und "
+        "auch keinen Rechenausdruck enthält, sondern einen ganzen Absatz.",
+        "Lange Antwort " * 20, subject="BWL", source="note")
+
+    inv_all = student_flow.sprint_inventory()
+    assert inv_all["formula_n"] == 1
+    assert inv_all["definition_n"] >= 1
+
+    inv_ana = student_flow.sprint_inventory(subject="Analysis")
+    assert inv_ana["formula_n"] == 1
+    assert inv_ana["definition_n"] == 0
+
+    only_f = student_flow.sprint_cards(subject="BWL", prefer="formula")
+    assert only_f == []
+    defs = student_flow.sprint_cards(subject="BWL", prefer="definition")
+    assert defs and all(not student_flow.card_looks_like_formula(c) for c in defs)
+
+    auto_ana = student_flow.sprint_cards(subject="Analysis", prefer="auto")
+    assert len(auto_ana) == 1
+    assert student_flow.card_looks_like_formula(auto_ana[0])

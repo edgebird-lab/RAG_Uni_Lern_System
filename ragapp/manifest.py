@@ -309,7 +309,7 @@ CREATE TABLE IF NOT EXISTS practice_problems (
     subject         TEXT,
     doc_id          TEXT,
     topic           TEXT,
-    kind            TEXT,               -- 'numeric' | 'scenario'
+    kind            TEXT,               -- 'numeric' | 'scenario' | 'proof'
     problem_text    TEXT NOT NULL,
     given_json      TEXT,               -- [{"label":..., "value":...}]
     steps_json      TEXT NOT NULL,      -- [{"step_text":...}]

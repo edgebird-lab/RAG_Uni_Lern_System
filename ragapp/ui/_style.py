@@ -38,7 +38,7 @@ PAGE_REGISTRY: list[dict] = [
     {"key": "mindmap", "icon": "🧠", "title": "Mindmap", "subtitle": "Themen visuell verknüpfen",
      "target": "pages/14_🧠_Mindmap.py", "category": "Lernen & Fragen"},
     {"key": "uebungsaufgaben", "icon": "🧮", "title": "Übungsaufgaben",
-     "subtitle": "Rechnen & Anwenden", "target": "pages/13_🧮_Übungsaufgaben.py",
+     "subtitle": "Rechnen, Begründen, Anwenden", "target": "pages/13_🧮_Übungsaufgaben.py",
      "category": "Lernen & Fragen"},
     {"key": "pruefung", "icon": "📝", "title": "Probeklausur", "subtitle": "Echte Prüfungssimulation",
      "target": "pages/6_📝_Prüfung.py", "category": "Lernen & Fragen"},

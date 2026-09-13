@@ -8,11 +8,23 @@ from __future__ import annotations
 
 import hashlib
 import re
+import time
 from datetime import date, timedelta
 from typing import Optional
 
 from ragapp import manifest, planner
 from ragapp.manifest import FEHLERHEFT_DECK
+
+# Formel-Sprint: Karten, die wirklich nach Formel/Rechnung aussehen – nicht
+# jede kurze Vorderseite. LaTeX und Rechenzeichen zaehlen staerker als Laenge.
+_LATEX_RE = re.compile(
+    r"\$[^$]+\$|\\\(|\\\[|\\begin\{|\\frac|\\sum|\\int|\\lim|\\vec|"
+    r"\\mathbb|\\mathrm|\\partial|\\cdot")
+_FORMULA_SYM_RE = re.compile(r"[=∑∫√±≤≥≈∞∂∇]|\\[a-zA-Z]+")
+_FORMULA_WORD_RE = re.compile(
+    r"(?i)\b(formel|gleichung|ableitung|integral|matrix|determinante|"
+    r"eigenwert|eigenvektor|vektorraum|stetig|limes|konvergenz|"
+    r"differential|gradient)\b")
 
 _HEADING_RE = re.compile(r"^#{1,3}\s+(.+)$", re.M)
 _DEF_RE = re.compile(
@@ -48,9 +60,13 @@ def snapshot_extras(snap: Optional[dict] = None) -> dict:
 
 def today_session_cards(*, subject: Optional[str] = None, limit: int = 15,
                         cram: bool = False, deck: Optional[str] = None,
-                        sprint: bool = False) -> list[dict]:
+                        decks: Optional[list] = None,
+                        sprint: bool = False, prefer: str = "auto") -> list[dict]:
     """Karten für den einen Home-Button ‚Heute starten‘."""
     limit = max(1, min(int(limit), 40))
+    if sprint:
+        return sprint_cards(subject=subject, decks=decks, deck=deck,
+                            limit=limit, prefer=prefer)
     subj = subject
     if not subj:
         snap = planner.today_snapshot()
@@ -60,24 +76,107 @@ def today_session_cards(*, subject: Optional[str] = None, limit: int = 15,
             subj = snap["next_exam"]["subject"]
             cram = True
     cards: list[dict] = []
-    if deck:
+    if decks:
+        cards = manifest.gather_study_cards(subject=subj, decks=decks, limit=limit)
+    if not cards and deck:
         cards = manifest.gather_study_cards(deck=deck, limit=limit)
     if not cards and subj:
         cards = manifest.gather_study_cards(subject=subj, limit=limit)
     if not cards:
         cards = planner.phase_round(limit=limit, cram=cram)
-    if sprint:
-        cards = _prefer_short_cards(cards)
     return cards[:limit]
 
 
-def sprint_cards(*, subject: Optional[str] = None, limit: int = 12) -> list[dict]:
-    return today_session_cards(subject=subject, limit=limit, sprint=True)
+def card_looks_like_formula(card: dict) -> bool:
+    """True, wenn Vorder- oder Rückseite nach einer echten Formel aussieht."""
+    front = (card.get("front") or "").strip()
+    back = (card.get("back") or card.get("answer") or "").strip()
+    blob = f"{front}\n{back}"
+    if not blob.strip():
+        return False
+    if _LATEX_RE.search(blob) or _FORMULA_WORD_RE.search(blob):
+        return True
+    if _FORMULA_SYM_RE.search(front) and len(front) <= 180:
+        return True
+    if any(ch in front for ch in "=∑∫√±^") and any(ch.isdigit() for ch in front):
+        return True
+    return False
 
 
-def _prefer_short_cards(cards: list[dict]) -> list[dict]:
-    short = [c for c in cards if len((c.get("front") or "").strip()) <= 120]
-    return short or cards
+def card_looks_like_definition(card: dict) -> bool:
+    """Kurze Merk-Vorderseite, aber keine Formel (Definition / Begriff)."""
+    if card_looks_like_formula(card):
+        return False
+    front = (card.get("front") or "").strip()
+    return 8 <= len(front) <= 140
+
+
+def sprint_inventory(*, subject: Optional[str] = None,
+                     decks: Optional[list] = None,
+                     deck: Optional[str] = None,
+                     limit_scan: int = 400) -> dict:
+    """Zählt Formel- und Definitions-Karten in der Auswahl (ohne zu lernen)."""
+    raw: list[dict] = []
+    if decks:
+        for d in decks:
+            raw.extend(manifest.list_cards(subject=subject, deck=d, limit=limit_scan))
+    else:
+        raw = manifest.list_cards(subject=subject, deck=deck, limit=limit_scan)
+    seen: set[str] = set()
+    cards: list[dict] = []
+    for c in raw:
+        cid = str(c.get("card_id") or "")
+        if not cid or cid in seen:
+            continue
+        if c.get("suspended"):
+            continue
+        if c.get("use_flashcard") == 0:
+            continue
+        seen.add(cid)
+        cards.append(c)
+    formula = [c for c in cards if card_looks_like_formula(c)]
+    definition = [c for c in cards if card_looks_like_definition(c)]
+    return {
+        "formula": formula,
+        "definition": definition,
+        "formula_n": len(formula),
+        "definition_n": len(definition),
+        "subjects": sorted({c.get("subject") for c in cards if c.get("subject")}),
+    }
+
+
+def sprint_cards(*, subject: Optional[str] = None, limit: int = 12,
+                 decks: Optional[list] = None, deck: Optional[str] = None,
+                 prefer: str = "auto") -> list[dict]:
+    """Kurz-Sprint: Formeln und/oder Definitionen der gewählten Auswahl.
+
+    ``prefer``: ``formula`` nur Formeln (leer, wenn keine da sind),
+    ``definition`` nur kurze Definitionen, ``auto`` Formeln falls vorhanden
+    sonst Definitionen. Fällige Karten stehen vorn, der Rest folgt – der
+    Sprint ist eine bewusste Auswahl, kein stilles Fallback auf beliebige
+    lange Karten."""
+    limit = max(1, min(int(limit), 40))
+    want = (prefer or "auto").strip().lower()
+    inv = sprint_inventory(subject=subject, decks=decks, deck=deck)
+    if want == "formula":
+        pool = list(inv["formula"])
+    elif want == "definition":
+        pool = list(inv["definition"])
+    else:
+        pool = list(inv["formula"] or inv["definition"])
+    now = time.time()
+
+    def _due(card: dict) -> float:
+        try:
+            return float(card.get("due") or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    due = [c for c in pool if _due(c) <= now]
+    later = [c for c in pool if _due(c) > now]
+    due.sort(key=_due)
+    later.sort(key=_due)
+    return (due + later)[:limit]
 
 
 def card_from_text(front: str, back: str, *, source: str = "text",

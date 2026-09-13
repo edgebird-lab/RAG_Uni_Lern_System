@@ -352,6 +352,63 @@ if _snap:
             st.caption(f"Nächste Klausur-Priorität: **{_tp_subj}** "
                        f"({planner.humanize_days(_snap['days_to_exam'])}).")
 
+        from ragapp import manifest as _home_manifest
+        from ragapp import student_flow as _sf
+        _faecher = _home_manifest.study_subjects()
+        _sprint_choices = ["Alle Fächer"] + _faecher
+        if "home_sprint_subject" not in st.session_state:
+            _pref = _tp.get("subject")
+            st.session_state["home_sprint_subject"] = (
+                _pref if _pref in _faecher else "Alle Fächer")
+        elif st.session_state.get("home_sprint_subject") not in _sprint_choices:
+            st.session_state["home_sprint_subject"] = "Alle Fächer"
+        _sp1, _sp2 = st.columns([2, 3])
+        with _sp1:
+            _sprint_pick = st.selectbox(
+                "Sprint-Fach", _sprint_choices,
+                format_func=lambda s: s if s == "Alle Fächer"
+                else SUBJECT_LABELS.get(s, s),
+                key="home_sprint_subject",
+                help="Welches Fach du im Kurz-Sprint durchgehen willst – "
+                     "nicht automatisch die Klausur-Priorität.")
+        _sprint_subj = None if _sprint_pick == "Alle Fächer" else _sprint_pick
+        _inv = _sf.sprint_inventory(subject=_sprint_subj)
+        with _sp2:
+            _sprint_kind = st.radio(
+                "Sprint-Inhalt",
+                ["Beides", "Formeln", "Definitionen"],
+                horizontal=True, key="home_sprint_kind",
+                help="Formeln nur, wenn welche in den Karten stecken. "
+                     "Sonst ehrlich leer – kein stilles Ausweichen auf Langtexte.")
+        _prefer = {"Formeln": "formula", "Definitionen": "definition",
+                   "Beides": "auto"}[_sprint_kind]
+        if _sprint_kind == "Formeln":
+            _sprint_ok = _inv["formula_n"] > 0
+            st.caption(
+                f"⚡ {_inv['formula_n']} Formel-Karten in dieser Auswahl."
+                if _sprint_ok else
+                "Keine Formeln in dieser Auswahl. Anderes Fach wählen oder "
+                "Definitionen sprinten – oder zuerst Karten anlegen.")
+        elif _sprint_kind == "Definitionen":
+            _sprint_ok = _inv["definition_n"] > 0
+            st.caption(
+                f"⚡ {_inv['definition_n']} kurze Definitionen."
+                if _sprint_ok else
+                "Keine kurzen Definitionen in dieser Auswahl.")
+        else:
+            _sprint_ok = (_inv["formula_n"] + _inv["definition_n"]) > 0
+            if _inv["formula_n"]:
+                st.caption(f"⚡ {_inv['formula_n']} Formeln"
+                           + (f" · {_inv['definition_n']} Definitionen"
+                              if _inv["definition_n"] else "")
+                           + " – Formeln zuerst.")
+            elif _inv["definition_n"]:
+                st.caption(f"Keine Formeln – Sprint nimmt {_inv['definition_n']} "
+                           "kurze Definitionen.")
+            else:
+                st.caption("Nichts zum Sprinten in dieser Auswahl. "
+                           "Zuerst Karteikarten anlegen.")
+
         _h1, _h2, _h3 = st.columns(3)
         if _h1.button("▶ Heute starten (20 Min)", type="primary",
                       key="heute_start", use_container_width=True):
@@ -362,10 +419,12 @@ if _snap:
                 "cram": bool(_snap.get("cram_active")),
             }
             st.switch_page(_target["lernen"])
-        if _h2.button("⚡ Formel-Sprint", key="heute_sprint", use_container_width=True):
+        if _h2.button("⚡ Formel-Sprint", key="heute_sprint",
+                      use_container_width=True, disabled=not _sprint_ok,
+                      help="Kurzer Drill der gewählten Formeln oder Definitionen."):
             st.session_state["study_prefill"] = {
                 "source": "sprint", "limit": 12, "mode": "sprint",
-                "subject": _tp.get("subject"), "sprint": True,
+                "subject": _sprint_subj, "sprint": True, "prefer": _prefer,
             }
             st.switch_page(_target["lernen"])
         if _h3.button("📒 Fehlerheft", key="heute_fehler", use_container_width=True):
