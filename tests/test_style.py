@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from ragapp.ui._style import (
     GOAL_CATEGORIES,
+    GOAL_HUB_KEYS,
     HAMBURGER_KEYS,
     HIDDEN_PAGE_KEYS,
     HOME_PIN_KEYS,
@@ -121,6 +122,21 @@ def test_home_pin_keys_existieren_und_sind_alltagsrelevant():
         assert key in _keys
     assert "lernen" in HOME_PIN_KEYS
     assert "fortschritt" in HOME_PIN_KEYS
+
+
+def test_kurzwahl_und_home_pins_sind_die_fuenf_zielgruppen():
+    assert list(GOAL_HUB_KEYS) == list(GOAL_CATEGORIES)
+    assert HAMBURGER_KEYS == [GOAL_HUB_KEYS[c] for c in GOAL_CATEGORIES]
+    assert HAMBURGER_KEYS == [
+        "home", "organisation", "lernen", "notizen", "fortschritt",
+    ]
+    assert "chat" not in HAMBURGER_KEYS
+    assert HOME_PIN_KEYS == [
+        "lernplan", "organisation", "lernen", "notizen", "fortschritt",
+    ]
+    for key in ("zusammenfassung", "audio", "vortrag", "mindmap"):
+        assert key not in HOME_PIN_KEYS
+        assert key not in HAMBURGER_KEYS
 
 
 def test_evaluation_ist_im_studenten_alltag_versteckt():

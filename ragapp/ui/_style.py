@@ -77,11 +77,26 @@ PAGE_REGISTRY: list[dict] = [
 ]
 _PAGE_BY_KEY = {p["key"]: p for p in PAGE_REGISTRY}
 
-# Hamburger-Kurzwahl: die 4 meistgenutzten Seiten (Home immer als erste dabei).
-HAMBURGER_KEYS = ["home", "chat", "lernen", "fortschritt"]
+# Eine Hub-Seite je Zielgruppe. Kurzwahl und Home-Pins zeigen diese Ziele,
+# nicht Chat/Karten/Fortschritt als gleichrangige Werkzeuge. Generatoren
+# (Zusammenfassung, Audio, Vortrag, Mindmap) bleiben hinter "Mehr".
+GOAL_HUB_KEYS: dict[str, str] = {
+    "Heute": "home",
+    "Kurse": "organisation",
+    "Lernen": "lernen",
+    "Organisation": "notizen",
+    "Fortschritt": "fortschritt",
+}
 
-# Home: zuerst die alltagsrelevanten Kacheln; Rest hinter "Mehr".
-HOME_PIN_KEYS = ["lernen", "chat", "fortschritt", "lernplan", "organisation", "pruefung"]
+# Hamburger-Kurzwahl: die fünf Zielgruppen (Home steht fuer Heute).
+HAMBURGER_KEYS = [GOAL_HUB_KEYS[c] for c in GOAL_CATEGORIES]
+
+# Home-Kacheln: dieselben fünf Ziele; Home hat keine Kachel zu sich selbst,
+# daher Lernplan als Heute-Einstieg. Generatoren liegen hinter "Mehr".
+HOME_PIN_KEYS = [
+    "lernplan" if GOAL_HUB_KEYS[c] == "home" else GOAL_HUB_KEYS[c]
+    for c in GOAL_CATEGORIES
+]
 
 # Operator-Seiten: nicht im Studenten-Alltag (Home/Hamburger-Gruppen).
 HIDDEN_PAGE_KEYS = {"evaluation", "ingestion"}
@@ -1034,12 +1049,12 @@ def _i18n_patch_html() -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Hamburger-Kurzwahl (Sidebar-Popover): Home + die 3 meistgenutzten Seiten.
-# Ergaenzt die Sidebar, ersetzt sie nicht - require_pin()'s "Zweites Fenster"/
-# "App beenden"-Buttons bleiben unangetastet (siehe _auth.py).
+# Hamburger-Kurzwahl: die fünf Zielgruppen (GOAL_HUB_KEYS), darunter alle
+# uebrigen Seiten nach Kategorie. Ergaenzt die Sidebar nicht - require_pin()'s
+# "Zweites Fenster"/"App beenden"-Buttons bleiben unangetastet (siehe _auth.py).
 # --------------------------------------------------------------------------- #
 def render_hamburger_nav(current_page_key: str) -> None:
-    """Kurzwahl (die 4 meistgenutzten Seiten, HAMBURGER_KEYS) PLUS - darunter,
+    """Kurzwahl der fünf Zielgruppen (HAMBURGER_KEYS) PLUS - darunter,
     nach Kategorie gruppiert wie die Home-Kacheln - alle uebrigen Seiten. Bis
     Version X gab es hier NUR die Kurzwahl: von einer Nicht-Kurzwahl-Seite
     (14 von 18) aus fuehrte JEDE Navigation ueber einen Umweg zurueck zu Home.
@@ -1057,12 +1072,12 @@ def render_hamburger_nav(current_page_key: str) -> None:
     vor dem Titel) - dort ist sie auf jedem Geraet ohne Umweg erreichbar."""
     with st.popover("☰ Menü", use_container_width=False):
         st.caption("Kurzwahl")
-        for key in HAMBURGER_KEYS:
+        for cat, key in zip(GOAL_CATEGORIES, HAMBURGER_KEYS, strict=True):
             page = _PAGE_BY_KEY.get(key)
             if not page:
                 continue
             is_here = key == current_page_key
-            label = f"{page['icon']} {page['title']}" + ("  ·  hier" if is_here else "")
+            label = f"{page['icon']} {cat}" + ("  ·  hier" if is_here else "")
             if st.button(label, key=f"hamburger_{key}", use_container_width=True,
                         disabled=is_here):
                 _go_to(page)
@@ -1097,16 +1112,29 @@ def _go_to(page: dict) -> None:
         st.switch_page(target)
 
 
-def render_nav_tile(page_key: str) -> None:
+def render_nav_tile(page_key: str, *, title: str | None = None,
+                    subtitle: str | None = None) -> None:
     """Eine Home-Kachel fuer die gegebene Seite (aus PAGE_REGISTRY) - echter
     st.button in einem benannten Container (siehe _BASE_CSS-Selektor oben),
     kein HTML-Overlay-Trick noetig (Streamlit >=1.something vergibt bei
     ``key=`` automatisch die CSS-Klasse ``st-key-<key>``)."""
     page = _PAGE_BY_KEY[page_key]
     with st.container(key=f"tile_{page_key}"):
-        label = f"{page['icon']}\n\n**{page['title']}**\n{page['subtitle']}"
+        shown_title = title if title is not None else page["title"]
+        shown_sub = subtitle if subtitle is not None else page["subtitle"]
+        label = f"{page['icon']}\n\n**{shown_title}**\n{shown_sub}"
         if st.button(label, key=f"tile_btn_{page_key}", use_container_width=True):
             _go_to(page)
+
+
+def render_goal_tile(category: str) -> None:
+    """Home-Kachel fuer eine Zielgruppe: Label ist der Gruppenname, Ziel die
+    Hub-Seite aus GOAL_HUB_KEYS (Heute -> Lernplan, weil Home keine
+    Selbst-Kachel hat)."""
+    hub = GOAL_HUB_KEYS[category]
+    page_key = "lernplan" if hub == "home" else hub
+    page = _PAGE_BY_KEY[page_key]
+    render_nav_tile(page_key, title=category, subtitle=page["subtitle"])
 
 
 def card(key: str):

@@ -169,14 +169,15 @@ _components.html(
 
 # --------------------------------------------------------------------------- #
 # Home-Kachel-Uebersicht - die eigentliche Navigation der App (Hamburger-Menue
-# links ist nur die Kurzwahl der 4 meistgenutzten Seiten). Ein Klick auf eine
-# Kachel springt direkt zur jeweiligen Seite (st.switch_page, siehe
+# ist die Kurzwahl der fünf Zielgruppen). Ein Klick auf eine Kachel springt
+# direkt zur jeweiligen Seite (st.switch_page, siehe
 # ragapp.ui._style.render_nav_tile) - PAGE_REGISTRY dort ist die einzige
 # Quelle der Wahrheit fuer Titel/Icon/Zielpfad/Gruppierung.
 # --------------------------------------------------------------------------- #
 from ragapp.ui._style import (apply_page_style, PAGE_REGISTRY, HOME_PIN_KEYS,
-                               HIDDEN_PAGE_KEYS, render_nav_tile,
-                               render_hero_title, card, speech_bubble_mascot)
+                               HIDDEN_PAGE_KEYS, GOAL_CATEGORIES, render_nav_tile,
+                               render_goal_tile, render_hero_title, card,
+                               speech_bubble_mascot)
 from ragapp.ui._mascot import render_mascot, home_mood, home_mood_line
 _theme = apply_page_style("home")
 
@@ -559,11 +560,11 @@ except Exception:  # noqa: BLE001
     pass
 
 st.write("")
-st.markdown("#### Heute nützlich")
+st.markdown("#### Ziele")
 _pin_cols = st.columns(3)
-for _i, _key in enumerate(HOME_PIN_KEYS):
+for _i, _cat in enumerate(GOAL_CATEGORIES):
     with _pin_cols[_i % 3]:
-        render_nav_tile(_key)
+        render_goal_tile(_cat)
 
 _more_pages = [p for p in PAGE_REGISTRY
                if p.get("category") and p["key"] not in HOME_PIN_KEYS
