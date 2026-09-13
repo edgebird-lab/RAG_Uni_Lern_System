@@ -34,7 +34,7 @@ h1 {font-weight: 750; letter-spacing:-0.5px;}
 </style>
 """, unsafe_allow_html=True)
 
-st.caption("Stundenplan, Aufgaben/Hausaufgaben und ein Wochen-Dashboard – "
+st.caption("Kurse mit nächster Aktion, Stundenplan und Aufgaben – "
            "organisatorisch, unabhängig von RAG/Chat. Komplett offline, ohne Modell.")
 
 with skeleton("Organisation wird geladen ..."):
@@ -185,6 +185,56 @@ _known_subjects = sorted(
     | {s["subject"] for s in manifest.list_timetable() if s.get("subject")}
     | {e["subject"] for e in manifest.list_exams() if e.get("subject")}
 )
+
+# --------------------------------------------------------------------------- #
+# Kurs-Cockpit: ein Fach, ein Blick, eine nächste Aktion (C2)
+# --------------------------------------------------------------------------- #
+from ragapp import student_flow as _sf
+
+_kurs_faecher = list(dict.fromkeys(
+    list(manifest.study_subjects())
+    + [e["subject"] for e in manifest.list_exams() if e.get("subject")]
+    + [s["subject"] for s in manifest.list_timetable() if s.get("subject")]
+    + [d["subject"] for d in manifest.list_documents() if d["subject"]]
+))
+st.subheader("Kurse")
+if not _kurs_faecher:
+    st.caption("Noch keine Fächer. Importiere den Semesterplan oder lege Unterlagen an.")
+else:
+    _act_label = {
+        "lernen": "Jetzt lernen",
+        "planen": "Lernplan öffnen",
+        "Unterlagen": "Unterlagen öffnen",
+        "Prüfung": "Probeklausur",
+    }
+    for _subj in _kurs_faecher:
+        _ks = _sf.course_snapshot(_subj)
+        with card(f"kurs_{_subj}"):
+            st.markdown(f"**{_fach(_subj)}**")
+            _c1, _c2, _c3, _c4 = st.columns(4)
+            _c1.metric("Termin", planner.humanize_days(_ks["days_to_exam"])
+                       if _ks["days_to_exam"] is not None else "–")
+            _c2.metric("Unterlagen", _ks["doc_count"])
+            _c3.metric("Bereitschaft", f'{_ks["readiness_pct"]} %')
+            _c4.metric("Fällig", _ks["due_cards"])
+            if _ks["weak_topics"]:
+                st.caption("Lücken: " + ", ".join(
+                    f'{w["topic"]} ({w["mastery_pct"]} %)' for w in _ks["weak_topics"][:3]))
+            _act = _ks["next_action"]
+            if st.button(_act_label.get(_act, "Weiter"), type="primary",
+                         key=f"kurs_act_{_subj}", use_container_width=True):
+                if _act == "lernen":
+                    st.session_state["study_prefill"] = {
+                        "source": "kurs", "limit": 16, "mode": "reveal",
+                        "subject": _subj,
+                    }
+                    st.switch_page("pages/4_🎓_Lernen.py")
+                elif _act == "planen":
+                    st.switch_page("pages/11_📋_Lernplan.py")
+                elif _act == "Unterlagen":
+                    st.switch_page("pages/9_🗃️_Dokumentenmanager.py")
+                else:
+                    st.switch_page("pages/6_📝_Prüfung.py")
 
 # --------------------------------------------------------------------------- #
 # Wochen-Dashboard
