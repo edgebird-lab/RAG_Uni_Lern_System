@@ -102,3 +102,32 @@ def test_record_progress_snapshot_ohne_fach_nutzt_platzhalter_all(isolated_db):
 
 def test_progress_snapshot_trend_ohne_historie_ist_leer(isolated_db):
     assert analytics.progress_snapshot_trend("mathe", days=14) == []
+
+
+def test_jol_calibration_over_und_underconfidence(isolated_db):
+    now = time.time()
+    with manifest._connect() as conn:
+        conn.execute(
+            "INSERT INTO review_log (card_id, subject, rating, reviewed_at, confidence) "
+            "VALUES (?,?,?,?,?)",
+            ("c1", "BWL", 0, now, "sicher"))
+        conn.execute(
+            "INSERT INTO review_log (card_id, subject, rating, reviewed_at, confidence) "
+            "VALUES (?,?,?,?,?)",
+            ("c2", "BWL", 2, now, "sicher"))
+        conn.execute(
+            "INSERT INTO review_log (card_id, subject, rating, reviewed_at, confidence) "
+            "VALUES (?,?,?,?,?)",
+            ("c3", "BWL", 2, now, "unsicher"))
+        conn.execute(
+            "INSERT INTO review_log (card_id, subject, rating, reviewed_at, confidence) "
+            "VALUES (?,?,?,?,?)",
+            ("c4", "Mathe", 0, now, "sicher"))
+    cal = analytics.jol_calibration("BWL")
+    assert cal["n"] == 3
+    assert cal["sicher_n"] == 2
+    assert cal["overconfidence_n"] == 1
+    assert cal["overconfidence_rate"] == 0.5
+    assert cal["underconfidence_n"] == 1
+    all_cal = analytics.jol_calibration()
+    assert all_cal["overconfidence_n"] == 2

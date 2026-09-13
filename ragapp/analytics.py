@@ -464,6 +464,36 @@ def daily_goal_status(subject: Optional[str] = None) -> dict:
             "reviews_today": reviews_today}
 
 
+def jol_calibration(subject: Optional[str] = None) -> dict:
+    """JOL-Kalibrierung: Overconfidence (sicher und falsch) vs. Underconfidence.
+
+    Keine UI – reine Kennzahl aus review_log.confidence und rating.
+    """
+    sc, sa = _subj_clause(subject)
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT confidence, rating FROM review_log "
+            "WHERE confidence IS NOT NULL AND TRIM(confidence) != ''" + sc,
+            sa).fetchall()
+    n = len(rows)
+    sicher_n = sum(1 for r in rows if r["confidence"] == "sicher")
+    unsicher_n = sum(1 for r in rows if r["confidence"] == "unsicher")
+    over = sum(1 for r in rows
+               if r["confidence"] == "sicher" and int(r["rating"] or 0) <= 0)
+    under = sum(1 for r in rows
+                if r["confidence"] == "unsicher" and int(r["rating"] or 0) >= 2)
+    return {
+        "n": n,
+        "sicher_n": sicher_n,
+        "unsicher_n": unsicher_n,
+        "overconfidence_n": over,
+        "overconfidence_rate": round(over / sicher_n, 3) if sicher_n else 0.0,
+        "underconfidence_n": under,
+        "underconfidence_rate": round(under / unsicher_n, 3) if unsicher_n else 0.0,
+        "subject": subject,
+    }
+
+
 def leeches(subject: Optional[str] = None, limit: int = 60) -> list[dict]:
     """Karten mit vielen Patzern ('Dauerpatzer'), die meiste Klausurzeit fressen -
     aufsteigend nach Mastery, absteigend nach Patzern."""
