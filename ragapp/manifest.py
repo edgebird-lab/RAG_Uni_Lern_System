@@ -162,6 +162,17 @@ CREATE TABLE IF NOT EXISTS exams (
     updated_at  REAL
 );
 
+-- Lernziele je Fach (aus dem Modulhandbuch). Additive Liste, nie halluziniert.
+CREATE TABLE IF NOT EXISTS learning_goals (
+    goal_id     TEXT PRIMARY KEY,
+    subject     TEXT NOT NULL,
+    text        TEXT NOT NULL,
+    source      TEXT,
+    sort_order  INTEGER DEFAULT 0,
+    created_at  REAL
+);
+CREATE INDEX IF NOT EXISTS idx_learning_goals_subject ON learning_goals(subject);
+
 -- Verwaltungsbereich (Organisation): Aufgaben/Hausaufgaben + Stundenplan. Rein
 -- organisatorisch, unabhaengig von RAG/Lern-Layer - kein LLM, kein Embedding.
 CREATE TABLE IF NOT EXISTS tasks (
@@ -1870,6 +1881,57 @@ def list_exams() -> list[dict]:
         rows = conn.execute(
             "SELECT * FROM exams ORDER BY (exam_date IS NULL), exam_date, subject").fetchall()
         return [dict(r) for r in rows]
+
+
+def list_learning_goals(subject: Optional[str] = None) -> list[dict]:
+    """Persistierte Lernziele, optional gefiltert nach Fach."""
+    sql = "SELECT * FROM learning_goals"
+    args: list = []
+    if subject:
+        sql += " WHERE subject=?"
+        args.append(subject)
+    sql += " ORDER BY subject, sort_order, created_at"
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+
+def add_learning_goals(subject: str, texts: list[str], *, source: str = "syllabus") -> int:
+    """Fügt Lernziele additiv hinzu. Leere Listen schreiben nichts (kein Halluzinieren)."""
+    subject = (subject or "").strip()
+    if not subject:
+        return 0
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for t in texts or []:
+        text = " ".join(str(t).split()).strip()
+        if len(text) < 12:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(text[:240])
+    if not cleaned:
+        return 0
+    existing = {g["text"].lower() for g in list_learning_goals(subject)}
+    now = time.time()
+    added = 0
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(MAX(sort_order), -1) AS m FROM learning_goals WHERE subject=?",
+            (subject,)).fetchone()
+        order = int(row["m"] if row else -1) + 1
+        for text in cleaned:
+            if text.lower() in existing:
+                continue
+            conn.execute(
+                "INSERT INTO learning_goals (goal_id, subject, text, source, sort_order, created_at) "
+                "VALUES (?,?,?,?,?,?)",
+                (uuid.uuid4().hex[:16], subject, text, source, order, now))
+            existing.add(text.lower())
+            order += 1
+            added += 1
+    return added
 
 
 # --------------------------------------------------------------------------- #

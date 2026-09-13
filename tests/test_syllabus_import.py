@@ -328,3 +328,26 @@ def test_apply_extracted_subjects_legt_fachordner_an(isolated_db, tmp_path, monk
     result = si.apply_extracted_subjects(subjects)
     assert (src / "WahlA").is_dir()
     assert result["folders"] == 1
+
+
+def test_parse_learning_goals_verwirft_kurz_und_leer():
+    assert si._parse_learning_goals(None) == []
+    assert si._parse_learning_goals(["zu kurz", "Die Studierenden können den Break-even berechnen."]) == [
+        "Die Studierenden können den Break-even berechnen."
+    ]
+
+
+def test_apply_extracted_subjects_persistiert_lernziele(isolated_db):
+    subjects = [si.ExtractedSubject(
+        code="BWL", label="BWL",
+        learning_goals=["Die Studierenden können Fixkosten von variablen Kosten unterscheiden."])]
+    si.apply_extracted_subjects(subjects)
+    goals = manifest.list_learning_goals("BWL")
+    assert len(goals) == 1
+    assert "Fixkosten" in goals[0]["text"]
+
+
+def test_apply_extracted_subjects_ohne_ziele_schreibt_nichts(isolated_db):
+    subjects = [si.ExtractedSubject(code="BWL", label="BWL", learning_goals=[])]
+    si.apply_extracted_subjects(subjects)
+    assert manifest.list_learning_goals("BWL") == []

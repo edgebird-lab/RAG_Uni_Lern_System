@@ -57,8 +57,10 @@ ein Objekt je Fach, ohne Fließtext/Erklärung drumherum:
    "exam_date": "YYYY-MM-DD oder null, falls kein Termin genannt",
    "ects": Zahl oder null,
    "lectures": [{{"weekday": 0-6 (0=Montag .. 6=Sonntag), "start": "HH:MM",
-                 "end": "HH:MM", "room": "Raum oder null"}}]}}, ...]
-"lectures" ist eine leere Liste, wenn im Text keine Vorlesungszeiten stehen."""
+                 "end": "HH:MM", "room": "Raum oder null"}}],
+   "learning_goals": ["nur Lernziele, die wörtlich oder eindeutig im Text stehen"]}}, ...]
+"lectures" ist eine leere Liste, wenn im Text keine Vorlesungszeiten stehen.
+"learning_goals" ist eine leere Liste, wenn keine Ziele genannt sind – erfinde keine."""
 
 
 @dataclass
@@ -77,6 +79,7 @@ class ExtractedSubject:
     ects: Optional[float] = None
     lectures: list[ExtractedLecture] = field(default_factory=list)
     match: Optional[str] = None
+    learning_goals: list[str] = field(default_factory=list)
 
 
 def _clean_hhmm(v) -> Optional[str]:
@@ -133,6 +136,28 @@ def _parse_lectures(raw) -> list[ExtractedLecture]:
     return out
 
 
+def _parse_learning_goals(raw) -> list[str]:
+    """Nur vorhandene Zielsätze; nichts erfinden, keine Einwort-Fragmente."""
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        text = " ".join(item.split()).strip(" -–")
+        if len(text) < 12:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(text[:240])
+        if len(out) >= 20:
+            break
+    return out
+
+
 def _parse_subjects(data) -> list[ExtractedSubject]:
     out: list[ExtractedSubject] = []
     if not isinstance(data, list):
@@ -159,6 +184,7 @@ def _parse_subjects(data) -> list[ExtractedSubject]:
         out.append(ExtractedSubject(
             code=code, label=label, exam_date=_clean_date(item.get("exam_date")),
             ects=ects, lectures=_parse_lectures(item.get("lectures")),
+            learning_goals=_parse_learning_goals(item.get("learning_goals")),
         ))
     return out
 
@@ -219,7 +245,8 @@ def remap_extracted_subjects(subjects: list[ExtractedSubject]) -> list[Extracted
         known.add(info["code"])
         out.append(ExtractedSubject(
             code=info["code"], label=s.label, exam_date=s.exam_date,
-            ects=s.ects, lectures=list(s.lectures), match=note))
+            ects=s.ects, lectures=list(s.lectures), match=note,
+            learning_goals=list(s.learning_goals)))
     return out
 
 
@@ -273,7 +300,8 @@ def _merge_subject_lists(groups: list[list[ExtractedSubject]]) -> list[Extracted
             if old is None:
                 by_code[s.code] = ExtractedSubject(
                     code=s.code, label=s.label, exam_date=s.exam_date,
-                    ects=s.ects, lectures=list(s.lectures))
+                    ects=s.ects, lectures=list(s.lectures),
+                    learning_goals=list(s.learning_goals))
                 continue
             if not old.exam_date and s.exam_date:
                 old.exam_date = s.exam_date
@@ -281,6 +309,14 @@ def _merge_subject_lists(groups: list[list[ExtractedSubject]]) -> list[Extracted
                 old.ects = s.ects
             if (not old.label or old.label == old.code) and s.label and s.label != s.code:
                 old.label = s.label
+            if not old.learning_goals and s.learning_goals:
+                old.learning_goals = list(s.learning_goals)
+            else:
+                seen_g = {g.lower() for g in old.learning_goals}
+                for g in s.learning_goals:
+                    if g.lower() not in seen_g:
+                        old.learning_goals.append(g)
+                        seen_g.add(g.lower())
             seen = {(lec.weekday, lec.start, lec.end, lec.room) for lec in old.lectures}
             for lec in s.lectures:
                 key = (lec.weekday, lec.start, lec.end, lec.room)
@@ -368,6 +404,8 @@ def apply_extracted_subjects(subjects: list[ExtractedSubject]) -> dict:
                 subject=s.code, weekday=lec.weekday,
                 start_time=lec.start, end_time=lec.end, room=lec.room)
             n_slots += 1
+        if s.learning_goals:
+            manifest.add_learning_goals(s.code, s.learning_goals, source="syllabus")
     return {"subjects": len(subjects), "exams": n_exams, "slots": n_slots,
             "folders": n_folders}
 
@@ -402,5 +440,6 @@ def subjects_from_preview_rows(rows: list[dict],
         ects = float(ects_raw) if pd.notna(ects_raw) else None
         out.append(ExtractedSubject(code=orig.code, label=orig.label, exam_date=exam_date,
                                     ects=ects, lectures=orig.lectures,
-                                    match=orig.match))
+                                    match=orig.match,
+                                    learning_goals=list(orig.learning_goals)))
     return out
