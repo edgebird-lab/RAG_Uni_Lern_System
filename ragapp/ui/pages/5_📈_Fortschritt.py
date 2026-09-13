@@ -381,6 +381,8 @@ if _sektion == "Klausurstatus":
             st.dataframe(dfg, use_container_width=True, hide_index=True)
 
 if _sektion == "Daten":
+    st.caption("Datensicherung, Sync und Export liegen nur hier – Klausurstatus "
+               "und Analyse bleiben frei von Backup- und Sync-Buttons.")
     # --------------------------------------------------------------------------- #
     # Fach-Archivierung: ein "fertiges" Fach (Klausur vorbei, Note eingetragen)
     # raeumt sich damit selbst aus den Lern-Dropdowns/Faelligkeits-Zaehlern - ohne
