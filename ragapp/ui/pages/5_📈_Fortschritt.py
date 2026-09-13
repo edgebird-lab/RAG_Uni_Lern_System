@@ -228,6 +228,62 @@ if _sektion == "Analyse":
                       help="Minuten diese Woche vs. die 7 Tage davor.")
 
 if _sektion == "Klausurstatus":
+    # Bereitschaft, naechste Luecke und Termine zuerst (A5) – Errungenschaften
+    # bleiben in ihrer eigenen Sektion.
+    with card("klausurstatus"):
+        st.subheader("Klausurstatus")
+        _ks_subj = subject or (subjects[0] if subjects else None)
+        _ready = analytics.subject_readiness(subject)["readiness_pct"]
+        _ks1, _ks2, _ks3 = st.columns(3)
+        _ks1.metric(
+            "Bereitschaft", f"{_ready} %",
+            help="Geschätzte mittlere Abrufwahrscheinlichkeit über die Karten "
+                 "(Vergessenskurve aus FSRS-6). Eine Schätzung, keine Garantie.")
+        _ks1.markdown(_charts.progress_bar(_ready, color="#C08A2E"),
+                      unsafe_allow_html=True)
+        _gap_subj = _ks_subj
+        _gaps = analytics.mastery_by_topic(_gap_subj, limit=1) if _gap_subj else []
+        if _gaps:
+            _g = _gaps[0]
+            _ks2.metric("Nächste Lücke", (_g.get("topic") or "ohne Thema")[:40],
+                        delta=f'{_g["mastery_pct"]} % Mastery', delta_color="off",
+                        help="Schwächstes Thema in der Auswahl – dort lohnt die nächste Runde.")
+        else:
+            _ks2.metric("Nächste Lücke", "–",
+                        help="Noch keine Themendaten. Nach ein paar Wiederholungen erscheint hier die schwächste Stelle.")
+        _exams = manifest.list_exams()
+        if subject:
+            _exams = [e for e in _exams if e["subject"] == subject]
+        _next_ex = None
+        _best_days = None
+        for _e in _exams:
+            if not _e.get("exam_date"):
+                continue
+            _d = planner.days_to_exam(_e["exam_date"])
+            if _d is None:
+                continue
+            if _best_days is None or _d < _best_days:
+                _best_days, _next_ex = _d, _e
+        if _next_ex:
+            _ks3.metric("Nächste Klausur", planner.humanize_days(_best_days),
+                        help=_fach(_next_ex["subject"]))
+        else:
+            _ks3.metric("Nächste Klausur", "kein Termin",
+                        help="Unten einen Klausurtermin setzen.")
+        if _ks_subj:
+            _ex_one = manifest.get_exam(_ks_subj)
+            _dte = planner.days_to_exam(_ex_one["exam_date"]) if _ex_one and _ex_one.get("exam_date") else None
+            _ahead = min(max(_dte, 7), 90) if _dte and _dte > 0 else 14
+            _curve = analytics.forgetting_curve(_ks_subj, days_ahead=_ahead)
+            if _curve:
+                st.caption("Bereitschaft ohne weiteres Üben"
+                           + (f" · Klausur in {_dte} Tagen" if _dte and _dte > 0 else "")
+                           + ".")
+                st.markdown(_charts.line_chart(
+                    [c["tag"] for c in _curve], [c["bereitschaft_pct"] for c in _curve],
+                    color="#C08A2E", height=120, value_suffix=" %"),
+                    unsafe_allow_html=True)
+
     # --------------------------------------------------------------------------- #
     # Klausurtermine + Prioritaet
     # --------------------------------------------------------------------------- #
