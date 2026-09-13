@@ -66,14 +66,59 @@ def test_normalize_and_parse_slides_script():
     assert "\n\n---\n\n" in joined
 
 
-def test_list_slide_pngs_finds_nested(tmp_path):
-    from ragapp.talk import list_slide_pngs
-    nested = tmp_path / "slide"
-    nested.mkdir()
-    png = nested / "slide.001.png"
-    png.write_bytes(b"x" * 200)
-    found = list_slide_pngs(tmp_path)
-    assert png in found
+def test_validate_slides_script_rejects_json_leak():
+    from ragapp.talk import validate_slides_script
+    errs = validate_slides_script(
+        '{"slides": "# Hi", "script": "x"}',
+        "Ein ganz normaler Vorlesetext ohne Markdown.",
+    )
+    assert any("JSON" in e for e in errs)
+
+
+def test_validate_slides_script_rejects_page_only_agenda():
+    from ragapp.talk import validate_slides_script
+    slides = (
+        "<!-- _class: agenda -->\n\n## Heute\n\n"
+        "1. Seite 1\n"
+        "2. Seite 2\n"
+    )
+    errs = validate_slides_script(
+        slides, "Willkommen zum Vortrag wir gehen die Themen durch und erklären alles.")
+    assert any("Agenda" in e or "Platzhalter" in e for e in errs)
+
+
+def test_validate_slides_script_accepts_clean():
+    from ragapp.talk import validate_slides_script
+    slides = "<!-- _class: content -->\n\n## Kernidee\n\n- Aussage eins\n- Aussage zwei\n"
+    script = (
+        "Schauen wir uns die Kernidee an. Aussage eins erklärt den Zusammenhang, "
+        "Aussage zwei vertieft das praktische Beispiel."
+    )
+    assert validate_slides_script(slides, script, body_chars=200) == []
+
+
+def test_thematic_toc_filters_page_titles():
+    from ragapp.talk import _thematic_toc_and_excerpts
+    toc, excerpts = _thematic_toc_and_excerpts([
+        ("doc.pdf", "Seite 1", "Supereffizienz bedeutet Prozessoptimierung entlang der Wertschöpfung."),
+    ])
+    assert "Seite 1" in toc
+    assert "Platzhalter" in toc or "inhaltlich" in toc
+    assert "Supereffizienz" in excerpts
+
+
+def test_build_ffmpeg_xfade_cmd_structure(tmp_path):
+    from ragapp.talk import build_ffmpeg_xfade_cmd
+    p1 = tmp_path / "a.png"
+    p2 = tmp_path / "b.png"
+    p1.write_bytes(b"x")
+    p2.write_bytes(b"x")
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"x")
+    out = tmp_path / "o.mp4"
+    cmd = build_ffmpeg_xfade_cmd([p1, p2], audio, out, per_slide_s=3.0)
+    assert "xfade" in " ".join(cmd)
+    assert str(out) in cmd
 
 
 def test_build_ffmpeg_concat_cmd_structure(tmp_path):

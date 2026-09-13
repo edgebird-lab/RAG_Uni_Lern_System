@@ -199,14 +199,16 @@ if _active_id is None:
     else:
         st.markdown("##### Entwurf prüfen")
         if _draft.get("warning"):
-            st.warning(_draft["warning"])
+            st.info(_draft["warning"])
         _marp_key = "talk_draft_marp"
         _script_key = "talk_draft_script"
         st.text_area("Marp-Markdown", value=_draft["marp_md"], height=280, key=_marp_key)
         st.text_area("Sprecher-Skript", value=_draft["script"], height=280, key=_script_key)
         _script_len = len(st.session_state[_script_key])
+        _n_slides = max(1, st.session_state[_marp_key].count("\n---\n"))
         st.caption(
-            f"{_script_len} Zeichen Skript (~{_script_len / 1000:.0f} Min. grob) · "
+            f"{_n_slides} Folien · {_script_len} Zeichen Skript "
+            f"(~{_script_len / 1000:.0f} Min. grob) · "
             f"{len(_draft.get('sources') or [])} externe Quelle(n)"
         )
         _render_pronunciation_hints(st.session_state[_script_key], key_prefix="talk_draft")
