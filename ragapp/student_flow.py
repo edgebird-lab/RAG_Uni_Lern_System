@@ -457,3 +457,75 @@ def scan_inbox_once(progress=None) -> dict:
         except Exception as exc:  # noqa: BLE001
             errors.append(f"{path.name}: {exc}")
     return {"scanned": len(files), "ok": ok, "errors": errors}
+
+
+def _next_lecture(slots: list[dict], *, today: Optional[date] = None) -> Optional[dict]:
+    """Nächster Vorlesungstermin ab heute (Wochentag + Uhrzeit)."""
+    if not slots:
+        return None
+    today = today or date.today()
+    wd = today.weekday()
+    now_hm = time.strftime("%H:%M")
+    ranked: list[tuple[int, dict]] = []
+    for s in slots:
+        slot_wd = int(s["weekday"])
+        delta = (slot_wd - wd) % 7
+        if delta == 0 and str(s.get("start_time") or "") <= now_hm:
+            delta = 7
+        ranked.append((delta, s))
+    ranked.sort(key=lambda x: (x[0], x[1].get("start_time") or ""))
+    delta, slot = ranked[0]
+    when = today + timedelta(days=delta)
+    return {**slot, "date": when.isoformat(), "days_ahead": delta}
+
+
+def recommend_course_action(*, due_cards: int, doc_count: int,
+                            exam_days: Optional[int],
+                            has_plan: bool) -> str:
+    """Nächste Kursaktion: lernen | planen | Unterlagen | Prüfung."""
+    if due_cards > 0:
+        return "lernen"
+    if doc_count <= 0:
+        return "Unterlagen"
+    if exam_days is not None and 0 <= exam_days <= 14:
+        return "Prüfung"
+    if not has_plan:
+        return "planen"
+    return "lernen"
+
+
+def course_snapshot(subject: str) -> dict:
+    """Ein Blick pro Fach: Termin, Stoff, Lernstand, nächste Aktion."""
+    from ragapp import analytics
+
+    exam = manifest.get_exam(subject) or {}
+    exam_date = exam.get("exam_date")
+    days = planner.days_to_exam(exam_date) if exam_date else None
+    evenings = evenings_until_exam(exam_date)
+    due = manifest.due_breakdown(subject=subject)
+    due_cards = int(due["due_learning"]) + int(due["due_review"]) + int(due["due_new"])
+    ready = analytics.subject_readiness(subject)
+    weak = analytics.mastery_by_topic(subject, limit=3)
+    docs = [dict(d) for d in manifest.list_documents() if d["subject"] == subject]
+    slots = manifest.list_timetable(subject=subject)
+    next_lec = _next_lecture(slots)
+    plans = [p for p in manifest.list_study_plans()
+             if p.get("subject") == subject and p.get("status") == "active"]
+    action = recommend_course_action(
+        due_cards=due_cards, doc_count=len(docs),
+        exam_days=days, has_plan=bool(plans))
+    return {
+        "subject": subject,
+        "exam_date": exam_date,
+        "days_to_exam": days,
+        "evenings": (evenings or {}).get("evenings"),
+        "due_cards": due_cards,
+        "readiness_pct": ready.get("readiness_pct", 0),
+        "weak_topics": [
+            {"topic": w.get("topic"), "mastery_pct": w.get("mastery_pct")}
+            for w in weak
+        ],
+        "doc_count": len(docs),
+        "next_lecture": next_lec,
+        "next_action": action,
+    }

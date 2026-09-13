@@ -280,3 +280,33 @@ def test_sprint_inventory_und_prefer_formula_vs_definition(isolated_db):
     auto_ana = student_flow.sprint_cards(subject="Analysis", prefer="auto")
     assert len(auto_ana) == 1
     assert student_flow.card_looks_like_formula(auto_ana[0])
+
+
+def test_course_snapshot_aggregiert_fach(isolated_db):
+    future = (date.today() + timedelta(days=10)).isoformat()
+    manifest.upsert_exam("BWL", exam_date=future)
+    manifest.upsert_document(
+        doc_id="d-bwl", content_hash="h", source_path="/bwl.pdf",
+        filename="bwl.pdf", subject="BWL", filetype="pdf",
+        num_chunks=2, num_questions=0, char_count=100, status="ok")
+    manifest.upsert_timetable_slot(
+        subject="BWL", weekday=date.today().weekday(),
+        start_time="23:59", end_time="24:00", room="H1")
+    snap = student_flow.course_snapshot("BWL")
+    assert snap["subject"] == "BWL"
+    assert snap["exam_date"] == future
+    assert snap["days_to_exam"] == 10
+    assert snap["evenings"] == 10
+    assert snap["doc_count"] == 1
+    assert snap["due_cards"] == 0
+    assert snap["readiness_pct"] == 0
+    assert snap["weak_topics"] == []
+    assert snap["next_lecture"]["room"] == "H1"
+    assert snap["next_action"] in ("lernen", "planen", "Unterlagen", "Prüfung")
+    assert snap["next_action"] == "Prüfung"
+
+
+def test_course_snapshot_empfiehlt_unterlagen_ohne_docs(isolated_db):
+    snap = student_flow.course_snapshot("Mathe")
+    assert snap["doc_count"] == 0
+    assert snap["next_action"] == "Unterlagen"
