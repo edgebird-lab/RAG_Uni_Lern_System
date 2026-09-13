@@ -362,12 +362,14 @@ def _quit_button() -> None:
                           "nicht belastet wird."):
             # 1) Grosses KI-Modell SOFORT entladen -> Grafikspeicher (VRAM) frei.
             _best_effort_stop_ollama()
-            # 2) Server NICHT sofort stoppen! Sonst sieht der Nutzer im noch offenen
-            #    Tab nur "Connection error" statt der Abschiedsmeldung. Stattdessen den
-            #    Server beenden, SOBALD der Tab geschlossen ist (kein Verbindungsfehler).
+            # 2) Server nach kurzer Frist wirklich stoppen (Sentinel + os._exit).
+            #    Nicht auf "Tab geschlossen / keine TCP-Verbindung mehr" warten:
+            #    andere lokale Verbindungen (z. B. IDE-Vorschau) wuerden den
+            #    Prozess sonst nie beenden, obwohl der Nutzer Beenden geklickt
+            #    und das Fenster geschlossen hat.
             try:
-                from ragapp.ui._shutdown_watchdog import arm_shutdown_on_tab_close
-                arm_shutdown_on_tab_close()
+                from ragapp.ui._shutdown_watchdog import request_quit
+                request_quit()
             except Exception:  # noqa: BLE001
                 pass
             st.session_state["_shutting_down"] = True
@@ -390,7 +392,7 @@ def _quit_button() -> None:
             "🧠 Das lokale KI-Modell (Ollama) wurde **entladen** – dein "
             "**Grafikspeicher (VRAM) ist wieder frei**.\n\n"
             "🔋 Es läuft keine KI-Berechnung mehr, dein System wird nicht belastet.")
-        st.markdown("### 🪟 Schließe jetzt dieses Fenster/Tab.")
-        st.caption("Sobald das Fenster zu ist, fährt die App automatisch komplett "
-                   "herunter (der Server stoppt von selbst).")
+        st.markdown("### 🪟 Du kannst dieses Fenster/Tab jetzt schließen.")
+        st.caption("Die App fährt in wenigen Sekunden komplett herunter – "
+                   "auch wenn das Fenster noch offen bleibt.")
         st.stop()

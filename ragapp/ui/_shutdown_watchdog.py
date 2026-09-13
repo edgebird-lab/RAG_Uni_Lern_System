@@ -83,19 +83,52 @@ def _connected_client_count(port: int) -> "int | None":
     return total if any_read else None
 
 
-def _trigger_shutdown() -> None:
-    """Beenden-Signal schreiben; als Absicherung danach den Prozess selbst beenden."""
+def write_shutdown_sentinel() -> None:
+    """data/.shutdown anlegen, damit start.sh den Streamlit-Prozess stoppt."""
     try:
         from ragapp.config import SHUTDOWN_SENTINEL
         SHUTDOWN_SENTINEL.parent.mkdir(parents=True, exist_ok=True)
         SHUTDOWN_SENTINEL.write_text("1", encoding="utf-8")
     except Exception:  # noqa: BLE001
         pass
+
+
+def _trigger_shutdown() -> None:
+    """Beenden-Signal schreiben; als Absicherung danach den Prozess selbst beenden."""
+    write_shutdown_sentinel()
     # Falls kein externer Starter (start.sh-Waechter) mitliest: selbst beenden,
     # damit der Server nicht verwaist weiterlaeuft. start.sh raeumt via Trap den
     # Rest auf (Modell entladen). os._exit umgeht Streamlits Signal-Handler.
     time.sleep(_SELF_EXIT_DELAY)
     os._exit(0)
+
+
+def request_quit(*, delay_sec: float = 2.0) -> None:
+    """In-App-Button "App beenden": Sentinel sofort schreiben und den Prozess
+    nach ``delay_sec`` selbst beenden.
+
+    Frueher wartete der Button, bis KEINE TCP-Verbindung mehr zu Port 8501
+    besteht. Das scheitert, sobald irgendetwas anderes den Port offen haelt
+    (zweites Tab, Handy, IDE-Vorschau, haengengebliebener Websocket): der
+    Nutzer schliesst das Fenster, das Terminal laeuft trotzdem weiter.
+    Der start.sh-Waechter sieht ``data/.shutdown`` innerhalb einer Sekunde;
+    ``os._exit`` greift zusaetzlich, wenn die App ohne start.sh laeuft.
+    Die kurze Verzoegerung reicht, die Abschiedsseite noch auszuliefern."""
+    global _armed_on_close
+    with _start_lock:
+        if _armed_on_close:
+            write_shutdown_sentinel()
+            return
+        _armed_on_close = True
+    write_shutdown_sentinel()
+
+    def _exit_later() -> None:
+        time.sleep(max(0.0, delay_sec))
+        os._exit(0)
+
+    threading.Thread(
+        target=_exit_later, name="rag-quit-exit", daemon=True,
+    ).start()
 
 
 def _watch_loop(grace: float) -> None:

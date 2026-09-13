@@ -39,7 +39,8 @@ export RAG_LOCAL_ONLY=1
 # standardmaessig AUS: er beendete die App faelschlich schon, wenn der Browser den
 # Tab nur kurz trennte/verwarf (z. B. Memory-Saver bei parallelen Apps) -> "Server
 # antwortet nicht". Manuelles Beenden (In-App-Button "App beenden" oder stop.sh)
-# raeumt weiterhin sauber auf (Modell entladen). Bewusst aktivieren: RAG_IDLE_SHUTDOWN=1 ./start.sh
+# schreibt data/.shutdown und stoppt Streamlit unabhaengig von offenen
+# Rest-Verbindungen. Bewusst aktivieren: RAG_IDLE_SHUTDOWN=1 ./start.sh
 export RAG_IDLE_SHUTDOWN="${RAG_IDLE_SHUTDOWN:-0}"
 
 PY="$ROOT/.venv/bin/python"
