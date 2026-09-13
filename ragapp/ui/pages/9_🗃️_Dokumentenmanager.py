@@ -46,6 +46,11 @@ _ICONS = {"pdf": "📕", "docx": "📄", "pptx": "📊", "md": "📝", "txt": "�
 _TEXT_PREVIEW_TYPES = ("md", "txt")
 
 
+_flash = st.session_state.pop("_docmgr_flash", None)
+if _flash:
+    st.success(_flash)
+
+
 def _fach(code: "str | None") -> str:
     return SUBJECT_LABELS.get(code, code) if code else "–"
 
@@ -80,6 +85,130 @@ def _build_zip(docs: list[dict]) -> bytes:
     return buf.getvalue()
 
 
+def _execute_purge(doc_ids: list[str], *, library: bool, index: bool,
+                   cards: bool) -> dict:
+    """Direkt auf der Seite, damit Streamlit nicht an einer alten ``_ingest_ui``-Signatur hängt."""
+    from ragapp.ingestion.pipeline import remove_document, set_document_use_rag
+
+    agg = {"ok": 0, "errors": [], "cards": 0, "library": 0, "index": 0,
+           "cards_requested": bool(cards)}
+    for did in doc_ids:
+        if not did:
+            continue
+        try:
+            if cards:
+                ids = manifest.list_card_ids_matching(doc_ids=[did])
+                chroma = manifest.delete_card_ids(ids)
+                agg["cards"] += len(ids)
+                if chroma:
+                    try:
+                        from ragapp.retrieval.vectorstore import get_vectorstore
+                        get_vectorstore().delete_by_ids(chroma)
+                    except Exception:  # noqa: BLE001
+                        pass
+            if library and index:
+                remove_document(did)
+                agg["library"] += 1
+                agg["index"] += 1
+            elif index:
+                set_document_use_rag(did, False)
+                agg["index"] += 1
+            elif library:
+                manifest.delete_document(did)
+                agg["library"] += 1
+            agg["ok"] += 1
+        except Exception as exc:  # noqa: BLE001
+            agg["errors"].append(str(exc))
+    return agg
+
+
+def _purge_flash(result: dict) -> str:
+    parts: list[str] = []
+    if result.get("library"):
+        parts.append(f"{result['library']} Dokument(e) aus der Bibliothek")
+    if result.get("index"):
+        parts.append("Suchindex")
+    if result.get("cards"):
+        parts.append(f"{result['cards']} Karteikarte(n)")
+    if result.get("errors"):
+        err = " · ".join(result["errors"][:3])
+        base = "Gelöscht: " + ", ".join(parts) + "." if parts else "Nichts gelöscht."
+        return f"{base} Fehler: {err}"
+    if not parts:
+        if result.get("cards_requested"):
+            return ("Keine Karteikarten zu dieser Datei gefunden – "
+                    "Dokument und Index sind unverändert.")
+        return "Nichts gelöscht."
+    return "Gelöscht: " + ", ".join(parts) + "."
+
+
+def _queue_delete(docs: list[dict]) -> None:
+    st.session_state["docmgr_delete_docs"] = [dict(d) for d in docs]
+    st.session_state["docmgr_purge_lib"] = True
+    st.session_state["docmgr_purge_idx"] = True
+    st.session_state["docmgr_purge_cards"] = True
+    st.rerun()
+
+
+def _dismiss_delete_dialog() -> None:
+    st.session_state.pop("docmgr_delete_docs", None)
+
+
+@st.dialog("🗑️ Wirklich löschen?", width="small", on_dismiss=_dismiss_delete_dialog)
+def _confirm_delete_dialog(docs: list[dict]) -> None:
+    names = [d.get("filename") or d.get("doc_id") or "?" for d in docs]
+    shown = ", ".join(names[:3])
+    if len(names) > 3:
+        shown += f" (+{len(names) - 3} weitere)"
+    n_cards = 0
+    try:
+        n_cards = len(manifest.list_card_ids_matching(
+            doc_ids=[d["doc_id"] for d in docs if d.get("doc_id")]))
+    except Exception:  # noqa: BLE001
+        n_cards = 0
+    st.markdown(f"**{len(docs)} Datei(en):** {shown}")
+    st.caption("Jedes Häkchen ist unabhängig: du kannst z. B. nur die Karteikarten "
+               "löschen und Dokument plus Suchindex behalten.")
+    want_lib = st.checkbox("Dokument aus der Bibliothek", value=True,
+                           key="docmgr_purge_lib",
+                           help="Entfernt den Eintrag hier in der Übersicht. "
+                                "Die Originaldatei im Ordner bleibt liegen.")
+    want_idx = st.checkbox("Suchindex (Chunks, Chat-Treffer, generierte Fragen)",
+                           value=True, key="docmgr_purge_idx",
+                           help="Chat und Suche finden die Datei danach nicht mehr. "
+                                "Das Dokument kann in der Bibliothek bleiben.")
+    want_cards = st.checkbox(
+        f"Zugehörige Karteikarten ({n_cards})",
+        value=True, key="docmgr_purge_cards",
+        help="Nur Karten, die aus genau diesen Dokumenten stammen. "
+             "Dokument und Index bleiben, wenn du sie oben nicht anhakt.")
+    if n_cards == 0:
+        st.caption("Zu dieser Datei sind keine Karteikarten verknüpft – das Häkchen "
+                   "allein löscht dann nichts.")
+    if want_lib and not want_idx:
+        st.warning("Ohne Suchindex bleiben Chat-Treffer erhalten (verwaiste Chunks).")
+    elif want_idx and not want_lib:
+        st.caption("Das Dokument bleibt in der Übersicht, ist danach aber nicht mehr "
+                   "im Chat auffindbar.")
+    elif want_cards and not want_lib and not want_idx:
+        st.caption("Nur Karten werden entfernt. Datei und Suchindex bleiben.")
+    can_go = bool(want_lib or want_idx or (want_cards and n_cards > 0))
+    if not can_go:
+        st.warning("Mindestens eine Option mit Inhalt wählen.")
+    c1, c2 = st.columns(2)
+    if c1.button("Abbrechen", use_container_width=True, key="docmgr_purge_cancel"):
+        st.session_state.pop("docmgr_delete_docs", None)
+        st.rerun()
+    if c2.button("Jetzt löschen", type="primary", use_container_width=True,
+                 disabled=not can_go, key="docmgr_purge_go"):
+        res = _execute_purge(
+            [d["doc_id"] for d in docs if d.get("doc_id")],
+            library=bool(want_lib), index=bool(want_idx), cards=bool(want_cards))
+        st.session_state.pop("docmgr_delete_docs", None)
+        st.session_state["_docmgr_flash"] = _purge_flash(res)
+        st.rerun()
+
+
 def _selection_bar(selected: list[dict], key_prefix: str) -> None:
     """Zeigt - wenn welche ausgewählt sind - Anzahl, ZIP und Löschen. Kacheln
     und Liste führen ihre Auswahl bewusst UNABHÄNGIG (eigene Widgets, eigene
@@ -95,15 +224,9 @@ def _selection_bar(selected: list[dict], key_prefix: str) -> None:
             f"⬇️ Als ZIP ({len(selected)})", data=_build_zip(selected),
             file_name="dokumente.zip", mime="application/zip",
             key=f"{key_prefix}_zip", use_container_width=True)
-    _ok = c3.checkbox("Ja, löschen", key=f"{key_prefix}_del_ok")
-    if c3.button(f"🗑️ {len(selected)} löschen", type="secondary",
-                 disabled=not _ok, key=f"{key_prefix}_del",
-                 use_container_width=True):
-        _n, _err = _ingest_ui.delete_documents([d["doc_id"] for d in selected])
-        if _err:
-            st.warning(" · ".join(_err[:4]))
-        st.success(f"{_n} Dokument(e) gelöscht.")
-        st.rerun()
+    if c3.button(f"🗑️ {len(selected)} löschen …", type="secondary",
+                 key=f"{key_prefix}_del", use_container_width=True):
+        _queue_delete(selected)
 
 
 @st.dialog("📄 Dokument ansehen", width="large")
@@ -200,23 +323,18 @@ def _view_doc_dialog(d: dict) -> None:
         st.switch_page("pages/15_🎧_Audio-Overview.py")
 
     st.divider()
-    st.markdown("##### 🗑️ Dokument löschen")
-    st.caption("Entfernt Datei, Chunks und Fragen aus Bibliothek und Suchindex.")
-    _del_ok = st.checkbox("Ja, dieses Dokument wirklich löschen",
-                          key=f"docmgr_del_ok_{d['doc_id']}")
-    if st.button("🗑️ Dokument löschen", type="secondary", disabled=not _del_ok,
+    if st.button("🗑️ Löschen …", type="secondary",
                  key=f"docmgr_del_{d['doc_id']}", use_container_width=True):
-        _n, _err = _ingest_ui.delete_documents([d["doc_id"]])
-        if _err:
-            st.error(" · ".join(_err))
-        else:
-            st.success(f"„{d['filename']}“ gelöscht.")
-            st.rerun()
+        _queue_delete([d])
 
 
 # --------------------------------------------------------------------------- #
 # Ordner (= Fächer) + Upload, bevor die Bibliothek kommt – auch bei 0 Dokumenten
 # --------------------------------------------------------------------------- #
+_pending_del = st.session_state.get("docmgr_delete_docs")
+if _pending_del:
+    _confirm_delete_dialog(_pending_del)
+
 _all_docs = [dict(d) for d in manifest.list_documents()]
 _folder_names = sorted({d["subject"] for d in _all_docs if d.get("subject")}
                        | set(_ingest_ui.extra_folders()))
@@ -384,6 +502,10 @@ with tab_kacheln:
                                      use_container_width=True, help="Herunterladen vorbereiten"):
                             st.session_state[_dl_prep_key] = True
                             st.rerun()
+                    if st.button("🗑️ Löschen", key=f"docmgr_tile_del_{d['doc_id']}",
+                                 use_container_width=True,
+                                 help="Dokument, Index und/oder Karteikarten entfernen"):
+                        _queue_delete([d])
         if len(_filtered) > len(_shown):
             if st.button(f"🔁 Weitere laden ({len(_filtered) - len(_shown)} übrig)"):
                 st.session_state["docmgr_page_size"] += 24

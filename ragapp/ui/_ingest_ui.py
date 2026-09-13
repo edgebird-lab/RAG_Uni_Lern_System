@@ -77,17 +77,84 @@ def document_page_label(d: dict) -> str:
     return "–"
 
 
-def delete_documents(doc_ids: list[str]) -> tuple[int, list[str]]:
-    from ragapp.ingestion.pipeline import remove_document
-    ok = 0
-    errors: list[str] = []
+def purge_summary(result: dict) -> str:
+    """Kurze Erfolgsmeldung nach ``delete_documents`` / ``purge_documents``."""
+    parts: list[str] = []
+    if result.get("library"):
+        parts.append(f"{result['library']} Dokument(e) aus der Bibliothek")
+    if result.get("index"):
+        parts.append("Suchindex")
+    if result.get("cards"):
+        parts.append(f"{result['cards']} Karteikarte(n)")
+    if result.get("errors"):
+        err = " · ".join(result["errors"][:3])
+        base = "Gelöscht: " + ", ".join(parts) + "." if parts else "Nichts gelöscht."
+        return f"{base} Fehler: {err}"
+    if not parts:
+        if result.get("cards_requested"):
+            return "Keine Karteikarten zu dieser Datei gefunden – Dokument und Index sind unverändert."
+        return "Nichts gelöscht."
+    return "Gelöscht: " + ", ".join(parts) + "."
+
+
+def _purge_via_existing(doc_ids: list[str], *, library: bool, index: bool,
+                        cards: bool) -> dict:
+    """Löschen über APIs, die der laufende Streamlit-Prozess schon kennt.
+
+    Home lädt ``ragapp.ingestion.pipeline`` beim Start vor – neue Namen wie
+    ``purge_documents`` fehlen dann im Speicher, obwohl die Datei sie hat.
+    """
+    from ragapp.ingestion.pipeline import remove_document, set_document_use_rag
+
+    agg = {"ok": 0, "errors": [], "cards": 0, "library": 0, "index": 0,
+           "cards_requested": bool(cards)}
     for did in doc_ids:
+        if not did:
+            continue
         try:
-            remove_document(did)
-            ok += 1
+            if cards:
+                ids = manifest.list_card_ids_matching(doc_ids=[did])
+                chroma = manifest.delete_card_ids(ids)
+                agg["cards"] += len(ids)
+                if chroma:
+                    try:
+                        from ragapp.retrieval.vectorstore import get_vectorstore
+                        get_vectorstore().delete_by_ids(chroma)
+                    except Exception:  # noqa: BLE001
+                        pass
+            if library and index:
+                remove_document(did)
+                agg["library"] += 1
+                agg["index"] += 1
+            elif index:
+                set_document_use_rag(did, False)
+                agg["index"] += 1
+            elif library:
+                manifest.delete_document(did)
+                agg["library"] += 1
+            agg["ok"] += 1
         except Exception as exc:  # noqa: BLE001
-            errors.append(str(exc))
-    return ok, errors
+            agg["errors"].append(str(exc))
+    return agg
+
+
+def delete_documents(doc_ids: list[str], *, library: bool = True, index: bool = True,
+                     cards: bool = True) -> dict:
+    """Öffentliche Lösch-API für die UI – robust gegen veraltete Pipeline-Imports."""
+    from ragapp.ingestion import pipeline as pipe
+    fn = getattr(pipe, "purge_documents", None)
+    if fn is None:
+        try:
+            import importlib
+            pipe = importlib.reload(pipe)
+            fn = getattr(pipe, "purge_documents", None)
+        except Exception:  # noqa: BLE001
+            fn = None
+    if fn is not None:
+        res = fn(doc_ids, library=library, index=index, cards=cards)
+        res.setdefault("cards_requested", bool(cards))
+        return res
+    return _purge_via_existing(doc_ids, library=library, index=index, cards=cards)
 
 
 def render_ocr_warnings() -> None:

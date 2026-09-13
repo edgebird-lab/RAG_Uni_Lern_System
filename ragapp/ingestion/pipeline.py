@@ -590,6 +590,77 @@ def remove_document(doc_id: str) -> None:
     rebuild_bm25_from_store()
 
 
+def purge_document(doc_id: str, *, library: bool = True, index: bool = True,
+                   cards: bool = True) -> dict:
+    """Löscht wählbare Teile eines Dokuments: Bibliothek, Suchindex, Karteikarten.
+
+    - ``cards``   -> review_items (und deren Frage-IDs im Vektorindex)
+    - ``index``   -> Chunks/Fragen im RAG + BM25
+    - ``library`` -> Eintrag in der Dokumentenliste (Manifest)
+    """
+    out = {"doc_id": doc_id, "cards": 0, "library": False, "index": False}
+    if cards:
+        ids = manifest.list_card_ids_matching(doc_ids=[doc_id])
+        chroma = manifest.delete_card_ids(ids)
+        out["cards"] = len(ids)
+        if chroma:
+            try:
+                get_vectorstore().delete_by_ids(chroma)
+            except Exception:  # noqa: BLE001
+                pass
+    if library and index:
+        remove_document(doc_id)
+        out["library"] = True
+        out["index"] = True
+    elif index:
+        set_document_use_rag(doc_id, False)
+        out["index"] = True
+    elif library:
+        manifest.delete_document(doc_id)
+        out["library"] = True
+    return out
+
+
+def purge_documents(doc_ids: list[str], *, library: bool = True, index: bool = True,
+                    cards: bool = True) -> dict:
+    """Wie ``purge_document``, für mehrere IDs. Index-Rebuild passiert je Aufruf."""
+    agg = {"ok": 0, "errors": [], "cards": 0, "library": 0, "index": 0,
+           "cards_requested": bool(cards)}
+    for did in doc_ids:
+        try:
+            r = purge_document(did, library=library, index=index, cards=cards)
+            agg["ok"] += 1
+            agg["cards"] += int(r.get("cards") or 0)
+            if r.get("library"):
+                agg["library"] += 1
+            if r.get("index"):
+                agg["index"] += 1
+        except Exception as exc:  # noqa: BLE001
+            agg["errors"].append(str(exc))
+    return agg
+
+
+def purge_summary(result: dict) -> str:
+    """Kurze Erfolgsmeldung nach ``purge_documents``."""
+    parts: list[str] = []
+    if result.get("library"):
+        parts.append(f"{result['library']} Dokument(e) aus der Bibliothek")
+    if result.get("index"):
+        parts.append("Suchindex")
+    if result.get("cards"):
+        parts.append(f"{result['cards']} Karteikarte(n)")
+    if result.get("errors"):
+        err = " · ".join(result["errors"][:3])
+        base = "Gelöscht: " + ", ".join(parts) + "." if parts else "Nichts gelöscht."
+        return f"{base} Fehler: {err}"
+    if not parts:
+        if result.get("cards_requested"):
+            return ("Keine Karteikarten zu dieser Datei gefunden – "
+                    "Dokument und Index sind unverändert.")
+        return "Nichts gelöscht."
+    return "Gelöscht: " + ", ".join(parts) + "."
+
+
 def remove_questions(doc_id: str | None = None, subject: str | None = None) -> None:
     """Entfernt generierte Fragen selektiv - Dokumente und Chunks bleiben erhalten.
 

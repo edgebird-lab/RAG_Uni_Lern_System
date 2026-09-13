@@ -181,6 +181,59 @@ def test_delete_cards_matching_nur_ein_dokument(isolated_db):
     assert left[0]["doc_id"] == "docB"
 
 
+def test_purge_document_bibliothek_ohne_karten(isolated_db):
+    from ragapp.ingestion import pipeline
+    manifest.upsert_document(
+        doc_id="d1", content_hash="h", source_path="x.pdf", filename="x.pdf",
+        subject="BWL", filetype="pdf", num_chunks=0, num_questions=0,
+        char_count=0, status="ok")
+    student_flow.card_from_text("Q", "A", subject="BWL", doc_id="d1")
+    out = pipeline.purge_document("d1", library=True, index=False, cards=False)
+    assert out["library"] is True
+    assert out["cards"] == 0
+    assert manifest.get_document("d1") is None
+    assert manifest.count_cards(subject="BWL") == 1
+
+
+def test_purge_document_nur_karten(isolated_db):
+    from ragapp.ingestion import pipeline
+    manifest.upsert_document(
+        doc_id="d1", content_hash="h", source_path="x.pdf", filename="x.pdf",
+        subject="BWL", filetype="pdf", num_chunks=0, num_questions=0,
+        char_count=0, status="ok")
+    student_flow.card_from_text("Q1", "A", subject="BWL", doc_id="d1")
+    student_flow.card_from_text("Q2", "A", subject="BWL", doc_id="d2")
+    out = pipeline.purge_document("d1", library=False, index=False, cards=True)
+    assert out["cards"] == 1
+    assert manifest.get_document("d1") is not None
+    assert manifest.count_cards(subject="BWL") == 1
+
+
+def test_list_card_ids_matching_leere_doc_liste_ist_nichts(isolated_db):
+    student_flow.card_from_text("Q", "A", subject="BWL")
+    assert manifest.list_card_ids_matching(doc_ids=[]) == []
+    assert manifest.count_cards(subject="BWL") == 1
+
+
+def test_purge_via_existing_nur_karten(isolated_db):
+    from ragapp.ui import _ingest_ui
+    manifest.upsert_document(
+        doc_id="d1", content_hash="h", source_path="x.pdf", filename="x.pdf",
+        subject="BWL", filetype="pdf", num_chunks=0, num_questions=0,
+        char_count=0, status="ok")
+    student_flow.card_from_text("Q1", "A", subject="BWL", doc_id="d1")
+    student_flow.card_from_text("Q2", "A", subject="BWL", doc_id="d2")
+    res = _ingest_ui._purge_via_existing(["d1"], library=False, index=False, cards=True)
+    assert res["cards"] == 1
+    assert manifest.get_document("d1") is not None
+    assert manifest.count_cards(subject="BWL") == 1
+    from ragapp.ingestion.pipeline import purge_summary
+    msg = purge_summary({"library": 1, "index": 1, "cards": 4, "errors": []})
+    assert "Bibliothek" in msg
+    assert "Suchindex" in msg
+    assert "4 Karteikarte" in msg
+
+
 def test_set_document_subject(isolated_db):
     manifest.upsert_document(
         doc_id="d1", content_hash="h", source_path="x.pdf", filename="x.pdf",

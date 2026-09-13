@@ -1315,10 +1315,20 @@ def list_card_ids_matching(*, subject: Optional[str] = None,
                            doc_ids: Optional[list[str]] = None,
                            topics: Optional[list[str]] = None,
                            deck: Optional[str] = None) -> list[str]:
-    """Alle card_ids zum Filter – ohne Anzeige-Limit, inkl. pausierter Karten."""
-    if doc_ids or topics:
+    """Alle card_ids zum Filter – ohne Anzeige-Limit, inkl. pausierter Karten.
+
+    ``doc_ids=[]`` (leere Liste) bedeutet bewusst keine Treffer – nicht „alle Karten“.
+    """
+    if doc_ids is not None:
+        if not doc_ids:
+            return []
         rows = find_cards(
             subject=subject, doc_ids=doc_ids, topics=topics, deck=deck,
+            exclude_suspended=False, limit=100_000)
+        return [r["card_id"] for r in rows]
+    if topics:
+        rows = find_cards(
+            subject=subject, doc_ids=None, topics=topics, deck=deck,
             exclude_suspended=False, limit=100_000)
         return [r["card_id"] for r in rows]
     return [r["card_id"] for r in list_cards(subject=subject, deck=deck)]
