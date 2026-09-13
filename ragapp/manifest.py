@@ -485,6 +485,20 @@ CREATE TABLE IF NOT EXISTS exam_attempt_items (
 );
 CREATE INDEX IF NOT EXISTS idx_exam_items_attempt ON exam_attempt_items(attempt_id);
 
+-- Mündliche Prüfung separat von schriftlichen exam_attempts: gesamter Verlauf
+-- (Fragen, Rückfragen, Transkripte, Teilpunkte) als lokaler JSON-Blob.
+CREATE TABLE IF NOT EXISTS oral_exam_sessions (
+    session_id    TEXT PRIMARY KEY,
+    subject       TEXT,
+    status        TEXT NOT NULL,
+    payload_json  TEXT NOT NULL,
+    total_pct     INTEGER,
+    created_at    REAL,
+    updated_at    REAL
+);
+CREATE INDEX IF NOT EXISTS idx_oral_exam_subject
+ON oral_exam_sessions(subject, updated_at);
+
 CREATE TABLE IF NOT EXISTS error_notebook (
     error_id     TEXT PRIMARY KEY,
     source       TEXT NOT NULL,

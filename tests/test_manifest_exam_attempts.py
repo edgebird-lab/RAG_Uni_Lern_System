@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from ragapp import manifest
+from ragapp import manifest, oral_exam
 
 
 @pytest.fixture()
@@ -53,3 +53,28 @@ def test_best_exam_pct_liefert_hoechsten_wert(isolated_db):
     manifest.log_exam_attempt(90, 5)
     manifest.log_exam_attempt(75, 5)
     assert manifest.best_exam_pct() == 90
+
+
+def test_oral_exam_session_speichert_verlauf_als_json(isolated_db):
+    session = oral_exam.create_session(
+        "BWL", [{"question": "Was ist der Deckungsbeitrag?",
+                 "reference": "Erlös minus variable Kosten."}])
+    assert session["status"] == "active"
+    assert session["questions"][0]["transcript"] is None
+    saved = oral_exam.record_answer(
+        session["session_id"], 0, "Der Erlös abzüglich variabler Kosten.",
+        followup="Warum ist er entscheidungsrelevant?", partial_points=80)
+    item = saved["questions"][0]
+    assert item["partial_points"] == 80
+    assert item["followups"][0]["question"].startswith("Warum")
+    done = oral_exam.finish_session(session["session_id"])
+    assert done["status"] == "done"
+    assert done["total_pct"] == 80
+
+
+def test_oral_exam_beruehrt_schriftliche_attempts_nicht(isolated_db):
+    manifest.log_exam_attempt(75, 4)
+    before = manifest.list_exam_attempts()
+    oral_exam.create_session("BWL", [{"question": "Erkläre X."}])
+    assert manifest.list_exam_attempts() == before
+    assert len(oral_exam.list_sessions("BWL")) == 1
