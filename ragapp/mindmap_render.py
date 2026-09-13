@@ -38,7 +38,7 @@ def _node_width(title: str) -> float:
     return min(NODE_MAX_WIDTH, max(NODE_MIN_WIDTH, len(title) * CHAR_PX + 2 * NODE_PAD_X))
 
 
-def layout_tree(graph: dict) -> dict:
+def layout_tree(graph: dict, *, labels: Optional[dict] = None) -> dict:
     """Reine Geometrie-Berechnung (keine Farben, kein SVG): jeder Knoten bekommt
     ``x``/``y``/``w``/``h``/``title``/``depth``. Verfahren: Post-order-DFS -
     Blätter bekommen einen fortlaufenden ``y_index``, jeder innere Knoten den
@@ -83,7 +83,12 @@ def layout_tree(graph: dict) -> dict:
 
     layout_nodes: dict[Optional[str], dict] = {}
     for node_id, d in depth.items():
-        raw_title = graph.get("root", "Übersicht") if node_id is None else nodes[node_id]["title"]
+        if node_id is None:
+            raw_title = graph.get("root", "Übersicht")
+        else:
+            raw_title = nodes[node_id]["title"]
+            if labels:
+                raw_title = labels.get(node_id) or labels.get(str(node_id)) or raw_title
         title = _truncate_title(raw_title)
         layout_nodes[node_id] = {
             "x": MARGIN + d * LEVEL_DX, "y": MARGIN + y_index[node_id] * ROW_DY,
@@ -120,12 +125,16 @@ def _edge_path(x1: float, y1: float, x2: float, y2: float) -> str:
     return f"M {x1:.1f} {y1:.1f} C {mx:.1f} {y1:.1f}, {mx:.1f} {y2:.1f}, {x2:.1f} {y2:.1f}"
 
 
-def render_svg(graph: dict, layout: dict, *, base_color: str = "#4A45C4") -> str:
+def render_svg(graph: dict, layout: dict, *, base_color: str = "#4A45C4",
+               selected_ids: Optional[set] = None,
+               labels: Optional[dict] = None) -> str:
     """Baut das Mindmap-SVG als reinen String (in Streamlit via
-    ``st.markdown(svg, unsafe_allow_html=True)`` eingebettet). Knoten als
-    abgerundete Rechtecke (Farbe nach Tiefe abgestuft), Eltern-Kind-Kanten als
-    kubische Bézier-Kurven (zuerst gezeichnet, liegen also unter den Knoten),
-    Querverbindungen gestrichelt mit optionalem Label."""
+    ``st.markdown``/Host-Div eingebettet). ``selected_ids`` hebt gewaehlte
+    Knoten hervor; ``labels`` ueberschreibt Anzeigetitel (z. B. humanisierte
+    'Seite N'-Knoten). Jeder echte Knoten liegt in ``<g data-mm-id>`` damit
+    die Seite Klicks an Streamlit-Buttons durchreichen kann."""
+    selected_ids = selected_ids or set()
+    labels = labels or {}
     nodes_by_id = {n["id"]: n for n in graph.get("nodes", [])}
     parent_of = {nid: n.get("parent") for nid, n in nodes_by_id.items()}
     lnodes = layout["nodes"]
@@ -157,15 +166,25 @@ def render_svg(graph: dict, layout: dict, *, base_color: str = "#4A45C4") -> str
     for nid, l in sorted(lnodes.items(), key=lambda kv: kv[1]["depth"]):
         bg = _depth_color(base_color, l["depth"])
         fg = text_color_for(bg)
+        title = _truncate_title(
+            labels.get(nid) or labels.get(str(nid)) or l["title"])
         cx, cy = l["x"] + l["w"] / 2, l["y"] + l["h"] / 2
+        selected = nid is not None and str(nid) in {str(s) for s in selected_ids}
+        stroke = "#f59e0b" if selected else ("#334155" if l["depth"] == 0 else "none")
+        sw = "3" if selected else ("1" if l["depth"] == 0 else "0")
+        gid = "" if nid is None else html.escape(str(nid), quote=True)
+        if nid is not None:
+            parts.append(f'<g data-mm-id="{gid}" style="cursor:pointer">')
         parts.append(
             f'<rect x="{l["x"]:.1f}" y="{l["y"]:.1f}" width="{l["w"]:.1f}" '
             f'height="{l["h"]:.1f}" rx="8" fill="{bg}" '
-            f'stroke="{"#334155" if l["depth"] == 0 else "none"}" />')
+            f'stroke="{stroke}" stroke-width="{sw}" />')
         parts.append(
             f'<text x="{cx:.1f}" y="{cy:.1f}" text-anchor="middle" '
             f'dominant-baseline="middle" font-size="12.5" fill="{fg}">'
-            f'{html.escape(l["title"])}</text>')
+            f'{html.escape(title)}</text>')
+        if nid is not None:
+            parts.append("</g>")
 
     parts.append("</svg>")
     return "".join(parts)

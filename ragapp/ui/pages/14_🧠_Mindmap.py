@@ -18,6 +18,7 @@ for _anc in _p.parents:
         break
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from ragapp.ui._loading import page_boot, skeleton
 page_boot("🧠 Mindmap", page_title="Mindmap", icon="🧠", layout="wide", accent="mindmap")
@@ -28,8 +29,10 @@ st.markdown("""
 <style>
 .block-container {padding-top: 2rem; max-width: 1150px;}
 h1 {font-weight: 750; letter-spacing:-0.5px;}
-.mm-svg-frame {overflow:auto; max-height:70vh; border:1px solid rgba(100,116,139,.3);
-              border-radius:10px; padding:10px; background:rgba(148,163,184,.05);}
+div[class*="st-key-mm_hit_"],
+div.stElementContainer[class*="st-key-mm_hit_"] {
+  display:none !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -72,8 +75,7 @@ def _fach(code: "str | None") -> str:
 
 
 def _flatten_topics(graph: dict) -> list[tuple[int, dict]]:
-    """Depth-First-Liste ``(einrueckung, knoten)`` fuer die Themen-Auswahlliste
-    unter dem SVG - unabhaengig vom Rendering-Layout, rein fuer die Anzeige."""
+    """Depth-First-Liste ``(einrueckung, knoten)`` fuer die Themenliste."""
     children: dict = {}
     for n in graph.get("nodes", []):
         children.setdefault(n.get("parent"), []).append(n)
@@ -86,6 +88,65 @@ def _flatten_topics(graph: dict) -> list[tuple[int, dict]]:
 
     visit(None, 0)
     return out
+
+
+def _load_sections(doc_ids: list) -> list:
+    """TOC-Abschnitte der Mindmap-Dokumente (gleiche Nummerierung wie beim Erzeugen)."""
+    key = "_mm_sec::" + ",".join(str(d) for d in doc_ids)
+    if key not in st.session_state:
+        try:
+            st.session_state[key] = mindmap.sections_for_docs(list(doc_ids))
+        except Exception:  # noqa: BLE001 - Detailpanel bleibt ohne Auszuege nutzbar
+            st.session_state[key] = []
+    return st.session_state[key]
+
+
+def _labels_for(graph: dict, sections: list) -> dict:
+    return {str(n["id"]): mindmap.node_label(n, sections) for n in graph.get("nodes") or []}
+
+
+def _sel_key(mindmap_id: str) -> str:
+    return f"mm_sel_{mindmap_id}"
+
+
+def _render_clickable_svg(svg: str, height: float) -> None:
+    """SVG in einem Iframe (kein Markdown-Sanitizer) + Klicks an Hidden-Buttons."""
+    iframe_h = max(220, min(int(height) + 28, 640))
+    components.html(
+        f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  html,body {{ margin:0; padding:0; background:transparent; }}
+  .mm-svg-frame {{ overflow:auto; max-height:{iframe_h}px;
+    border:1px solid rgba(100,116,139,.35); border-radius:10px;
+    padding:8px; background:rgba(148,163,184,.06); }}
+  svg {{ display:block; }}
+</style></head><body>
+<div class="mm-svg-frame">{svg}</div>
+<script>
+(function() {{
+  function cssEscape(s) {{
+    if (window.CSS && CSS.escape) return CSS.escape(s);
+    return String(s).replace(/[^a-zA-Z0-9_-]/g, '\\\\$&');
+  }}
+  function clickHit(nid) {{
+    var doc = window.parent.document;
+    var btn = doc.querySelector('.st-key-mm_hit_' + cssEscape(nid) + ' button');
+    if (btn) btn.click();
+  }}
+  var root = document.querySelector('.mm-svg-frame');
+  if (!root) return;
+  root.addEventListener('click', function(e) {{
+    var g = e.target.closest ? e.target.closest('[data-mm-id]') : null;
+    if (!g) return;
+    var nid = g.getAttribute('data-mm-id');
+    if (nid) clickHit(nid);
+  }});
+}})();
+</script>
+</body></html>""",
+        height=iframe_h + 18,
+        scrolling=True,
+    )
 
 
 _all_docs = [dict(d) for d in manifest.list_documents()
@@ -177,8 +238,10 @@ with card("viewer"):
         st.markdown(f"##### {_active['title']}")
         st.caption(_fach(_active["subject"]))
     with hh2:
-        st.markdown(f"<div style='text-align:right;padding-top:6px;font-size:.8rem;opacity:.7'>"
-                   f"{len(_graph.get('nodes', []))} Themen</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<p style='text-align:right;padding-top:6px;font-size:.8rem;opacity:.7;"
+            f"white-space:nowrap'>{len(_graph.get('nodes', []))} Themen</p>",
+            unsafe_allow_html=True)
 
     # key= haelt den Auf/Zu-Zustand fest - ohne key faellt der Expander sonst bei
     # JEDEM Rerun (auch nur durch die Modellwahl DARIN) auf zugeklappt zurueck,
@@ -228,6 +291,7 @@ with card("viewer"):
                     _active_id, graph=_pending_regen["graph"],
                     model=_pending_regen["model"] or settings.author_model())
                 st.session_state.pop(_pending_key, None)
+                st.session_state.pop(_sel_key(_active_id), None)
                 st.success("Mindmap aktualisiert.")
                 st.rerun()
             if _pc2.button("❌ Verwerfen", key=f"mm_regen_discard_{_active_id}",
@@ -246,58 +310,143 @@ with card("viewer"):
         st.info("Diese Mindmap hat keine Themen (leerer Graph).")
         st.stop()
 
-    _layout = mindmap_render.layout_tree(_graph)
-    _svg = mindmap_render.render_svg(_graph, _layout, base_color=_base_color)
-    st.markdown(f'<div class="mm-svg-frame">{_svg}</div>', unsafe_allow_html=True)
-
-    # --------------------------------------------------------------------------- #
-    # Themen-Auswahlliste (statische Klickbarkeit v1 - echte Klick-Navigation im
-    # SVG selbst braeuchte eine eigene Streamlit-Custom-Component).
-    # --------------------------------------------------------------------------- #
-    st.markdown("##### Thema antippen")
+    _sections = _load_sections(_active.get("doc_ids") or [])
+    _labels = _labels_for(_graph, _sections)
     _topics = _flatten_topics(_graph)
-    _topic_titles = [n["title"] for _, n in _topics]
-    _pill = None
-    if hasattr(st, "pills"):
-        _pill = st.pills("Knoten", _topic_titles, key=f"mm_pills_{_active_id}")
-    else:
-        _pill = st.radio("Knoten", _topic_titles, horizontal=True,
-                         key=f"mm_pills_{_active_id}")
-    _topic_labels = {n["id"]: ("　" * depth) + n["title"] for depth, n in _topics}
-    _default_tid = next((n["id"] for _, n in _topics if n["title"] == _pill), None)
-    _sel_topic_id = st.selectbox(
-        "Oder aus der Liste", list(_topic_labels.keys()),
-        format_func=lambda tid: _topic_labels.get(tid, tid),
-        index=(list(_topic_labels.keys()).index(_default_tid)
-               if _default_tid in _topic_labels else 0),
-        key=f"mm_topic_pick_{_active_id}")
+    _by_id = {str(n["id"]): n for n in _graph.get("nodes") or []}
+    _children: dict[str, list] = {}
+    for _n in _graph.get("nodes") or []:
+        if _n.get("parent"):
+            _children.setdefault(str(_n["parent"]), []).append(_n)
 
-    if _sel_topic_id:
-        _sel_node = next(n for _, n in _topics if n["id"] == _sel_topic_id)
-        tc1, tc2, tc3, tc4 = st.columns(4)
-        if tc1.button("🔎 Dazu fragen", key=f"mm_chat_{_active_id}_{_sel_topic_id}",
-                     use_container_width=True,
-                     help="Stellt die Frage im Chat unten - bleibt auf dieser Seite."):
-            st.session_state[f"_mm_chat_pending_{_active_id}"] = (
-                f"Erkläre mir das Thema: {_sel_node['title']}")
+    _sk = _sel_key(_active_id)
+    st.session_state.setdefault(_sk, [])
+
+    # Hidden-Buttons zuerst: ein Klick im SVG triggert denselben Toggle wie
+    # die sichtbare Themenliste. Zustand liegt in mm_sel_<id>, nicht in
+    # pills/selectbox (die die Karte durch eine flache "Seite N"-Liste ersetzten).
+    _toggles: list[str] = []
+    for _n in _graph.get("nodes") or []:
+        _nid = str(_n["id"])
+        if st.button("\u200b", key=f"mm_hit_{_nid}"):
+            _toggles.append(_nid)
+    if _toggles:
+        _cur = [str(x) for x in (st.session_state.get(_sk) or [])]
+        for _nid in _toggles:
+            if _nid in _cur:
+                _cur = [x for x in _cur if x != _nid]
+            else:
+                _cur.append(_nid)
+        st.session_state[_sk] = _cur
+        st.rerun()
+
+    _selected = [s for s in st.session_state.get(_sk) or [] if s in _by_id]
+    if _selected != list(st.session_state.get(_sk) or []):
+        st.session_state[_sk] = _selected
+
+    _layout = mindmap_render.layout_tree(_graph, labels=_labels)
+    _svg = mindmap_render.render_svg(
+        _graph, _layout, base_color=_base_color,
+        selected_ids=set(_selected), labels=_labels)
+    st.caption("Knoten antippen, um Stoff dazu zu sehen – mehrere Themen nacheinander "
+               "wählen geht. Die Karte bleibt stehen.")
+    _render_clickable_svg(_svg, _layout["height"])
+
+    _lc, _rc = st.columns([3, 2])
+    with _lc:
+        if _selected:
+            _names = [_labels.get(s, _by_id[s].get("title") or s) for s in _selected]
+            st.markdown("Gewählt: **" + "**, **".join(_names) + "**")
+        else:
+            st.caption("Noch kein Thema gewählt.")
+    with _rc:
+        if st.button("Auswahl leeren", key=f"mm_clear_{_active_id}",
+                     disabled=not _selected, use_container_width=True):
+            st.session_state[_sk] = []
             st.rerun()
-        if tc2.button("🧮 Übung", key=f"mm_practice_{_active_id}_{_sel_topic_id}",
-                     use_container_width=True):
+
+    with st.expander("Themenliste (Mehrfachauswahl)", expanded=not _selected):
+        for _depth, _n in _topics:
+            _nid = str(_n["id"])
+            _on = _nid in _selected
+            _mark = "☑" if _on else "☐"
+            _lab = ("　" * _depth) + f"{_mark} {_labels.get(_nid, _n.get('title') or _nid)}"
+            if st.button(_lab, key=f"mm_pick_{_nid}", use_container_width=True):
+                _cur = [str(x) for x in (st.session_state.get(_sk) or [])]
+                if _nid in _cur:
+                    _cur = [x for x in _cur if x != _nid]
+                else:
+                    _cur.append(_nid)
+                st.session_state[_sk] = _cur
+                st.rerun()
+
+    _include_kids = st.checkbox(
+        "Unterthemen einbeziehen", value=True, key=f"mm_kids_{_active_id}",
+        help="Stoff der Unterknoten mit dazu nehmen, nicht nur den angeklickten Kasten.")
+
+    _idxs = mindmap.topic_indices(_graph, _selected, include_children=_include_kids)
+    _excerpts = mindmap.excerpts_for_indices(_sections, _idxs, max_chars=2200) if _selected else ""
+    _title_join = ", ".join(
+        _labels.get(s, _by_id[s].get("title") or s) for s in _selected)
+
+    if not _selected:
+        st.info("Tippe in der Karte (oder der Liste) ein oder mehrere Themen an – "
+                "dann erscheinen hier nur die Quellen zu genau diesem Stoff, "
+                "und du kannst dazu fragen, üben oder eine Kurzfassung erzeugen.")
+    else:
+        st.markdown("##### Stoff zu " + _title_join)
+        _sub_bits: list[str] = []
+        for _sid in _selected:
+            for _ch in _children.get(_sid, []):
+                _sub_bits.append(_labels.get(str(_ch["id"]), _ch.get("title") or ""))
+        if _sub_bits:
+            st.caption("Unterthemen: " + ", ".join(t for t in _sub_bits if t))
+
+        if _excerpts:
+            st.markdown(_excerpts)
+        else:
+            st.caption("Zu diesen Knoten sind keine Textauszüge hinterlegt "
+                       "(Indizes zeigen ins Inhaltsverzeichnis der Quelle).")
+
+        ac1, ac2, ac3, ac4 = st.columns(4)
+        if ac1.button("🔎 Dazu fragen", key=f"mm_chat_{_active_id}",
+                      use_container_width=True,
+                      help="Stellt die Frage im Chat unten – bleibt auf dieser Seite."):
+            _q = f"Erkläre mir das Thema: {_title_join}. Gehe nur auf diesen Stoff ein."
+            if _excerpts:
+                _q += "\n\nQuellenauszug:\n" + _excerpts[:1600]
+            st.session_state[f"_mm_chat_pending_{_active_id}"] = _q
+            st.rerun()
+        if ac2.button("🧮 Übung", key=f"mm_practice_{_active_id}",
+                      use_container_width=True):
             st.session_state["practice_prefill"] = {
                 "subject": _active["subject"], "doc_ids": _active["doc_ids"],
-                "topic": _sel_node["title"],
+                "topic": _title_join,
             }
             st.switch_page("pages/13_🧮_Übungsaufgaben.py")
-        if tc3.button("🎴 Karten", key=f"mm_cards_{_active_id}_{_sel_topic_id}",
-                     use_container_width=True):
-            st.session_state["study_prefill"] = {
-                "subject": _active.get("subject"), "limit": 12, "mode": "reveal",
-            }
-            st.switch_page("pages/4_🎓_Lernen.py")
-        if tc4.button("📄 Zusammenfassung", key=f"mm_sum_{_active_id}_{_sel_topic_id}",
-                     use_container_width=True):
-            st.session_state["zus_prefill_subject"] = _active.get("subject")
-            st.switch_page("pages/7_📄_Zusammenfassung.py")
+        if ac3.button("🎴 Karten aus dem Thema", key=f"mm_cards_{_active_id}",
+                      use_container_width=True,
+                      help="Legt Karteikarten aus den Quellen dieses Themas an "
+                           "(springt nicht auf eine leere Lernen-Seite)."):
+            if not _excerpts:
+                st.warning("Kein Text zu diesem Thema – Karten brauchen einen Quellenauszug.")
+            else:
+                from ragapp.student_flow import cards_from_markdown
+                _ids = cards_from_markdown(
+                    _excerpts, subject=_active.get("subject"), source="mindmap")
+                if _ids:
+                    st.success(f"{len(_ids)} Karte(n) angelegt. Lernen startet sie über den Stapel.")
+                else:
+                    st.info("Aus diesem Auszug liessen sich keine Karten ableiten.")
+        if ac4.button("📄 Kurzfassung", key=f"mm_sum_{_active_id}",
+                      use_container_width=True,
+                      help="Fasst nur die gewählten Themen zusammen – bleibt hier, "
+                           "statt auf die leere Zusammenfassungs-Seite zu springen."):
+            _q = ("Schreibe eine klausurtaugliche Kurzfassung NUR zu diesem Thema: "
+                  f"{_title_join}. Nutze ausschliesslich den Quellenauszug, erfinde nichts.\n\n"
+                  f"{_excerpts[:2000] if _excerpts else '(kein Auszug vorhanden)'}")
+            st.session_state[f"_mm_chat_pending_{_active_id}"] = _q
+            st.rerun()
 
     # --------------------------------------------------------------------------- #
     # Eingebetteter Chat - gescoped auf GENAU die Dokumente dieser Mindmap (nicht
@@ -309,8 +458,16 @@ with card("viewer"):
 st.divider()
 with card("chat"):
     st.markdown("##### 💬 Fragen zu dieser Mindmap")
-    st.caption("Antwortet nur aus den " + str(len(_active["doc_ids"])) +
-              " Dokument(en) dieser Mindmap - nicht aus dem Rest deiner Bibliothek.")
+    if _selected:
+        st.caption("Antwortet zu **" + _title_join + "** aus den "
+                   + str(len(_active["doc_ids"])) +
+                   " Dokument(en) dieser Mindmap – nicht aus dem Rest der Bibliothek.")
+        _chat_placeholder = f"Frage zu {_title_join} …"
+    else:
+        st.caption("Antwortet nur aus den " + str(len(_active["doc_ids"])) +
+                  " Dokument(en) dieser Mindmap - nicht aus dem Rest deiner Bibliothek. "
+                  "Wähle ein Thema, damit die Frage darauf eingegrenzt wird.")
+        _chat_placeholder = "Frage zu diesen Dokumenten …"
 
     _chat_key = f"mm_chat_messages_{_active_id}"
     st.session_state.setdefault(_chat_key, [])
@@ -331,11 +488,17 @@ with card("chat"):
                         _snip = s.get("snippet", "")
                         st.caption("„" + _snip[:240] + ("…" if len(_snip) > 240 else "") + "”")
 
-    _mm_prompt = st.chat_input("Frage zu diesen Dokumenten …", key=f"mm_chat_input_{_active_id}")
+    _mm_prompt = st.chat_input(_chat_placeholder, key=f"mm_chat_input_{_active_id}")
     if not _mm_prompt:
         _mm_prompt = st.session_state.pop(f"_mm_chat_pending_{_active_id}", None)
 
     if _mm_prompt:
+        _rag_prompt = _mm_prompt
+        if _selected and "Quellenauszug:" not in _mm_prompt:
+            _rag_prompt = (
+                f"Die Frage bezieht sich NUR auf: {_title_join}.\n{_mm_prompt}")
+            if _excerpts:
+                _rag_prompt += "\n\nQuellenauszug:\n" + _excerpts[:1200]
         st.session_state[_chat_key].append({"role": "user", "content": _mm_prompt})
         with st.chat_message("user", avatar="🧑‍🎓"):
             st.markdown(_mm_prompt)
@@ -346,7 +509,7 @@ with card("chat"):
             with st.spinner("🧠 Antwort wird erstellt …"):
                 try:
                     _mm_stream, _mm_holder = answer_query_stream(
-                        _mm_prompt, subject=_active["subject"], doc_ids=_active["doc_ids"],
+                        _rag_prompt, subject=_active["subject"], doc_ids=_active["doc_ids"],
                         check_faithfulness=False, history=_history, chat_mode="tutor")
                 except Exception:  # noqa: BLE001 - Setup-Fehler -> als Antwort anzeigen
                     _mm_stream, _mm_holder = None, {}

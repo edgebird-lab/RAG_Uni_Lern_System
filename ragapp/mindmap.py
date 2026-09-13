@@ -13,6 +13,7 @@ einem eigenen Modul ohne Streamlit-Import: ``ragapp/mindmap_render.py``.
 """
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 from ragapp.config import settings
@@ -23,6 +24,111 @@ from ragapp.study_plan import _granular_sections, _cap_granular_for_prompt, _toc
 
 class MindmapError(RuntimeError):
     """Echter Fehler bei der Mindmap-Erzeugung (keine Abschnitte, Modell antwortet nicht)."""
+
+
+# PDF-/Folien-Abschnitte heissen oft nur "Seite 12" / "Folie 3" - unbrauchbar
+# als Mindmap-Knoten (beobachtet: nach einem Klick sah man statt Themen nur
+# noch eine flache Liste dieser Generica). Aus dem Abschnittstext einen
+# kurzen Anzeigenamen ziehen, den Originaltitel aber behalten wenn er schon
+# nach einem echten Thema klingt.
+_GENERIC_TITLE_RE = re.compile(
+    r"^(?:seite|page|folie|slide|abschnitt)\s*\d+$", re.I)
+
+
+def display_title(title: str, body: str = "") -> str:
+    """Anzeigename: generische Seiten-Titel durch den Textanfang ersetzen."""
+    t = (title or "").strip() or "Thema"
+    if not _GENERIC_TITLE_RE.match(t):
+        return t
+    words = [w for w in (body or "").replace("\n", " ").split()
+             if not (w.startswith("[") and w.endswith("]"))]
+    if len(words) < 3:
+        return t
+    snippet = " ".join(words[:8]).strip(" ,;:.-")
+    if len(snippet) > 58:
+        snippet = snippet[:55].rstrip() + "…"
+    return snippet or t
+
+
+def node_label(node: dict, sections: list[tuple[str, str, str]] | None = None) -> str:
+    """Anzeigename eines gespeicherten Knotens; holt bei 'Seite N' den Textanker."""
+    title = str(node.get("title") or "").strip() or "Thema"
+    body = ""
+    idxs = node.get("indices") or []
+    if sections and idxs:
+        i = idxs[0]
+        if isinstance(i, int) and 0 <= i < len(sections):
+            body = sections[i][2]
+    return display_title(title, body)
+
+
+def topic_subtree_ids(graph: dict, node_id: str) -> list[str]:
+    """Knoten plus alle Nachfahren (fuer 'Stoff zu diesem Thema')."""
+    children: dict[str, list[str]] = {}
+    for n in graph.get("nodes") or []:
+        parent = n.get("parent")
+        if parent:
+            children.setdefault(str(parent), []).append(str(n["id"]))
+    out: list[str] = []
+    stack = [str(node_id)]
+    seen: set[str] = set()
+    while stack:
+        cur = stack.pop()
+        if cur in seen:
+            continue
+        seen.add(cur)
+        out.append(cur)
+        stack.extend(reversed(children.get(cur, [])))
+    return out
+
+
+def topic_indices(graph: dict, node_ids: list[str], *,
+                  include_children: bool = True) -> list[int]:
+    """Beleg-Indizes der gewaehlten Knoten, optional inkl. Unterthemen."""
+    by_id = {str(n["id"]): n for n in graph.get("nodes") or []}
+    wanted: list[str] = []
+    for nid in node_ids:
+        wanted.extend(topic_subtree_ids(graph, nid) if include_children else [str(nid)])
+    seen: set[int] = set()
+    idxs: list[int] = []
+    for nid in wanted:
+        for i in (by_id.get(nid) or {}).get("indices") or []:
+            if isinstance(i, int) and i not in seen:
+                seen.add(i)
+                idxs.append(i)
+    return idxs
+
+
+def excerpts_for_indices(sections: list[tuple[str, str, str]], indices: list[int],
+                         *, max_chars: int = 1800) -> str:
+    """Quellenauszuege zu TOC-Indizes (gleiche Nummerierung wie beim Erzeugen)."""
+    parts: list[str] = []
+    used = 0
+    for i in indices:
+        if i < 0 or i >= len(sections):
+            continue
+        _src, title, body = sections[i]
+        label = display_title(title, body)
+        text = (body or "").strip()
+        if not text:
+            continue
+        block = f"**{label}**\n{text}"
+        if used and used + len(block) > max_chars:
+            remain = max_chars - used
+            if remain > 80:
+                parts.append(block[:remain].rstrip() + "…")
+            break
+        parts.append(block)
+        used += len(block)
+        if used >= max_chars:
+            break
+    return "\n\n".join(parts)
+
+
+def sections_for_docs(doc_ids: list[str]) -> list[tuple[str, str, str]]:
+    """Dieselbe TOC-Nummerierung wie beim Erzeugen (capped), fuer Quellenauszuege."""
+    granular = _granular_sections(doc_ids)
+    return _cap_granular_for_prompt(granular, settings.PLAN_MAX_TOC_CHARS)
 
 
 _MINDMAP_SYSTEM = """Du bist ein erfahrener Lern-Coach und erstellst eine Mindmap (Themenbaum)
@@ -219,8 +325,10 @@ def generate_mindmap(doc_ids: list[str], subject: Optional[str],
         # Nie ganz scheitern: ein Knoten je Abschnitt, flach unter der Wurzel.
         graph = {
             "root": fach, "links": [],
-            "nodes": [{"id": f"n{i}", "title": t, "parent": None, "indices": [i]}
-                      for i, (_, t, _) in enumerate(capped)],
+            "nodes": [{"id": f"n{i}",
+                       "title": display_title(t, body),
+                       "parent": None, "indices": [i]}
+                      for i, (_, t, body) in enumerate(capped)],
         }
     return graph, warning
 

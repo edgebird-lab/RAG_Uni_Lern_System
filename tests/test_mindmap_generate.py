@@ -12,6 +12,7 @@ Isoliert geladen (kein Vollimport von ``ragapp.mindmap``, das über
 ``ragapp.study_plan`` schwere Abhängigkeiten wie chromadb zieht) - alle
 externen Aufrufe (LLM, Abschnitts-Ermittlung) werden gefaked.
 """
+import re
 import types
 
 import pytest
@@ -66,7 +67,7 @@ def generate_mindmap_funcs(load_functions, ragapp_dir):
             ragapp_dir / "study_plan.py", ["_toc_with_excerpts"], {"settings": settings})
         return load_functions(
             ragapp_dir / "mindmap.py",
-            ["generate_mindmap", "_author_model", "_repair_mindmap"],
+            ["generate_mindmap", "_author_model", "_repair_mindmap", "display_title"],
             {
                 "settings": settings,
                 "get_llm": lambda model=None: llm,
@@ -75,8 +76,9 @@ def generate_mindmap_funcs(load_functions, ragapp_dir):
                 "_toc_with_excerpts": toc_funcs["_toc_with_excerpts"],
                 "MindmapError": RuntimeError,
                 "Optional": None,
+                "re": re,
             },
-            const_names=["_MINDMAP_SYSTEM", "_MINDMAP_PROMPT"],
+            const_names=["_MINDMAP_SYSTEM", "_MINDMAP_PROMPT", "_GENERIC_TITLE_RE"],
         )["generate_mindmap"]
     return _make
 
@@ -117,6 +119,9 @@ def test_generate_mindmap_truncation_faellt_zurueck_MIT_warnung(generate_mindmap
     # Fallback (1 Knoten je Abschnitt) greift trotzdem - nie ganz scheitern.
     assert len(graph["nodes"]) == 5
     assert all(not n["indices"] or n["indices"] == [i] for i, n in enumerate(graph["nodes"]))
+    # Generische TOC-Titel "Seite N" werden durch Textanfang ersetzt.
+    assert all(not re.match(r"^Seite\s+\d+$", n["title"], re.I) for n in graph["nodes"])
+    assert all("Inhalt von Seite" in n["title"] for n in graph["nodes"])
     # Aber diesmal MIT erklärender Warnung statt stillem Fallback.
     assert warning is not None
     assert "gpt-oss:20b" in warning
@@ -133,6 +138,7 @@ def test_generate_mindmap_andere_reparatur_fehlschlaege_bleiben_ohne_warnung(
     graph, warning = f(["doc1"], "DSA")
     assert len(graph["nodes"]) == 3
     assert warning is None
+    assert all(not re.match(r"^Seite\s+\d+$", n["title"], re.I) for n in graph["nodes"])
 
 
 def test_generate_mindmap_verwendet_autoren_modell_wenn_kein_modell_angegeben(

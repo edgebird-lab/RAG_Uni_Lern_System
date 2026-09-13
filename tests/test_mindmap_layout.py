@@ -134,3 +134,30 @@ def test_render_svg_ohne_knoten_ausser_wurzel():
     svg = render_svg(graph, layout)
     assert svg.startswith("<svg")
     assert "Leer" in svg
+
+
+def test_render_svg_markiert_knoten_als_klickbar_und_hebt_auswahl_hervor():
+    graph = _graph()
+    svg = render_svg(graph, layout_tree(graph), selected_ids={"n1", "n3"})
+    assert 'data-mm-id="n1"' in svg
+    assert 'data-mm-id="n3"' in svg
+    assert 'data-mm-id="n2"' in svg
+    # Wurzel ist kein Themenknoten - kein data-mm-id ohne Wert.
+    assert svg.count('data-mm-id="') == 5
+    assert svg.count('stroke="#f59e0b"') >= 2
+
+
+def test_render_svg_labels_ersetzen_anzeigetitel():
+    graph = _graph()
+    svg = render_svg(graph, layout_tree(graph, labels={"n1": "Sortierverfahren"}),
+                     labels={"n1": "Sortierverfahren"})
+    assert "Sortierverfahren" in svg
+    assert "Sortieren" not in svg
+
+
+def test_layout_tree_beruecksichtigt_labels_bei_der_breite():
+    graph = {"root": "R", "nodes": [
+        {"id": "a", "title": "X", "parent": None, "indices": [0]}], "links": []}
+    short = layout_tree(graph)
+    long = layout_tree(graph, labels={"a": "Ein deutlich längerer Anzeigename"})
+    assert long["nodes"]["a"]["w"] > short["nodes"]["a"]["w"]
