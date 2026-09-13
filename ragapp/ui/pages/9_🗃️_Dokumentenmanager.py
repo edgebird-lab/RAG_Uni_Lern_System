@@ -32,8 +32,8 @@ h1 {font-weight: 750; letter-spacing:-0.5px;}
 
 st.caption("Ordner = Fächer. Lade Dokumente direkt in ein Fach, sieh sie an "
            "(inkl. Seitenzahl), lösche sie hier. Auch archivierte (nicht im RAG) "
-           "Dokumente tauchen auf. Fragen und Karteikarten erzeugst du unter "
-           "**🎓 Karteikarten**.")
+           "Dokumente tauchen auf. Ein Lernset erzeugst du unter **🎓 Karteikarten**: "
+           "Dokumente wählen → Lernset erstellen → Vorschau → Jetzt lernen.")
 
 with skeleton("Dokumentenmanager wird geladen ..."):
     import pandas as pd
@@ -315,8 +315,8 @@ def _view_doc_dialog(d: dict) -> None:
     if a1.button("📄 Zusammenfassung", key=f"docmgr_sum_{d['doc_id']}"):
         st.session_state["zus_prefill_subject"] = d.get("subject")
         st.switch_page("pages/7_📄_Zusammenfassung.py")
-    if a2.button("🎴 Karten", key=f"docmgr_cards_{d['doc_id']}"):
-        st.session_state["study_prefill"] = {"subject": d.get("subject"), "limit": 12}
+    if a2.button("🎴 Lernset", key=f"docmgr_cards_{d['doc_id']}"):
+        st.session_state["lernset_docs_prefill"] = [d["doc_id"]]
         st.switch_page("pages/4_🎓_Lernen.py")
     if a3.button("🎧 Audio", key=f"docmgr_audio_{d['doc_id']}"):
         st.session_state["audio_prefill_subject"] = d.get("subject")

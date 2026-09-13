@@ -67,6 +67,74 @@ _mv_flash = st.session_state.pop("_mv_flash", None)
 if _mv_flash:
     st.success(_mv_flash)
 
+def _render_lernset_pfad() -> None:
+    """Standardweg: Dokumente wählen → Lernset erstellen → Vorschau → Jetzt lernen."""
+    from ragapp.ui._style import empty_state, page_title as _pt
+
+    docs = [dict(r) for r in manifest.list_documents()]
+    st.markdown("##### Lernset erstellen")
+    st.caption("Wähle Unterlagen, erzeuge in einem Schritt Fragen und Karten, "
+               "prüfe die Vorschau und starte die erste Runde.")
+    if not docs:
+        empty_state(
+            "Noch keine Unterlagen. Lade zuerst Dateien hoch, danach wird hier "
+            "das Lernset gebaut – nicht über Chunk-Limits.",
+            cta_label=f"Zu {_pt('dokumente')}",
+            page_key="dokumente",
+            icon="🗃️",
+            key="lernset_to_dokumente",
+        )
+        return
+
+    _pre = st.session_state.pop("lernset_docs_prefill", None)
+    if _pre and "lernset_docs" not in st.session_state:
+        st.session_state["lernset_docs"] = [i for i in _pre if i in {d["doc_id"] for d in docs}]
+
+    labels = {
+        d["doc_id"]: f'{d.get("filename") or d["doc_id"]} · {_fach_label(d.get("subject") or "")}'
+        for d in docs
+    }
+    picked = st.multiselect(
+        "Dokumente", list(labels),
+        format_func=lambda i: labels.get(i, i),
+        key="lernset_docs",
+    )
+    if st.button("Lernset erstellen", type="primary", disabled=not picked,
+                 key="lernset_go", use_container_width=True):
+        with st.status("Lernset wird erzeugt …", expanded=True) as s:
+            out = study.create_study_set(picked, progress=lambda m: s.update(label=m))
+            s.update(label="Fertig" if out["status"] == "ok" else "Abgebrochen",
+                     state="complete" if out["status"] == "ok" else "error")
+        st.session_state["_lernset_result"] = out
+        st.rerun()
+
+    out = st.session_state.get("_lernset_result")
+    if not out:
+        return
+    if out.get("status") != "ok":
+        st.error(out.get("error_msg") or "Lernset konnte nicht erzeugt werden.")
+        return
+    prev = out.get("preview") or {}
+    st.success(
+        f'{out.get("questions", 0)} Fragen · {out.get("cards_new", 0)} neue Karten'
+        + (f' · {out.get("answers", 0)} Antworten' if out.get("answers") else "")
+        + "."
+    )
+    st.caption(
+        f'{prev.get("cards", 0)} Karten insgesamt · {prev.get("unanswered", 0)} ohne Antwort'
+        + (f' · Themen: {", ".join(prev.get("topics") or [])}' if prev.get("topics") else "")
+    )
+    for ex in prev.get("examples") or []:
+        st.markdown(f"- {ex.get('front') or ''}")
+    if st.button("Jetzt lernen", type="primary", key="lernset_now",
+                 use_container_width=True):
+        st.session_state["study_prefill"] = {
+            "source": "lernset", "limit": 16, "mode": "reveal",
+        }
+        st.session_state.pop("_lernset_result", None)
+        st.rerun()
+
+
 def _render_karten_erstellen() -> None:
     """Fragen anreichern, Katalog, Ernten – auch im leeren Zustand sichtbar."""
     from ragapp.ui import _ingest_ui
@@ -127,38 +195,25 @@ def _render_karten_erstellen() -> None:
     _ingest_ui.render_exam_catalog()
 
 
-if _counts["total"] == 0:
-    from ragapp.ui._style import empty_state, page_title as _pt
-    empty_state(
-        "Noch keine Karteikarten. Lade zuerst Unterlagen unter **Dokumente** hoch "
-        "und erzeuge danach hier Fragen bzw. den Lernkatalog.",
-        cta_label=f"Zu {_pt('dokumente')}",
-        page_key="dokumente",
-        icon="📇",
-        key="empty_to_dokumente",
-    )
-    st.markdown("##### Karten erstellen")
-    _render_karten_erstellen()
-    st.stop()
-
-# Kopfzeile mit Zahlen (Anki-Queues)
-_bd_all = manifest.due_breakdown()
-_rest_neu_all = manifest.remaining_new_quota()
-_new_show = (_bd_all["due_new"] if _rest_neu_all is None
-             else min(_bd_all["due_new"], _rest_neu_all))
-with card("kopfzeile"):
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Karten gesamt", _counts["total"])
-    c2.metric("Jetzt fällig", manifest.effective_due_count(),
-             help="Lernen + Wiederholen + neue Karten bis zum Tageskontingent "
-                  "(Einstellungen → Neue Karten pro Tag).")
-    c3.metric("Neu heute", _new_show,
-              help="Brandneue Karten, die heute noch eingeführt werden können "
-                   f"(Tageskontingent: "
-                   f"{'unbegrenzt' if int(getattr(settings, 'SRS_NEW_PER_DAY', 20)) <= 0 else int(getattr(settings, 'SRS_NEW_PER_DAY', 20))}"
-                   "). Nicht die Rundengröße.")
-    c4.metric("Wiederholen", _bd_all["due_review"] + _bd_all["due_learning"],
-              help="Fällige Wiederholungen inkl. Lern-/Relearn-Schritte.")
+# Kopfzeile mit Zahlen (Anki-Queues) – erst wenn Karten da sind.
+if _counts["total"] > 0:
+    _bd_all = manifest.due_breakdown()
+    _rest_neu_all = manifest.remaining_new_quota()
+    _new_show = (_bd_all["due_new"] if _rest_neu_all is None
+                 else min(_bd_all["due_new"], _rest_neu_all))
+    with card("kopfzeile"):
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Karten gesamt", _counts["total"])
+        c2.metric("Jetzt fällig", manifest.effective_due_count(),
+                 help="Lernen + Wiederholen + neue Karten bis zum Tageskontingent "
+                      "(Einstellungen → Neue Karten pro Tag).")
+        c3.metric("Neu heute", _new_show,
+                  help="Brandneue Karten, die heute noch eingeführt werden können "
+                       f"(Tageskontingent: "
+                       f"{'unbegrenzt' if int(getattr(settings, 'SRS_NEW_PER_DAY', 20)) <= 0 else int(getattr(settings, 'SRS_NEW_PER_DAY', 20))}"
+                       "). Nicht die Rundengröße.")
+        c4.metric("Wiederholen", _bd_all["due_review"] + _bd_all["due_learning"],
+                  help="Fällige Wiederholungen inkl. Lern-/Relearn-Schritte.")
 
 # Persistenter Harvest-Hinweis (oben, mit Aktion – nicht nur unten in Verwaltung)
 _needs_harvest = study.needs_card_harvest() or st.session_state.pop("_needs_card_harvest", None)
@@ -256,6 +311,11 @@ if _prefill and not st.session_state.get(ACTIVE):
 
 
 if not st.session_state.get(ACTIVE):
+    if _counts["total"] == 0:
+        _render_lernset_pfad()
+        st.stop()
+    with card("lernset"):
+        _render_lernset_pfad()
     st.subheader("Stapel")
     st.caption("Wie bei Anki: Stapel ankreuzen und **Jetzt lernen** – fällige "
                "Wiederholungen zuerst, dann neue Karten bis zum Tageskontingent. "
