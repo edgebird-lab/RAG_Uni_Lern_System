@@ -62,11 +62,13 @@ st.caption("Dein objektiver Lernstand aus den echten Wiederholungen – damit du
 # --------------------------------------------------------------------------- #
 # Fach-Filter
 # --------------------------------------------------------------------------- #
-subjects = manifest.study_subjects()
+subjects = list(dict.fromkeys(
+    list(manifest.study_subjects()) + [e["subject"] for e in manifest.list_exams()]))
 if not subjects:
     from ragapp.ui._style import empty_state, page_title as _pt
     empty_state(
-        "Noch keine Karteikarten vorhanden. Erzeuge zuerst Karten aus deinen Unterlagen.",
+        "Noch keine Karteikarten und keine importierten Fächer. "
+        "Erzeuge Karten aus deinen Unterlagen oder importiere den Semesterplan.",
         cta_label=f"Zu {_pt('lernen')}",
         page_key="lernen",
         icon="🎓",

@@ -275,23 +275,26 @@ def extract_syllabus(text: str, *, model: Optional[str] = None,
 
 
 def apply_extracted_subjects(subjects: list[ExtractedSubject]) -> dict:
-    """Schreibt die gegebenen Fächer in exams (Termin/ECTS) + timetable
-    (Vorlesungszeiten). Eine bereits eingetragene NOTE (siehe manifest.upsert_
-    exam) bleibt dabei unangetastet - ein (erneuter) Import überschreibt nie
-    eine schon erhaltene Note, nur Termin/ECTS."""
+    """Schreibt die gegebenen Fächer in exams (Fach + Termin/ECTS) + timetable
+    (Vorlesungszeiten). Ohne Termin/ECTS bleibt trotzdem ein Fach-Eintrag
+    (sonst ist der Import unsichtbar). Eine bereits eingetragene NOTE bleibt
+    unangetastet - ein (erneuter) Import überschreibt nie eine schon erhaltene
+    Note, nur Termin/ECTS."""
     from ragapp import manifest
     n_exams = 0
     n_slots = 0
     for s in subjects:
-        if s.exam_date or s.ects:
-            existing = manifest.get_exam(s.code)
-            manifest.upsert_exam(
-                s.code, exam_date=s.exam_date, ects=s.ects,
-                gewicht=float(existing["gewicht"]) if existing and existing.get("gewicht") else 1.0,
-                notiz=existing.get("notiz") if existing else None,
-                note=existing.get("note") if existing else None,
-            )
-            n_exams += 1
+        existing = manifest.get_exam(s.code)
+        notiz = existing.get("notiz") if existing else None
+        if not notiz and s.label and s.label != s.code:
+            notiz = s.label
+        manifest.upsert_exam(
+            s.code, exam_date=s.exam_date, ects=s.ects,
+            gewicht=float(existing["gewicht"]) if existing and existing.get("gewicht") else 1.0,
+            notiz=notiz,
+            note=existing.get("note") if existing else None,
+        )
+        n_exams += 1
         for lec in s.lectures:
             manifest.upsert_timetable_slot(
                 subject=s.code, weekday=lec.weekday,

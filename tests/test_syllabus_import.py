@@ -221,12 +221,14 @@ def test_apply_extracted_subjects_schreibt_exam_und_slots(isolated_db):
     assert len(slots) == 1 and slots[0]["room"] == "H3"
 
 
-def test_apply_extracted_subjects_ohne_termin_und_ects_legt_keinen_exam_an(isolated_db):
+def test_apply_extracted_subjects_ohne_termin_und_ects_legt_trotzdem_ein_fach_an(isolated_db):
     subjects = [si.ExtractedSubject(code="X", label="X", lectures=[
         si.ExtractedLecture(weekday=0, start="08:00", end="10:00")])]
     result = si.apply_extracted_subjects(subjects)
-    assert result["exams"] == 0 and result["slots"] == 1
-    assert manifest.get_exam("X") is None
+    assert result["exams"] == 1 and result["slots"] == 1
+    exam = manifest.get_exam("X")
+    assert exam is not None
+    assert exam["exam_date"] is None and exam["ects"] is None
 
 
 # --------------------------------------------------------------------------- #
@@ -269,6 +271,14 @@ def test_subjects_from_preview_rows_behaelt_vorlesungszeiten_vom_original():
     rows = [{"✓": True, "Code": "DSA", "Klausurdatum": pd.NaT, "ECTS": None}]
     out = si.subjects_from_preview_rows(rows, orig)
     assert out[0].lectures == [lec]
+
+
+def test_apply_extracted_subjects_legt_label_als_notiz_ab(isolated_db):
+    subjects = [si.ExtractedSubject(code="M31", label="Unternehmensführung", ects=5.0)]
+    si.apply_extracted_subjects(subjects)
+    exam = manifest.get_exam("M31")
+    assert exam["notiz"] == "Unternehmensführung"
+    assert exam["ects"] == 5.0
 
 
 def test_apply_extracted_subjects_ueberschreibt_bestehende_note_nicht(isolated_db):

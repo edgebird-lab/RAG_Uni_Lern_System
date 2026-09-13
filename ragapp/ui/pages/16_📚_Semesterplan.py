@@ -42,12 +42,16 @@ with skeleton("Semesterplan-Import wird geladen …"):
 
 _TMP_DIR = DATA_DIR / "_syllabus_import_tmp"
 
+_flash = st.session_state.pop("_syllabus_flash", None)
+if _flash:
+    st.success(_flash)
+
 st.caption(
-    "Lade einen Semesterplan, ein Modulhandbuch oder deine Studien-/Prüfungsordnung "
-    "hoch (PDF, Word, Text oder Markdown) - die KI schlägt daraus Fächer mit "
-    "Klausurtermin, ECTS und Vorlesungszeiten vor. Lange PDFs werden abschnittweise "
-    "gelesen (nicht nur die ersten Seiten). Du siehst und bearbeitest den "
-    "Vorschlag, BEVOR irgendetwas gespeichert wird."
+    "Diese Seite füllt **nicht** die Karteikarten, sondern deinen Semester-Rahmen: "
+    "Klausurtermine und ECTS auf **📈 Fortschritt**, Vorlesungszeiten auf "
+    "**🗂️ Organisation** (Stundenplan). Lange PDFs werden abschnittweise gelesen. "
+    "Du prüfst den Vorschlag, BEVOR etwas gespeichert wird. Lernstoff (Skript, "
+    "Folien) lädst du weiter über **📥 Ingestion**."
 )
 
 
@@ -154,8 +158,10 @@ if _extracted:
             else:
                 result = syllabus_import.apply_extracted_subjects(_selected)
                 st.session_state.pop("_syllabus_extracted", None)
+                st.session_state.pop("syllabus_preview_editor", None)
                 _raw = st.session_state.pop("_syllabus_bytes", None)
                 _name = st.session_state.pop("_syllabus_name", "semesterplan.pdf")
+                _ingest_note = ""
                 if _raw:
                     from ragapp.config import INBOX_DIR
                     from ragapp.ingestion.pipeline import ingest_file
@@ -163,20 +169,42 @@ if _extracted:
                     _dest.write_bytes(_raw)
                     try:
                         ingest_file(_dest, use_rag=True)
-                        st.info("Das Dokument wurde zusätzlich indexiert (Chat/Karten).")
+                        _ingest_note = (
+                            " Das PDF liegt zusätzlich unter **🗃️ Dokumente** "
+                            "(zum Durchsuchen im Chat).")
                     except Exception as _iexc:  # noqa: BLE001
-                        st.warning(f"Indexieren übersprungen: {_iexc}")
-                _first = getattr(_selected[0], "code", None) if _selected else None
-                st.success(
-                    f"Übernommen: {result['subjects']} Fach/Fächer, "
-                    f"{result['exams']} Klausurtermin(e), {result['slots']} Vorlesungszeit(en). "
-                    "Zu finden auf **📈 Fortschritt** (Klausurtermine) und "
-                    "**🗂️ Organisation** (Stundenplan)."
+                        _ingest_note = f" Indexieren übersprungen: {_iexc}"
+                st.session_state["_syllabus_flash"] = (
+                    f"Übernommen: **{result['subjects']} Fach/Fächer**, "
+                    f"{result['exams']} Klausur-Eintrag/Einträge, "
+                    f"{result['slots']} Vorlesungszeit(en). "
+                    "Klausur/ECTS: **📈 Fortschritt**. Stundenplan: **🗂️ Organisation**."
+                    + _ingest_note
                 )
-                if _first:
-                    st.session_state["study_prefill"] = {"subject": _first, "limit": 12}
-                    st.caption(f"Nächster Schritt: Karten für **{_first}** auf 🎓 Karteikarten.")
                 st.rerun()
         if c2.button("🗑️ Verwerfen", use_container_width=True):
             st.session_state.pop("_syllabus_extracted", None)
             st.rerun()
+
+
+_already = manifest.list_exams()
+_slots_n = len(manifest.list_timetable())
+if _already or _slots_n:
+    with card("bestand"):
+        st.subheader("Bereits übernommen")
+        st.caption("Das landet nach dem Import hier – nicht bei den Karteikarten.")
+        if _already:
+            for _ex in _already:
+                _title = _ex.get("notiz") or _ex["subject"]
+                _extra = _ex["subject"] if _ex.get("notiz") and _ex["notiz"] != _ex["subject"] else None
+                _bits = []
+                if _extra:
+                    _bits.append(_extra)
+                _bits.append(_ex.get("exam_date") or "kein Klausurdatum")
+                if _ex.get("ects"):
+                    _bits.append(f"{_ex['ects']:g} ECTS")
+                st.write(f"• **{_title}** · " + " · ".join(_bits))
+        if _slots_n:
+            st.write(f"• {_slots_n} Vorlesungszeit(en) im Stundenplan (**🗂️ Organisation**).")
+        else:
+            st.caption("Keine Vorlesungszeiten erkannt – die trägst du bei Bedarf unter **🗂️ Organisation** ein.")

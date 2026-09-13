@@ -183,6 +183,7 @@ _known_subjects = sorted(
     | {d["subject"] for d in manifest.list_documents() if d["subject"]}
     | {t["subject"] for t in manifest.list_tasks() if t.get("subject")}
     | {s["subject"] for s in manifest.list_timetable() if s.get("subject")}
+    | {e["subject"] for e in manifest.list_exams() if e.get("subject")}
 )
 
 # --------------------------------------------------------------------------- #
@@ -224,7 +225,9 @@ with card("heute"):
         _exams_now = manifest.list_exams()
         if _exams_now:
             for _ex in _exams_now:
-                st.write(f"• {_fach(_ex['subject'])}: {_ex.get('exam_date') or '–'}")
+                _title = _ex.get("notiz") or _fach(_ex["subject"])
+                st.write(f"• {_title}: {_ex.get('exam_date') or 'kein Datum'}"
+                         + (f" · {_ex['ects']:g} ECTS" if _ex.get("ects") else ""))
         _ex_subj = st.selectbox("Fach", _known_subjects, key="orga_exam_subj",
                                 format_func=_fach)
         _ex_date = st.date_input("Klausurdatum", key="orga_exam_date")
