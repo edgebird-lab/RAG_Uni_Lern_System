@@ -384,10 +384,22 @@ with st.expander("⚙️ Einstellungen & Löschen", key=f"splan_settings_expande
         _edit_deadline = (st.date_input("Zieldatum", value=_dl_default,
                                         key=f"splan_edit_dl_{_active_plan_id}")
                           if _edit_has_deadline else None)
+    _weekday_names = ["Montag", "Dienstag", "Mittwoch", "Donnerstag",
+                      "Freitag", "Samstag", "Sonntag"]
+    _edit_rest_days = st.multiselect(
+        "Ruhetage",
+        options=list(range(7)),
+        default=list(settings.PLAN_REST_WEEKDAYS),
+        format_func=lambda i: _weekday_names[i],
+        key=f"splan_rest_days_{_active_plan_id}",
+        help="An diesen Wochentagen ist das Planbudget 0 – bei Erstplanung und Reparatur.",
+    )
     if st.button("💾 Einstellungen speichern", key=f"splan_save_settings_{_active_plan_id}"):
         manifest.update_study_plan(
             _active_plan_id, daily_minutes=int(_edit_daily),
             deadline=_edit_deadline.isoformat() if _edit_deadline else None)
+        settings.update(PLAN_REST_WEEKDAYS=sorted(_edit_rest_days))
+        settings.save()
         st.success("Gespeichert.")
         st.rerun()
     if st.button("🗑️ Plan löschen", key=f"splan_delete_{_active_plan_id}"):

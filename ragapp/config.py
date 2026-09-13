@@ -329,6 +329,7 @@ class Settings:
     # Grenze als eine (flexible) Wiederholungs-Schaetzung.
     PLAN_CLASS_MAX_SHARE: float = 0.7
     PLAN_MAX_DAILY_FOCUS_MIN: int = 240    # nachhaltige Tagesobergrenze hochfokussierten Lernens (Forschung: 3-4h optimal, Qualitaet faellt ab ~4-5h)
+    PLAN_REST_WEEKDAYS: list[int] = field(default_factory=list)  # 0=Mo..6=So; Tagesbudget dort 0
     PLAN_BLOCK_MIN: int = 25               # Groesse eines Lernblocks (= 1 Pomodoro-Arbeitsblock)
     PLAN_MAX_OUTLINE_SECTIONS: int = 15    # Obergrenze fuer die KI-Gliederung (Uebersichtlichkeit)
     PLAN_MIN_GRANULAR_CHARS: int = 400     # kleinere Original-Abschnitte werden VOR der KI-Anfrage mit dem naechsten zusammengelegt (weniger Uebersegmentierung + kuerzerer Prompt)
@@ -602,6 +603,12 @@ class Settings:
         except Exception:
             kv = []
         self.EVAL_K_VALUES = tuple(kv) if kv else (1, 3, 5, 10)
+        try:
+            self.PLAN_REST_WEEKDAYS = sorted({
+                int(x) for x in self.PLAN_REST_WEEKDAYS if 0 <= int(x) <= 6
+            })
+        except Exception:
+            self.PLAN_REST_WEEKDAYS = []
 
     def reset(self) -> None:
         """Setzt alle Werte auf die Standardwerte zurück (In-Memory)."""

@@ -145,3 +145,32 @@ def test_repair_reserviert_vorlesungszeit(isolated_db, monkeypatch):
         planned_date=(start - timedelta(days=1)).isoformat(), planned_min=30)
     out = study_plan.repair_overdue_blocks(pid, start=start)
     assert out["moves"][0]["to_date"] == "2026-09-15"
+
+
+def test_build_schedule_respektiert_ruhetage(isolated_db):
+    start = date(2026, 9, 14)  # Montag
+    out = study_plan.build_schedule(
+        [{"section_id": "s1", "est_minutes": 90}],
+        daily_minutes=60, deadline=None, start=start, subject=None,
+        rest_weekdays={0})
+    assert all(b["planned_date"] != "2026-09-14" for b in out["blocks"])
+    assert out["blocks"][0]["planned_date"] == "2026-09-15"
+
+
+def test_repair_respektiert_ruhetage(isolated_db, monkeypatch):
+    monkeypatch.setattr(
+        study_plan.settings, "PLAN_MAX_DAILY_FOCUS_MIN", 60, raising=False)
+    pid = _overdue_plan(daily_minutes=60, blocks=(30,))
+    start = date.today()
+    out = study_plan.repair_overdue_blocks(
+        pid, start=start, rest_weekdays={start.weekday()})
+    assert out["moves"][0]["to_date"] != start.isoformat()
+
+
+def test_alle_tage_ruhe_liefert_shortfall_statt_endlosschleife(isolated_db):
+    out = study_plan.build_schedule(
+        [{"section_id": "s1", "est_minutes": 90}],
+        daily_minutes=60, deadline=None, start=date.today(),
+        rest_weekdays=set(range(7)))
+    assert out["blocks"] == []
+    assert out["shortfall_minutes"] == 90

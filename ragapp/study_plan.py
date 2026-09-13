@@ -434,7 +434,8 @@ def _review_reservation_by_day(subject: Optional[str], effective_daily: int) -> 
 
 def build_schedule(sections: list[dict], daily_minutes: int,
                    deadline: Optional[str], start: Optional[date] = None,
-                   subject: Optional[str] = None) -> dict:
+                   subject: Optional[str] = None,
+                   rest_weekdays: Optional[set[int]] = None) -> dict:
     """Verteilt die Abschnitte (mit ``section_id`` + ``est_minutes``) auf Tage in
     PLAN_BLOCK_MIN-Portionen (verteiltes statt massiertes Lernen). Das taegliche
     Zeitbudget wird auf PLAN_MAX_DAILY_FOCUS_MIN gedeckelt, selbst wenn der Nutzer
@@ -469,8 +470,19 @@ def build_schedule(sections: list[dict], daily_minutes: int,
     review_by_day = _review_reservation_by_day(subject, effective_daily)
     class_by_weekday = _class_minutes_by_weekday()
     class_cap_share = max(0.0, min(0.95, float(settings.PLAN_CLASS_MAX_SHARE)))
+    rest = set(settings.PLAN_REST_WEEKDAYS if rest_weekdays is None else rest_weekdays)
+    if len(rest) >= 7:
+        return {
+            "blocks": [], "effective_daily_min": effective_daily,
+            "capped_daily": capped, "total_minutes": total_minutes,
+            "days_needed_total": 0, "shortfall_minutes": total_minutes,
+            "deadline_days": None, "review_minutes_reserved": 0,
+            "class_minutes_reserved": 0,
+        }
 
     def _day_budget(d: date) -> int:
+        if d.weekday() in rest:
+            return 0
         reserved_review = review_by_day.get(d.isoformat(), 0)
         reserved_class = min(class_by_weekday.get(d.weekday(), 0),
                              effective_daily * class_cap_share)
@@ -554,7 +566,7 @@ def repair_overdue_blocks(plan_id: str, *, start: Optional[date] = None,
     review = _review_reservation_by_day(plan.get("subject"), effective)
     classes = _class_minutes_by_weekday()
     class_share = max(0.0, min(0.95, float(settings.PLAN_CLASS_MAX_SHARE)))
-    rest = set(rest_weekdays or ())
+    rest = set(settings.PLAN_REST_WEEKDAYS if rest_weekdays is None else rest_weekdays)
 
     all_blocks = manifest.list_plan_blocks_detailed(plan_id=plan_id)
     existing_by_day: dict[str, int] = {}
