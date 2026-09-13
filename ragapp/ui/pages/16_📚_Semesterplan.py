@@ -1,7 +1,7 @@
 """
-RAG-Lernsystem: Seite „Semesterplan importieren"
+RAG-Lernsystem: Seite „Semester einrichten"
 ==================================================
-Liest einen hochgeladenen Semesterplan/ein Modulhandbuch/eine Studien- oder
+Liest ein hochgeladenes Modulhandbuch, einen Semesterplan oder eine Studien- oder
 Prüfungsordnung per LLM aus und schlägt daraus Fächer samt Klausurtermin,
 ECTS und Vorlesungszeiten vor - erst nach Durchsicht/Bearbeitung in der
 Vorschau-Tabelle werden ausgewählte Zeilen wirklich in Fortschritt
@@ -24,7 +24,7 @@ for _anc in _p.parents:
 import streamlit as st
 
 from ragapp.ui._loading import page_boot, skeleton
-page_boot("📚 Semesterplan importieren", page_title="Semesterplan", icon="📚",
+page_boot("📚 Semester einrichten", page_title="Semester einrichten", icon="📚",
          layout="wide", accent="semesterplan")
 
 from ragapp.ui._style import card
@@ -32,7 +32,7 @@ from ragapp.ui._style import card
 st.markdown("<style>.block-container{padding-top:2rem;max-width:1000px;}"
             "h1{font-weight:750;letter-spacing:-.5px;}</style>", unsafe_allow_html=True)
 
-with skeleton("Semesterplan-Import wird geladen …"):
+with skeleton("Modulhandbuch-Import wird geladen …"):
     import pandas as pd
     from ragapp import manifest, syllabus_import
     from ragapp.config import settings, DATA_DIR
@@ -47,11 +47,10 @@ if _flash:
     st.success(_flash)
 
 st.caption(
-    "Diese Seite füllt **nicht** die Karteikarten, sondern deinen Semester-Rahmen: "
-    "Klausurtermine und ECTS auf **📈 Fortschritt**, Vorlesungszeiten auf "
-    "**🗂️ Organisation** (Stundenplan). Lange PDFs werden abschnittweise gelesen. "
-    "Du prüfst den Vorschlag, BEVOR etwas gespeichert wird. Lernstoff (Skript, "
-    "Folien) lädst du weiter über **📥 Ingestion**."
+    "Semester einrichten: Modulhandbuch importieren. Diese Seite füllt **nicht** "
+    "die Karteikarten, sondern deinen Semester-Rahmen: Klausurtermine und ECTS auf "
+    "**📈 Fortschritt**, Vorlesungszeiten auf **🗂️ Organisation** (Stundenplan). "
+    "Du prüfst den Vorschlag, BEVOR etwas gespeichert wird."
 )
 
 
@@ -81,7 +80,7 @@ def _fmt_lectures(lectures: list) -> str:
 
 with card("upload"):
     _upload = st.file_uploader(
-        "Semesterplan/Modulhandbuch/Prüfungsordnung", type=["pdf", "docx", "txt", "md"],
+        "Modulhandbuch / Semesterplan / Prüfungsordnung", type=["pdf", "docx", "txt", "md"],
         key="syllabus_upload")
     _model_choice = _model_picker("syllabus_model")
 

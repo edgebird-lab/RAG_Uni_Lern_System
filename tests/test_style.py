@@ -149,6 +149,7 @@ def test_ingestion_heisst_import_lernen_heisst_karteikarten():
     assert page_title("ingestion").endswith("Import")
     assert "Karteikarten" in page_title("lernen")
     assert "Dokumente" in page_title("dokumente")
+    assert "Semester einrichten" in page_title("semesterplan")
 
 
 def test_ingestion_ist_im_studenten_alltag_versteckt():

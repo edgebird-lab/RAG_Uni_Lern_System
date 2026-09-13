@@ -25,7 +25,7 @@ Zielgruppen, nicht eine lange Werkzeugliste:
 | Ziel | Wofür |
 | ----- | ----- |
 | **Heute** | Was jetzt dran ist: Tagesplan, Timer, **Heute starten**. |
-| **Kurse** | Fächer, Stundenplan, Semesterplan, Unterlagen. |
+| **Kurse** | Fächer, Stundenplan, Semester einrichten (Modulhandbuch importieren), Unterlagen. |
 | **Lernen** | Karteikarten, Chat, Übungen, Probeklausur, Generatoren. |
 | **Organisation** | Notizen und Einstellungen. |
 | **Fortschritt** | Klausurstatus, Analyse, Errungenschaften, Datenexport. |
