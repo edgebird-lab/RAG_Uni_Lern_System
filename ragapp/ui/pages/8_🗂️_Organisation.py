@@ -244,6 +244,7 @@ else:
                             st.session_state["study_prefill"] = {
                                 "source": "coverage", "limit": 16, "mode": "reveal",
                                 "subject": _subj,
+                                "card_ids": _row.get("card_ids") or [],
                             }
                             st.switch_page("pages/4_🎓_Lernen.py")
             _act = _ks["next_action"]
@@ -256,8 +257,17 @@ else:
                     }
                     st.switch_page("pages/4_🎓_Lernen.py")
                 elif _act == "planen":
+                    _doc_ids = [
+                        d["doc_id"] for d in manifest.list_documents()
+                        if d["subject"] == _subj
+                    ]
+                    st.session_state["splan_prefill"] = {
+                        "subject": _subj, "doc_ids": _doc_ids,
+                        "title": f"Lernplan {_fach(_subj)}",
+                    }
                     st.switch_page("pages/11_📋_Lernplan.py")
                 elif _act == "Unterlagen":
+                    st.session_state["doc_folder"] = _subj
                     st.switch_page("pages/9_🗃️_Dokumentenmanager.py")
                 else:
                     st.switch_page("pages/6_📝_Prüfung.py")

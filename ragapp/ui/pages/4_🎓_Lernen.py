@@ -298,7 +298,8 @@ if _prefill and not st.session_state.get(ACTIVE):
         _pk = _sf.today_session_cards(
             subject=_prefill.get("subject"), limit=_lim,
             cram=bool(_prefill.get("cram")), deck=_prefill.get("deck"),
-            sprint=bool(_prefill.get("sprint")))
+            sprint=bool(_prefill.get("sprint")),
+            preferred_card_ids=_prefill.get("card_ids"))
         if _prefill.get("mode") == "sprint":
             st.session_state["_study_sprint"] = True
     _pmode = _prefill.get("mode") or "reveal"

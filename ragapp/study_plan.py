@@ -551,11 +551,23 @@ def repair_overdue_blocks(plan_id: str, *, start: Optional[date] = None,
     start = start or date.today()
     today_iso = start.isoformat()
     plan = manifest.get_study_plan(plan_id)
-    if not plan:
+    if not plan or plan.get("status") != "active":
         return {"moves": [], "moved_blocks": 0, "moved_minutes": 0,
                 "shortfall_minutes": 0, "applied": False}
+    rest = set(settings.PLAN_REST_WEEKDAYS if rest_weekdays is None else rest_weekdays)
     overdue = manifest.list_overdue_plan_blocks(today_iso, plan_id=plan_id)
-    if not overdue:
+    plan_blocks = manifest.list_plan_blocks_detailed(plan_id=plan_id)
+    invalid_rest = []
+    for block in plan_blocks:
+        planned = parse_iso_date(block.get("planned_date"))
+        if (not block.get("done") and planned and planned >= start
+                and planned.weekday() in rest):
+            invalid_rest.append(block)
+    candidates = overdue + [
+        b for b in invalid_rest
+        if b["block_id"] not in {x["block_id"] for x in overdue}
+    ]
+    if not candidates:
         return {"moves": [], "moved_blocks": 0, "moved_minutes": 0,
                 "shortfall_minutes": 0, "applied": bool(apply)}
 
@@ -566,13 +578,15 @@ def repair_overdue_blocks(plan_id: str, *, start: Optional[date] = None,
     review = _review_reservation_by_day(plan.get("subject"), effective)
     classes = _class_minutes_by_weekday()
     class_share = max(0.0, min(0.95, float(settings.PLAN_CLASS_MAX_SHARE)))
-    rest = set(settings.PLAN_REST_WEEKDAYS if rest_weekdays is None else rest_weekdays)
 
-    all_blocks = manifest.list_plan_blocks_detailed(plan_id=plan_id)
+    # Die Lastgrenze gilt fuer den Lerntag, nicht separat pro Plan. Deshalb
+    # belegen auch Blöcke anderer aktiver Pläne die verfügbare Kapazität.
+    all_blocks = manifest.list_plan_blocks_detailed()
     existing_by_day: dict[str, int] = {}
-    overdue_ids = {b["block_id"] for b in overdue}
+    candidate_ids = {b["block_id"] for b in candidates}
     for block in all_blocks:
-        if block.get("done") or block["block_id"] in overdue_ids:
+        if (block.get("done") or block["block_id"] in candidate_ids
+                or block.get("plan_status") != "active"):
             continue
         iso = block["planned_date"]
         if iso >= today_iso:
@@ -598,7 +612,7 @@ def repair_overdue_blocks(plan_id: str, *, start: Optional[date] = None,
 
     moves: list[dict] = []
     shortfall = 0
-    for block in overdue:
+    for block in candidates:
         minutes = int(block.get("planned_min") or 0)
         target = next(
             (iso for iso, free in capacities.items() if free >= minutes), None)

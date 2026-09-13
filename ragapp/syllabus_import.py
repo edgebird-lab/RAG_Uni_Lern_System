@@ -162,7 +162,6 @@ def _parse_subjects(data) -> list[ExtractedSubject]:
     out: list[ExtractedSubject] = []
     if not isinstance(data, list):
         return out
-    seen_codes: set[str] = set()
     for item in data:
         if not isinstance(item, dict):
             continue
@@ -170,12 +169,6 @@ def _parse_subjects(data) -> list[ExtractedSubject]:
         label = str(item.get("label") or "").strip() or code
         if not code:
             continue
-        # Doppelte Codes im selben Extraktions-Lauf zusammenfassen statt zwei
-        # Zeilen fuer dasselbe Fach anzuzeigen (kommt vor, wenn ein Modul im
-        # Text mehrfach auftaucht, z. B. Vorlesung UND Übung getrennt gelistet).
-        if code in seen_codes:
-            continue
-        seen_codes.add(code)
         ects = item.get("ects")
         try:
             ects = float(ects) if ects is not None else None
@@ -186,7 +179,10 @@ def _parse_subjects(data) -> list[ExtractedSubject]:
             ects=ects, lectures=_parse_lectures(item.get("lectures")),
             learning_goals=_parse_learning_goals(item.get("learning_goals")),
         ))
-    return out
+    # Doppelte Codes im selben Modell-JSON wirklich zusammenführen. Ein frühes
+    # ``continue`` würde Termine, Vorlesungen oder Lernziele der zweiten Zeile
+    # verlieren.
+    return _merge_subject_lists([out])
 
 
 def known_subject_codes() -> set[str]:
@@ -214,6 +210,7 @@ def known_subject_codes() -> set[str]:
 def resolve_subject_code(code: str, label: str = "",
                          *, known: Optional[set[str]] = None) -> dict:
     """Gleicht Import-Kürzel/Namen mit bestehenden Fächern ab statt Dubletten."""
+    import re as _re
     from ragapp.config import SUBJECT_LABELS
     known = set(known if known is not None else known_subject_codes())
     code = (code or "").strip()
@@ -222,9 +219,13 @@ def resolve_subject_code(code: str, label: str = "",
     if code.lower() in by_lower:
         k = by_lower[code.lower()]
         return {"code": k, "via": "code", "new": False}
-    inv = {str(v).lower(): k for k, v in SUBJECT_LABELS.items()}
-    if label.lower() in inv:
-        return {"code": inv[label.lower()], "via": "label", "new": False}
+    def _norm(value: str) -> str:
+        value = (value or "").lower().replace("&", " und ")
+        return " ".join(_re.findall(r"[a-z0-9äöüß]+", value))
+
+    inv = {_norm(str(v)): k for k, v in SUBJECT_LABELS.items()}
+    if _norm(label) in inv:
+        return {"code": inv[_norm(label)], "via": "label", "new": False}
     if label.lower() in by_lower:
         return {"code": by_lower[label.lower()], "via": "folder", "new": False}
     return {"code": code, "via": "new", "new": True}
@@ -234,6 +235,7 @@ def remap_extracted_subjects(subjects: list[ExtractedSubject]) -> list[Extracted
     """Setzt Codes auf bestehende Fächer und merkt den Abgleich in ``match``."""
     known = known_subject_codes()
     out: list[ExtractedSubject] = []
+    by_code: dict[str, ExtractedSubject] = {}
     for s in subjects:
         info = resolve_subject_code(s.code, s.label, known=known)
         if info["new"]:
@@ -243,10 +245,34 @@ def remap_extracted_subjects(subjects: list[ExtractedSubject]) -> list[Extracted
         else:
             note = "bestehendes Fach"
         known.add(info["code"])
-        out.append(ExtractedSubject(
+        mapped = ExtractedSubject(
             code=info["code"], label=s.label, exam_date=s.exam_date,
             ects=s.ects, lectures=list(s.lectures), match=note,
-            learning_goals=list(s.learning_goals)))
+            learning_goals=list(s.learning_goals))
+        old = by_code.get(mapped.code)
+        if old is None:
+            by_code[mapped.code] = mapped
+            out.append(mapped)
+            continue
+        # Zwei Importzeilen, die auf denselben bestehenden Kurs zeigen, werden
+        # schon in der Vorschau vereinigt statt doppelt übernommen.
+        if not old.exam_date and mapped.exam_date:
+            old.exam_date = mapped.exam_date
+        if old.ects is None and mapped.ects is not None:
+            old.ects = mapped.ects
+        seen_lectures = {
+            (x.weekday, x.start, x.end, x.room) for x in old.lectures
+        }
+        for lecture in mapped.lectures:
+            key = (lecture.weekday, lecture.start, lecture.end, lecture.room)
+            if key not in seen_lectures:
+                old.lectures.append(lecture)
+                seen_lectures.add(key)
+        seen_goals = {goal.lower() for goal in old.learning_goals}
+        for goal in mapped.learning_goals:
+            if goal.lower() not in seen_goals:
+                old.learning_goals.append(goal)
+                seen_goals.add(goal.lower())
     return out
 
 

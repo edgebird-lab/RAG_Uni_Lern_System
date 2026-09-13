@@ -118,6 +118,14 @@ def record_answer(session_id: str, index: int, transcript: str, *,
         })
     if partial_points is not None:
         item["partial_points"] = max(0, min(100, int(partial_points)))
+    return _save(session)
+
+
+def advance_session(session_id: str, index: int) -> dict:
+    """Wechselt erst nach Rückfrage-Entscheidung zur nächsten Hauptfrage."""
+    session = get_session(session_id)
+    if not session:
+        raise KeyError(session_id)
     session["current_index"] = min(int(index) + 1, len(session["questions"]))
     return _save(session)
 
@@ -135,6 +143,14 @@ def finish_session(session_id: str, total_pct: Optional[int] = None) -> dict:
         total_pct = round(sum(points) / len(points)) if points else None
     session["total_pct"] = (
         max(0, min(100, int(total_pct))) if total_pct is not None else None)
+    return _save(session)
+
+
+def abort_session(session_id: str) -> dict:
+    session = get_session(session_id)
+    if not session:
+        raise KeyError(session_id)
+    session["status"] = "aborted"
     return _save(session)
 
 

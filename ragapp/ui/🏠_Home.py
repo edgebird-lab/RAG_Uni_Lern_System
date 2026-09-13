@@ -468,10 +468,25 @@ if _snap:
                          use_container_width=True):
                 st.switch_page(_target["organisation"])
 
-        with st.expander("📥 Vorlesung einfangen", expanded=False):
+_capture_flash = st.session_state.pop("_capture_flash", None)
+if _capture_flash:
+    if _capture_flash.get("error"):
+        st.warning(_capture_flash["message"])
+    else:
+        st.success(_capture_flash["message"])
+with st.expander("📥 Vorlesung einfangen", expanded=False):
             st.caption("Foto, Datei oder Notiz landet im Fach-Ordner und erscheint als Unterlage.")
+            _capture_subjects = sorted(
+                set(SUBJECT_LABELS)
+                | {e["subject"] for e in _home_manifest.list_exams()
+                   if e.get("subject")}
+                | {d["subject"] for d in _home_manifest.list_documents()
+                   if d["subject"]}
+                | {s["subject"] for s in _home_manifest.list_timetable()
+                   if s.get("subject")}
+            )
             _vl_subj = st.selectbox(
-                "Fach", ["–"] + sorted(SUBJECT_LABELS.keys()),
+                "Fach", ["–"] + _capture_subjects,
                 format_func=lambda s: SUBJECT_LABELS.get(s, s),
                 key="home_vl_subject")
             _vl_title = st.text_input("Titel (optional)", key="home_vl_title")
@@ -507,9 +522,18 @@ if _snap:
                         filename=_vl_file.name if _vl_file else None,
                         image_bytes=_img)
                     _n = len((_cap.get("capture") or {}).get("card_ids") or [])
-                    st.success(
+                    _saved_msg = (
                         "Im Fach-Ordner gesichert"
-                        + (f" · {_n} Karte(n)" if _n else "") + ".")
+                        + (f" · {_n} Karte(n)" if _n else "") + "."
+                    )
+                    st.session_state["_capture_flash"] = {
+                        "error": _cap.get("status") == "error",
+                        "message": (
+                            _saved_msg + " Die Indexierung ist fehlgeschlagen; "
+                            "die Unterlage ist noch nicht im Chat durchsuchbar."
+                            if _cap.get("status") == "error" else _saved_msg
+                        ),
+                    }
                     st.rerun()
 
 # Schlanke Suche (kein voller Titel-Block)
@@ -611,9 +635,16 @@ with card("missionen"):
     if _pick and _pick != _home_analytics.get_daily_goal_kind():
         _home_analytics.set_daily_goal_kind(_pick)
         st.rerun()
-    st.caption(
-        f"{_goal['done_today']}/{_goal['goal']} {_kind_labels.get(_goal.get('kind'), 'Reviews')} "
-        f"· Ampel {_goal['ampel']}. Nur erledigte Reviews/Minuten/Blöcke zählen – nicht das Öffnen.")
+    if not _goal.get("applicable", True):
+        st.caption(
+            "Heute ist kein Planblock vorgesehen. Nur erledigte Reviews, Minuten "
+            "oder Blöcke zählen – nicht das Öffnen.")
+    else:
+        st.caption(
+            f"{_goal['done_today']}/{_goal['goal']} "
+            f"{_kind_labels.get(_goal.get('kind'), 'Reviews')} "
+            f"· Ampel {_goal['ampel']}. Nur erledigte Reviews/Minuten/Blöcke "
+            "zählen – nicht das Öffnen.")
     if _missions:
         for _m in _missions:
             if st.button(
@@ -622,11 +653,14 @@ with card("missionen"):
                     help=_m["reason"],
                     use_container_width=True):
                 if _m["kind"] == "plan":
+                    if _m.get("plan_id"):
+                        st.session_state["_splan_pending_choice"] = _m["plan_id"]
                     st.switch_page(_target["lernplan"])
                 else:
                     st.session_state["study_prefill"] = {
                         "source": "mission", "limit": 16, "mode": "reveal",
                         "subject": _m.get("subject"),
+                        "card_ids": _m.get("card_ids") or [],
                     }
                     st.switch_page(_target["lernen"])
     else:

@@ -36,9 +36,22 @@ def test_overdue_plan_blocks_leer_ohne_plaene(isolated_db):
     assert snap["overdue_plan_min"] == 0
 
 
+def test_today_snapshot_ignoriert_bloecke_aus_entwurfsplan(isolated_db):
+    pid = manifest.create_study_plan(
+        title="Entwurf", subject="BWL", doc_ids=[], deadline=None,
+        daily_minutes=30)
+    sid = manifest.append_plan_section(pid, title="Noch nicht aktiv", est_minutes=30)
+    manifest.append_plan_block(
+        pid, section_id=sid, planned_date=_iso(0), planned_min=30)
+    snap = planner.today_snapshot()
+    assert snap["plan_blocks_today"] == []
+    assert snap["plan_min_today"] == 0
+
+
 def test_overdue_plan_blocks_zeigt_verpassten_block(isolated_db):
     pid = manifest.create_study_plan(
         title="Testplan", subject="mathe", doc_ids=[], deadline=None, daily_minutes=60)
+    manifest.update_study_plan(pid, status="active")
     manifest.replace_plan_blocks(pid, [
         {"section_id": None, "planned_date": _iso(-2), "planned_min": 25},
         {"section_id": None, "planned_date": _iso(3), "planned_min": 25},
@@ -156,6 +169,7 @@ def test_daily_missions_faellige_karten_und_planblock(isolated_db, monkeypatch):
             ("c-due", "BWL", "Kosten", "Fällige Frage zu Kosten", "A", now, now - 3600))
     pid = manifest.create_study_plan(
         title="BWL", subject="BWL", doc_ids=[], deadline=None, daily_minutes=45)
+    manifest.update_study_plan(pid, status="active")
     sid = manifest.append_plan_section(pid, title="Kapitel Kosten", est_minutes=90)
     manifest.append_plan_block(pid, section_id=sid,
                                planned_date=date.today().isoformat(), planned_min=90)
@@ -186,6 +200,26 @@ def test_daily_missions_bevorzugt_sicher_falsche_karte(isolated_db):
     assert mission["kind"] == "reviews"
     assert mission["prefer_overconfidence"] is True
     assert mission["subject"] == "BWL"
+    assert mission["card_ids"] == ["c-over"]
+    picked = student_flow.today_session_cards(
+        subject="BWL", preferred_card_ids=mission["card_ids"])
+    assert [c["card_id"] for c in picked] == ["c-over"]
+
+
+def test_overconfidence_prioritaet_schliesst_andere_faellige_karten_nicht_aus(
+        isolated_db):
+    from ragapp import student_flow
+    now = _time.time()
+    with manifest._connect() as conn:
+        for cid in ("c-over", "c-due"):
+            conn.execute(
+                "INSERT INTO review_items (card_id, subject, front, back, "
+                "suspended, use_flashcard, reps, created_at, due) "
+                "VALUES (?,?,?,?,0,1,3,?,?)",
+                (cid, "BWL", cid, "Antwort", now, now - 3600))
+    picked = student_flow.today_session_cards(
+        subject="BWL", preferred_card_ids=["c-over"], limit=10)
+    assert [c["card_id"] for c in picked] == ["c-over", "c-due"]
 
 
 def test_repair_all_overdue_plans_liefert_vorschau_und_wendet_an(

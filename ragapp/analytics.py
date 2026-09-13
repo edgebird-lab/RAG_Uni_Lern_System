@@ -450,17 +450,31 @@ def daily_goal_status(subject: Optional[str] = None) -> dict:
     if kind == "minutes":
         goal = max(15, min(int(settings.PLAN_MAX_DAILY_FOCUS_MIN), 90))
         done = int(snap.get("study_min_today") or 0)
+        applicable = True
     elif kind == "plan_blocks":
         blocks = snap.get("plan_blocks_today") or []
-        goal = max(1, len(blocks)) if blocks else 1
+        goal = len(blocks)
         done = sum(1 for b in blocks if b.get("done"))
+        applicable = bool(blocks)
     else:
         kind = "reviews"
         goal = review_goal
         done = reviews_today
-    ampel = "grün" if due <= review_goal else ("gelb" if due <= 2 * review_goal else "rot")
+        applicable = True
+    if kind == "reviews":
+        ampel = (
+            "grün" if due <= review_goal
+            else ("gelb" if due <= 2 * review_goal else "rot")
+        )
+    elif not applicable or done >= goal:
+        ampel = "grün"
+    elif done > 0:
+        ampel = "gelb"
+    else:
+        ampel = "rot"
     return {"kind": kind, "goal": goal, "done_today": done, "due": due,
-            "goal_reached": done >= goal, "ampel": ampel,
+            "goal_reached": (not applicable) or done >= goal,
+            "applicable": applicable, "ampel": ampel,
             "reviews_today": reviews_today}
 
 
@@ -473,7 +487,8 @@ def jol_calibration(subject: Optional[str] = None) -> dict:
     with _conn() as c:
         rows = c.execute(
             "SELECT confidence, rating FROM review_log "
-            "WHERE confidence IS NOT NULL AND TRIM(confidence) != ''" + sc,
+            "WHERE confidence IS NOT NULL AND TRIM(confidence) != '' "
+            "AND rating IS NOT NULL" + sc,
             sa).fetchall()
     n = len(rows)
     sicher_n = sum(1 for r in rows if r["confidence"] == "sicher")

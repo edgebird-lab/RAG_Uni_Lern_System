@@ -110,8 +110,6 @@ with card("upload"):
             st.error(f"Extraktion fehlgeschlagen: {exc}")
         else:
             st.session_state["_syllabus_extracted"] = _subjects
-            st.session_state["_syllabus_bytes"] = _upload.getvalue()
-            st.session_state["_syllabus_name"] = _upload.name
             st.success(f"{len(_subjects)} Fach/Fächer erkannt – unten prüfen und übernehmen.")
         finally:
             _tmp_path.unlink(missing_ok=True)
@@ -160,31 +158,21 @@ if _extracted:
                 result = syllabus_import.apply_extracted_subjects(_selected)
                 st.session_state.pop("_syllabus_extracted", None)
                 st.session_state.pop("syllabus_preview_editor", None)
-                _raw = st.session_state.pop("_syllabus_bytes", None)
-                _name = st.session_state.pop("_syllabus_name", "semesterplan.pdf")
-                _ingest_note = ""
-                if _raw:
-                    from ragapp.config import INBOX_DIR
-                    from ragapp.ingestion.pipeline import ingest_file
-                    _dest = INBOX_DIR / _name
-                    _dest.write_bytes(_raw)
-                    try:
-                        ingest_file(_dest, use_rag=True)
-                        _ingest_note = (
-                            " Das PDF liegt zusätzlich unter **🗃️ Dokumente** "
-                            "(zum Durchsuchen im Chat).")
-                    except Exception as _iexc:  # noqa: BLE001
-                        _ingest_note = f" Indexieren übersprungen: {_iexc}"
+                st.session_state.pop("_syllabus_bytes", None)
+                st.session_state.pop("_syllabus_name", None)
                 st.session_state["_syllabus_flash"] = (
                     f"Übernommen: **{result['subjects']} Fach/Fächer**, "
                     f"{result['exams']} Klausur-Eintrag/Einträge, "
                     f"{result['slots']} Vorlesungszeit(en). "
                     "Klausur/ECTS: **📈 Fortschritt**. Stundenplan: **🗂️ Organisation**."
-                    + _ingest_note
+                    " Das Modulhandbuch wurde bewusst nicht als Lernstoff indexiert; "
+                    "Skripte und Folien ordnest du unter **🗃️ Dokumente** einem Fach zu."
                 )
                 st.rerun()
         if c2.button("🗑️ Verwerfen", use_container_width=True):
             st.session_state.pop("_syllabus_extracted", None)
+            st.session_state.pop("_syllabus_bytes", None)
+            st.session_state.pop("_syllabus_name", None)
             st.rerun()
 
 

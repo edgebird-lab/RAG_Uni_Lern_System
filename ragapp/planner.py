@@ -94,14 +94,20 @@ def today_snapshot() -> dict:
     next_exam = next((e for e in manifest.list_exams()
                       if e.get("exam_date") and e["exam_date"] >= today_iso), None)
     study_min_today = round(manifest.study_time_total(since=today_start_ts) / 60)
-    plan_blocks_today = manifest.list_plan_blocks_detailed(date=today_iso)
+    plan_blocks_today = [
+        b for b in manifest.list_plan_blocks_detailed(date=today_iso)
+        if b.get("plan_status") == "active"
+    ]
     plan_min_today = sum(b["planned_min"] for b in plan_blocks_today)
     plan_done_today = sum(b["planned_min"] for b in plan_blocks_today if b["done"])
     # Rueckstand: unerledigte Bloecke aus VERGANGENEN Tagen, planuebergreifend -
     # ohne das wuerde ein verpasster Tag im Lernplan einfach spurlos verschwinden
     # (die Seite zeigte bisher nur den naechsten unerledigten Block, ohne zu
     # kennzeichnen, dass dessen Datum schon vorbei ist).
-    overdue_plan_blocks = manifest.list_overdue_plan_blocks(today_iso)
+    overdue_plan_blocks = [
+        b for b in manifest.list_overdue_plan_blocks(today_iso)
+        if b.get("plan_status") == "active"
+    ]
     overdue_plan_min = sum(b["planned_min"] for b in overdue_plan_blocks)
 
     ov = analytics.overview(None)

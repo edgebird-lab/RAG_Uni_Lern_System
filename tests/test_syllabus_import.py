@@ -181,6 +181,29 @@ def test_extract_syllabus_erfolgsfall(monkeypatch):
     assert subjects[0].code == "DSA"
 
 
+def test_parse_subjects_vereinigt_doppelte_codes_ohne_ziele_zu_verlieren():
+    data = [
+        {
+            "code": "DSA", "label": "Algorithmen",
+            "exam_date": None, "ects": None, "lectures": [],
+            "learning_goals": ["Die Studierenden können Suchbäume erklären."],
+        },
+        {
+            "code": "DSA", "label": "Algorithmen",
+            "exam_date": "2026-07-20", "ects": 6,
+            "lectures": [
+                {"weekday": 1, "start": "10:00", "end": "12:00"}
+            ],
+            "learning_goals": ["Die Studierenden können Graphen traversieren."],
+        },
+    ]
+    subjects = si._parse_subjects(data)
+    assert len(subjects) == 1
+    assert subjects[0].exam_date == "2026-07-20"
+    assert len(subjects[0].lectures) == 1
+    assert len(subjects[0].learning_goals) == 2
+
+
 def test_extract_syllabus_liest_langen_text_in_mehreren_chunks(monkeypatch):
     """70-Seiten-PDFs passen nicht in einen Prompt: jeder Chunk wird gelesen,
     Faecher aus allen Abschnitten werden zusammengefuehrt."""
@@ -301,6 +324,13 @@ def test_resolve_subject_code_gleicht_label_ab():
     assert info["new"] is False
 
 
+def test_resolve_subject_code_normalisiert_und_statt_und_zeichen():
+    info = si.resolve_subject_code(
+        "ALG", "Algorithmen und Datenstrukturen", known={"DSA"})
+    assert info["code"] == "DSA"
+    assert info["new"] is False
+
+
 def test_resolve_subject_code_neuer_kurs_bleibt_eigener_code():
     info = si.resolve_subject_code("NEU", "Neues Wahlfach", known={"DSA"})
     assert info["code"] == "NEU"
@@ -319,6 +349,23 @@ def test_remap_extracted_subjects_vermeidet_dublette(isolated_db, tmp_path, monk
     assert out[0].code == "DSA"
     assert "bestehendes Fach" in (out[0].match or "")
     assert out[1].code == "KuLR"
+
+
+def test_remap_fuehrt_zwei_labels_desselben_bestehenden_fachs_zusammen(
+        isolated_db, tmp_path, monkeypatch):
+    monkeypatch.setattr("ragapp.config.SOURCE_DIR", tmp_path / "quellen")
+    subjects = [
+        si.ExtractedSubject(
+            code="DSA", label="DSA",
+            learning_goals=["Die Studierenden können Suchbäume erklären."]),
+        si.ExtractedSubject(
+            code="ALG", label="Algorithmen & Datenstrukturen",
+            learning_goals=["Die Studierenden können Graphen traversieren."]),
+    ]
+    out = si.remap_extracted_subjects(subjects)
+    assert len(out) == 1
+    assert out[0].code == "DSA"
+    assert len(out[0].learning_goals) == 2
 
 
 def test_apply_extracted_subjects_legt_fachordner_an(isolated_db, tmp_path, monkeypatch):

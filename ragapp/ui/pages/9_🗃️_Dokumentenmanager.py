@@ -48,7 +48,10 @@ _TEXT_PREVIEW_TYPES = ("md", "txt")
 
 _flash = st.session_state.pop("_docmgr_flash", None)
 if _flash:
-    st.success(_flash)
+    if isinstance(_flash, dict) and _flash.get("error"):
+        st.warning(_flash["message"])
+    else:
+        st.success(_flash["message"] if isinstance(_flash, dict) else _flash)
 
 
 def _fach(code: "str | None") -> str:
@@ -374,7 +377,7 @@ with card("kurs_inbox"):
     st.subheader("Kurs-Inbox")
     st.caption("Datei oder Notiz landet direkt im Fach-Ordner und erscheint im Kurs-Cockpit – "
                "ohne den Ingestion-Expertenpfad.")
-    _inbox_subj_opts = sorted(set(SUBJECT_LABELS.keys()) | set(_folder_names))
+    _inbox_subj_opts = _ingest_ui.known_subjects()
     if not _inbox_subj_opts:
         st.caption("Lege oben einen Fach-Ordner an, dann kannst du hier zuordnen.")
     else:
@@ -392,18 +395,27 @@ with card("kurs_inbox"):
             if not _inbox_note.strip() and _inbox_file is None:
                 st.warning("Bitte Datei oder Notiz.")
             else:
-                add_course_material(
+                _added = add_course_material(
                     _inbox_subj, text=_inbox_note.strip() or None,
                     file_bytes=_inbox_file.getvalue() if _inbox_file else None,
                     filename=_inbox_file.name if _inbox_file else None)
                 _ingest_ui.remember_folder(_inbox_subj)
-                st.session_state["_docmgr_flash"] = f"Unterlage in {_fach(_inbox_subj)} abgelegt."
+                _failed = _added.get("status") == "error"
+                st.session_state["_docmgr_flash"] = {
+                    "error": _failed,
+                    "message": (
+                        f"Unterlage in {_fach(_inbox_subj)} abgelegt."
+                        + (" Indexierung fehlgeschlagen; sie ist archiviert und noch "
+                           "nicht im Chat durchsuchbar." if _failed else "")
+                    ),
+                }
                 st.rerun()
 
 _ingest_ui.render_upload(default_subject=st.session_state.get("doc_folder"))
 _ingest_ui.render_ocr_warnings()
 with st.expander("Weitere Importwege (Inbox, Quellordner)", expanded=False):
-    _ingest_ui.render_inbox_scan()
+    _ingest_ui.render_inbox_scan(
+        default_subject=st.session_state.get("doc_folder"))
     _ingest_ui.render_source_folder()
 
 _docs = [dict(d) for d in manifest.list_documents()]

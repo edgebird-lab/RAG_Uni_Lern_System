@@ -335,11 +335,16 @@ with card("kopf"):
     # ein verpasster Tag verschwand so unbemerkt aus dem Blick).
     _today_iso_plan = date.today().isoformat()
     _overdue_blocks = manifest.list_overdue_plan_blocks(_today_iso_plan, plan_id=_active_plan_id)
-    if _overdue_blocks:
+    _repair_now = study_plan.repair_overdue_blocks(_active_plan_id, apply=False)
+    if _overdue_blocks or _repair_now["moves"] or _repair_now["shortfall_minutes"]:
         _overdue_min = sum(b["planned_min"] for b in _overdue_blocks)
         oc1, oc2 = st.columns([3, 1])
-        oc1.warning(f"⚠️ **{len(_overdue_blocks)} Block(e) im Rückstand** "
-                   f"({_fmt_min(_overdue_min)}) – ältester: {_overdue_blocks[0]['planned_date']}")
+        if _overdue_blocks:
+            oc1.warning(f"⚠️ **{len(_overdue_blocks)} Block(e) im Rückstand** "
+                       f"({_fmt_min(_overdue_min)}) – ältester: {_overdue_blocks[0]['planned_date']}")
+        else:
+            oc1.warning(
+                "⚠️ Geplante Blöcke liegen auf einem neu gewählten Ruhetag.")
         if oc2.button("🔧 Plan reparieren", key=f"splan_catchup_{_active_plan_id}",
                      use_container_width=True):
             st.session_state[f"_splan_repair_preview_{_active_plan_id}"] = True

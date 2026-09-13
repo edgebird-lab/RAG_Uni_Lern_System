@@ -24,7 +24,16 @@ def subject_label(code: Optional[str]) -> str:
 
 def extra_folders() -> list[str]:
     raw = st.session_state.get("doc_extra_folders") or []
-    return [s for s in raw if s]
+    disk: set[str] = set()
+    try:
+        if SOURCE_DIR.is_dir():
+            disk = {
+                p.name for p in SOURCE_DIR.iterdir()
+                if p.is_dir() and not p.name.startswith((".", "_"))
+            }
+    except Exception:  # noqa: BLE001
+        pass
+    return sorted({s for s in raw if s} | disk)
 
 
 def _as_dict(row) -> dict:
@@ -40,16 +49,26 @@ def _document_dicts() -> list[dict]:
 
 def known_subjects() -> list[str]:
     found = {d["subject"] for d in _document_dicts() if d.get("subject")}
-    return sorted(set(SUBJECT_LABELS.keys()) | found | set(extra_folders()))
+    exams = {e["subject"] for e in manifest.list_exams() if e.get("subject")}
+    timetable = {
+        row["subject"] for row in manifest.list_timetable()
+        if row.get("subject")
+    }
+    return sorted(
+        set(SUBJECT_LABELS.keys()) | found | exams | timetable
+        | set(extra_folders())
+    )
 
 
 def remember_folder(name: str) -> None:
     name = (name or "").strip()
     if not name:
         return
-    folders = extra_folders()
-    if name not in folders:
-        st.session_state["doc_extra_folders"] = folders + [name]
+    remembered = [
+        s for s in (st.session_state.get("doc_extra_folders") or []) if s
+    ]
+    if name not in remembered:
+        st.session_state["doc_extra_folders"] = remembered + [name]
     st.session_state["doc_folder"] = name
 
 
@@ -248,6 +267,7 @@ def render_upload(*, default_subject: Optional[str] = None,
 def _run_upload(uploads, upload_subject: Optional[str], upload_use_rag: bool) -> None:
     import pandas as pd
     from ragapp.ingestion.pipeline import ingest_file
+    from ragapp.student_flow import ensure_course_folder, _unique_course_path
     from ragapp.ui._progress import ProgressReporter, fmt_dauer
 
     ergebnisse: list[dict] = []
@@ -260,7 +280,11 @@ def _run_upload(uploads, upload_subject: Optional[str], upload_use_rag: bool) ->
 
     with st.status("Verarbeite hochgeladene Dateien …", expanded=True) as status:
         for k, up in enumerate(uploads, 1):
-            ziel = INBOX_DIR / up.name
+            ziel_dir = (
+                ensure_course_folder(upload_subject)
+                if upload_subject else INBOX_DIR
+            )
+            ziel = _unique_course_path(ziel_dir, up.name)
             try:
                 ziel.write_bytes(up.getbuffer())
             except Exception as exc:  # noqa: BLE001
@@ -376,14 +400,25 @@ def _run_source_folder() -> None:
             f"{summary.get('questions', 0)} Fragen indexiert.")
 
 
-def render_inbox_scan(*, key_prefix: str = "inbox") -> None:
+def render_inbox_scan(*, key_prefix: str = "inbox",
+                      default_subject: Optional[str] = None) -> None:
     with card("inbox_scan"):
         st.subheader("📥 Inbox jetzt einlesen")
-        st.caption("Liest neue Dateien aus data/inbox einmalig ein.")
-        if st.button("Inbox scannen", key=f"{key_prefix}_scan"):
+        st.caption("Ordnet neue Dateien aus data/inbox beim Einlesen einem Fach zu.")
+        subjects = known_subjects()
+        selected = st.selectbox(
+            "Fach für Inbox-Dateien", subjects,
+            index=(subjects.index(default_subject)
+                   if default_subject in subjects else 0),
+            format_func=subject_label, key=f"{key_prefix}_subject",
+        ) if subjects else None
+        if st.button("Inbox scannen", key=f"{key_prefix}_scan",
+                     disabled=not selected):
             from ragapp.student_flow import scan_inbox_once
             with st.status("Scanne Inbox …") as status:
-                res = scan_inbox_once(progress=lambda m: status.update(label=m))
+                res = scan_inbox_once(
+                    progress=lambda m: status.update(label=m),
+                    subject=selected)
                 status.update(state="complete")
             st.success(f"{res['ok']}/{res['scanned']} Datei(en).")
             if res["errors"]:

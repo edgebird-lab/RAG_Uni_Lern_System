@@ -146,7 +146,10 @@ def test_daily_goal_kind_reviews_minuten_plan(isolated_db, tmp_path, monkeypatch
     analytics.set_daily_goal_kind("plan_blocks")
     status = analytics.daily_goal_status()
     assert status["kind"] == "plan_blocks"
-    assert status["goal"] >= 1
+    assert status["goal"] == 0
+    assert status["applicable"] is False
+    assert status["goal_reached"] is True
+    assert status["ampel"] == "grün"
 
 
 def _seed_learning_card(subject: str, *, due_offset: float = -60.0) -> str:

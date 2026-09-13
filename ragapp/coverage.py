@@ -68,7 +68,10 @@ def coverage_for_subject(subject: str) -> list[dict]:
     if not goals:
         return []
     docs = [dict(d) for d in manifest.list_documents() if d["subject"] == subject]
-    cards = manifest.list_cards(subject=subject)
+    cards = [
+        c for c in manifest.list_cards(subject=subject)
+        if not c.get("suspended") and c.get("use_flashcard", 1) != 0
+    ]
     problems = manifest.list_practice_problems(subject=subject)
     target = analytics._target_reps()
     out: list[dict] = []

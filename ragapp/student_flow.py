@@ -61,12 +61,24 @@ def snapshot_extras(snap: Optional[dict] = None) -> dict:
 def today_session_cards(*, subject: Optional[str] = None, limit: int = 15,
                         cram: bool = False, deck: Optional[str] = None,
                         decks: Optional[list] = None,
-                        sprint: bool = False, prefer: str = "auto") -> list[dict]:
+                        sprint: bool = False, prefer: str = "auto",
+                        preferred_card_ids: Optional[list[str]] = None) -> list[dict]:
     """Karten für den einen Home-Button ‚Heute starten‘."""
     limit = max(1, min(int(limit), 40))
     if sprint:
         return sprint_cards(subject=subject, decks=decks, deck=deck,
                             limit=limit, prefer=prefer)
+    if preferred_card_ids:
+        preferred = manifest.find_cards(
+            card_ids=preferred_card_ids, exclude_suspended=True, limit=limit)
+        if preferred:
+            # Bevorzugen, aber die als „N fällige Karten“ angekündigte Mission
+            # mit regulären fälligen Karten auffüllen statt sie zu ersetzen.
+            regular = manifest.gather_study_cards(subject=subject, limit=limit)
+            seen = {c["card_id"] for c in preferred}
+            return (preferred + [
+                c for c in regular if c.get("card_id") not in seen
+            ])[:limit]
     subj = subject
     if not subj:
         snap = planner.today_snapshot()
@@ -414,6 +426,7 @@ def daily_missions() -> list[dict]:
     overconfident = [
         e for e in manifest.list_errors(limit=20)
         if (e.get("detail") or "").startswith("Sicher eingeschätzt")
+        and e.get("card_id")
     ]
     due = int(snap.get("due_cards") or 0)
     if due > 0:
@@ -434,12 +447,15 @@ def daily_missions() -> list[dict]:
             "subject": preferred_subject,
             "count": due,
             "prefer_overconfidence": bool(overconfident),
+            "card_ids": [e["card_id"] for e in overconfident],
         })
 
     subj = weak_subject()
     weak = analytics.mastery_by_topic(subj, limit=1) if subj else []
     if weak and int(weak[0].get("mastery_pct") or 0) < 80:
         w = weak[0]
+        weak_cards = manifest.find_cards(
+            subject=subj, topics=[w.get("topic") or "__none__"], limit=20)
         missions.append({
             "id": "weak",
             "kind": "weak_topic",
@@ -448,6 +464,7 @@ def daily_missions() -> list[dict]:
             "reason": f"Mastery nur {w.get('mastery_pct', 0)} % – dort sitzt es noch nicht.",
             "subject": subj,
             "topic": w.get("topic"),
+            "card_ids": [c["card_id"] for c in weak_cards],
         })
 
     open_today = [b for b in (snap.get("plan_blocks_today") or []) if not b.get("done")]
@@ -456,14 +473,20 @@ def daily_missions() -> list[dict]:
     if blocks:
         raw = sum(int(b.get("planned_min") or 0) for b in blocks)
         b0 = blocks[0]
+        plan_title = (
+            (b0.get("section_title") or b0.get("plan_title") or "Planblock")
+            if len(blocks) == 1
+            else f"{len(blocks)} Planblöcke"
+        )
         missions.append({
             "id": "plan",
             "kind": "plan",
-            "title": (b0.get("section_title") or b0.get("plan_title") or "Planblock"),
+            "title": plan_title,
             "minutes": max(5, min(raw, cap)),
             "reason": ("Im Lernplan für heute vorgesehen." if open_today
                        else "Verpasster Planblock, auf die Lastgrenze gekappt."),
             "subject": b0.get("plan_subject"),
+            "plan_id": b0.get("plan_id"),
             "block_ids": [b.get("block_id") for b in blocks if b.get("block_id")],
         })
     return missions[:3]
@@ -536,6 +559,26 @@ def _unique_course_path(folder, name: str):
     return dest.with_name(f"{dest.stem}_{int(time.time())}{dest.suffix}")
 
 
+def _register_course_file(path, subject: str, *, status: str = "archived") -> str:
+    """Macht auch nicht indexierbare/Fallback-Dateien im Kurs-Cockpit sichtbar."""
+    from ragapp.config import PROJECT_ROOT
+    from ragapp.ingestion.dedup import doc_id_for
+    try:
+        rel = str(path.resolve().relative_to(PROJECT_ROOT.resolve()))
+    except Exception:  # noqa: BLE001
+        rel = str(path)
+    doc_id = doc_id_for(rel)
+    if doc_id not in {d["doc_id"] for d in manifest.list_documents()}:
+        raw = path.read_bytes()
+        manifest.upsert_document(
+            doc_id=doc_id, content_hash=hashlib.sha256(raw).hexdigest(),
+            source_path=rel, filename=path.name, subject=subject,
+            filetype=path.suffix.lstrip(".").lower() or "bin",
+            num_chunks=0, num_questions=0, char_count=len(raw),
+            status=status, use_rag=False)
+    return doc_id
+
+
 def add_course_material(subject: str, *, text: Optional[str] = None,
                         title: Optional[str] = None,
                         file_bytes: Optional[bytes] = None,
@@ -546,8 +589,6 @@ def add_course_material(subject: str, *, text: Optional[str] = None,
     Kein Umweg über die Ingestion-Experten-UI: Datei landet unter SOURCE_DIR/Fach
     und wird dort eingelesen, sodass das Kurs-Cockpit die neue Unterlage zählt.
     """
-    from ragapp.config import PROJECT_ROOT
-    from ragapp.ingestion.dedup import doc_id_for
     from ragapp.ingestion.loaders import SUPPORTED_EXTENSIONS
     from ragapp.ingestion.pipeline import ingest_file
 
@@ -580,24 +621,15 @@ def add_course_material(subject: str, *, text: Optional[str] = None,
     primary = saved[-1]
     for path in saved:
         if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+            doc_id = _register_course_file(path, code)
             continue
         try:
             ingest = ingest_file(path, subject=code)
         except Exception as exc:  # noqa: BLE001
             ingest = {"status": "error", "error": str(exc), "file": path.name}
-        try:
-            rel = str(path.resolve().relative_to(PROJECT_ROOT.resolve()))
-        except Exception:  # noqa: BLE001
-            rel = str(path)
-        doc_id = ingest.get("doc_id") or doc_id_for(rel)
-        known = {d["doc_id"] for d in manifest.list_documents()}
-        if doc_id not in known:
-            manifest.upsert_document(
-                doc_id=doc_id, content_hash=doc_id, source_path=rel,
-                filename=path.name, subject=code,
-                filetype=path.suffix.lstrip(".").lower() or "md",
-                num_chunks=0, num_questions=0, char_count=path.stat().st_size,
-                status="ok", use_rag=False)
+        # ingest_file registriert Erfolgsfälle selbst. Bei Modell-/Indexfehlern
+        # bleibt die Originaldatei trotzdem als ehrliche archivierte Unterlage.
+        doc_id = _register_course_file(path, code)
     capture = capture_lecture(body, subject=code, title=title) if body else None
     return {
         "status": ingest.get("status") or "ok",
@@ -639,9 +671,17 @@ def scan_inbox_once(progress=None, *, subject: Optional[str] = None) -> dict:
             res = ingest_file(work, subject=subject)
             if res.get("status") in ("ok", "skipped", "duplicate"):
                 ok += 1
+                if subject and res.get("status") == "duplicate":
+                    # Physische Kopie im Kursordner bleibt dort sichtbar, auch wenn
+                    # ihr Inhalt bereits unter einem anderen Fach indexiert ist.
+                    _register_course_file(work, subject)
             else:
+                if subject:
+                    _register_course_file(work, subject)
                 errors.append(f"{path.name}: {res.get('status')}")
         except Exception as exc:  # noqa: BLE001
+            if subject:
+                _register_course_file(work, subject)
             errors.append(f"{path.name}: {exc}")
     return {"scanned": len(files), "ok": ok, "errors": errors}
 

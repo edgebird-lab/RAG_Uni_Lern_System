@@ -65,8 +65,11 @@ def test_oral_exam_session_speichert_verlauf_als_json(isolated_db):
         session["session_id"], 0, "Der Erlös abzüglich variabler Kosten.",
         followup="Warum ist er entscheidungsrelevant?", partial_points=80)
     item = saved["questions"][0]
+    assert saved["current_index"] == 0
     assert item["partial_points"] == 80
     assert item["followups"][0]["question"].startswith("Warum")
+    saved = oral_exam.advance_session(session["session_id"], 0)
+    assert saved["current_index"] == 1
     done = oral_exam.finish_session(session["session_id"])
     assert done["status"] == "done"
     assert done["total_pct"] == 80
@@ -106,3 +109,10 @@ def test_oral_followup_klarer_abbruch_ohne_modell(monkeypatch):
     assert out["status"] == "no_model"
     assert out["followup"] is None
     assert "nicht installiert" in out["message"]
+
+
+def test_oral_abort_hat_eigenen_status(isolated_db):
+    session = oral_exam.create_session(
+        "BWL", [{"question": "Erkläre X."}])
+    aborted = oral_exam.abort_session(session["session_id"])
+    assert aborted["status"] == "aborted"

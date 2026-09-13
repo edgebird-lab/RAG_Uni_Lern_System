@@ -132,9 +132,16 @@ if _sektion == "Analyse":
         _ready = analytics.subject_readiness(subject)["readiness_pct"]
         _goal = analytics.daily_goal_status(subject)
         _ampel = {"grün": "🟢", "gelb": "🟡", "rot": "🔴"}.get(_goal["ampel"], "🟢")
+        _goal_label = {
+            "reviews": "Reviews", "minutes": "Minuten",
+            "plan_blocks": "Planblöcke",
+        }.get(_goal.get("kind"), "Reviews")
         c6.metric("Heute-Ziel", f'{_goal["done_today"]} / {_goal["goal"]}',
-                  delta=f'{_ampel} {_goal["due"]} fällig', delta_color="off",
-                  help="Heute geübte Wiederholungen vs. Tagesziel · Ampel = Backlog.")
+                  delta=(f'{_ampel} {_goal["due"]} fällig'
+                         if _goal.get("kind") == "reviews"
+                         else f"{_ampel} {_goal_label}"),
+                  delta_color="off",
+                  help=f"Heutiges Prozessziel: {_goal_label}.")
         gc1, _gc2 = st.columns(2)
         gc1.metric("Klausur-Bereitschaft (Schätzung)", f"{_ready} %",
                    help="Geschätzte mittlere Abrufwahrscheinlichkeit über alle Karten "
@@ -243,7 +250,16 @@ if _sektion == "Klausurstatus":
     # bleiben in ihrer eigenen Sektion.
     with card("klausurstatus"):
         st.subheader("Klausurstatus")
-        _ks_subj = subject or (subjects[0] if subjects else None)
+        _priority_subjects = planner.all_priorities()
+        _ks_subj = (
+            subject
+            or ((_priority_subjects[0] or {}).get("subject")
+                if _priority_subjects else None)
+        )
+        if subject is None and _ks_subj:
+            st.caption(
+                f"Alle Fächer: nächste Lücke und Abdeckung zeigen das aktuell "
+                f"höchst priorisierte Fach **{_fach(_ks_subj)}**.")
         _ready = analytics.subject_readiness(subject)["readiness_pct"]
         _ks1, _ks2, _ks3 = st.columns(3)
         _ks1.metric(
@@ -321,6 +337,7 @@ if _sektion == "Klausurstatus":
                         st.session_state["study_prefill"] = {
                             "source": "coverage", "limit": 16, "mode": "reveal",
                             "subject": _cov_subj,
+                            "card_ids": _row.get("card_ids") or [],
                         }
                         st.switch_page("pages/4_🎓_Lernen.py")
 

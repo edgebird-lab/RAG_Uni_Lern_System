@@ -63,3 +63,15 @@ def test_coverage_start_action_fuer_luecken():
     assert coverage.coverage_start_action({"status": "Dokument"})["kind"] == "lernset"
     assert coverage.coverage_start_action({"status": "Karte"})["kind"] == "uebung"
     assert coverage.coverage_start_action({"status": "sitzt"})["kind"] is None
+
+
+def test_coverage_ignoriert_suspendierte_karte(isolated_db):
+    manifest.add_learning_goals(
+        "BWL", ["Die Studierenden können den Deckungsbeitrag berechnen."])
+    cid = student_flow.card_from_text(
+        "Wie berechnet man den Deckungsbeitrag?", "Erlös minus Kosten",
+        subject="BWL", topic="Deckungsbeitrag")
+    with manifest._connect() as conn:
+        conn.execute(
+            "UPDATE review_items SET suspended=1 WHERE card_id=?", (cid,))
+    assert coverage.coverage_for_subject("BWL")[0]["status"] == "fehlend"

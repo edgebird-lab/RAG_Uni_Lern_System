@@ -134,6 +134,7 @@ def test_today_snapshot_has_evenings_and_errors(isolated_db):
 def test_reschedule_all_overdue(isolated_db):
     pid = manifest.create_study_plan(
         title="P", subject="BWL", doc_ids=[], deadline=None, daily_minutes=45)
+    manifest.update_study_plan(pid, status="active")
     yesterday = (date.today() - timedelta(days=1)).isoformat()
     manifest.replace_plan_blocks(pid, [
         {"section_id": None, "planned_date": yesterday, "planned_min": 25},
@@ -350,6 +351,37 @@ def test_add_course_material_ohne_fach_bricht_ehrlich_ab(isolated_db):
     assert out["path"] is None
 
 
+def test_add_course_photo_erscheint_auch_ohne_ocr_als_unterlage(
+        isolated_db, tmp_path, monkeypatch):
+    src = tmp_path / "quellen"
+    monkeypatch.setattr("ragapp.config.SOURCE_DIR", src)
+    monkeypatch.setattr("ragapp.config.PROJECT_ROOT", tmp_path)
+    out = student_flow.add_course_material(
+        "BWL", image_bytes=b"\xff\xd8fake-jpeg")
+    docs = [dict(d) for d in manifest.list_documents()]
+    assert out["doc_id"]
+    assert len(docs) == 1
+    assert docs[0]["subject"] == "BWL"
+    assert docs[0]["filetype"] == "jpg"
+    assert student_flow.course_snapshot("BWL")["doc_count"] == 1
+
+
+def test_add_course_material_bleibt_bei_ingestion_fehler_sichtbar(
+        isolated_db, tmp_path, monkeypatch):
+    src = tmp_path / "quellen"
+    monkeypatch.setattr("ragapp.config.SOURCE_DIR", src)
+    monkeypatch.setattr("ragapp.config.PROJECT_ROOT", tmp_path)
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("Index aus")
+
+    monkeypatch.setattr("ragapp.ingestion.pipeline.ingest_file", _boom)
+    out = student_flow.add_course_material(
+        "BWL", file_bytes=b"# Stoff", filename="stoff.md")
+    assert out["status"] == "error"
+    assert student_flow.course_snapshot("BWL")["doc_count"] == 1
+
+
 def test_scan_inbox_once_verschiebt_in_fachordner(isolated_db, tmp_path, monkeypatch):
     inbox = tmp_path / "inbox"
     src = tmp_path / "quellen"
@@ -365,3 +397,20 @@ def test_scan_inbox_once_verschiebt_in_fachordner(isolated_db, tmp_path, monkeyp
     assert res["ok"] == 1
     assert not (inbox / "folie.md").exists()
     assert (src / "Mathe" / "folie.md").is_file()
+
+
+def test_scan_inbox_fehlerdatei_bleibt_im_kurs_sichtbar(
+        isolated_db, tmp_path, monkeypatch):
+    inbox = tmp_path / "inbox"
+    src = tmp_path / "quellen"
+    inbox.mkdir()
+    (inbox / "kaputt.md").write_text("# Stoff", encoding="utf-8")
+    monkeypatch.setattr("ragapp.config.INBOX_DIR", inbox)
+    monkeypatch.setattr("ragapp.config.SOURCE_DIR", src)
+    monkeypatch.setattr("ragapp.config.PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(
+        "ragapp.ingestion.pipeline.ingest_file",
+        lambda path, **kw: {"status": "error"})
+    result = student_flow.scan_inbox_once(subject="Mathe")
+    assert result["errors"]
+    assert student_flow.course_snapshot("Mathe")["doc_count"] == 1
