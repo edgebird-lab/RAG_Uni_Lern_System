@@ -53,7 +53,7 @@ def _topic(meta: dict) -> "str | None":
 
 
 def harvest_cards(subject: "str | None" = None, max_per_chunk: "int | None" = None,
-                  progress=None) -> dict:
+                  progress=None, doc_ids: "list[str] | None" = None) -> dict:
     """Erntet Karten aus dem Vektorstore und legt neue in manifest.db an.
     Vorhandene Karten behalten ihren Lernfortschritt. Optional nur ein ``subject`` und
     hoechstens ``max_per_chunk`` Fragen je Eltern-Chunk (verhindert zu viele aehnliche
@@ -119,6 +119,10 @@ def harvest_cards(subject: "str | None" = None, max_per_chunk: "int | None" = No
                 "answer": (meta.get("answer") or "").strip() or None,
                 "doc_id": meta.get("doc_id"),
             })
+
+    if doc_ids:
+        _wanted = set(doc_ids)
+        cards = [c for c in cards if c.get("doc_id") in _wanted]
 
     if progress:
         progress(f"Speichere {len(cards)} Karten …")
@@ -222,6 +226,88 @@ def generate_answers(subject: "str | None" = None, deck: "str | None" = None,
                 "errors": errors, "ungrounded": ungrounded, "error_msg": error_msg}
     finally:
         release_llm()
+
+
+def _study_set_abort(error_msg: str | None) -> str:
+    """Mappt LLM-/VRAM-Meldungen auf die ehrlichen create_study_set-Statuswerte."""
+    low = (error_msg or "").lower()
+    if "vram" in low or "grafikspeicher" in low:
+        return "vram"
+    return "no_model"
+
+
+def create_study_set(doc_ids: list[str], *, progress=None,
+                     n_per_chunk: "int | None" = None,
+                     max_per_chunk: "int | None" = None,
+                     with_answers: bool = True) -> dict:
+    """Ein Aufruf: Fragen anreichern, Karten ernten, Antworten fuellen.
+
+    ``doc_ids`` ist Pflicht. Expertenparameter (Fragen je Chunk, Harvest-Deckel,
+    Antworten ja/nein) bleiben optional. Bricht ehrlich ab bei leeren Docs,
+    fehlendem Modell oder zu wenig VRAM – kein stiller Erfolg mit 0 Karten.
+    """
+    from ragapp.ingestion.enrich import enrich_questions
+
+    empty = {
+        "status": "empty", "questions": 0, "cards_new": 0, "answers": 0,
+        "error_msg": "Keine Dokumente gewählt.", "enrich": None,
+        "harvest": None, "generate": None,
+    }
+    ids = [d for d in (doc_ids or []) if d]
+    if not ids:
+        return empty
+    found = [manifest.get_document(d) for d in ids]
+    if not any(found):
+        empty["error_msg"] = "Die gewählten Dokumente gibt es nicht (mehr)."
+        return empty
+
+    def _note(msg: str) -> None:
+        if progress:
+            progress(msg)
+
+    _note("Fragen erzeugen …")
+    enrich = enrich_questions(doc_ids=ids, n_per_chunk=n_per_chunk, progress=progress)
+    if enrich.get("status") == "llm_error":
+        kind = _study_set_abort(enrich.get("error_msg"))
+        return {
+            "status": kind, "questions": enrich.get("questions") or 0,
+            "cards_new": 0, "answers": 0,
+            "error_msg": enrich.get("error_msg"), "enrich": enrich,
+            "harvest": None, "generate": None,
+        }
+
+    _note("Karten ernten …")
+    harvest = harvest_cards(doc_ids=ids, max_per_chunk=max_per_chunk, progress=progress)
+    neu = int(harvest.get("neu") or 0)
+
+    generate = None
+    answers_n = 0
+    if with_answers:
+        _note("Antworten erzeugen …")
+        generate = generate_answers(progress=progress)
+        if generate.get("status") == "llm_error":
+            kind = _study_set_abort(generate.get("error_msg"))
+            return {
+                "status": kind, "questions": enrich.get("questions") or 0,
+                "cards_new": neu, "answers": generate.get("filled") or 0,
+                "error_msg": generate.get("error_msg"), "enrich": enrich,
+                "harvest": harvest, "generate": generate,
+            }
+        answers_n = int(generate.get("filled") or 0)
+
+    questions_n = int(enrich.get("questions") or 0)
+    if questions_n == 0 and neu == 0 and (harvest.get("gefunden") or 0) == 0:
+        return {
+            "status": "empty", "questions": 0, "cards_new": 0, "answers": 0,
+            "error_msg": "In diesen Dokumenten ist noch kein lernbarer Stoff "
+                         "(keine Chunks, keine Fragen).",
+            "enrich": enrich, "harvest": harvest, "generate": generate,
+        }
+    return {
+        "status": "ok", "questions": questions_n, "cards_new": neu,
+        "answers": answers_n, "error_msg": None,
+        "enrich": enrich, "harvest": harvest, "generate": generate,
+    }
 
 
 def apply_embedding_flags(card_ids: "list[str]", progress=None) -> dict:
