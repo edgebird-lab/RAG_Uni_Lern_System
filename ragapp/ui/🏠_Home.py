@@ -441,37 +441,47 @@ if _snap:
                 st.switch_page(_target["organisation"])
 
         with st.expander("📥 Vorlesung einfangen", expanded=False):
-            st.caption("Foto, Folientext oder Mitschnitt – wird Notiz + Karten + Abendblock.")
+            st.caption("Foto, Datei oder Notiz landet im Fach-Ordner und erscheint als Unterlage.")
             _vl_subj = st.selectbox(
                 "Fach", ["–"] + sorted(SUBJECT_LABELS.keys()),
                 format_func=lambda s: SUBJECT_LABELS.get(s, s),
                 key="home_vl_subject")
             _vl_title = st.text_input("Titel (optional)", key="home_vl_title")
             _vl_text = st.text_area("Was war neu?", key="home_vl_text", height=120)
+            _vl_file = st.file_uploader(
+                "Datei dem Fach zuordnen",
+                type=["pdf", "md", "txt", "docx", "pptx"],
+                key="home_vl_file")
             _vl_photo = st.camera_input("Tafel / Folie fotografieren", key="home_vl_cam")
             if st.button("Sichern", type="primary", key="home_vl_go"):
-                from ragapp.student_flow import capture_lecture
+                from ragapp.student_flow import add_course_material
                 body = (_vl_text or "").strip()
+                _img = None
                 if _vl_photo is not None:
+                    _img = _vl_photo.getvalue()
                     try:
                         from ragapp.ingestion.loaders import ocr_image_bytes
-                        _ocr_txt, _eng = ocr_image_bytes(_vl_photo.getvalue())
+                        _ocr_txt, _eng = ocr_image_bytes(_img)
                         if _ocr_txt:
                             body = (body + "\n\n" + _ocr_txt).strip()
                         elif not _eng:
                             st.warning("Foto-Text nicht gelesen (kein Vision-Modell).")
                     except Exception as _exc:  # noqa: BLE001
                         st.warning(f"Foto-Text nicht gelesen: {_exc}")
-                if not body:
-                    st.warning("Bitte Text oder Foto.")
+                if _vl_subj == "–":
+                    st.warning("Bitte ein Fach wählen, damit die Unterlage im Kurs landet.")
+                elif not body and _vl_file is None and _img is None:
+                    st.warning("Bitte Text, Datei oder Foto.")
                 else:
-                    _cap = capture_lecture(
-                        body,
-                        subject=None if _vl_subj == "–" else _vl_subj,
-                        title=_vl_title or None)
+                    _cap = add_course_material(
+                        _vl_subj, text=body or None, title=_vl_title or None,
+                        file_bytes=_vl_file.getvalue() if _vl_file else None,
+                        filename=_vl_file.name if _vl_file else None,
+                        image_bytes=_img)
+                    _n = len((_cap.get("capture") or {}).get("card_ids") or [])
                     st.success(
-                        f"Notiz + {len(_cap['card_ids'])} Karte(n)"
-                        + (" + Abendblock" if _cap.get("block_id") else "") + ".")
+                        "Im Fach-Ordner gesichert"
+                        + (f" · {_n} Karte(n)" if _n else "") + ".")
                     st.rerun()
 
 # Schlanke Suche (kein voller Titel-Block)

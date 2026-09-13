@@ -370,6 +370,36 @@ with card("ordner"):
         _ingest_ui.remember_folder(_new_folder.strip())
         st.rerun()
 
+with card("kurs_inbox"):
+    st.subheader("Kurs-Inbox")
+    st.caption("Datei oder Notiz landet direkt im Fach-Ordner und erscheint im Kurs-Cockpit – "
+               "ohne den Ingestion-Expertenpfad.")
+    _inbox_subj_opts = sorted(set(SUBJECT_LABELS.keys()) | set(_folder_names))
+    if not _inbox_subj_opts:
+        st.caption("Lege oben einen Fach-Ordner an, dann kannst du hier zuordnen.")
+    else:
+        _inbox_default = st.session_state.get("doc_folder")
+        _inbox_idx = (_inbox_subj_opts.index(_inbox_default)
+                      if _inbox_default in _inbox_subj_opts else 0)
+        _inbox_subj = st.selectbox(
+            "Fach", _inbox_subj_opts, format_func=_fach, index=_inbox_idx,
+            key="docmgr_inbox_subj")
+        _inbox_note = st.text_area("Notiz (optional)", key="docmgr_inbox_note", height=80)
+        _inbox_file = st.file_uploader(
+            "Datei", type=["pdf", "md", "txt", "docx", "pptx"], key="docmgr_inbox_file")
+        if st.button("Dem Fach zuordnen", type="primary", key="docmgr_inbox_go"):
+            from ragapp.student_flow import add_course_material
+            if not _inbox_note.strip() and _inbox_file is None:
+                st.warning("Bitte Datei oder Notiz.")
+            else:
+                add_course_material(
+                    _inbox_subj, text=_inbox_note.strip() or None,
+                    file_bytes=_inbox_file.getvalue() if _inbox_file else None,
+                    filename=_inbox_file.name if _inbox_file else None)
+                _ingest_ui.remember_folder(_inbox_subj)
+                st.session_state["_docmgr_flash"] = f"Unterlage in {_fach(_inbox_subj)} abgelegt."
+                st.rerun()
+
 _ingest_ui.render_upload(default_subject=st.session_state.get("doc_folder"))
 _ingest_ui.render_ocr_warnings()
 with st.expander("Weitere Importwege (Inbox, Quellordner)", expanded=False):

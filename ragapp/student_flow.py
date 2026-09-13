@@ -432,8 +432,105 @@ def card_wipe_message(*, deleted: int, remaining: int, subject: Optional[str] = 
     return f"{deleted} Karteikarte(n) von {where} gelöscht. Es bleiben {remaining}."
 
 
-def scan_inbox_once(progress=None) -> dict:
-    """Liest neue Dateien aus dem Inbox-Ordner einmalig ein."""
+def ensure_course_folder(subject: str):
+    """Fach-Ordner unter dem Quellenverzeichnis, damit Unterlagen dem Kurs gehören."""
+    from pathlib import Path
+    from ragapp.config import SOURCE_DIR
+    code = (subject or "").strip()
+    if not code:
+        raise ValueError("Fach fehlt.")
+    folder = Path(SOURCE_DIR) / code
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def _unique_course_path(folder, name: str):
+    from pathlib import Path
+    dest = Path(folder) / Path(name).name
+    if not dest.exists():
+        return dest
+    return dest.with_name(f"{dest.stem}_{int(time.time())}{dest.suffix}")
+
+
+def add_course_material(subject: str, *, text: Optional[str] = None,
+                        title: Optional[str] = None,
+                        file_bytes: Optional[bytes] = None,
+                        filename: Optional[str] = None,
+                        image_bytes: Optional[bytes] = None) -> dict:
+    """Datei, Foto oder Notiz in den Fach-Ordner legen und als Unterlage sichtbar machen.
+
+    Kein Umweg über die Ingestion-Experten-UI: Datei landet unter SOURCE_DIR/Fach
+    und wird dort eingelesen, sodass das Kurs-Cockpit die neue Unterlage zählt.
+    """
+    from ragapp.config import PROJECT_ROOT
+    from ragapp.ingestion.dedup import doc_id_for
+    from ragapp.ingestion.loaders import SUPPORTED_EXTENSIONS
+    from ragapp.ingestion.pipeline import ingest_file
+
+    code = (subject or "").strip()
+    if not code:
+        return {"status": "no_subject", "path": None, "doc_id": None, "capture": None}
+    folder = ensure_course_folder(code)
+    body = (text or "").strip()
+    saved: list = []
+    if file_bytes and filename:
+        dest = _unique_course_path(folder, filename)
+        dest.write_bytes(file_bytes)
+        saved.append(dest)
+    if image_bytes:
+        dest = _unique_course_path(folder, "tafel.jpg")
+        dest.write_bytes(image_bytes)
+        saved.append(dest)
+    if body:
+        slug = re.sub(r"[^a-zA-Z0-9_-]+", "_",
+                      (title or body.splitlines()[0] or "notiz")[:40]).strip("_")
+        dest = _unique_course_path(folder, f"{slug or 'notiz'}.md")
+        heading = (title or slug or "Notiz").strip()
+        dest.write_text(f"# {heading}\n\n{body}\n", encoding="utf-8")
+        saved.append(dest)
+    if not saved:
+        return {"status": "empty", "path": None, "doc_id": None, "capture": None}
+
+    ingest = {"status": "ok"}
+    doc_id = None
+    primary = saved[-1]
+    for path in saved:
+        if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+            continue
+        try:
+            ingest = ingest_file(path, subject=code)
+        except Exception as exc:  # noqa: BLE001
+            ingest = {"status": "error", "error": str(exc), "file": path.name}
+        try:
+            rel = str(path.resolve().relative_to(PROJECT_ROOT.resolve()))
+        except Exception:  # noqa: BLE001
+            rel = str(path)
+        doc_id = ingest.get("doc_id") or doc_id_for(rel)
+        known = {d["doc_id"] for d in manifest.list_documents()}
+        if doc_id not in known:
+            manifest.upsert_document(
+                doc_id=doc_id, content_hash=doc_id, source_path=rel,
+                filename=path.name, subject=code,
+                filetype=path.suffix.lstrip(".").lower() or "md",
+                num_chunks=0, num_questions=0, char_count=path.stat().st_size,
+                status="ok", use_rag=False)
+    capture = capture_lecture(body, subject=code, title=title) if body else None
+    return {
+        "status": ingest.get("status") or "ok",
+        "path": str(primary),
+        "doc_id": doc_id,
+        "ingest": ingest,
+        "capture": capture,
+    }
+
+
+def scan_inbox_once(progress=None, *, subject: Optional[str] = None) -> dict:
+    """Liest neue Dateien aus dem Inbox-Ordner einmalig ein.
+
+    Mit ``subject`` wandern die Dateien zuerst in den Fach-Ordner, damit sie
+    im Kurs-Cockpit als Unterlagen dieses Fachs erscheinen.
+    """
+    import shutil
     from pathlib import Path
     from ragapp.config import INBOX_DIR
     from ragapp.ingestion.pipeline import ingest_file
@@ -445,11 +542,17 @@ def scan_inbox_once(progress=None) -> dict:
              {".pdf", ".md", ".txt", ".docx", ".pptx"}]
     ok = 0
     errors = []
+    dest_dir = ensure_course_folder(subject) if subject else None
     for i, path in enumerate(files, 1):
         if progress:
             progress(f"Lese {path.name} ({i}/{len(files)})")
+        work = path
+        if dest_dir is not None:
+            dest = _unique_course_path(dest_dir, path.name)
+            shutil.move(str(path), str(dest))
+            work = dest
         try:
-            res = ingest_file(path)
+            res = ingest_file(work, subject=subject)
             if res.get("status") in ("ok", "skipped", "duplicate"):
                 ok += 1
             else:

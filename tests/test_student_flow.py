@@ -310,3 +310,46 @@ def test_course_snapshot_empfiehlt_unterlagen_ohne_docs(isolated_db):
     snap = student_flow.course_snapshot("Mathe")
     assert snap["doc_count"] == 0
     assert snap["next_action"] == "Unterlagen"
+
+
+def test_add_course_material_schreibt_in_fachordner(isolated_db, tmp_path, monkeypatch):
+    src = tmp_path / "quellen"
+    monkeypatch.setattr("ragapp.config.SOURCE_DIR", src)
+    monkeypatch.setattr(
+        "ragapp.ingestion.pipeline.ingest_file",
+        lambda path, **kw: {"status": "ok", "file": str(path)})
+    out = student_flow.add_course_material(
+        "BWL", text="Fixkosten sind unabhängig von der Menge.", title="VL Kosten")
+    folder = src / "BWL"
+    assert folder.is_dir()
+    mds = list(folder.glob("*.md"))
+    assert mds
+    assert "Fixkosten" in mds[0].read_text(encoding="utf-8")
+    docs = [d for d in manifest.list_documents() if d["subject"] == "BWL"]
+    assert docs
+    assert out["status"] == "ok"
+    snap = student_flow.course_snapshot("BWL")
+    assert snap["doc_count"] >= 1
+
+
+def test_add_course_material_ohne_fach_bricht_ehrlich_ab(isolated_db):
+    out = student_flow.add_course_material("", text="irgendwas")
+    assert out["status"] == "no_subject"
+    assert out["path"] is None
+
+
+def test_scan_inbox_once_verschiebt_in_fachordner(isolated_db, tmp_path, monkeypatch):
+    inbox = tmp_path / "inbox"
+    src = tmp_path / "quellen"
+    inbox.mkdir()
+    (inbox / "folie.md").write_text("# Folie\n\nInhalt.", encoding="utf-8")
+    monkeypatch.setattr("ragapp.config.INBOX_DIR", inbox)
+    monkeypatch.setattr("ragapp.config.SOURCE_DIR", src)
+    monkeypatch.setattr(
+        "ragapp.ingestion.pipeline.ingest_file",
+        lambda path, **kw: {"status": "ok", "file": str(path)})
+    res = student_flow.scan_inbox_once(subject="Mathe")
+    assert res["scanned"] == 1
+    assert res["ok"] == 1
+    assert not (inbox / "folie.md").exists()
+    assert (src / "Mathe" / "folie.md").is_file()
