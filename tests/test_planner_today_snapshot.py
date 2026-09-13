@@ -136,3 +136,36 @@ def test_cram_active_falsch_ohne_termin(isolated_db):
 def test_cram_active_am_klausurtag_selbst(isolated_db):
     manifest.upsert_exam("mathe", exam_date=_iso(0))
     assert planner.today_snapshot()["cram_active"] is True
+
+
+def test_daily_missions_leer_ohne_stoff(isolated_db):
+    from ragapp import student_flow
+    assert student_flow.daily_missions() == []
+
+
+def test_daily_missions_faellige_karten_und_planblock(isolated_db, monkeypatch):
+    from ragapp import student_flow, study_plan
+    monkeypatch.setattr(study_plan.settings, "PLAN_MAX_DAILY_FOCUS_MIN", 40, raising=False)
+    monkeypatch.setattr("ragapp.config.settings.PLAN_MAX_DAILY_FOCUS_MIN", 40, raising=False)
+    now = _time.time()
+    with manifest._connect() as conn:
+        conn.execute(
+            "INSERT INTO review_items (card_id, subject, topic, front, back, "
+            "suspended, use_flashcard, reps, created_at, due) "
+            "VALUES (?,?,?,?,?,0,1,3,?,?)",
+            ("c-due", "BWL", "Kosten", "Fällige Frage zu Kosten", "A", now, now - 3600))
+    pid = manifest.create_study_plan(
+        title="BWL", subject="BWL", doc_ids=[], deadline=None, daily_minutes=45)
+    sid = manifest.append_plan_section(pid, title="Kapitel Kosten", est_minutes=90)
+    manifest.append_plan_block(pid, section_id=sid,
+                               planned_date=date.today().isoformat(), planned_min=90)
+    missions = student_flow.daily_missions()
+    kinds = [m["kind"] for m in missions]
+    assert "reviews" in kinds
+    assert "plan" in kinds
+    plan = next(m for m in missions if m["kind"] == "plan")
+    assert plan["minutes"] == 40
+    assert plan["reason"]
+    assert len(missions) <= 3
+    for m in missions:
+        assert m["minutes"] > 0 and m["reason"]

@@ -385,6 +385,63 @@ def weak_subject() -> Optional[str]:
     return prios[0].get("subject")
 
 
+def daily_missions() -> list[dict]:
+    """Maximal drei Tagesmissionen: fällige Karten, ein schwaches Thema, ein Planblock.
+
+    Der Planblock wird auf PLAN_MAX_DAILY_FOCUS_MIN gedeckelt, damit die Mission
+    ehrlich bleibt. Jede Mission hat Dauer und Begründung.
+    """
+    from ragapp import analytics
+    from ragapp.config import settings
+    cap = max(5, int(settings.PLAN_MAX_DAILY_FOCUS_MIN))
+    snap = planner.today_snapshot()
+    missions: list[dict] = []
+
+    due = int(snap.get("due_cards") or 0)
+    if due > 0:
+        missions.append({
+            "id": "reviews",
+            "kind": "reviews",
+            "title": f"{due} fällige Karten",
+            "minutes": max(8, min(due, cap)),
+            "reason": "Fällige Wiederholungen zuerst, sonst wächst der Stau.",
+            "subject": (snap.get("top_priority") or {}).get("subject"),
+            "count": due,
+        })
+
+    subj = weak_subject()
+    weak = analytics.mastery_by_topic(subj, limit=1) if subj else []
+    if weak and int(weak[0].get("mastery_pct") or 0) < 80:
+        w = weak[0]
+        missions.append({
+            "id": "weak",
+            "kind": "weak_topic",
+            "title": f"Schwäche: {w.get('topic') or 'ohne Thema'}",
+            "minutes": min(20, cap),
+            "reason": f"Mastery nur {w.get('mastery_pct', 0)} % – dort sitzt es noch nicht.",
+            "subject": subj,
+            "topic": w.get("topic"),
+        })
+
+    open_today = [b for b in (snap.get("plan_blocks_today") or []) if not b.get("done")]
+    overdue = [b for b in (snap.get("overdue_plan_blocks") or []) if not b.get("done")]
+    blocks = open_today or overdue
+    if blocks:
+        raw = sum(int(b.get("planned_min") or 0) for b in blocks)
+        b0 = blocks[0]
+        missions.append({
+            "id": "plan",
+            "kind": "plan",
+            "title": (b0.get("section_title") or b0.get("plan_title") or "Planblock"),
+            "minutes": max(5, min(raw, cap)),
+            "reason": ("Im Lernplan für heute vorgesehen." if open_today
+                       else "Verpasster Planblock, auf die Lastgrenze gekappt."),
+            "subject": b0.get("plan_subject"),
+            "block_ids": [b.get("block_id") for b in blocks if b.get("block_id")],
+        })
+    return missions[:3]
+
+
 def save_voice_reference(audio_bytes: bytes) -> str:
     """Speichert eine in der App aufgenommene Referenzstimme."""
     from pathlib import Path
