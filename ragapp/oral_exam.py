@@ -136,3 +136,86 @@ def finish_session(session_id: str, total_pct: Optional[int] = None) -> dict:
     session["total_pct"] = (
         max(0, min(100, int(total_pct))) if total_pct is not None else None)
     return _save(session)
+
+
+def session_from_cards(subject: str, *, limit: int = 5) -> dict:
+    """Startet offline aus vorhandenen Karten; eine Frage nach der anderen."""
+    cards = manifest.get_due_cards(subject, limit=max(1, int(limit)), cram=True)
+    if not cards:
+        cards = manifest.list_cards(subject=subject, limit=max(1, int(limit)))
+    questions = [
+        {
+            "question": card.get("front") or "",
+            "reference": card.get("answer") or card.get("back") or "",
+        }
+        for card in cards if (card.get("front") or "").strip()
+    ]
+    if not questions:
+        return {"status": "empty", "session_id": None, "questions": []}
+    return create_session(subject, questions)
+
+
+def transcribe_answer(audio_bytes: bytes) -> dict:
+    """CPU-STT bleibt Default (speech_to_text erzwingt GPU nur per Opt-in)."""
+    if not audio_bytes:
+        return {"status": "empty", "transcript": ""}
+    from ragapp import speech_to_text
+    if not speech_to_text.is_available():
+        return {
+            "status": "no_stt", "transcript": "",
+            "message": "Lokale Spracherkennung ist nicht installiert.",
+        }
+    text = speech_to_text.transcribe_audio(audio_bytes)
+    if not text:
+        return {
+            "status": "no_stt", "transcript": "",
+            "message": "Aufnahme konnte lokal nicht transkribiert werden.",
+        }
+    return {"status": "ok", "transcript": text}
+
+
+def generate_followup(question: str, transcript: str, reference: str = "",
+                      *, model: Optional[str] = None) -> dict:
+    """Optionale einzelne Rückfrage. Ohne lokales Modell klarer Abbruch."""
+    from ragapp.config import settings
+    from ragapp.llm import get_llm, llm_task, list_installed_models
+    used_model = model or settings.LLM_MODEL_FAST
+    installed = list_installed_models()
+    if installed is not None and used_model not in installed:
+        return {
+            "status": "no_model", "followup": None,
+            "message": f"Lokales Modell {used_model} ist nicht installiert.",
+        }
+    prompt = (
+        "Formuliere genau EINE kurze fachliche Rückfrage zu dieser mündlichen "
+        "Prüfungsantwort. Keine Bewertung, keine Lösung. Antworte als JSON "
+        '{"followup":"..."}. Erfinde keine Inhalte außerhalb der Referenz.\n\n'
+        f"Frage: {question[:1200]}\n"
+        f"Antwort: {transcript[:2000]}\n"
+        f"Referenz: {reference[:2000]}"
+    )
+    try:
+        with llm_task(used_model):
+            data = get_llm(used_model).generate_json(prompt, temperature=0.1)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "status": "no_model", "followup": None,
+            "message": f"Rückfrage ohne lokales Modell nicht möglich: {exc}",
+        }
+    followup = str((data or {}).get("followup") or "").strip()
+    if not followup:
+        return {
+            "status": "no_model", "followup": None,
+            "message": "Das lokale Modell hat keine Rückfrage geliefert.",
+        }
+    return {"status": "ok", "followup": followup}
+
+
+def record_followup_answer(session_id: str, index: int,
+                           followup_index: int, transcript: str) -> dict:
+    session = get_session(session_id)
+    if not session:
+        raise KeyError(session_id)
+    followup = session["questions"][int(index)]["followups"][int(followup_index)]
+    followup["transcript"] = (transcript or "").strip()
+    return _save(session)

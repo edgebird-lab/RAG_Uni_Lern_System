@@ -67,6 +67,114 @@ st.caption("Getimte Simulation unter echten Bedingungen – ohne Zwischenfeedbac
 EXAM = "_exam"        # aktive Probeklausur (dict: cards, answers, start, limit)
 
 subjects = manifest.study_subjects()
+
+# F2: schlanke Sprechschleife, noch ohne das spätere Prüfungszentrum (F4).
+with st.expander("🎙️ Mündliche Prüfung", expanded=False):
+    from ragapp import oral_exam
+    if not subjects:
+        st.caption("Für mündliche Fragen zuerst Karteikarten anlegen.")
+    elif not st.session_state.get("_oral_session_id"):
+        _oral_subject = st.selectbox(
+            "Fach", subjects, format_func=_fach, key="oral_subject")
+        _oral_n = st.number_input(
+            "Fragen", 1, 10, 5, key="oral_count")
+        if st.button("Mündliche Prüfung starten", type="primary", key="oral_start"):
+            _started = oral_exam.session_from_cards(
+                _oral_subject, limit=int(_oral_n))
+            if _started.get("session_id"):
+                st.session_state["_oral_session_id"] = _started["session_id"]
+                st.rerun()
+            else:
+                st.warning("Keine geeigneten Fragen in diesem Fach.")
+    else:
+        _oral_sid = st.session_state["_oral_session_id"]
+        _oral = oral_exam.get_session(_oral_sid)
+        if not _oral or _oral.get("status") != "active":
+            st.session_state.pop("_oral_session_id", None)
+            st.rerun()
+        _idx = int(_oral.get("current_index") or 0)
+        _questions = _oral.get("questions") or []
+        if _idx >= len(_questions):
+            st.success("Alle mündlichen Fragen beantwortet.")
+            if st.button("Sitzung abschließen", key="oral_finish"):
+                oral_exam.finish_session(_oral_sid)
+                st.session_state.pop("_oral_session_id", None)
+                st.session_state.pop("_oral_last_index", None)
+                st.rerun()
+        else:
+            _item = _questions[_idx]
+            st.caption(f"Frage {_idx + 1} von {len(_questions)}")
+            st.markdown(f"### {_item['question']}")
+            _audio = st.audio_input(
+                "Antwort aufnehmen", key=f"oral_audio_{_oral_sid}_{_idx}")
+            if st.button(
+                    "Aufnahme transkribieren", type="primary",
+                    disabled=_audio is None,
+                    key=f"oral_transcribe_{_oral_sid}_{_idx}"):
+                _tr = oral_exam.transcribe_answer(
+                    _audio.getvalue() if _audio else b"")
+                if _tr["status"] != "ok":
+                    st.error(_tr.get("message") or "Keine Transkription möglich.")
+                else:
+                    oral_exam.record_answer(
+                        _oral_sid, _idx, _tr["transcript"])
+                    st.session_state["_oral_last_index"] = _idx
+                    st.rerun()
+
+        _last_idx = st.session_state.get("_oral_last_index")
+        if _last_idx is not None and int(_last_idx) < len(_questions):
+            _last = _questions[int(_last_idx)]
+            if _last.get("transcript"):
+                st.markdown("**Transkript**")
+                st.write(_last["transcript"])
+                if not _last.get("followups"):
+                    if st.button(
+                            "Optionale Rückfrage stellen",
+                            key=f"oral_followup_{_oral_sid}_{_last_idx}"):
+                        _fu = oral_exam.generate_followup(
+                            _last["question"], _last["transcript"],
+                            _last.get("reference") or "")
+                        if _fu["status"] != "ok":
+                            st.error(_fu.get("message") or
+                                     "Rückfrage ohne Modell nicht möglich.")
+                        else:
+                            oral_exam.record_answer(
+                                _oral_sid, int(_last_idx), _last["transcript"],
+                                followup=_fu["followup"])
+                            st.rerun()
+                else:
+                    _fu_item = _last["followups"][-1]
+                    st.markdown(f"**Rückfrage:** {_fu_item['question']}")
+                    _fu_audio = st.audio_input(
+                        "Rückfrage beantworten",
+                        key=f"oral_fu_audio_{_oral_sid}_{_last_idx}")
+                    if st.button(
+                            "Rückfrage transkribieren",
+                            disabled=_fu_audio is None,
+                            key=f"oral_fu_transcribe_{_oral_sid}_{_last_idx}"):
+                        _fu_tr = oral_exam.transcribe_answer(
+                            _fu_audio.getvalue() if _fu_audio else b"")
+                        if _fu_tr["status"] != "ok":
+                            st.error(_fu_tr.get("message") or
+                                     "Keine Transkription möglich.")
+                        else:
+                            oral_exam.record_followup_answer(
+                                _oral_sid, int(_last_idx),
+                                len(_last["followups"]) - 1,
+                                _fu_tr["transcript"])
+                            st.session_state.pop("_oral_last_index", None)
+                            st.rerun()
+            if st.button(
+                    "Ohne Rückfrage weiter", key=f"oral_next_{_oral_sid}_{_last_idx}"):
+                st.session_state.pop("_oral_last_index", None)
+                st.rerun()
+
+        if st.button("Mündliche Sitzung abbrechen", key="oral_abort"):
+            oral_exam.finish_session(_oral_sid)
+            st.session_state.pop("_oral_session_id", None)
+            st.session_state.pop("_oral_last_index", None)
+            st.rerun()
+
 if not subjects:
     st.info("Noch keine Karteikarten vorhanden – erstelle sie zuerst auf **🎓 Karteikarten**.")
     st.stop()

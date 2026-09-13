@@ -78,3 +78,31 @@ def test_oral_exam_beruehrt_schriftliche_attempts_nicht(isolated_db):
     oral_exam.create_session("BWL", [{"question": "Erkläre X."}])
     assert manifest.list_exam_attempts() == before
     assert len(oral_exam.list_sessions("BWL")) == 1
+
+
+def test_oral_exam_session_from_cards_zeigt_eine_frage_nach_der_anderen(
+        isolated_db):
+    from ragapp.student_flow import card_from_text
+    card_from_text("Erkläre X.", "X ist Y.", subject="BWL", source="note")
+    session = oral_exam.session_from_cards("BWL", limit=1)
+    assert session["status"] == "active"
+    assert len(session["questions"]) == 1
+    assert session["questions"][0]["question"] == "Erkläre X."
+
+
+def test_oral_transcribe_audio_klarer_abbruch_ohne_stt(monkeypatch):
+    monkeypatch.setattr(
+        "ragapp.speech_to_text.is_available", lambda: False)
+    out = oral_exam.transcribe_answer(b"audio")
+    assert out["status"] == "no_stt"
+    assert out["transcript"] == ""
+    assert out["message"]
+
+
+def test_oral_followup_klarer_abbruch_ohne_modell(monkeypatch):
+    monkeypatch.setattr(
+        "ragapp.llm.list_installed_models", lambda: [])
+    out = oral_exam.generate_followup("Frage?", "Antwort", model="nicht-da")
+    assert out["status"] == "no_model"
+    assert out["followup"] is None
+    assert "nicht installiert" in out["message"]
