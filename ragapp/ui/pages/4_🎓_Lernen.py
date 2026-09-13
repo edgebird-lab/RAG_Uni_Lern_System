@@ -784,10 +784,9 @@ else:
         # 2 Halb · 3 Gewusst") eine ECHTE Tastenkombination machen, nicht nur
         # eine Beschriftung - fuer Vielnutzer (wie bei Anki) die Haupt-
         # Beschleunigung: bewerten ohne die Hand von der Tastatur zu nehmen.
-        # Einmalig auf dem PARENT-Dokument gebunden (siehe _theme_toggle_html-
-        # Kommentar in _style.py: Streamlit macht keinen echten Seiten-Reload,
-        # ein erneutes Binden bei jedem Rerun wuerde denselben Tastendruck
-        # sonst mehrfach ausloesen) - sucht die Buttons bei JEDEM Tastendruck
+        # Einmalig auf dem PARENT-Dokument gebunden (Streamlit macht keinen
+        # echten Seiten-Reload; ein erneutes Binden bei jedem Rerun wuerde
+        # denselben Tastendruck sonst mehrfach ausloesen) - sucht die Buttons bei JEDEM Tastendruck
         # live per Klasse, dadurch automatisch wirkungslos, wenn gerade keine
         # Bewertung ansteht (z. B. auf einer anderen Seite oder vor dem
         # Aufdecken) statt Zustand zwischen Skript und Streamlit abgleichen

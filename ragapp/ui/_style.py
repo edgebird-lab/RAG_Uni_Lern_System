@@ -642,7 +642,7 @@ div[class*="st-key-tile_"] button p {{
    gemessen: z-index 1000059, volle Viewport-Flaeche, pointer-events:auto -
    faengt sonst JEDEN Klick ab, obwohl visuell nichts zu sehen ist) - daher
    bewusst der maximal moegliche CSS-z-index statt nur "hoch genug fuer jetzt". */
-#rag-theme-toggle {{
+#rag-theme-switch {{
   position:fixed; top:14px; right:18px; z-index:2147483647;
   width:42px; height:42px; border-radius:50%;
   border:1px solid {soft}; background:#ffffff; cursor:pointer;
@@ -650,8 +650,8 @@ div[class*="st-key-tile_"] button p {{
   box-shadow:0 2px 10px rgba(0,0,0,.10);
   transition:transform .18s ease, box-shadow .18s ease;
 }}
-#rag-theme-toggle:hover {{transform:scale(1.08); box-shadow:0 6px 16px rgba(0,0,0,.16);}}
-html.rag-dark #rag-theme-toggle {{
+#rag-theme-switch:hover {{transform:scale(1.08); box-shadow:0 6px 16px rgba(0,0,0,.16);}}
+html.rag-dark #rag-theme-switch {{
   background:#0f2440; border-color:#1e3a5f; box-shadow:0 2px 10px rgba(0,0,0,.35);
 }}
 
@@ -754,31 +754,36 @@ def _transition_html(accent: str, soft: str) -> str:
 
 # --------------------------------------------------------------------------- #
 # Dark-Mode-Umschalter: kleiner runder Button, oben rechts im ECHTEN Elternfenster
-# (nicht nur im Chat/dieser Seite), persistiert in localStorage, wirkt SOFORT ohne
-# Streamlit-Rerun (reiner Client-Toggle, setzt die Klasse "rag-dark"/"rag-light"
+# (nicht nur im Chat/dieser Seite), persistiert in parent.localStorage, wirkt
+# SOFORT ohne Streamlit-Rerun (reiner Client-Toggle, setzt "rag-dark"/"rag-light"
 # direkt auf <html>). Bewusst NUR 2 Klick-Zustaende (Hell/Dunkel) statt 3
 # (Auto/Hell/Dunkel) - ein Nutzer-Report zeigte: bei OS-Einstellung "Hell" sah ein
 # Klick von Auto auf Hell OPTISCH GAR NICHTS anders aus (beides rendert hell), was
-# wie ein kaputter Button wirkte, obwohl der Klick technisch funktionierte. Jeder
-# Klick wechselt jetzt IMMER sichtbar zwischen Hell und Dunkel, ausgehend vom
-# aktuell TATSAECHLICH dargestellten Zustand (bei noch nie geklickt: OS-Praeferenz
-# per matchMedia). "Auto" bleibt nur der stille Ausgangszustand vor dem ersten
-# Klick, kein eigener Zyklus-Schritt mehr. Bewusst UNBEDINGT (nicht nur bei
-# Seitenwechsel) injiziert, weil Idempotenz billig ist und so auch nach einem
-# reinen Widget-Rerun garantiert der richtige Zustand steht.
+# wie ein kaputter Button wirkte, obwohl der Klick technisch funktionierte.
+#
+# WARUM der Handler am Button haengt und bei JEDEM Inject neu gesetzt wird:
+# ``components.html()`` laeuft in einem Iframe. Ein einmalig auf parent.document
+# gebundener Listener (plus Flag "schon gebunden") ist nach der ersten
+# Streamlit-Navigation tot: React unmountet das Iframe, der Browser verwirft
+# dessen Event-Listener, das Flag auf dem Parent bleibt aber stehen - jeder
+# weitere Inject ueberspringt das Binden, Klicks tun dann gar nichts. Live
+# reproduziert: Home (frisch) klickt, nach Menue->Chat klickt nichts mehr.
+# ``btn.onclick = ...`` vom jeweils lebenden Iframe ueberschreibt den toten
+# Handler. Speicher/matchMedia laufen bewusst ueber window.parent, nicht ueber
+# das Iframe (dessen localStorage nach Unmount unbrauchbar ist).
 # --------------------------------------------------------------------------- #
 def _theme_toggle_html() -> str:
     return """
 <script>
 (function() {
   try {
-    var doc = window.parent.document;
+    var parent = window.parent;
+    var doc = parent.document;
     var root = doc.documentElement;
+    var store = parent.localStorage;
     var KEY = 'rag-theme';
-    var mql = window.parent.matchMedia ? window.parent.matchMedia('(prefers-color-scheme: dark)') : null;
+    var mql = parent.matchMedia ? parent.matchMedia('(prefers-color-scheme: dark)') : null;
 
-    // "auto"/nichts gespeichert -> loest zur tatsaechlichen OS-Praeferenz auf.
-    // Nach dem ERSTEN Klick ist der gespeicherte Wert immer 'light' oder 'dark'.
     function effective(saved) {
       if (saved === 'light' || saved === 'dark') { return saved; }
       return (mql && mql.matches) ? 'dark' : 'light';
@@ -792,71 +797,62 @@ def _theme_toggle_html() -> str:
       root.classList.remove('rag-dark', 'rag-light');
       root.classList.add(effMode === 'dark' ? 'rag-dark' : 'rag-light');
     }
+    function readSaved() {
+      try { return store.getItem(KEY); } catch (err) { return null; }
+    }
+    function writeSaved(value) {
+      try { store.setItem(KEY, value); } catch (err) {}
+    }
 
-    var saved = localStorage.getItem(KEY);
-    apply(effective(saved));
+    apply(effective(readSaved()));
 
-    if (mql && !mql._ragBound) {
-      mql._ragBound = true;
+    if (mql && !parent.__ragThemeMqlBound) {
+      parent.__ragThemeMqlBound = true;
       mql.addEventListener('change', function() {
-        // nur nachziehen, wenn der Nutzer NIE manuell geklickt hat
-        if (!localStorage.getItem(KEY)) { apply(effective(null)); }
+        if (!readSaved()) { apply(effective(null)); }
       });
     }
 
-    function refreshLabel(el) {
-      var eff = effective(localStorage.getItem(KEY));
-      el.textContent = label(eff);
-      el.title = title(eff);
-    }
-
-    var btn = doc.getElementById('rag-theme-toggle');
+    // Neue id, damit ein noch lebender Capture-Listener alter Builds
+    // (closest('#rag-theme-toggle')) diesen Button nicht mehr mit-umschaltet
+    // und den Klick optisch wieder zurueckdreht.
+    var btn = doc.getElementById('rag-theme-switch') || doc.getElementById('rag-theme-toggle');
     if (!btn) {
       btn = doc.createElement('button');
-      btn.id = 'rag-theme-toggle';
       btn.setAttribute('aria-label', 'Darstellung wechseln');
       doc.body.appendChild(btn);
     }
-    refreshLabel(btn);
+    btn.id = 'rag-theme-switch';
+    btn.type = 'button';
+    btn.inert = false;
+    btn.textContent = label(effective(readSaved()));
+    btn.title = title(effective(readSaved()));
 
-    // Streamlit markiert bei einer Seiten-Navigation offenbar zeitweise ALLE
-    // direkten Kinder von <body> (auch von uns injizierte, die es gar nicht
-    // kennt) mit dem "inert"-Attribut - ein inert-Element ist fuer den
-    // Browser komplett nicht mehr klickbar/fokussierbar, auch wenn es
-    // sichtbar bleibt. Sofort zuruecksetzen UND dauerhaft gegenhalten
-    // (MutationObserver + Interval-Sicherheitsnetz), falls Streamlit es
-    // erneut setzt (Timing zwischen dessen Uebergangs-Logik und diesem
-    // Skript ist nicht garantiert).
-    if (btn.inert) { btn.inert = false; }
-    if (!btn._ragInertGuard) {
-      btn._ragInertGuard = true;
-      try {
-        new MutationObserver(function() {
-          if (btn.inert) { btn.inert = false; }
-        }).observe(btn, {attributes: true, attributeFilter: ['inert']});
-      } catch (e) {}
-      setInterval(function() { if (btn.inert) { btn.inert = false; } }, 200);
-    }
+    // Jeder Inject ersetzt den Handler. Nicht einmalig auf document delegieren:
+    // der alte Iframe-Listener stirbt, ein Flag auf dem Parent wuerde Rebinds
+    // danach dauerhaft verhindern (siehe Funktions-Docstring).
+    btn.onclick = function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var next = effective(readSaved()) === 'dark' ? 'light' : 'dark';
+      writeSaved(next);
+      apply(next);
+      btn.textContent = label(next);
+      btn.title = title(next);
+    };
 
-    // Klick per DELEGATION auf `doc` (einmalig gebunden) statt direkt auf den
-    // Button: robuster als ein Listener direkt am Button, falls Streamlit den
-    // Button-Knoten selbst zwischenzeitlich neu rendert/ersetzt (beobachtet:
-    // vereinzelt reagierte ein direkt gebundener Klick auf bestimmten Seiten
-    // nach einer Navigation nicht, obwohl Element/inert/z-index unauffaellig
-    // waren) - `doc` selbst bleibt ueber die gesamte Sitzung stabil.
-    if (!doc.__ragThemeClickBound) {
-      doc.__ragThemeClickBound = true;
-      doc.addEventListener('click', function(e) {
-        var target = e.target && e.target.closest ? e.target.closest('#rag-theme-toggle') : null;
-        if (!target) { return; }
-        var curEff = effective(localStorage.getItem(KEY));
-        var next = curEff === 'dark' ? 'light' : 'dark';
-        localStorage.setItem(KEY, next);
-        apply(next);
-        refreshLabel(target);
-      }, true);
+    // Streamlit setzt bei Navigation "inert" auf direkte body-Kinder. Der
+    // Timer muss auf dem PARENT laufen - ein setInterval im Iframe stirbt
+    // mit dem Iframe, genau wie der alte Klick-Listener.
+    if (!parent.__ragThemeInertTimer) {
+      parent.__ragThemeInertTimer = parent.setInterval(function() {
+        var b = parent.document.getElementById('rag-theme-switch');
+        if (b && b.inert) { b.inert = false; }
+      }, 200);
     }
-  } catch (e) {}
+  } catch (e) {
+    try { console.warn('rag-theme', e); } catch (err) {}
+  }
 })();
 </script>
 """
@@ -1202,9 +1198,9 @@ def apply_page_style(page_key: str, *, show_nav: bool = True) -> dict:
         css += _doodle_layer(accent, soft)
     st.markdown(css, unsafe_allow_html=True)
 
-    # Dark-Mode-Bootstrap + Umschalt-Button: UNBEDINGT bei jedem Aufruf (billig,
-    # idempotent) - garantiert den richtigen Hell/Dunkel-Zustand auch direkt
-    # nach einem reinen Widget-Rerun (siehe _theme_toggle_html Docstring).
+    # Dark-Mode-Bootstrap + Umschalt-Button: UNBEDINGT bei jedem Aufruf. Der
+    # Button-Handler MUSS nach jedem Iframe-Unmount neu gesetzt werden
+    # (siehe _theme_toggle_html Docstring) - "einmalig binden" ist hier falsch.
     components.html(_theme_toggle_html(), height=0)
     components.html(_i18n_patch_html(), height=0)
     components.html(_command_palette_shortcut_html(), height=0)

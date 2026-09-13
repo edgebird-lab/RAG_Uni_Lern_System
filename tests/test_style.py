@@ -18,6 +18,7 @@ from ragapp.ui._style import (
     _doodle_layer,
     _hero_title_html,
     _technical_override_css,
+    _theme_toggle_html,
     celebration_effects_html,
     combo_pulse_html,
     page_title,
@@ -190,3 +191,25 @@ def test_hero_title_html_ist_wohlgeformtes_xml():
     import xml.etree.ElementTree as ET
     html = _hero_title_html("Willkommen zurück 👋")
     ET.fromstring(html)
+
+
+# --------------------------------------------------------------------------- #
+# Dark-Mode-Umschalter: der Klick-Handler darf NICHT einmalig auf dem Parent-
+# document gebunden und danach per Flag uebersprungen werden. Streamlit
+# unmountet das components.html-Iframe bei Navigation; der Browser verwirft
+# dann den Listener, das Flag bleibt - Klicks tun danach nichts mehr.
+# --------------------------------------------------------------------------- #
+def test_theme_toggle_html_bindet_handler_am_button_neu():
+    html = _theme_toggle_html()
+    assert "parent.localStorage" in html
+    assert "btn.onclick" in html
+    assert "__ragThemeClickBound" not in html
+    assert "btn.type = 'button'" in html
+    assert "rag-theme-switch" in html
+
+
+def test_theme_toggle_html_nutzt_parent_matchmedia_und_parent_timer():
+    html = _theme_toggle_html()
+    assert "parent.matchMedia" in html
+    assert "parent.setInterval" in html
+    assert "rag-theme-switch" in html
