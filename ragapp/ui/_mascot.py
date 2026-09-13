@@ -139,7 +139,7 @@ def home_mood_line(snapshot: "dict | None", *, celebrate: bool = False,
     if snapshot and (snapshot.get("leeches") or 0) >= _HOME_WORRIED_LEECH_THRESHOLD:
         return ("🐛", f"{snapshot['leeches']} Problemkarten warten – die lohnen sich besonders.")
     if needs_harvest:
-        return ("📇", "Neue Fragen sind da – einmal Karten aktualisieren, dann üben!")
+        return ("📇", "Neue Fragen sind da – Lernset öffnen, dann üben!")
     if snapshot and snapshot.get("cram_active") and snapshot.get("next_exam"):
         return ("⏰", "Klausur nah – jede Wiederholung zählt jetzt.")
     if snapshot and snapshot.get("due_cards"):

@@ -432,7 +432,7 @@ if _snap:
         if _needs_harvest:
             st.warning("📇 Neue Fragen sind indexiert, aber noch **nicht als Karteikarten** "
                        "übernommen.")
-            if st.button("Karten aktualisieren", key="heute_harvest",
+            if st.button("Lernset öffnen", key="heute_harvest",
                          use_container_width=True):
                 st.switch_page(_target["lernen"])
         elif _snap["overdue_tasks"] or _snap["due_today_tasks"]:
