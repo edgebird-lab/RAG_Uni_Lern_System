@@ -566,6 +566,44 @@ except Exception:  # noqa: BLE001
     pass
 
 st.write("")
+from ragapp import analytics as _home_analytics
+from ragapp.student_flow import daily_missions as _daily_missions
+_missions = _daily_missions()
+_goal = _home_analytics.daily_goal_status()
+_kind_labels = {"reviews": "Reviews", "minutes": "Minuten", "plan_blocks": "Planblöcke"}
+with card("missionen"):
+    st.markdown("#### Heute")
+    _pick = st.segmented_control(
+        "Tagesziel",
+        options=list(_kind_labels.keys()),
+        format_func=lambda k: _kind_labels[k],
+        default=_home_analytics.get_daily_goal_kind(),
+        key="home_daily_goal_kind",
+    )
+    if _pick and _pick != _home_analytics.get_daily_goal_kind():
+        _home_analytics.set_daily_goal_kind(_pick)
+        st.rerun()
+    st.caption(
+        f"{_goal['done_today']}/{_goal['goal']} {_kind_labels.get(_goal.get('kind'), 'Reviews')} "
+        f"· Ampel {_goal['ampel']}. Nur erledigte Reviews/Minuten/Blöcke zählen – nicht das Öffnen.")
+    if _missions:
+        for _m in _missions:
+            if st.button(
+                    f"{_m['title']} · {_m['minutes']} Min",
+                    key=f"home_mission_{_m['id']}",
+                    help=_m["reason"],
+                    use_container_width=True):
+                if _m["kind"] == "plan":
+                    st.switch_page(_target["lernplan"])
+                else:
+                    st.session_state["study_prefill"] = {
+                        "source": "mission", "limit": 16, "mode": "reveal",
+                        "subject": _m.get("subject"),
+                    }
+                    st.switch_page(_target["lernen"])
+    else:
+        st.caption("Keine Missionen – erst Karten oder einen Lernplan anlegen.")
+
 st.markdown("#### Ziele")
 _pin_cols = st.columns(3)
 for _i, _cat in enumerate(GOAL_CATEGORIES):

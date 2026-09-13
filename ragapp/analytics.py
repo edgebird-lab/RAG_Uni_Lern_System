@@ -11,12 +11,14 @@ Alle Funktionen sind gegen ein leeres/frisches Log robust (geben 0/leer zurueck)
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 import time
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Iterator, Optional
 
-from ragapp.config import MANIFEST_DB, settings
+from ragapp.config import DATA_DIR, MANIFEST_DB, settings
 
 # Ratings (Spiegel von study.py, hier ohne Import gegen Zyklen)
 _GEWUSST = 2
@@ -402,25 +404,64 @@ def progress_snapshot_trend(subject: Optional[str] = None, days: int = 14) -> li
     return manifest.list_progress_snapshots(subject or _SNAPSHOT_ALL, days)
 
 
+DAILY_GOAL_KINDS = ("reviews", "minutes", "plan_blocks")
+_DAILY_GOAL_FILE = DATA_DIR / "daily_goal.json"
+
+
+def get_daily_goal_kind() -> str:
+    try:
+        data = json.loads(Path(_DAILY_GOAL_FILE).read_text(encoding="utf-8"))
+        kind = data.get("kind")
+        if kind in DAILY_GOAL_KINDS:
+            return kind
+    except Exception:  # noqa: BLE001
+        pass
+    return "reviews"
+
+
+def set_daily_goal_kind(kind: str) -> None:
+    if kind not in DAILY_GOAL_KINDS:
+        kind = "reviews"
+    path = Path(_DAILY_GOAL_FILE)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"kind": kind}), encoding="utf-8")
+
+
 def daily_goal_status(subject: Optional[str] = None) -> dict:
-    """Heutiges Tagesziel + Backlog-Ampel: heute geuebt vs. Ziel, faellige Karten.
+    """Heutiges Prozessziel: Reviews, Minuten oder Planblöcke – plus Backlog-Ampel.
 
     "faellige Karten" ist die um das Neue-Karten-Tageslimit BEREINIGTE Zahl
     (siehe manifest.effective_due_count()) - sonst koennte die Ampel faelschlich
     Rot zeigen, nur weil viele brandneue, noch nie geuebte Karten existieren,
-    obwohl das Tageslimit sie ohnehin zurueckhaelt."""
-    goal = max(1, int(getattr(settings, "DAILY_REVIEW_GOAL", 40)))
+    obwohl das Tageslimit sie ohnehin zurueckhaelt.
+    """
+    kind = get_daily_goal_kind()
     now = time.time()
     sc, sa = _subj_clause(subject)
     with _conn() as c:
-        today = c.execute(
+        reviews_today = c.execute(
             "SELECT COUNT(*) AS r FROM review_log WHERE reviewed_at>=?" + sc,
             [_day_start(now)] + sa).fetchone()["r"] or 0
     from ragapp import manifest as _manifest
+    from ragapp import planner as _planner
     due = _manifest.effective_due_count(subject)
-    ampel = "grün" if due <= goal else ("gelb" if due <= 2 * goal else "rot")
-    return {"goal": goal, "done_today": today, "due": due,
-            "goal_reached": today >= goal, "ampel": ampel}
+    snap = _planner.today_snapshot()
+    review_goal = max(1, int(getattr(settings, "DAILY_REVIEW_GOAL", 40)))
+    if kind == "minutes":
+        goal = max(15, min(int(settings.PLAN_MAX_DAILY_FOCUS_MIN), 90))
+        done = int(snap.get("study_min_today") or 0)
+    elif kind == "plan_blocks":
+        blocks = snap.get("plan_blocks_today") or []
+        goal = max(1, len(blocks)) if blocks else 1
+        done = sum(1 for b in blocks if b.get("done"))
+    else:
+        kind = "reviews"
+        goal = review_goal
+        done = reviews_today
+    ampel = "grün" if due <= review_goal else ("gelb" if due <= 2 * review_goal else "rot")
+    return {"kind": kind, "goal": goal, "done_today": done, "due": due,
+            "goal_reached": done >= goal, "ampel": ampel,
+            "reviews_today": reviews_today}
 
 
 def leeches(subject: Optional[str] = None, limit: int = 60) -> list[dict]:

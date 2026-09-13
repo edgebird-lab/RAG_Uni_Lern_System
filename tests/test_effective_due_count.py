@@ -135,6 +135,20 @@ def test_daily_goal_status_ampel_ignoriert_gedeckelte_neue_karten(isolated_db, m
     assert status["ampel"] == "grün"
 
 
+def test_daily_goal_kind_reviews_minuten_plan(isolated_db, tmp_path, monkeypatch):
+    goal_file = tmp_path / "daily_goal.json"
+    monkeypatch.setattr(analytics, "_DAILY_GOAL_FILE", goal_file)
+    analytics.set_daily_goal_kind("minutes")
+    assert analytics.get_daily_goal_kind() == "minutes"
+    status = analytics.daily_goal_status()
+    assert status["kind"] == "minutes"
+    assert status["goal"] >= 15
+    analytics.set_daily_goal_kind("plan_blocks")
+    status = analytics.daily_goal_status()
+    assert status["kind"] == "plan_blocks"
+    assert status["goal"] >= 1
+
+
 def _seed_learning_card(subject: str, *, due_offset: float = -60.0) -> str:
     """Faellige Learning-Karte (fsrs_state=1)."""
     cid = uuid.uuid4().hex[:16]
