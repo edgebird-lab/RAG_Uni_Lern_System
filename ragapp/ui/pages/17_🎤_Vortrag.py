@@ -174,6 +174,9 @@ if _active_id is None:
             st.session_state.pop("_talk_searx_hits", None)
             st.session_state["_talk_selected_sources"] = []
 
+        _talk_len = st.radio(
+            "Länge", ["Kurz (5 Folien, Referat morgen)", "Normal"],
+            horizontal=True, key="talk_len_preset")
         if st.button("📝 Folien & Skript erzeugen", type="primary",
                      disabled=not _new_doc_names, key="talk_generate"):
             _doc_ids = [_subj_docs[n] for n in _new_doc_names]
@@ -184,7 +187,8 @@ if _active_id is None:
                 _marp, _script, _used, _warn = talk.generate_talk_content(
                     _doc_ids, title=_new_title or "Vortrag",
                     subject=_new_subject, sources=_sources, model=_new_model,
-                    on_progress=_progress_tracker(_bar, _cap, "Vortrag"))
+                    on_progress=_progress_tracker(_bar, _cap, "Vortrag"),
+                    max_slides=5 if _talk_len.startswith("Kurz") else None)
                 st.session_state["_talk_draft"] = {
                     "marp_md": _marp, "script": _script,
                     "title": _new_title or f"Vortrag {_fach(_new_subject)}",
@@ -212,6 +216,15 @@ if _active_id is None:
             f"{len(_draft.get('sources') or [])} externe Quelle(n)"
         )
         _render_pronunciation_hints(st.session_state[_script_key], key_prefix="talk_draft")
+        _slides = [s.strip() for s in st.session_state[_marp_key].split("\n---\n") if s.strip()]
+        _paras = [p.strip() for p in st.session_state[_script_key].split("\n\n") if p.strip()]
+        if _slides:
+            _si = st.selectbox("Folie ↔ Skript", range(len(_slides)),
+                               format_func=lambda i: f"Folie {i + 1}",
+                               key="talk_draft_slide_pick")
+            st.code(_slides[_si][:600], language="markdown")
+            if _paras:
+                st.info(_paras[min(_si, len(_paras) - 1)][:800])
 
         dc1, dc2, dc3 = st.columns(3)
         if dc1.button("💾 Speichern", type="primary", use_container_width=True,
@@ -339,7 +352,7 @@ _marp_ok = talk.find_marp_cli() is not None
 if not _marp_ok:
     st.info(talk.marp_install_hint())
 
-vc1, vc2 = st.columns(2)
+vc1, vc2, vc3 = st.columns(3)
 with vc1:
     if st.button("🖼️ HTML per Marp", disabled=not _marp_ok, key="talk_html"):
         try:
@@ -349,6 +362,17 @@ with vc1:
             st.download_button("⬇️ HTML herunterladen", data=_html.read_bytes(),
                                file_name="talk.html", mime="text/html",
                                key="talk_dl_html")
+        except talk.TalkError as exc:
+            st.error(str(exc))
+with vc3:
+    if st.button("📄 Handout (PDF)", disabled=not _marp_ok, key="talk_pdf"):
+        try:
+            _md_path = talk.save_marp_file(_active_id, _active["marp_md"])
+            _pdf = talk.talk_dir(_active_id) / "talk.pdf"
+            talk.run_marp(_md_path, output=_pdf, fmt="pdf")
+            st.download_button("⬇️ PDF herunterladen", data=_pdf.read_bytes(),
+                               file_name="talk.pdf", mime="application/pdf",
+                               key="talk_dl_pdf")
         except talk.TalkError as exc:
             st.error(str(exc))
 with vc2:

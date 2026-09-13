@@ -70,8 +70,8 @@ if _mv_flash:
 if _counts["total"] == 0:
     from ragapp.ui._style import empty_state, page_title as _pt
     empty_state(
-        "Noch keine Karteikarten vorhanden. Sie entstehen aus generierten Fragen "
-        "und dem Klausur-Lernkatalog.",
+        "Noch keine Karteikarten. Lege sie aus Fragen, dem Lernkatalog (Seite Import) "
+        "oder aus Chat/Notizen an.",
         cta_label=f"Zu {_pt('ingestion')}",
         page_key="ingestion",
         icon="📇",
@@ -83,9 +83,9 @@ if _counts["total"] == 0:
             res = study.harvest_cards(progress=lambda m: s.update(label=m))
             s.update(label=f"Fertig: {res['neu']} Karten erstellt", state="complete")
         if res["gefunden"] == 0:
-            st.warning("Es wurde **kein** Fragenmaterial gefunden. Erzeuge zuerst Fragen unter "
-                       f"**{_pt('ingestion')}** → Fragen generieren bzw. Klausur-Lernkatalog "
-                       "erstellen. Danach hier erneut Karten erstellen.")
+            st.warning("Kein Fragenmaterial gefunden. Unter **Import** Fragen erzeugen "
+                       "oder den **Klausur-Lernkatalog** starten – danach hier erneut "
+                       "Karten erstellen.")
         else:
             st.rerun()
     st.stop()
@@ -172,6 +172,32 @@ def _start_study(karten: list, mode: str) -> None:
     st.session_state["_study_leech_cleared"] = 0
     st.session_state[ROUND] = len(karten)
     st.session_state["_study_mode"] = mode
+
+
+_prefill = st.session_state.pop("study_prefill", None)
+if _prefill and not st.session_state.get(ACTIVE):
+    from ragapp import student_flow as _sf
+    _lim = int(_prefill.get("limit") or 16)
+    if _prefill.get("source") == "fehlerheft" or _prefill.get("deck") == "Fehlerheft":
+        _pk = _sf.fehlerheft_cards(limit=_lim, subject=_prefill.get("subject"))
+    elif _prefill.get("sprint") or _prefill.get("mode") == "sprint":
+        _pk = _sf.sprint_cards(subject=_prefill.get("subject"), limit=_lim)
+        st.session_state["_study_sprint"] = True
+    else:
+        _pk = _sf.today_session_cards(
+            subject=_prefill.get("subject"), limit=_lim,
+            cram=bool(_prefill.get("cram")), deck=_prefill.get("deck"),
+            sprint=bool(_prefill.get("sprint")))
+        if _prefill.get("mode") == "sprint":
+            st.session_state["_study_sprint"] = True
+    _pmode = _prefill.get("mode") or "reveal"
+    if _pmode == "sprint":
+        _pmode = "reveal"
+    if _pk:
+        _start_study(_pk, _pmode if _pmode in ("reveal", "type", "cloze", "mcq") else "reveal")
+        st.rerun()
+    else:
+        st.info("Keine passenden Karten für diesen Start – wähle unten einen Stapel.")
 
 
 if not st.session_state.get(ACTIVE):
@@ -285,15 +311,39 @@ if not st.session_state.get(ACTIVE):
         st.success("✅ Für diese Auswahl ist gerade **nichts fällig** – gut gemacht! "
                    "Komm später wieder, oder nutze die **Challenge** unten "
                    "(Klausur-Modus), um trotzdem zu üben.")
-    if st.button("▶️ Jetzt lernen", type="primary", use_container_width=True,
-                 disabled=not decks or faellig == 0,
-                 help="Zieht Lernen → Wiederholen → neue Karten bis zum Tageskontingent."):
+    _go1, _go2, _go3, _go4 = st.columns(4)
+    if _go1.button("▶️ Jetzt lernen", type="primary", use_container_width=True,
+                   disabled=not decks or faellig == 0,
+                   help="Zieht Lernen → Wiederholen → neue Karten bis zum Tageskontingent."):
         karten = manifest.gather_study_cards(subj, decks=decks)
         if not karten:
             st.warning("Für diese Auswahl wurden keine Karten gefunden.")
         else:
             _start_study(karten, _MODE_MAP[_mode_lbl])
             st.rerun()
+    if _go2.button("🔥 Cram", use_container_width=True, disabled=not decks):
+        karten = manifest.get_due_cards(subj, limit=20, cram=True,
+                                        decks=decks if decks else None)
+        if karten:
+            _start_study(karten, _MODE_MAP[_mode_lbl])
+            st.rerun()
+        else:
+            st.warning("Keine Karten für Cram.")
+    if _go3.button("⚡ Sprint", use_container_width=True, disabled=not decks):
+        from ragapp import student_flow as _sf
+        karten = _sf.sprint_cards(subject=subj, limit=12)
+        st.session_state["_study_sprint"] = True
+        if karten:
+            _start_study(karten, "reveal")
+            st.rerun()
+    if _go4.button("📒 Fehlerheft", use_container_width=True):
+        from ragapp import student_flow as _sf
+        karten = _sf.fehlerheft_cards(limit=15, subject=subj)
+        if karten:
+            _start_study(karten, _MODE_MAP[_mode_lbl])
+            st.rerun()
+        else:
+            st.info("Fehlerheft ist leer – gut so.")
 
     # --- Karten ankreuzen (dauerhaft use_flashcard) ---
     with st.expander("Karten fürs Lernen ankreuzen", expanded=False):
@@ -305,7 +355,7 @@ if not st.session_state.get(ACTIVE):
             _browse = []
             for _dk in decks:
                 _browse.extend(manifest.list_cards(
-                    subject=subj, deck=_dk, limit=200))
+                    subject=subj, deck=_dk, limit=500))
             # Dedup by card_id
             _seen_ids: set[str] = set()
             _browse_u = []
@@ -322,7 +372,7 @@ if not st.session_state.get(ACTIVE):
                     "Frage": (r.get("front") or "")[:120],
                     "Stapel": r.get("deck") or "—",
                     "_id": r["card_id"],
-                } for r in _browse_u[:150]])
+                } for r in _browse_u])
                 _bed = st.data_editor(
                     _bdf, hide_index=True, use_container_width=True,
                     key="browse_flash_editor",
@@ -344,9 +394,9 @@ if not st.session_state.get(ACTIVE):
                     st.rerun()
 
     # --- Challenge: bisheriger Runden-Baukasten ---
-    with st.expander("🏆 Challenge – Runde manuell zusammenstellen", expanded=False):
-        st.caption("Optional: feste Rundengröße, Cram, Interleaving, Prüfungsphase. "
-                   "Fürs tägliche Lernen brauchst du das nicht.")
+    with st.expander("🏆 Challenge – Interleaving & Prüfungsphase", expanded=True):
+        st.caption("Cram und Sprint liegen oben bei **Jetzt lernen**. "
+                   "Hier: Themen mischen und Fächer-übergreifende Runde.")
         _srs_max = int(getattr(settings, "SRS_MAX_PER_SESSION", 100))
         _ch_decks = decks if decks else None
         _ch_fc = manifest.review_counts(subj, decks=_ch_decks) if _ch_decks is not None else {"total": 0}
@@ -476,6 +526,9 @@ else:
         for _k in (Q, ACTIVE, REVEAL, TALLY, ROUND):
             st.session_state.pop(_k, None)
         st.rerun()
+
+    if st.session_state.get("_study_sprint"):
+        st.caption("⚡ Formel-/Definitionssprint – kurz und knapp, etwa 30 Sekunden pro Karte.")
 
     # Vorderseite
     st.markdown(f"<div class='karte karte-frage'>{karte['front']}</div>",

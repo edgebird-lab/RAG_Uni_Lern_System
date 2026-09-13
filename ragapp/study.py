@@ -397,7 +397,19 @@ def rate_card(card: dict, rating: int, confidence: "str | None" = None) -> dict:
         interval=nxt["interval"], reps=nxt["reps"], lapses=nxt["lapses"], due=nxt["due"],
         subject=card.get("subject"), topic=card.get("topic"), confidence=confidence,
     )
+    try:
+        from ragapp.student_flow import record_rating_outcome
+        record_rating_outcome(card, rating)
+    except Exception:  # noqa: BLE001
+        pass
     return nxt
+
+
+def card_from_text(front: str, back: str, *, source: str = "text",
+                   subject: "str | None" = None, topic: "str | None" = None,
+                   doc_id: "str | None" = None) -> "str | None":
+    from ragapp.student_flow import card_from_text as _cft
+    return _cft(front, back, source=source, subject=subject, topic=topic, doc_id=doc_id)
 
 
 def card_from_chat(question: str, answer: str, subject: "str | None" = None,
@@ -406,12 +418,6 @@ def card_from_chat(question: str, answer: str, subject: "str | None" = None,
     an: Vorderseite = Frage, Rueckseite = Antwort. Der Moment der Frage markiert die
     echte Wissensluecke - ideal, um sie ins verteilte Wiederholen zu schicken. Gibt die
     card_id zurueck (oder None bei leerer Frage/Antwort). Ohne LLM/Embedding."""
-    import hashlib
-    q = (question or "").strip()
-    a = (answer or "").strip()
-    if not q or not a:
-        return None
-    cid = "chat::" + hashlib.sha1(f"{q}|{a}".encode("utf-8")).hexdigest()[:16]
     topic = None
     if sources:
         try:
@@ -419,12 +425,7 @@ def card_from_chat(question: str, answer: str, subject: "str | None" = None,
             topic = first.get("filename") or first.get("location")
         except Exception:  # noqa: BLE001
             topic = None
-    manifest.upsert_review_items([{
-        "card_id": cid, "source": "chat", "chroma_id": None,
-        "subject": subject, "topic": topic,
-        "front": q, "back": a, "answer": a, "doc_id": None,
-    }])
-    return cid
+    return card_from_text(question, answer, source="chat", subject=subject, topic=topic)
 
 
 def humanize_interval(days: int) -> str:

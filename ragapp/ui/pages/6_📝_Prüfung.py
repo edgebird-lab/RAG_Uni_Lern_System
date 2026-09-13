@@ -103,6 +103,18 @@ if EXAM not in st.session_state:
                     "limit": int(minutes) * 60, "done": False,
                 }
                 st.rerun()
+
+        _hist = manifest.list_exam_attempts(limit=5)
+        if _hist:
+            with st.expander("Letzte Probeklausuren", expanded=False):
+                for _a in _hist:
+                    _when = time.strftime("%d.%m. %H:%M", time.localtime(_a["taken_at"]))
+                    st.markdown(f"**{_a['total_pct']} %** · {_a['num_items']} Aufgaben · {_when}")
+                    _aits = manifest.list_exam_attempt_items(_a["attempt_id"])
+                    if _aits:
+                        for _j, _it in enumerate(_aits, 1):
+                            st.caption(f"{_j}. {(_it.get('front') or '')[:80]} · "
+                                       f"{_it.get('score') if _it.get('score') is not None else '—'} %")
     st.stop()
 
 exam = st.session_state[EXAM]
@@ -153,8 +165,21 @@ if exam.get("done"):
                     "body": _note_body,
                 }
                 st.switch_page("pages/12_🗒️_Notizen.py")
-    if st.button("🔁 Neue Probeklausur", use_container_width=True):
+    _w1, _w2 = st.columns(2)
+    if _w1.button("🔁 Neue Probeklausur", use_container_width=True):
         del st.session_state[EXAM]
+        st.rerun()
+    _wrong_ids = [it.get("card_id") for it in res["items"]
+                  if it.get("card_id") and (it.get("score") or 0) < 75]
+    if _w2.button("🎯 Nur Fehler wiederholen", use_container_width=True,
+                  disabled=not _wrong_ids):
+        _wrong_cards = [c for c in exam["cards"] if c.get("card_id") in set(_wrong_ids)]
+        del st.session_state[EXAM]
+        if _wrong_cards:
+            st.session_state[EXAM] = {
+                "cards": _wrong_cards, "answers": {}, "start": time.time(),
+                "limit": max(5, len(_wrong_cards) * 2) * 60, "done": False,
+            }
         st.rerun()
     st.stop()
 
@@ -188,10 +213,16 @@ def _auswerten():
         g = grading.grade_typed_answer(card.get("front", ""), ref, typed)
         rating = _rating_from_score(g.get("score"))
         study.rate_card(card, rating)   # Ergebnis fließt in die Wiederholungs-Planung
-        items.append({"front": card.get("front"), "subject": card.get("subject"),
+        items.append({"card_id": card.get("card_id"),
+                      "front": card.get("front"), "subject": card.get("subject"),
                       "typed": typed, "reference": ref, "score": g.get("score"),
                       "feedback": g.get("feedback"), "fehlt": g.get("fehlt"),
                       "doc_id": card.get("doc_id"), "topic": card.get("topic")})
+        if (g.get("score") or 0) < 40:
+            from ragapp.student_flow import record_error
+            record_error(source="exam", source_id=card.get("card_id"),
+                         card=card, front=card.get("front"),
+                         detail=f"Probeklausur {g.get('score')} %")
         if g.get("score") is not None:
             scored.append(g["score"])
         prog.progress(j / len(exam["cards"]), text=f"Benotet {j}/{len(exam['cards'])} …")
@@ -202,7 +233,7 @@ def _auswerten():
     # Ergebnis dauerhaft festhalten (vorher nur in st.session_state, nach
     # Verlassen der Seite komplett weg) - Grundlage der Errungenschaft
     # "erste bestandene Probeklausur" (siehe ragapp/achievements.py).
-    manifest.log_exam_attempt(total, len(exam["cards"]))
+    manifest.log_exam_attempt(total, len(exam["cards"]), items=items)
 
 
 # --------------------------------------------------------------------------- #

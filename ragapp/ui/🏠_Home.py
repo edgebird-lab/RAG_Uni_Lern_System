@@ -175,8 +175,8 @@ _components.html(
 # Quelle der Wahrheit fuer Titel/Icon/Zielpfad/Gruppierung.
 # --------------------------------------------------------------------------- #
 from ragapp.ui._style import (apply_page_style, PAGE_REGISTRY, HOME_PIN_KEYS,
-                               render_nav_tile, render_hero_title, card,
-                               speech_bubble_mascot)
+                               HIDDEN_PAGE_KEYS, render_nav_tile,
+                               render_hero_title, card, speech_bubble_mascot)
 from ragapp.ui._mascot import render_mascot, home_mood, home_mood_line
 _theme = apply_page_style("home")
 
@@ -288,7 +288,13 @@ if _snap:
         if _snap["next_exam"] and _snap["days_to_exam"] is not None:
             _ex_subj = _html_escape(SUBJECT_LABELS.get(
                 _snap["next_exam"]["subject"], _snap["next_exam"]["subject"]))
-            _chips_rest.append(f"📝 {_ex_subj}: {planner.humanize_days(_snap['days_to_exam'])}")
+            _ev = _snap.get("evenings") or {}
+            _abend = (f" · noch {_ev.get('evenings', _snap['days_to_exam'])} Abend(e)"
+                      if _ev.get("evenings") is not None else "")
+            _chips_rest.append(
+                f"📝 {_ex_subj}: {planner.humanize_days(_snap['days_to_exam'])}{_abend}")
+        if _snap.get("open_errors"):
+            _chips_priority.append(f"📒 {_snap['open_errors']} im Fehlerheft")
         if _snap["overdue_plan_blocks"]:
             _chips_rest.append(
                 f"📋 {len(_snap['overdue_plan_blocks'])} Lernplan-Block(e) im Rückstand")
@@ -340,30 +346,77 @@ if _snap:
                 unsafe_allow_html=True,
             )
 
-        # CTA: Harvest vor due_cards, wenn noetig
-        if _needs_harvest:
-            _cta_label, _cta_target = "📇 Karten aktualisieren", _target["lernen"]
-        elif _snap["due_cards"]:
-            _cta_label, _cta_target = "▶ Jetzt lernen", _target["lernen"]
-        elif _snap["overdue_tasks"] or _snap["due_today_tasks"]:
-            _cta_label, _cta_target = "🗂️ Aufgaben ansehen", _target["organisation"]
-        elif (_snap["overdue_plan_blocks"]
-              or (_snap["plan_blocks_today"] and _snap["plan_done_today"] < _snap["plan_min_today"])):
-            _cta_label, _cta_target = "📋 Lernplan ansehen", _target["lernplan"]
-        elif _snap["cram_active"]:
-            _cta_label, _cta_target = "📝 Probeklausur starten", _target["pruefung"]
-        elif _snap["top_priority"]:
-            _tp_subj = SUBJECT_LABELS.get(_snap["top_priority"]["subject"],
-                                          _snap["top_priority"]["subject"])
-            _cta_label = f"🎯 {_tp_subj} vertiefen"
-            _cta_target = _target["lernen"]
-        else:
-            _cta_label, _cta_target = None, None
+        _tp = _snap.get("top_priority") or {}
+        _tp_subj = SUBJECT_LABELS.get(_tp.get("subject"), _tp.get("subject")) if _tp else None
+        if _tp_subj and _snap.get("days_to_exam") is not None:
+            st.caption(f"Nächste Klausur-Priorität: **{_tp_subj}** "
+                       f"({planner.humanize_days(_snap['days_to_exam'])}).")
 
-        if _cta_label:
-            if st.button(_cta_label, key="heute_cta", type="primary",
+        _h1, _h2, _h3 = st.columns(3)
+        if _h1.button("▶ Heute starten (20 Min)", type="primary",
+                      key="heute_start", use_container_width=True):
+            st.session_state["study_prefill"] = {
+                "source": "heute", "limit": 16, "mode": "reveal",
+                "subject": (_snap.get("next_exam") or {}).get("subject")
+                or (_tp.get("subject")),
+                "cram": bool(_snap.get("cram_active")),
+            }
+            st.switch_page(_target["lernen"])
+        if _h2.button("⚡ Formel-Sprint", key="heute_sprint", use_container_width=True):
+            st.session_state["study_prefill"] = {
+                "source": "sprint", "limit": 12, "mode": "sprint",
+                "subject": _tp.get("subject"), "sprint": True,
+            }
+            st.switch_page(_target["lernen"])
+        if _h3.button("📒 Fehlerheft", key="heute_fehler", use_container_width=True):
+            st.session_state["study_prefill"] = {
+                "source": "fehlerheft", "deck": "Fehlerheft", "mode": "reveal",
+                "limit": 15,
+            }
+            st.switch_page(_target["lernen"])
+
+        if _needs_harvest:
+            if st.button("📇 Karten aktualisieren", key="heute_harvest",
                          use_container_width=True):
-                st.switch_page(_cta_target)
+                st.switch_page(_target["lernen"])
+        elif _snap["overdue_tasks"] or _snap["due_today_tasks"]:
+            if st.button("🗂️ Aufgaben ansehen", key="heute_tasks",
+                         use_container_width=True):
+                st.switch_page(_target["organisation"])
+
+        with st.expander("📥 Vorlesung einfangen", expanded=False):
+            st.caption("Foto, Folientext oder Mitschnitt – wird Notiz + Karten + Abendblock.")
+            _vl_subj = st.selectbox(
+                "Fach", ["–"] + sorted(SUBJECT_LABELS.keys()),
+                format_func=lambda s: SUBJECT_LABELS.get(s, s),
+                key="home_vl_subject")
+            _vl_title = st.text_input("Titel (optional)", key="home_vl_title")
+            _vl_text = st.text_area("Was war neu?", key="home_vl_text", height=120)
+            _vl_photo = st.camera_input("Tafel / Folie fotografieren", key="home_vl_cam")
+            if st.button("Sichern", type="primary", key="home_vl_go"):
+                from ragapp.student_flow import capture_lecture
+                body = (_vl_text or "").strip()
+                if _vl_photo is not None:
+                    try:
+                        from ragapp.ingestion.loaders import ocr_image_bytes
+                        _ocr_txt, _eng = ocr_image_bytes(_vl_photo.getvalue())
+                        if _ocr_txt:
+                            body = (body + "\n\n" + _ocr_txt).strip()
+                        elif not _eng:
+                            st.warning("Foto-Text nicht gelesen (kein Vision-Modell).")
+                    except Exception as _exc:  # noqa: BLE001
+                        st.warning(f"Foto-Text nicht gelesen: {_exc}")
+                if not body:
+                    st.warning("Bitte Text oder Foto.")
+                else:
+                    _cap = capture_lecture(
+                        body,
+                        subject=None if _vl_subj == "–" else _vl_subj,
+                        title=_vl_title or None)
+                    st.success(
+                        f"Notiz + {len(_cap['card_ids'])} Karte(n)"
+                        + (" + Abendblock" if _cap.get("block_id") else "") + ".")
+                    st.rerun()
 
 # Schlanke Suche (kein voller Titel-Block)
 with card("suche"):
@@ -454,7 +507,8 @@ for _i, _key in enumerate(HOME_PIN_KEYS):
         render_nav_tile(_key)
 
 _more_pages = [p for p in PAGE_REGISTRY
-               if p.get("category") and p["key"] not in HOME_PIN_KEYS]
+               if p.get("category") and p["key"] not in HOME_PIN_KEYS
+               and p["key"] not in HIDDEN_PAGE_KEYS]
 if _more_pages:
     with st.expander("Mehr Bereiche", expanded=False):
         _categories: list[str] = []

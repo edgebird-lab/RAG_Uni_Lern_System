@@ -44,7 +44,7 @@ PAGE_REGISTRY: list[dict] = [
      "target": "pages/6_📝_Prüfung.py", "category": "Lernen & Fragen"},
     {"key": "lernplan", "icon": "📋", "title": "Lernplan", "subtitle": "KI-Gliederung + Zeitplan",
      "target": "pages/11_📋_Lernplan.py", "category": "Erstellen"},
-    {"key": "zusammenfassung", "icon": "📄", "title": "Zusammenfassung", "subtitle": "KI-Lernkatalog",
+    {"key": "zusammenfassung", "icon": "📄", "title": "Zusammenfassung", "subtitle": "Grounded auf den Stoff",
      "target": "pages/7_📄_Zusammenfassung.py", "category": "Erstellen"},
     {"key": "audio", "icon": "🎧", "title": "Audio-Overview", "subtitle": "Vorgelesen mit deiner Stimme",
      "target": "pages/15_🎧_Audio-Overview.py", "category": "Erstellen"},
@@ -76,6 +76,9 @@ HAMBURGER_KEYS = ["home", "chat", "lernen", "fortschritt"]
 
 # Home: zuerst die alltagsrelevanten Kacheln; Rest hinter "Mehr".
 HOME_PIN_KEYS = ["lernen", "chat", "fortschritt", "lernplan", "organisation", "pruefung"]
+
+# Operator-Seiten: nicht im Studenten-Alltag (Home/Hamburger-Gruppen).
+HIDDEN_PAGE_KEYS = {"evaluation"}
 
 # --------------------------------------------------------------------------- #
 # Pastell-Palette je Seite (Akzent + weicher Hintergrundton + Anzeigename).
@@ -1072,6 +1075,8 @@ def render_hamburger_nav(current_page_key: str) -> None:
             st.caption(cat)
             for _p in PAGE_REGISTRY:
                 if _p["category"] != cat:
+                    continue
+                if _p["key"] in HIDDEN_PAGE_KEYS:
                     continue
                 is_here = _p["key"] == current_page_key
                 label = f"{_p['icon']} {_p['title']}" + ("  ·  hier" if is_here else "")

@@ -128,6 +128,8 @@ with st.sidebar:
         st.session_state["_chat_loaded_session_id"] = _active_session_id
         _sess = _sess_by_id.get(_active_session_id) if _active_session_id else None
         st.session_state.messages = list(_sess["messages"]) if _sess else []
+        if _sess and _sess.get("subject"):
+            st.session_state["chat_subject_filter"] = _sess["subject"]
 
     if _active_session_id is not None:
         with st.expander("⚙️ Chat verwalten", key="chat_manage_expander"):
@@ -181,9 +183,21 @@ with st.sidebar:
     st.divider()
     subjects = sorted({d["subject"] for d in manifest.list_documents()})
     subject_options = ["Alle Fächer"] + subjects
-    chosen = st.selectbox("Fach filtern", subject_options,
-                          help="Sucht nur in einem Fach, das ist schneller und präziser.")
+    chosen = st.selectbox("Fach filtern", subject_options, key="chat_subject_filter",
+                          help="Sucht nur in einem Fach, das ist schneller und präziser. "
+                               "Die Wahl bleibt in dieser Sitzung merken.")
     subject_filter = None if chosen == "Alle Fächer" else chosen
+    if _active_session_id and subject_filter:
+        try:
+            manifest.update_chat_session(_active_session_id, subject=subject_filter)
+        except Exception:  # noqa: BLE001
+            pass
+
+    include_notes_ui = st.toggle(
+        "🗒️ Eigene Notizen mitdurchsuchen",
+        value=bool(st.session_state.get("chat_include_notes", False)),
+        key="chat_include_notes",
+        help="Hängt passende Mitschriften als Extra-Kontext an – nicht als nummerierte Quelle.")
 
     # Zwei getrennte Tempo-/Genauigkeits-Schalter (pro Anfrage, überschreiben die
     # globalen Einstellungen nur für die aktuelle Sitzung). Beides AUS = schnellste
@@ -423,6 +437,19 @@ def _save_note_button(question: "str | None", answer: str,
         st.switch_page("pages/12_🗒️_Notizen.py")
 
 
+def _followup_chips(idx: int) -> None:
+    cols = st.columns(3)
+    prompts = (
+        ("Einfacher", "Erklär das einfacher, in Alltagsbegriffen."),
+        ("Beispiel", "Gib ein konkretes Prüfungsbeispiel dazu."),
+        ("Prüfungsfrage", "Formuliere eine typische Klausurfrage dazu und beantworte sie kurz."),
+    )
+    for col, (label, q) in zip(cols, prompts):
+        if col.button(label, key=f"fu_{idx}_{label}"):
+            st.session_state["_pending_prompt"] = q
+            st.rerun()
+
+
 # Verlauf rendern
 for _mi, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"], avatar="🧑‍🎓" if msg["role"] == "user" else "🤖"):
@@ -436,7 +463,10 @@ for _mi, msg in enumerate(st.session_state.messages):
             _save_card_button(_q, msg["content"], msg.get("meta"), msg.get("sources"),
                               key=f"card_h{_mi}")
             _save_note_button(_q, msg["content"], msg.get("sources"), key=f"note_h{_mi}")
+            _followup_chips(_mi)
         if msg.get("sources"):
+            if (msg.get("meta") or {}).get("mode") == "fallback":
+                st.caption("Keine sichere Antwort – Stelle unten nachlesen.")
             render_sources(msg["sources"], key_prefix=f"h{_mi}")
 
 
@@ -534,7 +564,8 @@ if prompt:
                     use_reranker=use_reranker_ui,
                     check_faithfulness=_faith_for_call,
                     history=st.session_state.messages[:-1],
-                    chat_mode=_chat_mode)
+                    chat_mode=_chat_mode,
+                    include_notes=bool(st.session_state.get("chat_include_notes")))
             except Exception:  # noqa: BLE001 - Setup-Fehler -> blockierender Fallback
                 _stream, _holder = None, {}
             if _stream is not None:
@@ -558,7 +589,8 @@ if prompt:
                                           use_reranker=use_reranker_ui,
                                           check_faithfulness=_faith_for_call,
                                           history=st.session_state.messages[:-1],
-                                          chat_mode=_chat_mode)
+                                          chat_mode=_chat_mode,
+                                          include_notes=bool(st.session_state.get("chat_include_notes")))
                 except Exception as exc:  # noqa: BLE001 - rohe Fehler nie roh anzeigen
                     result = {"answer": _friendly_error(exc), "mode": "fallback",
                               "sources": [], "total_time": 0}

@@ -215,6 +215,29 @@ with card("heute"):
         d6.metric(f"Nächste Klausur: {_fach(_next_exam['subject'])}", planner.humanize_days(_dte))
     else:
         d6.metric("Nächste Klausur", "–")
+    _ev = _snap.get("evenings") or {}
+    if _ev.get("evenings") is not None:
+        st.caption(f"Noch **{_ev['evenings']} Abend(e)** à {_ev.get('minutes_per_evening', 45)} Min "
+                   "bis zur nächsten Klausur.")
+
+    with st.expander("Klausurtermine hier pflegen", expanded=not manifest.list_exams()):
+        _exams_now = manifest.list_exams()
+        if _exams_now:
+            for _ex in _exams_now:
+                st.write(f"• {_fach(_ex['subject'])}: {_ex.get('exam_date') or '–'}")
+        _ex_subj = st.selectbox("Fach", _known_subjects, key="orga_exam_subj",
+                                format_func=_fach)
+        _ex_date = st.date_input("Klausurdatum", key="orga_exam_date")
+        if st.button("Termin speichern", key="orga_exam_save"):
+            manifest.upsert_exam(_ex_subj, exam_date=_ex_date.isoformat() if _ex_date else None)
+            st.success("Gespeichert – gilt auch auf Fortschritt.")
+            st.rerun()
+        if st.button("Termin entfernen", key="orga_exam_del"):
+            manifest.delete_exam(_ex_subj)
+            st.rerun()
+
+    if _today_classes:
+        st.markdown("Nach der Vorlesung: Stoff auf der Startseite unter **Vorlesung einfangen** sichern.")
 
     if _snap.get("streak_at_risk"):
         st.error(f"🔥 Streak ({_snap.get('streak', 0)} Tage) heute gefährdet – kurz üben!")

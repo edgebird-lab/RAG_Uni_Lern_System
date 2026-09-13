@@ -469,6 +469,10 @@ def generate_node(state: RAGState) -> RAGState:
     extra = ""
     if syllabus and state.get("subject"):
         extra = _load_existing_summary_md(state.get("subject"))
+    if state.get("include_notes"):
+        from ragapp.student_flow import notes_context
+        extra = (notes_context(state.get("subject"), state.get("question"))
+                 + ("\n\n" + extra if extra else ""))
     context, sources = _build_context(
         state["candidates"], max_chars=max_chars, extra_prefix=extra)
 
@@ -793,7 +797,8 @@ def answer_query(question: str, subject: Optional[str] = None,
                  history: Optional[list] = None,
                  decompose: bool = True,
                  chat_mode: str = "strict",
-                 doc_ids: Optional[list] = None) -> dict:
+                 doc_ids: Optional[list] = None,
+                 include_notes: bool = False) -> dict:
     """Öffentliche Schnittstelle für UI/CLI. Führt den Graphen aus.
 
     use_reranker / check_faithfulness: None = globale Einstellung; False =
@@ -826,7 +831,8 @@ def answer_query(question: str, subject: Optional[str] = None,
                        "sub_queries": sub_queries, "subject": subject,
                        "doc_ids": doc_ids, "chat_mode": mode, "history": history or [],
                        "syllabus": syllabus, "use_reranker": use_reranker,
-                       "check_faithfulness": faith, "mode": "answer"}
+                       "check_faithfulness": faith, "include_notes": bool(include_notes),
+                       "mode": "answer"}
     result = get_graph().invoke(state)
     if search_query != question:
         result["search_query"] = search_query
@@ -845,7 +851,8 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
                         history: Optional[list] = None,
                         decompose: bool = True,
                         chat_mode: str = "strict",
-                        doc_ids: Optional[list] = None):
+                        doc_ids: Optional[list] = None,
+                        include_notes: bool = False):
     """Streaming-Variante von :func:`answer_query` fuer den SCHNELL-/Tutor-/
     Sokratisch-Modus. ``doc_ids``: siehe :func:`answer_query`.
 
@@ -922,6 +929,10 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
                          if (syllabus and subject) else None)
             extra = (_load_existing_summary_md(subject)
                      if (syllabus and subject) else "")
+            if include_notes:
+                from ragapp.student_flow import notes_context
+                extra = (notes_context(subject, question)
+                         + ("\n\n" + extra if extra else ""))
             context, sources = _build_context(
                 candidates, max_chars=max_chars, extra_prefix=extra)
             history_messages: Optional[list[dict]] = None

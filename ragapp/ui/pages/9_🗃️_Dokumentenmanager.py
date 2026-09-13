@@ -143,6 +143,49 @@ def _view_doc_dialog(d: dict) -> None:
             "title": d["filename"],
         }
         st.switch_page("pages/12_🗒️_Notizen.py")
+    st.markdown("##### Fach & RAG")
+    _subj_opts = sorted({x.get("subject") for x in manifest.list_documents() if x.get("subject")})
+    if d.get("subject") and d["subject"] not in _subj_opts:
+        _subj_opts.insert(0, d["subject"])
+    _new_subj = st.selectbox("Fach", _subj_opts or [d.get("subject") or "–"],
+                             index=max(0, (_subj_opts or [d.get("subject")]).index(d.get("subject"))
+                                       if d.get("subject") in (_subj_opts or []) else 0),
+                             key=f"docmgr_subj_{d['doc_id']}")
+    if st.button("Fach speichern", key=f"docmgr_subj_save_{d['doc_id']}"):
+        manifest.set_document_subject(d["doc_id"], _new_subj)
+        st.success("Fach geändert.")
+        st.rerun()
+    _rag_on = st.toggle("Im RAG (Chat/Suche)", value=bool(d.get("use_rag", 1)),
+                        key=f"docmgr_rag_{d['doc_id']}")
+    if _rag_on != bool(d.get("use_rag", 1)):
+        from ragapp.ingestion.pipeline import set_document_use_rag
+        with st.spinner("RAG-Status wird geändert …"):
+            set_document_use_rag(d["doc_id"], _rag_on)
+        st.rerun()
+    _tag_now = (d.get("tags") or "")
+    _want_exam = st.checkbox(
+        "Als Altklausur markieren",
+        value="altklausur" in _tag_now.lower(),
+        key=f"docmgr_examtag_{d['doc_id']}")
+    _has_exam = "altklausur" in _tag_now.lower()
+    if _want_exam and not _has_exam:
+        manifest.set_document_tags(d["doc_id"], (_tag_now + ", altklausur").strip(", "))
+        st.rerun()
+    if (not _want_exam) and _has_exam:
+        _cleaned = ", ".join(t.strip() for t in _tag_now.split(",")
+                             if t.strip().lower() != "altklausur")
+        manifest.set_document_tags(d["doc_id"], _cleaned)
+        st.rerun()
+    a1, a2, a3 = st.columns(3)
+    if a1.button("📄 Zusammenfassung", key=f"docmgr_sum_{d['doc_id']}"):
+        st.session_state["zus_prefill_subject"] = d.get("subject")
+        st.switch_page("pages/7_📄_Zusammenfassung.py")
+    if a2.button("🎴 Karten", key=f"docmgr_cards_{d['doc_id']}"):
+        st.session_state["study_prefill"] = {"subject": d.get("subject"), "limit": 12}
+        st.switch_page("pages/4_🎓_Lernen.py")
+    if a3.button("🎧 Audio", key=f"docmgr_audio_{d['doc_id']}"):
+        st.session_state["audio_prefill_subject"] = d.get("subject")
+        st.switch_page("pages/15_🎧_Audio-Overview.py")
 
 
 _docs = [dict(d) for d in manifest.list_documents()]

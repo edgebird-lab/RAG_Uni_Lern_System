@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from ragapp.ui._style import (
     HAMBURGER_KEYS,
+    HIDDEN_PAGE_KEYS,
     HOME_PIN_KEYS,
     PAGE_REGISTRY,
     PAGE_THEMES,
@@ -118,6 +119,12 @@ def test_home_pin_keys_existieren_und_sind_alltagsrelevant():
         assert key in _keys
     assert "lernen" in HOME_PIN_KEYS
     assert "fortschritt" in HOME_PIN_KEYS
+
+
+def test_evaluation_ist_im_studenten_alltag_versteckt():
+    assert "evaluation" in HIDDEN_PAGE_KEYS
+    assert "evaluation" not in HOME_PIN_KEYS
+    assert "evaluation" not in HAMBURGER_KEYS
 
 
 def test_ingestion_heisst_import_lernen_heisst_karteikarten():

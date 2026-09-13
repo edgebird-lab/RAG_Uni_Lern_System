@@ -213,6 +213,20 @@ with card("wochenrueckblick"):
 with card("klausur"):
     st.subheader("🗓️ Klausurtermine & Priorität")
     st.caption("Setze die Termine, dann priorisiert das System nach Klausurnähe × Wissenslücke × Gewicht.")
+    _snap_ex = planner.today_snapshot()
+    _ev = _snap_ex.get("evenings") or {}
+    if _ev.get("evenings") is not None and _snap_ex.get("next_exam"):
+        st.info(f"Noch **{_ev['evenings']} Abend(e)** bis "
+                f"**{_fach(_snap_ex['next_exam']['subject'])}** "
+                f"({_ev.get('minutes_per_evening', 45)} Min/Abend).")
+    _attempts = manifest.list_exam_attempts(limit=8)
+    if _attempts:
+        with st.expander("Probeklausur-Historie (mit Aufgaben)", expanded=False):
+            for _a in _attempts:
+                _when = time.strftime("%d.%m. %H:%M", time.localtime(_a["taken_at"]))
+                st.markdown(f"**{_a['total_pct']} %** · {_a['num_items']} Aufgaben · {_when}")
+                for _it in manifest.list_exam_attempt_items(_a["attempt_id"]):
+                    st.caption(f"· {(_it.get('front') or '')[:90]} · {_it.get('score', '—')} %")
 
     with st.expander("Klausurtermin setzen / ändern", expanded=not manifest.list_exams()):
         with st.form("exam_form", clear_on_submit=False):

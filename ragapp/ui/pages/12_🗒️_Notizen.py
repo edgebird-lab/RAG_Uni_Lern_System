@@ -131,6 +131,18 @@ with lcol:
 _subj_arg = None if _f_subject == "Alle Fächer" else _f_subject
 _notes = manifest.list_notes(subject=_subj_arg, search=_f_search or None)
 
+with st.expander("📥 Vorlesung einfangen", expanded=False):
+    _vl_t = st.text_input("Titel", key="note_vl_title")
+    _vl_b = st.text_area("Was war neu?", key="note_vl_body", height=100)
+    if st.button("Sichern als Notiz + Karten", key="note_vl_go"):
+        from ragapp.student_flow import capture_lecture
+        if not (_vl_b or "").strip():
+            st.warning("Bitte Text eingeben.")
+        else:
+            _cap = capture_lecture(_vl_b, subject=_subj_arg, title=_vl_t or None)
+            st.success(f"Notiz + {len(_cap['card_ids'])} Karte(n).")
+            st.rerun()
+
 if _notes:
     st.download_button(
         f"⬇️ {len(_notes)} Notiz(en) als Markdown exportieren", _notes_to_markdown(_notes),
@@ -287,7 +299,12 @@ with col_editor:
                     title=_e_title, body=st.session_state[_draft_key])
                 st.success("Notiz angelegt.")
                 st.session_state["_notiz_pending_choice"] = nid
+                if st.session_state.get("notiz_also_cards"):
+                    from ragapp.student_flow import cards_from_markdown
+                    cards_from_markdown(st.session_state[_draft_key],
+                                        subject=_e_subject, source="note")
                 st.rerun()
+            st.checkbox("Gleich Karten daraus erzeugen", key="notiz_also_cards")
         else:
             st.markdown("##### ✏️ Notiz bearbeiten")
             _nid = _active_note["note_id"]
@@ -342,3 +359,9 @@ with col_editor:
                 st.session_state["_notiz_pending_choice"] = None
                 st.success("Notiz gelöscht.")
                 st.rerun()
+            if st.button("🎴 Karten aus dieser Notiz", key=f"notiz_cards_{_nid}"):
+                from ragapp.student_flow import cards_from_markdown
+                _ids = cards_from_markdown(
+                    st.session_state.get(_draft_key, _active_note.get("body") or ""),
+                    subject=_m_subject, source="note")
+                st.success(f"{len(_ids)} Karte(n) angelegt.")

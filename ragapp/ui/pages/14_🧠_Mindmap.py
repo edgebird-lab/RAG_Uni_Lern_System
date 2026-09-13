@@ -254,29 +254,50 @@ with card("viewer"):
     # Themen-Auswahlliste (statische Klickbarkeit v1 - echte Klick-Navigation im
     # SVG selbst braeuchte eine eigene Streamlit-Custom-Component).
     # --------------------------------------------------------------------------- #
-    st.markdown("##### Thema auswählen")
+    st.markdown("##### Thema antippen")
     _topics = _flatten_topics(_graph)
+    _topic_titles = [n["title"] for _, n in _topics]
+    _pill = None
+    if hasattr(st, "pills"):
+        _pill = st.pills("Knoten", _topic_titles, key=f"mm_pills_{_active_id}")
+    else:
+        _pill = st.radio("Knoten", _topic_titles, horizontal=True,
+                         key=f"mm_pills_{_active_id}")
     _topic_labels = {n["id"]: ("　" * depth) + n["title"] for depth, n in _topics}
+    _default_tid = next((n["id"] for _, n in _topics if n["title"] == _pill), None)
     _sel_topic_id = st.selectbox(
-        "Thema", list(_topic_labels.keys()), format_func=lambda tid: _topic_labels.get(tid, tid),
+        "Oder aus der Liste", list(_topic_labels.keys()),
+        format_func=lambda tid: _topic_labels.get(tid, tid),
+        index=(list(_topic_labels.keys()).index(_default_tid)
+               if _default_tid in _topic_labels else 0),
         key=f"mm_topic_pick_{_active_id}")
 
     if _sel_topic_id:
         _sel_node = next(n for _, n in _topics if n["id"] == _sel_topic_id)
-        tc1, tc2 = st.columns(2)
+        tc1, tc2, tc3, tc4 = st.columns(4)
         if tc1.button("🔎 Dazu fragen", key=f"mm_chat_{_active_id}_{_sel_topic_id}",
                      use_container_width=True,
                      help="Stellt die Frage im Chat unten - bleibt auf dieser Seite."):
             st.session_state[f"_mm_chat_pending_{_active_id}"] = (
                 f"Erkläre mir das Thema: {_sel_node['title']}")
             st.rerun()
-        if tc2.button("🧮 Dazu eine Übungsaufgabe", key=f"mm_practice_{_active_id}_{_sel_topic_id}",
+        if tc2.button("🧮 Übung", key=f"mm_practice_{_active_id}_{_sel_topic_id}",
                      use_container_width=True):
             st.session_state["practice_prefill"] = {
                 "subject": _active["subject"], "doc_ids": _active["doc_ids"],
                 "topic": _sel_node["title"],
             }
             st.switch_page("pages/13_🧮_Übungsaufgaben.py")
+        if tc3.button("🎴 Karten", key=f"mm_cards_{_active_id}_{_sel_topic_id}",
+                     use_container_width=True):
+            st.session_state["study_prefill"] = {
+                "subject": _active.get("subject"), "limit": 12, "mode": "reveal",
+            }
+            st.switch_page("pages/4_🎓_Lernen.py")
+        if tc4.button("📄 Zusammenfassung", key=f"mm_sum_{_active_id}_{_sel_topic_id}",
+                     use_container_width=True):
+            st.session_state["zus_prefill_subject"] = _active.get("subject")
+            st.switch_page("pages/7_📄_Zusammenfassung.py")
 
     # --------------------------------------------------------------------------- #
     # Eingebetteter Chat - gescoped auf GENAU die Dokumente dieser Mindmap (nicht

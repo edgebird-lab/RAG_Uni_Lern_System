@@ -101,11 +101,32 @@ with st.sidebar:
 # Kopf
 # --------------------------------------------------------------------------- #
 st.markdown(
-    "<span class='small'>Stelle die wichtigsten Parameter ein und speichere sie "
-    "dauerhaft. <b>Nach dem Ändern in der Evaluation messen</b>, ob sich die "
-    "Trefferquote verbessert hat.</span>",
+    "<span class='small'>Oben ein Alltag-Preset, Feintuning darunter einklappen. "
+    "Evaluation ist ein Betreiber-Werkzeug, kein tägliches Lernen.</span>",
     unsafe_allow_html=True,
 )
+
+from ragapp.config import Settings as _SettingsCls
+with card("alltag"):
+    st.subheader("Alltag-Preset")
+    st.caption("Schnell = weniger Checks. Gründlich = Reranker + Belegprüfung. "
+               "Sparsam = Uni-Modus (kein Vorladen).")
+    _preset = st.radio("Profil", ["Gründlich", "Schnell", "Sparsam"],
+                       horizontal=True, key="student_preset")
+    if st.button("Preset übernehmen", type="primary"):
+        if _preset == "Sparsam":
+            settings.update(PREWARM_ON_START=False, USE_RERANKER=False,
+                            ENABLE_FAITHFULNESS_CHECK=False, OLLAMA_KEEP_ALIVE_MINUTES=0.0)
+        elif _preset == "Schnell":
+            settings.update(PREWARM_ON_START=True, USE_RERANKER=False,
+                            ENABLE_FAITHFULNESS_CHECK=False)
+        else:
+            _n = _SettingsCls()
+            settings.update(PREWARM_ON_START=_n.PREWARM_ON_START, USE_RERANKER=_n.USE_RERANKER,
+                            ENABLE_FAITHFULNESS_CHECK=_n.ENABLE_FAITHFULNESS_CHECK)
+        settings.save()
+        st.success(f"Preset „{_preset}“ gespeichert.")
+        st.rerun()
 
 # --------------------------------------------------------------------------- #
 # Sprungmarken: die Seite ist lang (17 Abschnitte) - Streamlit vergibt an jede

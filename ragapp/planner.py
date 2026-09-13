@@ -139,6 +139,22 @@ def today_snapshot() -> dict:
         "reviews_today": ov["reviews_today"],
         "streak_at_risk": streak_at_risk,
         "cram_active": cram_active,
+        "evenings": evenings_until_exam(_dte, minutes_per_evening=45) if _dte is not None
+        else None,
+        "open_errors": manifest.count_open_errors(),
+    }
+
+
+def evenings_until_exam(days: Optional[int], *, minutes_per_evening: int = 45
+                        ) -> Optional[dict]:
+    if days is None:
+        return None
+    evenings = 0 if days < 0 else days
+    return {
+        "days": days,
+        "evenings": evenings,
+        "minutes_per_evening": minutes_per_evening,
+        "total_minutes": evenings * minutes_per_evening,
     }
 
 

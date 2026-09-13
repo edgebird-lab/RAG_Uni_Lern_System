@@ -98,6 +98,8 @@ with card("upload"):
             st.error(f"Extraktion fehlgeschlagen: {exc}")
         else:
             st.session_state["_syllabus_extracted"] = _subjects
+            st.session_state["_syllabus_bytes"] = _upload.getvalue()
+            st.session_state["_syllabus_name"] = _upload.name
             st.success(f"{len(_subjects)} Fach/Fächer erkannt – unten prüfen und übernehmen.")
         finally:
             _tmp_path.unlink(missing_ok=True)
@@ -144,12 +146,28 @@ if _extracted:
             else:
                 result = syllabus_import.apply_extracted_subjects(_selected)
                 st.session_state.pop("_syllabus_extracted", None)
+                _raw = st.session_state.pop("_syllabus_bytes", None)
+                _name = st.session_state.pop("_syllabus_name", "semesterplan.pdf")
+                if _raw:
+                    from ragapp.config import INBOX_DIR
+                    from ragapp.ingestion.pipeline import ingest_file
+                    _dest = INBOX_DIR / _name
+                    _dest.write_bytes(_raw)
+                    try:
+                        ingest_file(_dest, use_rag=True)
+                        st.info("Das Dokument wurde zusätzlich indexiert (Chat/Karten).")
+                    except Exception as _iexc:  # noqa: BLE001
+                        st.warning(f"Indexieren übersprungen: {_iexc}")
+                _first = getattr(_selected[0], "code", None) if _selected else None
                 st.success(
                     f"Übernommen: {result['subjects']} Fach/Fächer, "
                     f"{result['exams']} Klausurtermin(e), {result['slots']} Vorlesungszeit(en). "
                     "Zu finden auf **📈 Fortschritt** (Klausurtermine) und "
                     "**🗂️ Organisation** (Stundenplan)."
                 )
+                if _first:
+                    st.session_state["study_prefill"] = {"subject": _first, "limit": 12}
+                    st.caption(f"Nächster Schritt: Karten für **{_first}** auf 🎓 Karteikarten.")
                 st.rerun()
         if c2.button("🗑️ Verwerfen", use_container_width=True):
             st.session_state.pop("_syllabus_extracted", None)

@@ -51,14 +51,18 @@ if not docs:
 subjects = sorted({d["subject"] for d in docs if d["subject"]})
 
 with card("quelle"):
-    quelle = st.radio("Quelle", ["Dokument", "Fach"], horizontal=True)
+    _pref_subj = st.session_state.pop("zus_prefill_subject", None)
+    if _pref_subj and _pref_subj in subjects:
+        st.session_state["zus_quelle"] = "Fach"
+        st.session_state["zus_subject"] = _pref_subj
+    quelle = st.radio("Quelle", ["Dokument", "Fach"], horizontal=True, key="zus_quelle")
 
     if quelle == "Dokument":
         opts = {d["doc_id"]: f'{d["filename"]}  ·  {_fach(d["subject"] or "")}' for d in docs}
         target = st.selectbox("Dokument", list(opts), format_func=lambda k: opts[k])
         mode = "document"
     else:
-        target = st.selectbox("Fach", subjects, format_func=_fach)
+        target = st.selectbox("Fach", subjects, format_func=_fach, key="zus_subject")
         mode = "subject"
         st.warning("Fach-Modus fasst **alle** Chunks des Fachs abschnittsweise zusammen. "
                    "Bei vielen Dokumenten kann das längere Zeit dauern.")
@@ -127,5 +131,16 @@ if st.session_state.get("_zus_md"):
         st.download_button("⬇️ Markdown herunterladen", st.session_state["_zus_md"],
                            file_name=st.session_state["_zus_name"], mime="text/markdown",
                            use_container_width=True)
+        _z1, _z2 = st.columns(2)
+        if _z1.button("🎴 Karten aus der Zusammenfassung", use_container_width=True):
+            from ragapp.student_flow import cards_from_markdown
+            _ids = cards_from_markdown(
+                st.session_state["_zus_md"],
+                subject=st.session_state.get("zus_prefill_subject"),
+                source="summary")
+            st.success(f"{len(_ids)} Karte(n) angelegt.")
+        if _z2.button("🎧 Als Audio-Overview", use_container_width=True):
+            st.session_state["audio_prefill_script"] = st.session_state["_zus_md"]
+            st.switch_page("pages/15_🎧_Audio-Overview.py")
         st.divider()
         st.markdown(st.session_state["_zus_md"])

@@ -105,11 +105,17 @@ if not _ref_path.is_file():
             "`docs/STIMME_AUFNEHMEN.md`. Die Aufnahme danach unter "
             f"`{settings.AUDIO_REFERENCE_WAV}` ablegen."
         )
-        st.caption("Alternativ hier direkt hochladen (WAV, ein paar Minuten sprechen):")
-        _uploaded = st.file_uploader("Stimm-Aufnahme (WAV)", type=["wav"], key="voice_upload")
-        if _uploaded is not None and st.button("💾 Als Referenz speichern", type="primary"):
-            _ref_path.parent.mkdir(parents=True, exist_ok=True)
-            _ref_path.write_bytes(_uploaded.getvalue())
+        st.caption("Direkt in der App aufnehmen oder eine WAV-Datei hochladen:")
+        _rec = st.audio_input("Stimme aufnehmen", key="voice_record")
+        _uploaded = st.file_uploader("Oder WAV hochladen", type=["wav"], key="voice_upload")
+        _blob = None
+        if _rec is not None:
+            _blob = _rec.getvalue()
+        elif _uploaded is not None:
+            _blob = _uploaded.getvalue()
+        if _blob and st.button("💾 Als Referenz speichern", type="primary"):
+            from ragapp.student_flow import save_voice_reference
+            save_voice_reference(_blob)
             st.success("Gespeichert. Die Seite lädt jetzt neu.")
             st.rerun()
     st.stop()
@@ -271,11 +277,32 @@ if _ov_by_id:
 
 st.divider()
 
+with st.expander("🎙️ Stimme ersetzen", expanded=False):
+    _rec2 = st.audio_input("Neu aufnehmen", key="voice_replace_rec")
+    _up2 = st.file_uploader("Oder neue WAV", type=["wav"], key="voice_replace_up")
+    _blob2 = (_rec2.getvalue() if _rec2 is not None
+              else _up2.getvalue() if _up2 is not None else None)
+    if _blob2 and st.button("Referenz überschreiben", key="voice_replace_save"):
+        from ragapp.student_flow import save_voice_reference
+        save_voice_reference(_blob2)
+        st.success("Neue Stimme gespeichert.")
+        st.rerun()
+
 # --------------------------------------------------------------------------- #
 # Neues Audio-Overview: aus Dokumenten (KI) ODER selbst geschrieben
 # --------------------------------------------------------------------------- #
 if _active_id is None:
+    _pref_script = st.session_state.pop("audio_prefill_script", None)
+    if _pref_script:
+        st.session_state["audio_create_mode"] = "✍️ Eigenes Skript schreiben"
+        st.session_state["audio_manual_script"] = _pref_script
     st.markdown("##### Neues Audio-Overview anlegen")
+    if st.button("🎯 Nur schwaches Fach vorlesen", key="audio_weak"):
+        from ragapp.student_flow import weak_subject
+        _ws = weak_subject()
+        if _ws:
+            st.session_state["audio_new_subject"] = _ws
+            st.info(f"Fach {_ws} vorausgewählt (niedrigste Mastery/höchste Priorität).")
     _mode = st.radio(
         "Woher kommt der Text?",
         ["🤖 Aus Dokumenten generieren lassen", "✍️ Eigenes Skript schreiben"],
@@ -474,6 +501,12 @@ with card("player"):
                 file_name=f"{_active['title']}.{_dl_spec['ext']}", mime=_dl_spec["mime"],
                 use_container_width=True, key=f"audio_dl_go_{_active_id}_{_dl_format}")
 
+    _chaps = [p.strip() for p in (_active.get("script_text") or "").split("\n\n")
+              if len(p.strip()) >= 40][:16]
+    if _chaps:
+        with st.expander(f"Kapitel ({len(_chaps)})", expanded=False):
+            for _i, _ch in enumerate(_chaps, 1):
+                st.caption(f"{_i}. {_ch.splitlines()[0][:90]}")
     st.markdown("##### 📝 Skript bearbeiten")
     st.caption("Text kürzen, falsche Angaben rausnehmen oder frei umschreiben - „Speichern & "
                "nur Audio neu erzeugen“ vertont GENAU diesen Text neu, ohne die KI erneut zu "

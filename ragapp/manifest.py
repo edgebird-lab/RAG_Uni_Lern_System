@@ -458,6 +458,42 @@ CREATE TABLE IF NOT EXISTS exam_attempts (
     taken_at     REAL
 );
 
+CREATE TABLE IF NOT EXISTS exam_attempt_items (
+    item_id      TEXT PRIMARY KEY,
+    attempt_id   TEXT NOT NULL,
+    card_id      TEXT,
+    front        TEXT,
+    typed        TEXT,
+    reference    TEXT,
+    score        INTEGER,
+    feedback     TEXT,
+    fehlt        TEXT,
+    subject      TEXT,
+    doc_id       TEXT,
+    topic        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_exam_items_attempt ON exam_attempt_items(attempt_id);
+
+CREATE TABLE IF NOT EXISTS error_notebook (
+    error_id     TEXT PRIMARY KEY,
+    source       TEXT NOT NULL,
+    source_id    TEXT,
+    card_id      TEXT,
+    subject      TEXT,
+    topic        TEXT,
+    front        TEXT,
+    detail       TEXT,
+    resolved     INTEGER DEFAULT 0,
+    created_at   REAL
+);
+CREATE INDEX IF NOT EXISTS idx_error_open ON error_notebook(resolved, created_at);
+
+CREATE TABLE IF NOT EXISTS timer_state (
+    state_id     TEXT PRIMARY KEY,
+    payload_json TEXT NOT NULL,
+    updated_at   REAL
+);
+
 -- Errungenschaften (Gamification): einmal freigeschaltet, fuer immer
 -- freigeschaltet - der Katalog selbst (Titel/Beschreibung/Freischalt-
 -- bedingung) lebt bewusst NICHT in der DB, sondern als Code in
@@ -590,6 +626,44 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE exams ADD COLUMN note_updated_at REAL")
         except Exception:  # noqa: BLE001
             _log.warning("Additive Migration exams uebersprungen", exc_info=True)
+        # Alltag: Klausur-Einzelaufgaben, Fehlerheft, persistenter Pomodoro.
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS exam_attempt_items (
+                item_id      TEXT PRIMARY KEY,
+                attempt_id   TEXT NOT NULL,
+                card_id      TEXT,
+                front        TEXT,
+                typed        TEXT,
+                reference    TEXT,
+                score        INTEGER,
+                feedback     TEXT,
+                fehlt        TEXT,
+                subject      TEXT,
+                doc_id       TEXT,
+                topic        TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_exam_items_attempt ON exam_attempt_items(attempt_id);
+            CREATE TABLE IF NOT EXISTS error_notebook (
+                error_id     TEXT PRIMARY KEY,
+                source       TEXT NOT NULL,
+                source_id    TEXT,
+                card_id      TEXT,
+                subject      TEXT,
+                topic        TEXT,
+                front        TEXT,
+                detail       TEXT,
+                resolved     INTEGER DEFAULT 0,
+                created_at   REAL
+            );
+            CREATE INDEX IF NOT EXISTS idx_error_open ON error_notebook(resolved, created_at);
+            CREATE TABLE IF NOT EXISTS timer_state (
+                state_id     TEXT PRIMARY KEY,
+                payload_json TEXT NOT NULL,
+                updated_at   REAL
+            );
+            """
+        )
 
 
 def _ensure_initialized() -> None:
@@ -702,6 +776,14 @@ def delete_document(doc_id: str) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
         conn.execute("DELETE FROM chunk_hashes WHERE doc_id = ?", (doc_id,))
+
+
+def set_document_subject(doc_id: str, subject: str) -> None:
+    """Verschiebt ein Dokument in ein anderes Fach (Manifest). RAG-Metadaten
+    folgen beim nächsten Einlesen bzw. RAG-Toggle."""
+    with _connect() as conn:
+        conn.execute("UPDATE documents SET subject=?, updated_at=? WHERE doc_id=?",
+                     ((subject or "").strip() or None, time.time(), doc_id))
 
 
 def set_document_tags(doc_id: str, tags: "str | None") -> None:
@@ -1335,16 +1417,52 @@ def list_archived_subjects() -> list[str]:
             "SELECT subject FROM archived_subjects ORDER BY subject")]
 
 
-def log_exam_attempt(total_pct: int, num_items: int) -> str:
+def log_exam_attempt(total_pct: int, num_items: int,
+                     items: Optional[list[dict]] = None) -> str:
     """Speichert das Gesamtergebnis EINER Probeklausur (siehe Schema-Kommentar
     - vorher gab es dafuer keine Historie). Grundlage der Errungenschaft
-    "erste bestandene Probeklausur" (siehe ragapp/achievements.py)."""
+    "erste bestandene Probeklausur" (siehe ragapp/achievements.py).
+
+    ``items`` speichert optional die Einzelaufgaben (fuer Historie + Fehlerheft).
+    """
     aid = uuid.uuid4().hex[:16]
     with _connect() as conn:
         conn.execute(
             "INSERT INTO exam_attempts (attempt_id, total_pct, num_items, taken_at) "
             "VALUES (?,?,?,?)", (aid, int(total_pct), int(num_items), time.time()))
+        for it in items or []:
+            conn.execute(
+                "INSERT INTO exam_attempt_items (item_id, attempt_id, card_id, front, "
+                "typed, reference, score, feedback, fehlt, subject, doc_id, topic) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    uuid.uuid4().hex[:16], aid, it.get("card_id"),
+                    it.get("front"), it.get("typed"), it.get("reference"),
+                    it.get("score"), it.get("feedback"),
+                    json.dumps(it.get("fehlt"), ensure_ascii=False)
+                    if isinstance(it.get("fehlt"), (list, dict)) else it.get("fehlt"),
+                    it.get("subject"), it.get("doc_id"), it.get("topic"),
+                ),
+            )
     return aid
+
+
+def list_exam_attempt_items(attempt_id: str) -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM exam_attempt_items WHERE attempt_id=? ORDER BY rowid",
+            (attempt_id,)).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        raw = d.get("fehlt")
+        if isinstance(raw, str) and raw.startswith(("[", "{")):
+            try:
+                d["fehlt"] = json.loads(raw)
+            except Exception:  # noqa: BLE001
+                pass
+        out.append(d)
+    return out
 
 
 def list_exam_attempts(limit: Optional[int] = None) -> list[dict]:
@@ -1985,6 +2103,35 @@ def set_section_done(section_id: str, done: bool) -> None:
     with _connect() as conn:
         conn.execute("UPDATE study_plan_sections SET done=? WHERE section_id=?",
                      (1 if done else 0, section_id))
+
+
+def append_plan_section(plan_id: str, *, title: str, summary: str = "",
+                        est_minutes: int = 15) -> str:
+    """Hängt einen Abschnitt an, ohne die bestehende Gliederung zu löschen."""
+    existing = list_plan_sections(plan_id)
+    sid = uuid.uuid4().hex[:16]
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO study_plan_sections (section_id, plan_id, order_index, "
+            "title, summary, est_chars, est_minutes, done) VALUES (?,?,?,?,?,?,?,0)",
+            (sid, plan_id, len(existing), title.strip(), summary, 0, int(est_minutes)))
+        conn.execute("UPDATE study_plans SET updated_at=? WHERE plan_id=?",
+                     (time.time(), plan_id))
+    return sid
+
+
+def append_plan_block(plan_id: str, *, section_id: Optional[str],
+                      planned_date: str, planned_min: int) -> str:
+    """Hängt einen Tagesblock an, ohne den restlichen Plan zu ersetzen."""
+    bid = uuid.uuid4().hex[:16]
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO study_plan_blocks (block_id, plan_id, section_id, "
+            "planned_date, planned_min, done) VALUES (?,?,?,?,?,0)",
+            (bid, plan_id, section_id, planned_date, int(planned_min)))
+        conn.execute("UPDATE study_plans SET updated_at=? WHERE plan_id=?",
+                     (time.time(), plan_id))
+    return bid
 
 
 def replace_plan_blocks(plan_id: str, blocks: list[dict]) -> None:
@@ -2855,7 +3002,8 @@ def list_chat_sessions() -> list[dict]:
 
 
 def update_chat_session(session_id: str, *, messages: Optional[list] = None,
-                        title: Optional[str] = None) -> None:
+                        title: Optional[str] = None,
+                        subject: Optional[str] = None) -> None:
     """Aktualisiert einzelne Felder (typischerweise ``messages`` nach jeder neuen
     Chat-Runde, oder ``title`` beim Umbenennen)."""
     sets: list[str] = []
@@ -2866,6 +3014,9 @@ def update_chat_session(session_id: str, *, messages: Optional[list] = None,
     if title is not None:
         sets.append("title=?")
         args.append(title.strip())
+    if subject is not None:
+        sets.append("subject=?")
+        args.append(subject.strip() or None)
     if not sets:
         return
     sets.append("updated_at=?")
@@ -2878,6 +3029,107 @@ def update_chat_session(session_id: str, *, messages: Optional[list] = None,
 def delete_chat_session(session_id: str) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM chat_sessions WHERE session_id=?", (session_id,))
+
+
+FEHLERHEFT_DECK = "Fehlerheft"
+
+
+def upsert_error(*, source: str, source_id: Optional[str] = None,
+                 card_id: Optional[str] = None, subject: Optional[str] = None,
+                 topic: Optional[str] = None, front: Optional[str] = None,
+                 detail: Optional[str] = None) -> str:
+    """Legt einen Fehlerheft-Eintrag an oder öffnet einen bestehenden wieder."""
+    now = time.time()
+    with _connect() as conn:
+        row = None
+        if source_id:
+            row = conn.execute(
+                "SELECT error_id FROM error_notebook WHERE source=? AND source_id=?",
+                (source, source_id)).fetchone()
+        elif card_id:
+            row = conn.execute(
+                "SELECT error_id FROM error_notebook WHERE card_id=? AND resolved=0",
+                (card_id,)).fetchone()
+        if row:
+            eid = row["error_id"]
+            conn.execute(
+                "UPDATE error_notebook SET resolved=0, detail=?, front=?, subject=?, "
+                "topic=?, created_at=? WHERE error_id=?",
+                (detail, front, subject, topic, now, eid))
+            return eid
+        eid = uuid.uuid4().hex[:16]
+        conn.execute(
+            "INSERT INTO error_notebook (error_id, source, source_id, card_id, subject, "
+            "topic, front, detail, resolved, created_at) VALUES (?,?,?,?,?,?,?,?,0,?)",
+            (eid, source, source_id, card_id, subject, topic, front, detail, now))
+        return eid
+
+
+def resolve_error(error_id: str) -> None:
+    with _connect() as conn:
+        conn.execute("UPDATE error_notebook SET resolved=1 WHERE error_id=?", (error_id,))
+
+
+def resolve_errors_for_card(card_id: str) -> int:
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE error_notebook SET resolved=1 WHERE card_id=? AND resolved=0",
+            (card_id,))
+        return cur.rowcount
+
+
+def list_errors(*, subject: Optional[str] = None, include_resolved: bool = False,
+                limit: Optional[int] = None) -> list[dict]:
+    sql = "SELECT * FROM error_notebook WHERE 1=1"
+    args: list = []
+    if not include_resolved:
+        sql += " AND resolved=0"
+    if subject:
+        sql += " AND subject=?"
+        args.append(subject)
+    sql += " ORDER BY created_at DESC"
+    if limit is not None:
+        sql += " LIMIT ?"
+        args.append(int(limit))
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+
+def count_open_errors(subject: Optional[str] = None) -> int:
+    sql = "SELECT COUNT(*) AS n FROM error_notebook WHERE resolved=0"
+    args: list = []
+    if subject:
+        sql += " AND subject=?"
+        args.append(subject)
+    with _connect() as conn:
+        return int(conn.execute(sql, args).fetchone()["n"])
+
+
+def save_timer_state(payload: dict) -> None:
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO timer_state (state_id, payload_json, updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(state_id) DO UPDATE SET payload_json=excluded.payload_json, "
+            "updated_at=excluded.updated_at",
+            ("active", json.dumps(payload), time.time()))
+
+
+def load_timer_state() -> Optional[dict]:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT payload_json FROM timer_state WHERE state_id='active'").fetchone()
+    if not row:
+        return None
+    try:
+        data = json.loads(row["payload_json"] or "{}")
+    except Exception:  # noqa: BLE001
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def clear_timer_state() -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM timer_state WHERE state_id='active'")
 
 
 # Ro7: KEINE Initialisierung mehr als Import-Nebenwirkung. Schema/Migrationen

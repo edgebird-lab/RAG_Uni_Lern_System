@@ -288,6 +288,25 @@ with col_practice:
 
             def _bewerten(rating: int) -> None:
                 manifest.log_practice_attempt(pid, self_rating=rating)
+                if rating <= 1:
+                    from ragapp.student_flow import record_error, card_from_text
+                    cid = card_from_text(
+                        (_active.get("problem_text") or "")[:200],
+                        (_active.get("final_answer") or "Siehe Lösungsweg.")[:800],
+                        source="practice", subject=_active.get("subject"),
+                        topic=_active.get("topic"))
+                    record_error(
+                        source="practice", source_id=pid, card_id=cid,
+                        subject=_active.get("subject"),
+                        front=(_active.get("problem_text") or "")[:200],
+                        detail="Übung nicht vollständig gelöst")
+                else:
+                    from ragapp.student_flow import card_from_text
+                    card_from_text(
+                        (_active.get("problem_text") or "")[:200],
+                        (_active.get("final_answer") or "Siehe Lösungsweg.")[:800],
+                        source="practice", subject=_active.get("subject"),
+                        topic=_active.get("topic"))
                 for k in (_hint_key, _step_key):
                     st.session_state[k] = 0
                 st.session_state[_resolved_key] = False

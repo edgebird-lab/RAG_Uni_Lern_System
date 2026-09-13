@@ -76,6 +76,11 @@ _known_subjects = sorted(
 with card("timer"):
     st.subheader("⏱️ Timer")
 
+    if not st.session_state.get("pomo_running") and not st.session_state.get("free_running"):
+        _saved = manifest.load_timer_state()
+        if _saved and _saved.get("pomo_running"):
+            st.session_state.update(_saved)
+            st.info("Timer nach dem Neuladen fortgesetzt.")
     _running = bool(st.session_state.get("pomo_running") or st.session_state.get("free_running"))
 
     # Vorbelegung aus dem Lernplan (Block "🍅 Pomodoro" verlinkt hierher). Fach/Modus
@@ -127,6 +132,14 @@ with card("timer"):
                     pomo_long_every=int(_long_every),
                     pomo_plan_block_id=st.session_state.pop("_pomo_pending_block_id", None))
                 st.session_state.pop("_pomo_pending_work_min", None)
+                manifest.save_timer_state({
+                    k: st.session_state.get(k) for k in (
+                        "pomo_running", "pomo_phase", "pomo_phase_start",
+                        "pomo_phase_len", "pomo_subject", "pomo_cycle",
+                        "pomo_logged", "pomo_work_min", "pomo_break_min",
+                        "pomo_long_break_min", "pomo_long_every",
+                        "pomo_plan_block_id")
+                })
                 st.rerun()
         else:
             if st.button("▶️ Timer starten", type="primary"):
@@ -166,6 +179,7 @@ with card("timer"):
             for k in list(st.session_state.keys()):
                 if k.startswith("pomo_"):
                     del st.session_state[k]
+            manifest.clear_timer_state()
 
         @st.fragment(run_every=1)
         def _pomo_box() -> None:
@@ -200,6 +214,11 @@ with card("timer"):
                     st.session_state["pomo_cycle"] += 1
                 st.success(f"✅ Arbeitsblock fertig! {st.session_state['pomo_work_min']} Min "
                           f"für {_subj_txt} gespeichert.")
+                if st.button("🎴 3 Karten zu diesem Fach", key="pomo_three_cards"):
+                    st.session_state["study_prefill"] = {
+                        "subject": st.session_state.get("pomo_subject"),
+                        "limit": 3, "mode": "reveal"}
+                    st.switch_page("pages/4_🎓_Lernen.py")
                 is_long = st.session_state["pomo_cycle"] % st.session_state["pomo_long_every"] == 0
                 break_min = (st.session_state["pomo_long_break_min"] if is_long
                             else st.session_state["pomo_break_min"])
@@ -208,6 +227,14 @@ with card("timer"):
                             use_container_width=True):
                     st.session_state.update(pomo_phase="break", pomo_phase_start=time.time(),
                                             pomo_phase_len=break_min * 60, pomo_logged=False)
+                    manifest.save_timer_state({
+                        k: st.session_state.get(k) for k in (
+                            "pomo_running", "pomo_phase", "pomo_phase_start",
+                            "pomo_phase_len", "pomo_subject", "pomo_cycle",
+                            "pomo_logged", "pomo_work_min", "pomo_break_min",
+                            "pomo_long_break_min", "pomo_long_every",
+                            "pomo_plan_block_id")
+                    })
                     st.rerun()
                 if c2.button("⏹️ Beenden", use_container_width=True):
                     _pomo_reset()

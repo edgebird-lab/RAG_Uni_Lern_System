@@ -684,6 +684,7 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
                           sources: Optional[list[dict]] = None,
                           model: Optional[str] = None,
                           on_progress: ProgressCallback = None,
+                          max_slides: Optional[int] = None,
                           ) -> tuple[str, str, str, Optional[str]]:
     """Erzeugt Vortrag ABSCHNITTSWEISE (wie Audio-Overview).
 
@@ -698,11 +699,13 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
     used_model = model or settings.author_model()
     llm_obj = get_llm(used_model)
     hard_cap = int(settings.TALK_MAX_SCRIPT_CHARS)
-    max_slides = int(settings.TALK_MAX_SLIDES)
+    max_slides = int(max_slides or settings.TALK_MAX_SLIDES)
     sources = list(sources or [])
 
     usable = [(lab, tit, body) for lab, tit, body in granular
               if len((body or "").strip()) >= _MIN_SECTION_CHARS]
+    if max_slides <= 8:
+        usable = usable[:max(1, max_slides - 2)]
     steps_total = 1 + max(1, len(usable)) + (1 if sources else 0)
     step = 0
 

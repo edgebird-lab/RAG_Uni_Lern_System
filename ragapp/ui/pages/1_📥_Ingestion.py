@@ -423,6 +423,11 @@ with card("anreicherung"):
                 from ragapp import study as _study_h
                 _study_h.mark_needs_card_harvest()
                 st.session_state["_needs_card_harvest"] = True
+                with st.status("Übernehme Fragen als Karten …") as _hs:
+                    _hres = _study_h.harvest_cards(progress=lambda m: _hs.update(label=m))
+                    _hs.update(state="complete",
+                               label=f"{_hres.get('neu', 0)} neue Karte(n)")
+                st.success(f"Karten aktualisiert: +{_hres.get('neu', 0)}")
                 _rows = [{"Datei": v["filename"], "Fragen erzeugt": v["questions"]}
                          for v in r.get("per_doc", {}).values() if v["questions"]]
                 if _rows:
@@ -442,6 +447,60 @@ with card("anreicherung"):
                 if _hb2.button("▶ Zu Karteikarten", key="ingest_to_lernen",
                                use_container_width=True):
                     st.switch_page(_lernen_target)
+
+st.divider()
+
+with card("lernkatalog"):
+    st.subheader("📚 Klausur-Lernkatalog")
+    st.caption("Prüfungstypische Fragen aus Zusammenfassung + optionaler Altklausur – "
+               "landet als Karten nach der Ernte.")
+    _cat_subj = st.selectbox("Fach für den Katalog", ["–"] + _subjects, key="catalog_subj")
+    _cat_n = st.number_input("Fragen je Abschnitt", min_value=1, max_value=8, value=3,
+                             key="catalog_n")
+    _cat_exams = st.file_uploader("Altklausur (optional, PDF)", type=["pdf"],
+                                  accept_multiple_files=True, key="catalog_exams")
+    if st.button("📚 Lernkatalog erzeugen", type="primary",
+                 disabled=_cat_subj == "–", key="catalog_go"):
+        from ragapp.ingestion.exam_catalog import build_exam_catalog
+        from ragapp.config import DATA_DIR
+        _exam_paths = []
+        if _cat_exams:
+            _tmp = DATA_DIR / "inbox"
+            _tmp.mkdir(parents=True, exist_ok=True)
+            for _f in _cat_exams:
+                _p = _tmp / _f.name
+                _p.write_bytes(_f.getvalue())
+                _exam_paths.append(_p)
+        with st.status("Erzeuge Katalog …", expanded=True) as _cs:
+            try:
+                _cres = build_exam_catalog(
+                    _cat_subj, exam_files=_exam_paths or None,
+                    n_per_section=int(_cat_n),
+                    progress=lambda m: _cs.update(label=str(m)))
+                if _cres.get("status") == "no_summary":
+                    st.warning("Keine Zusammenfassung.md für dieses Fach. "
+                               "Erst auf **Zusammenfassung** erzeugen, dann Katalog.")
+                else:
+                    _cs.update(state="complete", label="Katalog fertig")
+                    st.success(f"{len(_cres.get('pairs') or [])} Fragenpaare.")
+                    from ragapp import study as _stc
+                    _stc.harvest_cards()
+                    st.info("Karten wurden übernommen.")
+            except Exception as _exc:  # noqa: BLE001
+                st.error(str(_exc))
+
+with card("inbox_scan"):
+    st.subheader("📥 Inbox jetzt einlesen")
+    st.caption("Liest neue Dateien aus data/inbox einmalig – ohne die App zu blockieren, "
+               "wenn nichts liegt. Große Erstimporte weiter über CLI/Watcher.")
+    if st.button("Inbox scannen", key="inbox_scan_now"):
+        from ragapp.student_flow import scan_inbox_once
+        with st.status("Scanne Inbox …") as _is:
+            _ires = scan_inbox_once(progress=lambda m: _is.update(label=m))
+            _is.update(state="complete")
+        st.success(f"{_ires['ok']}/{_ires['scanned']} Datei(en).")
+        if _ires["errors"]:
+            st.warning(" · ".join(_ires["errors"][:4]))
 
 st.divider()
 

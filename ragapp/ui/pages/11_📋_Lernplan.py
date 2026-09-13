@@ -236,14 +236,18 @@ if _active_plan_id is None:
     tc1, tc2, tc3 = st.columns(3)
     with tc1:
         _new_daily = st.number_input("Verfügbare Zeit/Tag (Min)", min_value=15, max_value=600,
-                                     value=120, step=15, key="splan_new_daily")
+                                     value=45, step=15, key="splan_new_daily")
         st.caption(f"Wird auf max. {settings.PLAN_MAX_DAILY_FOCUS_MIN} Min gedeckelt "
                    "(nachhaltige Tagesobergrenze, siehe Forschung).")
     with tc2:
-        _has_deadline = st.checkbox("Zieldatum setzen", value=False, key="splan_new_has_deadline")
+        _has_deadline = st.checkbox("Zieldatum setzen", value=True, key="splan_new_has_deadline")
     with tc3:
-        _new_deadline = (st.date_input("Zieldatum", value=date.today() + timedelta(days=7),
+        from ragapp.student_flow import default_plan_deadline
+        _dl_guess = study_plan.parse_iso_date(default_plan_deadline(_new_subject)) or (
+            date.today() + timedelta(days=21))
+        _new_deadline = (st.date_input("Zieldatum", value=_dl_guess,
                                        key="splan_new_deadline") if _has_deadline else None)
+        st.caption("Standard: nächste Klausur oder +21 Tage, 45 Min/Abend.")
 
     _new_model_choice = st.radio(
         "Modell für die Gliederung", ["🎯 Gründlich (langsamer)", "⚡ Schnell (gröber)"],
@@ -331,6 +335,11 @@ with card("kopf"):
     # ein verpasster Tag verschwand so unbemerkt aus dem Blick).
     _today_iso_plan = date.today().isoformat()
     _overdue_blocks = manifest.list_overdue_plan_blocks(_today_iso_plan, plan_id=_active_plan_id)
+    if _overdue_blocks and not st.session_state.get(f"_splan_autoshift_{_active_plan_id}"):
+        manifest.reschedule_overdue_blocks(_active_plan_id, _today_iso_plan, _today_iso_plan)
+        st.session_state[f"_splan_autoshift_{_active_plan_id}"] = True
+        st.info(f"{len(_overdue_blocks)} überfällige Block(e) auf heute gelegt.")
+        st.rerun()
     if _overdue_blocks:
         _overdue_min = sum(b["planned_min"] for b in _overdue_blocks)
         oc1, oc2 = st.columns([3, 1])
@@ -581,7 +590,7 @@ with card("zeitplan"):
                             + (" ✅" if _day_done == _day_total else ""),
                             expanded=(d == date.today().isoformat())):
                 for bl in _day_blocks:
-                    bcol1, bcol2, bcol3 = st.columns([4, 1.3, 1.3])
+                    bcol1, bcol2, bcol3, bcol4, bcol5 = st.columns([3.2, 1, 1, 1, 1])
                     title = _sec_title.get(bl["section_id"], "Abschnitt")
                     # Ehrlich sichtbar machen, WORAUF ein "erledigt" beruht: 🍅 = echte
                     # Pomodoro-Zeit erfasst, ✍️ = manuell abgehakt (z. B. Programmier-
@@ -609,3 +618,16 @@ with card("zeitplan"):
                                 "block_id": bl["block_id"],
                             }
                             st.switch_page("pages/10_⏱️_Lernzeit.py")
+                        if bcol4.button("🎴", key=f"splan_cards_{bl['block_id']}",
+                                        help="Karten zu diesem Fach"):
+                            st.session_state["study_prefill"] = {
+                                "subject": _plan.get("subject"), "limit": 12, "mode": "reveal"}
+                            st.switch_page("pages/4_🎓_Lernen.py")
+                        if bcol5.button("🧮", key=f"splan_prac_{bl['block_id']}",
+                                        help="Eine Übung zu diesem Fach"):
+                            st.session_state["practice_prefill"] = {
+                                "subject": _plan.get("subject"),
+                                "doc_ids": _plan.get("doc_ids") or [],
+                                "topic": title,
+                            }
+                            st.switch_page("pages/13_🧮_Übungsaufgaben.py")
