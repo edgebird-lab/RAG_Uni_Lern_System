@@ -1,0 +1,15 @@
+{
+  "name": "RAG-Lernsystem (CPU)",
+  "user": "ubuntu",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "terminals": [
+    {
+      "name": "Streamlit UI",
+      "command": "STREAMLIT_SERVER_HEADLESS=true ./start.sh"
+    }
+  ],
+  "ports": [
+    { "name": "Streamlit", "port": 8501 }
+  ]
+}
