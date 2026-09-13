@@ -5,7 +5,7 @@ vorhandenen Wiederholungs-Reservierung. Isolierte Temp-DB, niemals die echte
 data/manifest.db."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -86,3 +86,62 @@ def test_degenerierte_konfiguration_liefert_class_minutes_reserved_null(isolated
         [{"section_id": "s1", "est_minutes": 100}], daily_minutes=0,
         deadline=None, start=date(2026, 9, 14), subject=None)
     assert result["class_minutes_reserved"] == 0
+
+
+def _overdue_plan(*, daily_minutes=60, blocks=(30, 30, 30)):
+    pid = manifest.create_study_plan(
+        title="Plan", subject="Mathe", doc_ids=[], deadline=None,
+        daily_minutes=daily_minutes)
+    manifest.update_study_plan(pid, status="active")
+    sid = manifest.append_plan_section(
+        pid, title="Rückstand", est_minutes=sum(blocks))
+    old = (date.today() - timedelta(days=2)).isoformat()
+    for minutes in blocks:
+        manifest.append_plan_block(
+            pid, section_id=sid, planned_date=old, planned_min=minutes)
+    return pid
+
+
+def test_repair_overdue_blocks_verteilt_statt_auf_heute_zu_kippen(
+        isolated_db, monkeypatch):
+    monkeypatch.setattr(
+        study_plan.settings, "PLAN_MAX_DAILY_FOCUS_MIN", 60, raising=False)
+    pid = _overdue_plan(daily_minutes=60, blocks=(30, 30, 30))
+    preview = study_plan.repair_overdue_blocks(pid, apply=False)
+    days = [m["to_date"] for m in preview["moves"]]
+    assert len(set(days)) >= 2
+    assert preview["moved_minutes"] == 90
+    # Vorschau mutiert noch nicht.
+    assert len(manifest.list_overdue_plan_blocks(date.today().isoformat(), pid)) == 3
+    applied = study_plan.repair_overdue_blocks(pid, apply=True)
+    assert applied["applied"] is True
+    assert manifest.list_overdue_plan_blocks(date.today().isoformat(), pid) == []
+
+
+def test_repair_overdue_blocks_zeigt_shortfall_ehrlich(
+        isolated_db, monkeypatch):
+    monkeypatch.setattr(
+        study_plan.settings, "PLAN_MAX_DAILY_FOCUS_MIN", 20, raising=False)
+    pid = _overdue_plan(daily_minutes=20, blocks=(30,))
+    out = study_plan.repair_overdue_blocks(pid, apply=False)
+    assert out["moves"] == []
+    assert out["shortfall_minutes"] == 30
+
+
+def test_repair_reserviert_vorlesungszeit(isolated_db, monkeypatch):
+    monkeypatch.setattr(
+        study_plan.settings, "PLAN_MAX_DAILY_FOCUS_MIN", 60, raising=False)
+    monkeypatch.setattr(
+        study_plan.settings, "PLAN_CLASS_MAX_SHARE", 1.0, raising=False)
+    start = date(2026, 9, 14)  # Montag
+    manifest.upsert_timetable_slot(
+        subject="Uni", weekday=0, start_time="08:00", end_time="09:00")
+    pid = manifest.create_study_plan(
+        title="Plan", subject=None, doc_ids=[], deadline=None, daily_minutes=60)
+    manifest.update_study_plan(pid, status="active")
+    sid = manifest.append_plan_section(pid, title="Thema", est_minutes=30)
+    manifest.append_plan_block(
+        pid, section_id=sid,
+        planned_date=(start - timedelta(days=1)).isoformat(), planned_min=30)
+    out = study_plan.repair_overdue_blocks(pid, start=start)
+    assert out["moves"][0]["to_date"] == "2026-09-15"

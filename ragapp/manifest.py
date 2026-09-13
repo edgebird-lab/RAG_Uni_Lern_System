@@ -2402,6 +2402,16 @@ def reschedule_overdue_blocks(plan_id: str, before_date: str, new_date: str) -> 
         return cur.rowcount
 
 
+def move_plan_block(block_id: str, new_date: str) -> bool:
+    """Verschiebt genau einen unerledigten Block; Grundlage der Plan-Reparatur."""
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE study_plan_blocks SET planned_date=? "
+            "WHERE block_id=? AND done=0",
+            (new_date, block_id))
+        return cur.rowcount > 0
+
+
 def sync_plan_status(plan_id: str) -> str:
     """Nach JEDER Block-Status-Aenderung aufrufen: setzt einen Plan automatisch auf
     'done', sobald ALLE seine Bloecke erledigt sind, bzw. zurueck auf 'active',

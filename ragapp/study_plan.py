@@ -525,3 +525,90 @@ def build_schedule(sections: list[dict], daily_minutes: int,
         "review_minutes_reserved": review_reserved_total,
         "class_minutes_reserved": round(class_reserved_total),
     }
+
+
+def repair_overdue_blocks(plan_id: str, *, start: Optional[date] = None,
+                          apply: bool = False,
+                          rest_weekdays: Optional[set[int]] = None) -> dict:
+    """Verteilt Rückstand auf kommende Tage unter der täglichen Lastgrenze.
+
+    Bestehende zukünftige Blöcke, Vorlesungszeit und Review-Reserve belegen
+    Kapazität. Was bis zum Zieldatum nicht passt, bleibt als ehrlicher
+    ``shortfall_minutes`` überfällig. ``apply=False`` liefert nur die Vorschau.
+    """
+    start = start or date.today()
+    today_iso = start.isoformat()
+    plan = manifest.get_study_plan(plan_id)
+    if not plan:
+        return {"moves": [], "moved_blocks": 0, "moved_minutes": 0,
+                "shortfall_minutes": 0, "applied": False}
+    overdue = manifest.list_overdue_plan_blocks(today_iso, plan_id=plan_id)
+    if not overdue:
+        return {"moves": [], "moved_blocks": 0, "moved_minutes": 0,
+                "shortfall_minutes": 0, "applied": bool(apply)}
+
+    effective = max(0, min(int(plan.get("daily_minutes") or 0),
+                           int(settings.PLAN_MAX_DAILY_FOCUS_MIN)))
+    deadline = parse_iso_date(plan.get("deadline"))
+    end = deadline if deadline and deadline >= start else start + timedelta(days=13)
+    review = _review_reservation_by_day(plan.get("subject"), effective)
+    classes = _class_minutes_by_weekday()
+    class_share = max(0.0, min(0.95, float(settings.PLAN_CLASS_MAX_SHARE)))
+    rest = set(rest_weekdays or ())
+
+    all_blocks = manifest.list_plan_blocks_detailed(plan_id=plan_id)
+    existing_by_day: dict[str, int] = {}
+    overdue_ids = {b["block_id"] for b in overdue}
+    for block in all_blocks:
+        if block.get("done") or block["block_id"] in overdue_ids:
+            continue
+        iso = block["planned_date"]
+        if iso >= today_iso:
+            existing_by_day[iso] = (
+                existing_by_day.get(iso, 0) + int(block.get("planned_min") or 0)
+            )
+
+    capacities: dict[str, int] = {}
+    cur = start
+    while cur <= end:
+        iso = cur.isoformat()
+        if cur.weekday() in rest:
+            capacities[iso] = 0
+        else:
+            class_min = min(classes.get(cur.weekday(), 0),
+                            effective * class_share)
+            capacities[iso] = max(
+                0,
+                round(effective - review.get(iso, 0) - class_min)
+                - existing_by_day.get(iso, 0),
+            )
+        cur += timedelta(days=1)
+
+    moves: list[dict] = []
+    shortfall = 0
+    for block in overdue:
+        minutes = int(block.get("planned_min") or 0)
+        target = next(
+            (iso for iso, free in capacities.items() if free >= minutes), None)
+        if target is None:
+            shortfall += minutes
+            continue
+        capacities[target] -= minutes
+        moves.append({
+            "block_id": block["block_id"],
+            "from_date": block["planned_date"],
+            "to_date": target,
+            "minutes": minutes,
+            "title": block.get("section_title") or block.get("plan_title"),
+        })
+
+    if apply:
+        for move in moves:
+            manifest.move_plan_block(move["block_id"], move["to_date"])
+    return {
+        "moves": moves,
+        "moved_blocks": len(moves),
+        "moved_minutes": sum(m["minutes"] for m in moves),
+        "shortfall_minutes": shortfall,
+        "applied": bool(apply),
+    }
