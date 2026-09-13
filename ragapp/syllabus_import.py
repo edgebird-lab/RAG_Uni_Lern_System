@@ -76,6 +76,7 @@ class ExtractedSubject:
     exam_date: Optional[str] = None
     ects: Optional[float] = None
     lectures: list[ExtractedLecture] = field(default_factory=list)
+    match: Optional[str] = None
 
 
 def _clean_hhmm(v) -> Optional[str]:
@@ -159,6 +160,66 @@ def _parse_subjects(data) -> list[ExtractedSubject]:
             code=code, label=label, exam_date=_clean_date(item.get("exam_date")),
             ects=ects, lectures=_parse_lectures(item.get("lectures")),
         ))
+    return out
+
+
+def known_subject_codes() -> set[str]:
+    """Codes aus SUBJECT_LABELS, Fach-Ordnern und bereits importierten Kursen."""
+    from pathlib import Path
+    from ragapp.config import SOURCE_DIR, SUBJECT_LABELS
+    from ragapp import manifest
+    codes = set(SUBJECT_LABELS)
+    try:
+        src = Path(SOURCE_DIR)
+        if src.is_dir():
+            codes |= {p.name for p in src.iterdir()
+                      if p.is_dir() and not p.name.startswith(("_", "."))}
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        codes |= {e["subject"] for e in manifest.list_exams() if e.get("subject")}
+        codes |= {d["subject"] for d in manifest.list_documents() if d["subject"]}
+        codes |= {s["subject"] for s in manifest.list_timetable() if s.get("subject")}
+    except Exception:  # noqa: BLE001
+        pass
+    return {c for c in codes if c}
+
+
+def resolve_subject_code(code: str, label: str = "",
+                         *, known: Optional[set[str]] = None) -> dict:
+    """Gleicht Import-Kürzel/Namen mit bestehenden Fächern ab statt Dubletten."""
+    from ragapp.config import SUBJECT_LABELS
+    known = set(known if known is not None else known_subject_codes())
+    code = (code or "").strip()
+    label = (label or "").strip()
+    by_lower = {k.lower(): k for k in known}
+    if code.lower() in by_lower:
+        k = by_lower[code.lower()]
+        return {"code": k, "via": "code", "new": False}
+    inv = {str(v).lower(): k for k, v in SUBJECT_LABELS.items()}
+    if label.lower() in inv:
+        return {"code": inv[label.lower()], "via": "label", "new": False}
+    if label.lower() in by_lower:
+        return {"code": by_lower[label.lower()], "via": "folder", "new": False}
+    return {"code": code, "via": "new", "new": True}
+
+
+def remap_extracted_subjects(subjects: list[ExtractedSubject]) -> list[ExtractedSubject]:
+    """Setzt Codes auf bestehende Fächer und merkt den Abgleich in ``match``."""
+    known = known_subject_codes()
+    out: list[ExtractedSubject] = []
+    for s in subjects:
+        info = resolve_subject_code(s.code, s.label, known=known)
+        if info["new"]:
+            note = "neuer Kurs"
+        elif info["code"] != s.code:
+            note = f"bestehendes Fach → {info['code']}"
+        else:
+            note = "bestehendes Fach"
+        known.add(info["code"])
+        out.append(ExtractedSubject(
+            code=info["code"], label=s.label, exam_date=s.exam_date,
+            ects=s.ects, lectures=list(s.lectures), match=note))
     return out
 
 
@@ -281,8 +342,10 @@ def apply_extracted_subjects(subjects: list[ExtractedSubject]) -> dict:
     unangetastet - ein (erneuter) Import überschreibt nie eine schon erhaltene
     Note, nur Termin/ECTS."""
     from ragapp import manifest
+    from ragapp.student_flow import ensure_course_folder
     n_exams = 0
     n_slots = 0
+    n_folders = 0
     for s in subjects:
         existing = manifest.get_exam(s.code)
         notiz = existing.get("notiz") if existing else None
@@ -295,12 +358,18 @@ def apply_extracted_subjects(subjects: list[ExtractedSubject]) -> dict:
             note=existing.get("note") if existing else None,
         )
         n_exams += 1
+        try:
+            ensure_course_folder(s.code)
+            n_folders += 1
+        except Exception:  # noqa: BLE001
+            pass
         for lec in s.lectures:
             manifest.upsert_timetable_slot(
                 subject=s.code, weekday=lec.weekday,
                 start_time=lec.start, end_time=lec.end, room=lec.room)
             n_slots += 1
-    return {"subjects": len(subjects), "exams": n_exams, "slots": n_slots}
+    return {"subjects": len(subjects), "exams": n_exams, "slots": n_slots,
+            "folders": n_folders}
 
 
 def subjects_from_preview_rows(rows: list[dict],
@@ -332,5 +401,6 @@ def subjects_from_preview_rows(rows: list[dict],
         ects_raw = row.get("ECTS")
         ects = float(ects_raw) if pd.notna(ects_raw) else None
         out.append(ExtractedSubject(code=orig.code, label=orig.label, exam_date=exam_date,
-                                    ects=ects, lectures=orig.lectures))
+                                    ects=ects, lectures=orig.lectures,
+                                    match=orig.match))
     return out

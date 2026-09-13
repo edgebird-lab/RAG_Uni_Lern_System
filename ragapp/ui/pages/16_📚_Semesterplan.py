@@ -101,8 +101,9 @@ with card("upload"):
                 def _syllabus_progress(i, n):
                     _status.caption(f"KI liest Abschnitt {i} von {n} …")
 
-                _subjects = syllabus_import.extract_syllabus(
-                    _doc.text, model=_model_choice, progress=_syllabus_progress)
+                _subjects = syllabus_import.remap_extracted_subjects(
+                    syllabus_import.extract_syllabus(
+                        _doc.text, model=_model_choice, progress=_syllabus_progress))
                 _status.empty()
         except (syllabus_import.SyllabusImportError, ValueError) as exc:
             st.error(str(exc))
@@ -121,14 +122,14 @@ if _extracted:
     with card("vorschau"):
         st.subheader("Vorschau – bitte prüfen, dann übernehmen")
         st.caption(
-            "Häkchen raus = dieses Fach wird NICHT übernommen. Klausurdatum/ECTS "
-            "sind direkt in der Tabelle korrigierbar. Vorlesungszeiten werden "
-            "unverändert wie erkannt übernommen (bei Bedarf danach auf "
-            "**🗂️ Organisation** anpassen)."
+            "Häkchen raus = dieses Fach wird NICHT übernommen. Importierte Namen "
+            "werden mit bestehenden Fächern und Ordnern abgeglichen (Spalte Abgleich). "
+            "Klausurdatum/ECTS sind direkt in der Tabelle korrigierbar."
         )
         _by_code = {s.code: s for s in _extracted}
         _df = pd.DataFrame([{
             "✓": True, "Code": s.code, "Fach": s.label,
+            "Abgleich": s.match or "–",
             "Klausurdatum": (datetime.strptime(s.exam_date, "%Y-%m-%d").date()
                             if s.exam_date else None),
             "ECTS": s.ects, "Vorlesungszeiten": _fmt_lectures(s.lectures),
@@ -143,6 +144,7 @@ if _extracted:
                 "✓": st.column_config.CheckboxColumn(width="small"),
                 "Code": st.column_config.TextColumn(disabled=True),
                 "Fach": st.column_config.TextColumn(disabled=True),
+                "Abgleich": st.column_config.TextColumn(disabled=True),
                 "Klausurdatum": st.column_config.DateColumn(format="DD.MM.YYYY"),
                 "ECTS": st.column_config.NumberColumn(min_value=0.0, max_value=60.0, step=1.0),
                 "Vorlesungszeiten": st.column_config.TextColumn(disabled=True),

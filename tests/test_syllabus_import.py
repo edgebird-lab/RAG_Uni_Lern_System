@@ -214,7 +214,7 @@ def test_apply_extracted_subjects_schreibt_exam_und_slots(isolated_db):
         code="DSA", label="Algorithmen", exam_date="2026-07-20", ects=6.0,
         lectures=[si.ExtractedLecture(weekday=1, start="10:00", end="12:00", room="H3")])]
     result = si.apply_extracted_subjects(subjects)
-    assert result == {"subjects": 1, "exams": 1, "slots": 1}
+    assert result["subjects"] == 1 and result["exams"] == 1 and result["slots"] == 1
     exam = manifest.get_exam("DSA")
     assert exam["exam_date"] == "2026-07-20" and exam["ects"] == 6.0
     slots = manifest.list_timetable("DSA")
@@ -291,3 +291,40 @@ def test_apply_extracted_subjects_ueberschreibt_bestehende_note_nicht(isolated_d
     exam = manifest.get_exam("DSA")
     assert exam["exam_date"] == "2026-07-20"   # neuer Termin uebernommen
     assert exam["note"] == 1.7                  # alte Note erhalten
+
+
+def test_resolve_subject_code_gleicht_label_ab():
+    info = si.resolve_subject_code("ALG", "Algorithmen & Datenstrukturen",
+                                   known={"DSA", "KuLR"})
+    assert info["code"] == "DSA"
+    assert info["via"] == "label"
+    assert info["new"] is False
+
+
+def test_resolve_subject_code_neuer_kurs_bleibt_eigener_code():
+    info = si.resolve_subject_code("NEU", "Neues Wahlfach", known={"DSA"})
+    assert info["code"] == "NEU"
+    assert info["new"] is True
+
+
+def test_remap_extracted_subjects_vermeidet_dublette(isolated_db, tmp_path, monkeypatch):
+    src = tmp_path / "quellen"
+    (src / "KuLR").mkdir(parents=True)
+    monkeypatch.setattr("ragapp.config.SOURCE_DIR", src)
+    subjects = [
+        si.ExtractedSubject(code="ALG", label="Algorithmen & Datenstrukturen"),
+        si.ExtractedSubject(code="kulr", label="Kosten"),
+    ]
+    out = si.remap_extracted_subjects(subjects)
+    assert out[0].code == "DSA"
+    assert "bestehendes Fach" in (out[0].match or "")
+    assert out[1].code == "KuLR"
+
+
+def test_apply_extracted_subjects_legt_fachordner_an(isolated_db, tmp_path, monkeypatch):
+    src = tmp_path / "quellen"
+    monkeypatch.setattr("ragapp.config.SOURCE_DIR", src)
+    subjects = [si.ExtractedSubject(code="WahlA", label="Wahlmodul A", ects=5.0)]
+    result = si.apply_extracted_subjects(subjects)
+    assert (src / "WahlA").is_dir()
+    assert result["folders"] == 1
