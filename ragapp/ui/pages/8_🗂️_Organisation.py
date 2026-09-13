@@ -220,6 +220,32 @@ else:
             if _ks["weak_topics"]:
                 st.caption("Lücken: " + ", ".join(
                     f'{w["topic"]} ({w["mastery_pct"]} %)' for w in _ks["weak_topics"][:3]))
+            from ragapp import coverage as _cov
+            _cov_rows = _cov.coverage_for_subject(_subj)
+            if _cov_rows:
+                st.caption("Abdeckung der Lernziele")
+                for _row in _cov_rows:
+                    _act = _cov.coverage_start_action(_row)
+                    _g1, _g2 = st.columns([3, 1])
+                    _g1.write(f"· {_row['status']}: {_row['text'][:90]}")
+                    if _act["kind"] and _g2.button(
+                            _act["label"], key=f"cov_{_subj}_{_row['goal_id']}"):
+                        if _act["kind"] == "dokument":
+                            st.session_state["doc_folder"] = _subj
+                            st.switch_page("pages/9_🗃️_Dokumentenmanager.py")
+                        elif _act["kind"] == "lernset":
+                            st.session_state["lernset_docs_prefill"] = _row.get("doc_ids") or []
+                            st.switch_page("pages/4_🎓_Lernen.py")
+                        elif _act["kind"] == "uebung":
+                            st.session_state["practice_prefill"] = {
+                                "subject": _subj, "topic": _row["text"][:80]}
+                            st.switch_page("pages/13_🧮_Übungsaufgaben.py")
+                        else:
+                            st.session_state["study_prefill"] = {
+                                "source": "coverage", "limit": 16, "mode": "reveal",
+                                "subject": _subj,
+                            }
+                            st.switch_page("pages/4_🎓_Lernen.py")
             _act = _ks["next_action"]
             if st.button(_act_label.get(_act, "Weiter"), type="primary",
                          key=f"kurs_act_{_subj}", use_container_width=True):

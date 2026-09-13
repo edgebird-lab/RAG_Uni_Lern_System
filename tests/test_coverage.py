@@ -56,3 +56,10 @@ def test_coverage_leiter_dokument_karte_uebung_sitzt(isolated_db, monkeypatch):
     row = coverage.coverage_for_subject("BWL")[0]
     assert row["status"] == "sitzt"
     assert cid in row["card_ids"]
+
+
+def test_coverage_start_action_fuer_luecken():
+    assert coverage.coverage_start_action({"status": "fehlend"})["kind"] == "dokument"
+    assert coverage.coverage_start_action({"status": "Dokument"})["kind"] == "lernset"
+    assert coverage.coverage_start_action({"status": "Karte"})["kind"] == "uebung"
+    assert coverage.coverage_start_action({"status": "sitzt"})["kind"] is None

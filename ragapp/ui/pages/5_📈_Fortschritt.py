@@ -287,6 +287,34 @@ if _sektion == "Klausurstatus":
                     color="#C08A2E", height=120, value_suffix=" %"),
                     unsafe_allow_html=True)
 
+        from ragapp import coverage as _cov
+        _cov_subj = _ks_subj
+        _cov_rows = _cov.coverage_for_subject(_cov_subj) if _cov_subj else []
+        if _cov_rows:
+            st.caption("Dieselbe Abdeckung wie im Kurs-Cockpit – Klick startet die Lücke.")
+            for _row in _cov_rows:
+                _act = _cov.coverage_start_action(_row)
+                _g1, _g2 = st.columns([3, 1])
+                _g1.write(f"· {_row['status']}: {_row['text'][:90]}")
+                if _act["kind"] and _g2.button(
+                        _act["label"], key=f"fort_cov_{_row['goal_id']}"):
+                    if _act["kind"] == "dokument":
+                        st.session_state["doc_folder"] = _cov_subj
+                        st.switch_page("pages/9_🗃️_Dokumentenmanager.py")
+                    elif _act["kind"] == "lernset":
+                        st.session_state["lernset_docs_prefill"] = _row.get("doc_ids") or []
+                        st.switch_page("pages/4_🎓_Lernen.py")
+                    elif _act["kind"] == "uebung":
+                        st.session_state["practice_prefill"] = {
+                            "subject": _cov_subj, "topic": _row["text"][:80]}
+                        st.switch_page("pages/13_🧮_Übungsaufgaben.py")
+                    else:
+                        st.session_state["study_prefill"] = {
+                            "source": "coverage", "limit": 16, "mode": "reveal",
+                            "subject": _cov_subj,
+                        }
+                        st.switch_page("pages/4_🎓_Lernen.py")
+
     # --------------------------------------------------------------------------- #
     # Klausurtermine + Prioritaet
     # --------------------------------------------------------------------------- #

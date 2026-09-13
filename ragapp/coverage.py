@@ -100,6 +100,20 @@ def coverage_for_subject(subject: str) -> list[dict]:
     return out
 
 
+def coverage_start_action(row: dict) -> dict:
+    """Klickziel für eine Lücke: Dokument, Lernset oder Übung."""
+    status = row.get("status")
+    if status == "sitzt":
+        return {"kind": None, "label": None}
+    if status == "fehlend":
+        return {"kind": "dokument", "label": "Unterlage holen"}
+    if status == "Dokument":
+        return {"kind": "lernset", "label": "Lernset starten"}
+    if status == "Karte":
+        return {"kind": "uebung", "label": "Übung starten"}
+    return {"kind": "lernen", "label": "Lücke üben"}
+
+
 def coverage_gaps(subject: str, *, statuses: Optional[tuple[str, ...]] = None) -> list[dict]:
     """Lücken: standardmäßig alles unter sitzt."""
     want = set(statuses or ("fehlend", "Dokument", "Karte", "Übung"))
