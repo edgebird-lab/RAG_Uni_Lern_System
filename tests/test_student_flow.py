@@ -414,3 +414,40 @@ def test_scan_inbox_fehlerdatei_bleibt_im_kurs_sichtbar(
     result = student_flow.scan_inbox_once(subject="Mathe")
     assert result["errors"]
     assert student_flow.course_snapshot("Mathe")["doc_count"] == 1
+
+
+def test_index_retry_queue_ist_idempotent_und_wird_erfolgreich_abgebaut(
+        isolated_db, tmp_path, monkeypatch):
+    source = tmp_path / "skript.txt"
+    source.write_text("Lernstoff", encoding="utf-8")
+    first = student_flow.enqueue_index_retry(source, "BWL", error="Modell aus")
+    second = student_flow.enqueue_index_retry(source, "BWL", error="Noch aus")
+    assert first == second
+    assert len(manifest.list_index_retry_jobs()) == 1
+
+    monkeypatch.setattr(
+        "ragapp.ingestion.pipeline.ingest_file",
+        lambda *args, **kwargs: {"status": "ok"})
+    result = student_flow.retry_index_queue(force=True)
+    assert result == {"processed": 1, "ok": 1, "failed": 0, "errors": []}
+    assert manifest.list_index_retry_jobs() == []
+    done = manifest.list_index_retry_jobs(include_done=True)
+    assert done[0]["status"] == "done"
+    assert done[0]["attempts"] == 1
+
+
+def test_index_retry_queue_behaelt_fehler_mit_backoff(
+        isolated_db, tmp_path, monkeypatch):
+    source = tmp_path / "folie.txt"
+    source.write_text("Lernstoff", encoding="utf-8")
+    student_flow.enqueue_index_retry(source, "BWL", error="Erster Fehler")
+    monkeypatch.setattr(
+        "ragapp.ingestion.pipeline.ingest_file",
+        lambda *args, **kwargs: {"status": "error", "error": "VRAM voll"})
+    result = student_flow.retry_index_queue(force=True)
+    assert result["failed"] == 1
+    job = manifest.list_index_retry_jobs()[0]
+    assert job["status"] == "failed"
+    assert job["attempts"] == 1
+    assert job["next_attempt_at"] > 0
+    assert "VRAM voll" in job["last_error"]

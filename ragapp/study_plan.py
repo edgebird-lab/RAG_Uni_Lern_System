@@ -554,7 +554,11 @@ def repair_overdue_blocks(plan_id: str, *, start: Optional[date] = None,
     if not plan or plan.get("status") != "active":
         return {"moves": [], "moved_blocks": 0, "moved_minutes": 0,
                 "shortfall_minutes": 0, "applied": False}
-    rest = set(settings.PLAN_REST_WEEKDAYS if rest_weekdays is None else rest_weekdays)
+    configured_rest = plan.get("rest_weekdays")
+    rest = set(
+        (settings.PLAN_REST_WEEKDAYS if configured_rest is None else configured_rest)
+        if rest_weekdays is None else rest_weekdays
+    )
     overdue = manifest.list_overdue_plan_blocks(today_iso, plan_id=plan_id)
     plan_blocks = manifest.list_plan_blocks_detailed(plan_id=plan_id)
     invalid_rest = []

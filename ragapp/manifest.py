@@ -83,6 +83,23 @@ CREATE TABLE IF NOT EXISTS chunk_hashes (
 CREATE INDEX IF NOT EXISTS idx_chunk_doc ON chunk_hashes(doc_id);
 CREATE INDEX IF NOT EXISTS idx_doc_contenthash ON documents(content_hash);
 
+CREATE TABLE IF NOT EXISTS index_retry_jobs (
+    job_id          TEXT PRIMARY KEY,
+    doc_id          TEXT,
+    source_path     TEXT NOT NULL,
+    subject         TEXT NOT NULL DEFAULT '',
+    use_rag         INTEGER DEFAULT 1,
+    status          TEXT DEFAULT 'pending', -- pending | running | failed | done
+    attempts        INTEGER DEFAULT 0,
+    next_attempt_at REAL DEFAULT 0,
+    last_error      TEXT,
+    created_at      REAL,
+    updated_at      REAL,
+    UNIQUE(source_path, subject)
+);
+CREATE INDEX IF NOT EXISTS idx_index_retry_due
+    ON index_retry_jobs(status, next_attempt_at);
+
 -- Lern-Layer: Karteikarten + Spaced Repetition (FSRS-6, siehe ragapp/study.py). Rein
 -- additiv - die Karten werden aus dem schon indexierten Fragenmaterial (kind='exam_qa' /
 -- type='question') geerntet; hier wird nur der LERNFORTSCHRITT gefuehrt.
@@ -233,6 +250,7 @@ CREATE TABLE IF NOT EXISTS study_plans (
     doc_ids       TEXT,             -- JSON-Liste gewaehlter Dokument-IDs
     deadline      TEXT,             -- ISO-Datum oder NULL ("so schnell wie moeglich")
     daily_minutes INTEGER NOT NULL, -- vom Nutzer angegebenes Zeitbudget/Tag
+    rest_weekdays TEXT,             -- JSON-Liste 0=Mo..6=So; NULL = globaler Altbestand
     status        TEXT DEFAULT 'draft',  -- draft (Gliederung wird bearbeitet) | active | done
     created_at    REAL,
     updated_at    REAL
@@ -640,6 +658,14 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE study_plan_blocks ADD COLUMN actual_min INTEGER")
         except Exception:  # noqa: BLE001
             _log.warning("Additive Migration study_plan_blocks uebersprungen", exc_info=True)
+        # Ruhetage gehören zum einzelnen Lernplan. Bestehende Pläne behalten NULL und
+        # verwenden dadurch bis zum ersten Speichern den bisherigen globalen Standard.
+        try:
+            pcols = {r["name"] for r in conn.execute("PRAGMA table_info(study_plans)")}
+            if "rest_weekdays" not in pcols:
+                conn.execute("ALTER TABLE study_plans ADD COLUMN rest_weekdays TEXT")
+        except Exception:  # noqa: BLE001
+            _log.warning("Additive Migration study_plans uebersprungen", exc_info=True)
         # Additive Migration fuer exams: tatsaechlich erhaltene Note (Noten-
         # Tracking/GPA, siehe upsert_exam()/planner.gpa_summary()) - kommt zeitlich
         # NACH dem Anlegen des Klausurtermins, daher separate Migration.
@@ -801,6 +827,7 @@ def delete_document(doc_id: str) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
         conn.execute("DELETE FROM chunk_hashes WHERE doc_id = ?", (doc_id,))
+        conn.execute("DELETE FROM index_retry_jobs WHERE doc_id = ?", (doc_id,))
 
 
 def set_document_subject(doc_id: str, subject: str) -> None:
@@ -809,6 +836,75 @@ def set_document_subject(doc_id: str, subject: str) -> None:
     with _connect() as conn:
         conn.execute("UPDATE documents SET subject=?, updated_at=? WHERE doc_id=?",
                      ((subject or "").strip() or None, time.time(), doc_id))
+
+
+def enqueue_index_retry(*, source_path: str, subject: Optional[str],
+                        doc_id: Optional[str] = None, use_rag: bool = True,
+                        error: Optional[str] = None) -> str:
+    """Legt genau einen wiederholbaren Indexierungsauftrag pro Datei/Fach an."""
+    now = time.time()
+    job_id = uuid.uuid4().hex[:16]
+    subject_key = (subject or "").strip()
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO index_retry_jobs "
+            "(job_id, doc_id, source_path, subject, use_rag, status, attempts, "
+            "next_attempt_at, last_error, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,'pending',0,0,?,?,?) "
+            "ON CONFLICT(source_path, subject) DO UPDATE SET "
+            "doc_id=COALESCE(excluded.doc_id,index_retry_jobs.doc_id), "
+            "use_rag=excluded.use_rag, status='pending', next_attempt_at=0, "
+            "last_error=excluded.last_error, updated_at=excluded.updated_at",
+            (job_id, doc_id, source_path, subject_key, 1 if use_rag else 0,
+             error, now, now),
+        )
+        row = conn.execute(
+            "SELECT job_id FROM index_retry_jobs "
+            "WHERE source_path=? AND subject=?",
+            (source_path, subject_key)).fetchone()
+    return row["job_id"] if row else job_id
+
+
+def list_index_retry_jobs(*, include_done: bool = False,
+                          due_before: Optional[float] = None,
+                          limit: int = 100) -> list[dict]:
+    sql = "SELECT * FROM index_retry_jobs WHERE 1=1"
+    args: list[Any] = []
+    if not include_done:
+        sql += " AND status!='done'"
+    if due_before is not None:
+        sql += " AND next_attempt_at<=?"
+        args.append(float(due_before))
+    sql += " ORDER BY next_attempt_at, created_at LIMIT ?"
+    args.append(max(1, int(limit)))
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+
+def update_index_retry_job(job_id: str, *, status: str,
+                           attempts: Optional[int] = None,
+                           next_attempt_at: Optional[float] = None,
+                           last_error: Optional[str] = None) -> None:
+    valid_status = status if status in {"pending", "running", "failed", "done"} else "failed"
+    sets = ["status=?", "updated_at=?"]
+    args: list[Any] = [valid_status, time.time()]
+    if attempts is not None:
+        sets.append("attempts=?")
+        args.append(max(0, int(attempts)))
+    if next_attempt_at is not None:
+        sets.append("next_attempt_at=?")
+        args.append(float(next_attempt_at))
+    sets.append("last_error=?")
+    args.append(last_error)
+    args.append(job_id)
+    with _connect() as conn:
+        conn.execute(
+            f"UPDATE index_retry_jobs SET {','.join(sets)} WHERE job_id=?", args)
+
+
+def delete_index_retry_jobs_for_document(doc_id: str) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM index_retry_jobs WHERE doc_id=?", (doc_id,))
 
 
 def set_document_tags(doc_id: str, tags: "str | None") -> None:
@@ -2123,15 +2219,20 @@ def study_time_total(since: Optional[float] = None, until: Optional[float] = Non
 # Lernplan (KI-Gliederung -> realistischer, tagesverteilter Zeitplan)
 # --------------------------------------------------------------------------- #
 def create_study_plan(*, title: str, subject: Optional[str], doc_ids: list[str],
-                      deadline: Optional[str], daily_minutes: int) -> str:
+                      deadline: Optional[str], daily_minutes: int,
+                      rest_weekdays: Optional[list[int]] = None) -> str:
     now = time.time()
     pid = uuid.uuid4().hex[:16]
     with _connect() as conn:
         conn.execute(
             "INSERT INTO study_plans (plan_id, title, subject, doc_ids, deadline, "
-            "daily_minutes, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            "daily_minutes, rest_weekdays, status, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
             (pid, title.strip(), subject, json.dumps(doc_ids), (deadline or "").strip() or None,
-             int(daily_minutes), "draft", now, now),
+             int(daily_minutes),
+             (json.dumps(sorted({int(x) for x in rest_weekdays if 0 <= int(x) <= 6}))
+              if rest_weekdays is not None else None),
+             "draft", now, now),
         )
     return pid
 
@@ -2146,6 +2247,13 @@ def get_study_plan(plan_id: str) -> Optional[dict]:
         d["doc_ids"] = json.loads(d.get("doc_ids") or "[]")
     except Exception:  # noqa: BLE001
         d["doc_ids"] = []
+    try:
+        d["rest_weekdays"] = (
+            json.loads(d["rest_weekdays"]) if d.get("rest_weekdays") is not None
+            else None
+        )
+    except Exception:  # noqa: BLE001
+        d["rest_weekdays"] = None
     return d
 
 
@@ -2159,13 +2267,26 @@ def list_study_plans() -> list[dict]:
             d["doc_ids"] = json.loads(d.get("doc_ids") or "[]")
         except Exception:  # noqa: BLE001
             d["doc_ids"] = []
+        try:
+            d["rest_weekdays"] = (
+                json.loads(d["rest_weekdays"])
+                if d.get("rest_weekdays") is not None else None
+            )
+        except Exception:  # noqa: BLE001
+            d["rest_weekdays"] = None
         out.append(d)
     return out
 
 
 def update_study_plan(plan_id: str, **fields: Any) -> None:
     """Aktualisiert einzelne Felder (z. B. status, deadline, daily_minutes)."""
-    valid = {"title", "subject", "deadline", "daily_minutes", "status"}
+    valid = {"title", "subject", "deadline", "daily_minutes", "rest_weekdays", "status"}
+    if "rest_weekdays" in fields:
+        raw = fields["rest_weekdays"]
+        fields["rest_weekdays"] = (
+            json.dumps(sorted({int(x) for x in raw if 0 <= int(x) <= 6}))
+            if raw is not None else None
+        )
     sets = [f"{k}=?" for k in fields if k in valid]
     if not sets:
         return

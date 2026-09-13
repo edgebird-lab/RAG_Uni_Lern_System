@@ -15,7 +15,7 @@ Datei ergänzt nur den "Marken"-Layer obendrauf.
 ``PAGE_REGISTRY`` ist die EINE Quelle der Wahrheit für: Seiten-Akzentfarbe,
 die Home-Kachel-Übersicht UND die Hamburger-Kurzwahl - neue Seiten werden hier
 einmal eingetragen, nicht an drei Stellen gepflegt. Kategorien sind die fünf
-Zielgruppen Heute, Kurse, Lernen, Organisation, Fortschritt.
+Zielgruppen Heute, Kurse, Lernen, Werkzeuge, Fortschritt.
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ import streamlit.components.v1 as components
 # Navigationsquelle - HAMBURGER_KEYS / HOME_PIN_KEYS / HIDDEN_PAGE_KEYS
 # verweisen nur auf Keys aus dieser Liste.
 # --------------------------------------------------------------------------- #
-GOAL_CATEGORIES = ("Heute", "Kurse", "Lernen", "Organisation", "Fortschritt")
+GOAL_CATEGORIES = ("Heute", "Kurse", "Lernen", "Werkzeuge", "Fortschritt")
 
 PAGE_REGISTRY: list[dict] = [
     {"key": "home", "icon": "🏠", "title": "Home", "subtitle": "Alle Bereiche auf einen Blick",
@@ -41,7 +41,8 @@ PAGE_REGISTRY: list[dict] = [
      "target": "pages/11_📋_Lernplan.py", "category": "Heute"},
     {"key": "lernzeit", "icon": "⏱️", "title": "Lernzeit", "subtitle": "Pomodoro & Zeittracking",
      "target": "pages/10_⏱️_Lernzeit.py", "category": "Heute"},
-    {"key": "organisation", "icon": "🗂️", "title": "Organisation", "subtitle": "Stundenplan & Fächer",
+    {"key": "organisation", "icon": "🗂️", "title": "Kurse & Stundenplan",
+     "subtitle": "Fächer, Termine & Aufgaben",
      "target": "pages/8_🗂️_Organisation.py", "category": "Kurse"},
     {"key": "semesterplan", "icon": "📚", "title": "Semester einrichten",
      "subtitle": "Modulhandbuch importieren",
@@ -66,11 +67,11 @@ PAGE_REGISTRY: list[dict] = [
     {"key": "vortrag", "icon": "🎤", "title": "Vortrag", "subtitle": "Marp-Folien + Lernvideo",
      "target": "pages/17_🎤_Vortrag.py", "category": "Lernen"},
     {"key": "notizen", "icon": "🗒️", "title": "Notizen", "subtitle": "Eigene Gedanken",
-     "target": "pages/12_🗒️_Notizen.py", "category": "Organisation"},
+     "target": "pages/12_🗒️_Notizen.py", "category": "Werkzeuge"},
     {"key": "einstellungen", "icon": "⚙️", "title": "Einstellungen", "subtitle": "Modelle & Feintuning",
-     "target": "pages/3_⚙️_Einstellungen.py", "category": "Organisation"},
+     "target": "pages/3_⚙️_Einstellungen.py", "category": "Werkzeuge"},
     {"key": "ingestion", "icon": "📥", "title": "Import", "subtitle": "Dokumente einlesen",
-     "target": "pages/1_📥_Ingestion.py", "category": "Organisation"},
+     "target": "pages/1_📥_Ingestion.py", "category": "Werkzeuge"},
     {"key": "fortschritt", "icon": "📈", "title": "Fortschritt", "subtitle": "Dein Lernfortschritt",
      "target": "pages/5_📈_Fortschritt.py", "category": "Fortschritt"},
     {"key": "evaluation", "icon": "📊", "title": "Evaluation", "subtitle": "Retrieval-Qualität messen",
@@ -85,7 +86,7 @@ GOAL_HUB_KEYS: dict[str, str] = {
     "Heute": "home",
     "Kurse": "organisation",
     "Lernen": "lernen",
-    "Organisation": "notizen",
+    "Werkzeuge": "notizen",
     "Fortschritt": "fortschritt",
 }
 

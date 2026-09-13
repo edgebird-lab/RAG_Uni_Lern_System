@@ -210,7 +210,9 @@ def known_subject_codes() -> set[str]:
 def resolve_subject_code(code: str, label: str = "",
                          *, known: Optional[set[str]] = None) -> dict:
     """Gleicht Import-Kürzel/Namen mit bestehenden Fächern ab statt Dubletten."""
+    from difflib import SequenceMatcher
     import re as _re
+    import unicodedata
     from ragapp.config import SUBJECT_LABELS
     known = set(known if known is not None else known_subject_codes())
     code = (code or "").strip()
@@ -220,14 +222,44 @@ def resolve_subject_code(code: str, label: str = "",
         k = by_lower[code.lower()]
         return {"code": k, "via": "code", "new": False}
     def _norm(value: str) -> str:
-        value = (value or "").lower().replace("&", " und ")
-        return " ".join(_re.findall(r"[a-z0-9äöüß]+", value))
+        value = unicodedata.normalize("NFKD", (value or "").lower())
+        value = "".join(ch for ch in value if not unicodedata.combining(ch))
+        value = value.replace("&", " und ").replace("/", " ")
+        words = _re.findall(r"[a-z0-9]+", value)
+        # Häufige Modulhandbuch-Präfixe tragen nicht zur Fachidentität bei.
+        while words and words[0] in {"grundlagen", "einfuehrung", "einfuhrung"}:
+            words.pop(0)
+        if words and words[0] in {"der", "des", "in"}:
+            words.pop(0)
+        return " ".join(words)
 
     inv = {_norm(str(v)): k for k, v in SUBJECT_LABELS.items()}
-    if _norm(label) in inv:
-        return {"code": inv[_norm(label)], "via": "label", "new": False}
+    normalized_label = _norm(label)
+    aliases = {
+        "algorithmen und datenstrukturen": "DSA",
+        "it sicherheit und datenschutz": "IT-Sich Datenschutz",
+        "kosten leistungsrechnung": "KuLR",
+        "internationale okonomie industrieokonomik": "IE",
+    }
+    if normalized_label in inv:
+        return {"code": inv[normalized_label], "via": "label", "new": False}
+    alias_code = aliases.get(normalized_label)
+    if alias_code in known:
+        return {"code": alias_code, "via": "alias", "new": False}
     if label.lower() in by_lower:
         return {"code": by_lower[label.lower()], "via": "folder", "new": False}
+    # Konservatives Fuzzy-Matching: nur lange Namen, hohe Ähnlichkeit und ein
+    # klarer Abstand zum zweitbesten Treffer. So werden Tippvarianten verbunden,
+    # kurze/mehrdeutige Fächer aber nie automatisch zusammengelegt.
+    if len(normalized_label) >= 8:
+        ranked = sorted(
+            ((SequenceMatcher(None, normalized_label, name).ratio(), target)
+             for name, target in inv.items() if target in known),
+            reverse=True,
+        )
+        if (ranked and ranked[0][0] >= 0.86
+                and (len(ranked) == 1 or ranked[0][0] - ranked[1][0] >= 0.06)):
+            return {"code": ranked[0][1], "via": "fuzzy_label", "new": False}
     return {"code": code, "via": "new", "new": True}
 
 

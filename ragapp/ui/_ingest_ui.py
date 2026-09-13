@@ -267,7 +267,9 @@ def render_upload(*, default_subject: Optional[str] = None,
 def _run_upload(uploads, upload_subject: Optional[str], upload_use_rag: bool) -> None:
     import pandas as pd
     from ragapp.ingestion.pipeline import ingest_file
-    from ragapp.student_flow import ensure_course_folder, _unique_course_path
+    from ragapp.student_flow import (
+        ensure_course_folder, _unique_course_path, enqueue_index_retry,
+    )
     from ragapp.ui._progress import ProgressReporter, fmt_dauer
 
     ergebnisse: list[dict] = []
@@ -306,6 +308,11 @@ def _run_upload(uploads, upload_subject: Optional[str], upload_use_rag: bool) ->
                                 use_rag=upload_use_rag)
             except Exception as exc:  # noqa: BLE001
                 r = {"status": "error", "file": up.name, "error": str(exc)}
+            if r.get("status") == "error" and upload_use_rag:
+                enqueue_index_retry(
+                    ziel, upload_subject,
+                    error=str(r.get("error") or "Indexierung fehlgeschlagen"),
+                    doc_id=r.get("doc_id"))
 
             info = ""
             if r["status"] == "duplicate":

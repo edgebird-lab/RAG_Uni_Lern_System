@@ -1,5 +1,5 @@
 """
-RAG-Lernsystem: Seite „Organisation" (Stundenplan, Aufgaben, Wochen-Dashboard)
+RAG-Lernsystem: Seite „Kurse & Stundenplan" (Kurse, Termine, Aufgaben)
 ================================================================================
 Verwaltungsbereich fuer den Uni-Alltag - unabhaengig vom RAG/Lern-Layer: kein
 LLM, kein Embedding, laeuft sofort und komplett offline. Zeigt auf einen Blick,
@@ -22,7 +22,7 @@ for _anc in _p.parents:
 import streamlit as st
 
 from ragapp.ui._loading import page_boot, skeleton
-page_boot("🗂️ Organisation", page_title="Organisation", icon="🗂️", layout="wide",
+page_boot("🗂️ Kurse & Stundenplan", page_title="Kurse & Stundenplan", icon="🗂️", layout="wide",
          accent="organisation")
 
 from ragapp.ui._style import card
@@ -37,7 +37,7 @@ h1 {font-weight: 750; letter-spacing:-0.5px;}
 st.caption("Kurse mit nächster Aktion, Stundenplan und Aufgaben – "
            "organisatorisch, unabhängig von RAG/Chat. Komplett offline, ohne Modell.")
 
-with skeleton("Organisation wird geladen ..."):
+with skeleton("Kurse & Stundenplan werden geladen ..."):
     import pandas as pd
     from ragapp import manifest, planner
     from ragapp.config import SUBJECT_LABELS

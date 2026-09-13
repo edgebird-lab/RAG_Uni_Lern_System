@@ -32,3 +32,26 @@ jobs:
 
       - name: Tests (offline, ohne GPU/Modelle/Ollama)
         run: pytest -q
+
+  ui-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.11 einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Schlanke UI-Test-Abhängigkeiten installieren
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Streamlit im echten Browser prüfen
+        env:
+          RAG_SMOKE_PORT: "8511"
+        run: python tests/live_smoke.py

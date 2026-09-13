@@ -411,6 +411,45 @@ with card("kurs_inbox"):
                 }
                 st.rerun()
 
+from ragapp.student_flow import backfill_failed_index_jobs, retry_index_queue
+backfill_failed_index_jobs()
+_retry_jobs = manifest.list_index_retry_jobs(limit=100)
+if _retry_jobs:
+    with card("index_retry_queue"):
+        st.subheader("🔁 Indexierung nachholen")
+        st.caption(
+            f"{len(_retry_jobs)} Unterlage(n) sind sicher gespeichert, aber noch "
+            "nicht im Chat durchsuchbar. Fehlversuche bleiben in dieser Warteschlange.")
+        for _job in _retry_jobs[:5]:
+            _retry_name = pathlib.Path(_job["source_path"]).name
+            st.write(
+                f"· **{_retry_name}** · {_fach(_job.get('subject'))} · "
+                f"{int(_job.get('attempts') or 0)} Versuch(e)")
+            if _job.get("last_error"):
+                st.caption(str(_job["last_error"])[:240])
+        if len(_retry_jobs) > 5:
+            st.caption(f"… und {len(_retry_jobs) - 5} weitere")
+        if st.button(
+                "Jetzt erneut indexieren", type="primary",
+                key="docmgr_retry_indexing"):
+            with st.status("Indexierung wird erneut versucht …") as _retry_status:
+                _retried = retry_index_queue(
+                    job_ids=[j["job_id"] for j in _retry_jobs],
+                    force=True, limit=len(_retry_jobs),
+                    progress=lambda m: _retry_status.update(label=m))
+                _retry_status.update(
+                    label="Wiederholungsversuch abgeschlossen",
+                    state="complete" if not _retried["failed"] else "error")
+            st.session_state["_docmgr_flash"] = {
+                "error": bool(_retried["failed"]),
+                "message": (
+                    f"{_retried['ok']} Unterlage(n) erfolgreich indexiert."
+                    + (f" {_retried['failed']} bleiben in der Warteschlange."
+                       if _retried["failed"] else "")
+                ),
+            }
+            st.rerun()
+
 _ingest_ui.render_upload(default_subject=st.session_state.get("doc_folder"))
 _ingest_ui.render_ocr_warnings()
 with st.expander("Weitere Importwege (Inbox, Quellordner)", expanded=False):

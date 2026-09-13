@@ -212,6 +212,28 @@ def test_repair_verschiebt_zukuenftigen_block_vom_neuen_ruhetag(
     assert manifest.list_plan_blocks(pid)[0]["planned_date"] == "2026-09-15"
 
 
+def test_ruhetage_sind_pro_lernplan_getrennt(isolated_db, monkeypatch):
+    monkeypatch.setattr(
+        study_plan.settings, "PLAN_MAX_DAILY_FOCUS_MIN", 60, raising=False)
+    monday = date(2026, 9, 14)
+    p1 = manifest.create_study_plan(
+        title="Montag frei", subject=None, doc_ids=[], deadline=None,
+        daily_minutes=60, rest_weekdays=[0])
+    p2 = manifest.create_study_plan(
+        title="Dienstag frei", subject=None, doc_ids=[], deadline=None,
+        daily_minutes=60, rest_weekdays=[1])
+    for pid in (p1, p2):
+        manifest.update_study_plan(pid, status="active")
+        sid = manifest.append_plan_section(pid, title="Thema", est_minutes=30)
+        manifest.append_plan_block(
+            pid, section_id=sid, planned_date=monday.isoformat(), planned_min=30)
+
+    assert manifest.get_study_plan(p1)["rest_weekdays"] == [0]
+    assert manifest.get_study_plan(p2)["rest_weekdays"] == [1]
+    assert study_plan.repair_overdue_blocks(p1, start=monday)["moves"]
+    assert study_plan.repair_overdue_blocks(p2, start=monday)["moves"] == []
+
+
 def test_alle_tage_ruhe_liefert_shortfall_statt_endlosschleife(isolated_db):
     out = study_plan.build_schedule(
         [{"section_id": "s1", "est_minutes": 90}],

@@ -383,7 +383,7 @@ if _snap:
         elif st.session_state.get("home_sprint_subject") not in _sprint_choices:
             st.session_state["home_sprint_subject"] = "Alle Fächer"
 
-        if st.button("▶ Heute starten (20 Min)", type="primary",
+        if st.button("▶ Heute starten (bis zu 16 Karten)", type="primary",
                       key="heute_start", use_container_width=True):
             st.session_state["study_prefill"] = {
                 "source": "heute", "limit": 16, "mode": "reveal",

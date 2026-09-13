@@ -106,6 +106,8 @@ _all_docs = [dict(d) for d in manifest.list_documents()
             if d["use_rag"] and d["num_chunks"] > 0]
 _subjects_with_docs = sorted({d["subject"] for d in _all_docs if d["subject"]})
 _plan_colors = manifest.subject_colors_map()
+_weekday_names = ["Montag", "Dienstag", "Mittwoch", "Donnerstag",
+                  "Freitag", "Samstag", "Sonntag"]
 
 # --------------------------------------------------------------------------- #
 # Plan-Auswahl
@@ -248,6 +250,14 @@ if _active_plan_id is None:
         _new_deadline = (st.date_input("Zieldatum", value=_dl_guess,
                                        key="splan_new_deadline") if _has_deadline else None)
         st.caption("Standard: nächste Klausur oder +21 Tage, 45 Min/Abend.")
+    _new_rest_days = st.multiselect(
+        "Ruhetage",
+        options=list(range(7)),
+        default=list(settings.PLAN_REST_WEEKDAYS),
+        format_func=lambda i: _weekday_names[i],
+        key="splan_new_rest_days",
+        help="Gilt nur für diesen Lernplan. Die App plant dort keine Blöcke ein.",
+    )
 
     _new_model_choice = st.radio(
         "Modell für die Gliederung", ["🎯 Gründlich (langsamer)", "⚡ Schnell (gröber)"],
@@ -275,7 +285,8 @@ if _active_plan_id is None:
         pid = manifest.create_study_plan(
             title=_new_title or f"Lernplan {_fach(_new_subject)}", subject=_new_subject,
             doc_ids=doc_ids, deadline=_new_deadline.isoformat() if _new_deadline else None,
-            daily_minutes=int(_new_daily))
+            daily_minutes=int(_new_daily),
+            rest_weekdays=sorted(_new_rest_days))
         manifest.replace_plan_sections(pid, outline)
         if _outline_warning:
             st.session_state["_splan_gen_warning"] = _outline_warning
@@ -406,22 +417,24 @@ with st.expander("⚙️ Einstellungen & Löschen", key=f"splan_settings_expande
         _edit_deadline = (st.date_input("Zieldatum", value=_dl_default,
                                         key=f"splan_edit_dl_{_active_plan_id}")
                           if _edit_has_deadline else None)
-    _weekday_names = ["Montag", "Dienstag", "Mittwoch", "Donnerstag",
-                      "Freitag", "Samstag", "Sonntag"]
+    _plan_rest_days = (
+        _plan.get("rest_weekdays")
+        if _plan.get("rest_weekdays") is not None
+        else settings.PLAN_REST_WEEKDAYS
+    )
     _edit_rest_days = st.multiselect(
         "Ruhetage",
         options=list(range(7)),
-        default=list(settings.PLAN_REST_WEEKDAYS),
+        default=list(_plan_rest_days),
         format_func=lambda i: _weekday_names[i],
         key=f"splan_rest_days_{_active_plan_id}",
-        help="An diesen Wochentagen ist das Planbudget 0 – bei Erstplanung und Reparatur.",
+        help="Gilt nur für diesen Lernplan; an diesen Tagen ist sein Planbudget 0.",
     )
     if st.button("💾 Einstellungen speichern", key=f"splan_save_settings_{_active_plan_id}"):
         manifest.update_study_plan(
             _active_plan_id, daily_minutes=int(_edit_daily),
-            deadline=_edit_deadline.isoformat() if _edit_deadline else None)
-        settings.update(PLAN_REST_WEEKDAYS=sorted(_edit_rest_days))
-        settings.save()
+            deadline=_edit_deadline.isoformat() if _edit_deadline else None,
+            rest_weekdays=sorted(_edit_rest_days))
         st.success("Gespeichert.")
         st.rerun()
     if st.button("🗑️ Plan löschen", key=f"splan_delete_{_active_plan_id}"):
@@ -534,7 +547,8 @@ else:
     _preview = study_plan.build_schedule(
         [{"section_id": s["section_id"], "est_minutes": s["est_minutes"]} for s in _sections],
         daily_minutes=_plan["daily_minutes"], deadline=_plan.get("deadline"),
-        subject=_plan["subject"])
+        subject=_plan["subject"],
+        rest_weekdays=set(_plan_rest_days))
     if _preview["capped_daily"]:
         st.caption(
             f"⏱️ {_plan['daily_minutes']} Min/Tag sind mehr, als nachhaltig hochfokussiert "
@@ -548,7 +562,7 @@ else:
     if _preview["class_minutes_reserved"] > 0:
         st.caption(
             f"🗓️ Außerdem sind **{_fmt_min(_preview['class_minutes_reserved'])}** durch "
-            "Vorlesungen/Kurse aus deinem Stundenplan (Organisation) belegt – der Plan "
+            "Vorlesungen/Kurse aus **Kurse & Stundenplan** belegt – der Plan "
             "rechnet nur noch mit der Zeit, die daneben realistisch übrig bleibt.")
     if _preview["shortfall_minutes"] > 0:
         st.warning(

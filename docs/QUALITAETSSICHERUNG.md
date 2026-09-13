@@ -10,6 +10,18 @@ Verifikation korrekt als **Falsch-Positiv** verworfen.
 Der Review war rein statisch (kein Code ausgeführt), damit er parallel zum
 laufenden Erstimport gefahren werden konnte.
 
+## Automatische Regressionstests
+
+GitHub Actions führt zwei getrennte Stufen aus:
+
+1. `pytest -q` prüft die vollständige modellfreie Logik.
+2. `python tests/live_smoke.py` startet die echte Streamlit-App lokal und öffnet
+   die Kernseiten in headless Chromium. Damit werden zusätzlich Navigation,
+   Seiteneinstieg und Browser-Laufzeitfehler erkannt.
+
+Lokal benötigt der zweite Lauf Playwright samt Chromium
+(`python -m playwright install chromium`).
+
 ## Ablauf des Reviews
 
 1. **Review (6 parallele Prüfer)** je Modulgruppe: Ingestion, Retrieval,

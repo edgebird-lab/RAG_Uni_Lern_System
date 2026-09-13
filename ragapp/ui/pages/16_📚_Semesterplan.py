@@ -5,7 +5,7 @@ Liest ein hochgeladenes Modulhandbuch, einen Semesterplan oder eine Studien- ode
 Prüfungsordnung per LLM aus und schlägt daraus Fächer samt Klausurtermin,
 ECTS und Vorlesungszeiten vor - erst nach Durchsicht/Bearbeitung in der
 Vorschau-Tabelle werden ausgewählte Zeilen wirklich in Fortschritt
-(Klausurtermine) und Organisation (Stundenplan) übernommen. Die hochgeladene
+(Klausurtermine) und Kurse & Stundenplan übernommen. Die hochgeladene
 Datei selbst wird NICHT indexiert (siehe ragapp/syllabus_import.py) - wer sie
 zusätzlich durchsuchbar haben will, lädt sie separat über Ingestion hoch.
 """
@@ -49,7 +49,7 @@ if _flash:
 st.caption(
     "Semester einrichten: Modulhandbuch importieren. Diese Seite füllt **nicht** "
     "die Karteikarten, sondern deinen Semester-Rahmen: Klausurtermine und ECTS auf "
-    "**📈 Fortschritt**, Vorlesungszeiten auf **🗂️ Organisation** (Stundenplan). "
+    "**📈 Fortschritt**, Vorlesungszeiten auf **🗂️ Kurse & Stundenplan**. "
     "Du prüfst den Vorschlag, BEVOR etwas gespeichert wird."
 )
 
@@ -164,7 +164,7 @@ if _extracted:
                     f"Übernommen: **{result['subjects']} Fach/Fächer**, "
                     f"{result['exams']} Klausur-Eintrag/Einträge, "
                     f"{result['slots']} Vorlesungszeit(en). "
-                    "Klausur/ECTS: **📈 Fortschritt**. Stundenplan: **🗂️ Organisation**."
+                    "Klausur/ECTS: **📈 Fortschritt**. Termine: **🗂️ Kurse & Stundenplan**."
                     " Das Modulhandbuch wurde bewusst nicht als Lernstoff indexiert; "
                     "Skripte und Folien ordnest du unter **🗃️ Dokumente** einem Fach zu."
                 )
@@ -194,6 +194,6 @@ if _already or _slots_n:
                     _bits.append(f"{_ex['ects']:g} ECTS")
                 st.write(f"• **{_title}** · " + " · ".join(_bits))
         if _slots_n:
-            st.write(f"• {_slots_n} Vorlesungszeit(en) im Stundenplan (**🗂️ Organisation**).")
+            st.write(f"• {_slots_n} Vorlesungszeit(en) unter **🗂️ Kurse & Stundenplan**.")
         else:
-            st.caption("Keine Vorlesungszeiten erkannt – die trägst du bei Bedarf unter **🗂️ Organisation** ein.")
+            st.caption("Keine Vorlesungszeiten erkannt – die trägst du bei Bedarf unter **🗂️ Kurse & Stundenplan** ein.")

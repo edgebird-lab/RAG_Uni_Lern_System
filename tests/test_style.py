@@ -175,7 +175,7 @@ def test_kategorien_gruppieren_alle_nicht_home_seiten_lueckenlos():
 
 def test_kategorien_sind_die_fuenf_zielgruppen_in_dieser_reihenfolge():
     assert GOAL_CATEGORIES == (
-        "Heute", "Kurse", "Lernen", "Organisation", "Fortschritt",
+        "Heute", "Kurse", "Lernen", "Werkzeuge", "Fortschritt",
     )
     seen: list[str] = []
     for page in PAGE_REGISTRY:

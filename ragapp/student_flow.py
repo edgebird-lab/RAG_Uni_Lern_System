@@ -579,6 +579,92 @@ def _register_course_file(path, subject: str, *, status: str = "archived") -> st
     return doc_id
 
 
+def enqueue_index_retry(path, subject: Optional[str], *, error: str = "",
+                        doc_id: Optional[str] = None) -> str:
+    """Merkt fehlgeschlagene Indexierung persistent und idempotent."""
+    from pathlib import Path
+    from ragapp.config import PROJECT_ROOT
+    source = Path(path)
+    try:
+        source_path = str(source.resolve().relative_to(PROJECT_ROOT.resolve()))
+    except Exception:  # noqa: BLE001
+        source_path = str(source.resolve())
+    return manifest.enqueue_index_retry(
+        source_path=source_path, subject=(subject or "").strip() or None,
+        doc_id=doc_id, use_rag=True, error=(error or "")[:2000] or None)
+
+
+def backfill_failed_index_jobs() -> int:
+    """Übernimmt Fehler aus älteren App-Versionen einmalig in die Warteschlange."""
+    existing = {
+        (j["source_path"], j.get("subject") or "")
+        for j in manifest.list_index_retry_jobs(include_done=True, limit=5000)
+    }
+    added = 0
+    for doc in manifest.list_documents():
+        if doc.get("status") != "error" or not doc.get("use_rag"):
+            continue
+        key = (doc.get("source_path"), doc.get("subject") or "")
+        if key in existing or not key[0]:
+            continue
+        manifest.enqueue_index_retry(
+            source_path=key[0], subject=key[1], doc_id=doc.get("doc_id"),
+            error="Frühere fehlgeschlagene Indexierung")
+        added += 1
+    return added
+
+
+def retry_index_queue(*, job_ids: Optional[list[str]] = None,
+                      force: bool = False, limit: int = 5,
+                      progress=None) -> dict:
+    """Verarbeitet fällige Index-Jobs mit exponentiellem Backoff."""
+    from pathlib import Path
+    from ragapp.config import PROJECT_ROOT
+    from ragapp.ingestion.pipeline import ingest_file
+
+    now = time.time()
+    jobs = manifest.list_index_retry_jobs(
+        due_before=None if force else now, limit=max(limit, 100 if job_ids else limit))
+    wanted = set(job_ids or [])
+    if wanted:
+        jobs = [j for j in jobs if j["job_id"] in wanted]
+    jobs = jobs[:max(1, int(limit))]
+    result = {"processed": 0, "ok": 0, "failed": 0, "errors": []}
+    for i, job in enumerate(jobs, 1):
+        result["processed"] += 1
+        attempts = int(job.get("attempts") or 0) + 1
+        manifest.update_index_retry_job(
+            job["job_id"], status="running", attempts=attempts,
+            last_error=job.get("last_error"))
+        source = Path(job["source_path"])
+        if not source.is_absolute():
+            source = PROJECT_ROOT / source
+        if progress:
+            progress(f"Indexiere {source.name} erneut ({i}/{len(jobs)})")
+        try:
+            if not source.is_file():
+                raise FileNotFoundError(f"Datei fehlt: {source}")
+            ingest = ingest_file(
+                source, subject=job.get("subject"), force=True,
+                use_rag=bool(job.get("use_rag", 1)))
+            status = ingest.get("status")
+            if status not in {"ok", "unchanged", "duplicate", "duplicate_chunks"}:
+                raise RuntimeError(ingest.get("error") or f"Status: {status}")
+        except Exception as exc:  # noqa: BLE001
+            delay = min(24 * 3600, 60 * (2 ** min(attempts - 1, 10)))
+            manifest.update_index_retry_job(
+                job["job_id"], status="failed", attempts=attempts,
+                next_attempt_at=now + delay, last_error=str(exc)[:2000])
+            result["failed"] += 1
+            result["errors"].append(f"{source.name}: {exc}")
+        else:
+            manifest.update_index_retry_job(
+                job["job_id"], status="done", attempts=attempts,
+                next_attempt_at=0, last_error=None)
+            result["ok"] += 1
+    return result
+
+
 def add_course_material(subject: str, *, text: Optional[str] = None,
                         title: Optional[str] = None,
                         file_bytes: Optional[bytes] = None,
@@ -630,6 +716,10 @@ def add_course_material(subject: str, *, text: Optional[str] = None,
         # ingest_file registriert Erfolgsfälle selbst. Bei Modell-/Indexfehlern
         # bleibt die Originaldatei trotzdem als ehrliche archivierte Unterlage.
         doc_id = _register_course_file(path, code)
+        if ingest.get("status") == "error":
+            enqueue_index_retry(
+                path, code, error=ingest.get("error") or "Indexierung fehlgeschlagen",
+                doc_id=doc_id)
     capture = capture_lecture(body, subject=code, title=title) if body else None
     return {
         "status": ingest.get("status") or "ok",
@@ -677,11 +767,15 @@ def scan_inbox_once(progress=None, *, subject: Optional[str] = None) -> dict:
                     _register_course_file(work, subject)
             else:
                 if subject:
-                    _register_course_file(work, subject)
+                    doc_id = _register_course_file(work, subject, status="error")
+                    enqueue_index_retry(
+                        work, subject, error=str(res.get("error") or res.get("status")),
+                        doc_id=doc_id)
                 errors.append(f"{path.name}: {res.get('status')}")
         except Exception as exc:  # noqa: BLE001
             if subject:
-                _register_course_file(work, subject)
+                doc_id = _register_course_file(work, subject, status="error")
+                enqueue_index_retry(work, subject, error=str(exc), doc_id=doc_id)
             errors.append(f"{path.name}: {exc}")
     return {"scanned": len(files), "ok": ok, "errors": errors}
 

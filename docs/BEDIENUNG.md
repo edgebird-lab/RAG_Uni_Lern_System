@@ -27,7 +27,7 @@ Zielgruppen, nicht eine lange Werkzeugliste:
 | **Heute** | Was jetzt dran ist: Tagesplan, Timer, **Heute starten**. |
 | **Kurse** | Fächer, Stundenplan, Semester einrichten (Modulhandbuch importieren), Unterlagen. |
 | **Lernen** | Karteikarten, Chat, Übungen, Probeklausur, Generatoren. |
-| **Organisation** | Notizen und Einstellungen. |
+| **Werkzeuge** | Notizen und Einstellungen. |
 | **Fortschritt** | Klausurstatus, Analyse, Errungenschaften, Datenexport. |
 
 **Heute starten** ist die Hauptaktion. Sprint und Fehlerheft liegen dahinter.
@@ -157,6 +157,11 @@ Chunking → Embeddings → Speichern) läuft automatisch.
 > Egal welcher Weg: Doppelte Dokumente werden über den Inhalts-Hash erkannt und
 > nicht doppelt indexiert. Nach dem Import wird der BM25-Index automatisch
 > aktualisiert.
+
+> **Indexierung fehlgeschlagen:** Die Originaldatei bleibt im Fachordner und
+> erscheint unter **Kurse → Dokumente → Indexierung nachholen**. Dort kann die
+> persistente Warteschlange erneut gestartet werden; Fehler und Anzahl der
+> Versuche bleiben auch nach einem App-Neustart erhalten.
 
 ---
 

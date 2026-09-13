@@ -331,6 +331,20 @@ def test_resolve_subject_code_normalisiert_und_statt_und_zeichen():
     assert info["new"] is False
 
 
+def test_resolve_subject_code_erkennt_konservativ_tippfehler_im_label():
+    info = si.resolve_subject_code(
+        "NEU", "Algorithmen & Datenstrukturren", known={"DSA", "MF"})
+    assert info["code"] == "DSA"
+    assert info["via"] == "fuzzy_label"
+    assert info["new"] is False
+
+
+def test_resolve_subject_code_matcht_kurze_unsichere_labels_nicht_fuzzy():
+    info = si.resolve_subject_code("NEU", "Daten", known={"DSA", "Statistik"})
+    assert info["code"] == "NEU"
+    assert info["new"] is True
+
+
 def test_resolve_subject_code_neuer_kurs_bleibt_eigener_code():
     info = si.resolve_subject_code("NEU", "Neues Wahlfach", known={"DSA"})
     assert info["code"] == "NEU"

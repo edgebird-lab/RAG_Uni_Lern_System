@@ -1,0 +1,117 @@
+"""Headless smoke test for the real Streamlit multipage application.
+
+Kein pytest-Test: CI startet ihn in einem separaten Job mit Chromium. So bleibt
+die schnelle Offline-Unit-Suite browserfrei.
+"""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+import socket
+import subprocess
+import sys
+import time
+
+from playwright.sync_api import sync_playwright
+
+
+ROOT = Path(__file__).resolve().parents[1]
+PORT = int(os.environ.get("RAG_SMOKE_PORT", "8511"))
+BASE = f"http://127.0.0.1:{PORT}"
+PAGES = [
+    ("/", "Heute"),
+    ("/Organisation", "Kurse"),
+    ("/Dokumentenmanager", "Kurs-Inbox"),
+    ("/Semesterplan", "Semester einrichten"),
+    ("/Fortschritt", "Klausurstatus"),
+    ("/Lernplan", "Lernplan"),
+    ("/Prüfung", "Mündliche Prüfung"),
+]
+
+
+def _wait_for_server(proc: subprocess.Popen, timeout: float = 45.0) -> None:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            raise RuntimeError("Streamlit wurde vor dem Start beendet.")
+        try:
+            with socket.create_connection(("127.0.0.1", PORT), timeout=0.5):
+                return
+        except OSError:
+            time.sleep(0.25)
+    raise TimeoutError(f"Streamlit antwortet nicht auf Port {PORT}.")
+
+
+def main() -> int:
+    env = {
+        **os.environ,
+        "RAG_LOCAL_ONLY": "1",
+        "RAG_LOCAL_TOKEN": "ci-live-smoke",
+    }
+    proc = subprocess.Popen(
+        [
+            sys.executable, "-m", "streamlit", "run",
+            "ragapp/ui/🏠_Home.py",
+            "--server.address", "127.0.0.1",
+            "--server.port", str(PORT),
+            "--server.headless", "true",
+        ],
+        cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True,
+    )
+    errors: list[str] = []
+    try:
+        _wait_for_server(proc)
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            page = browser.new_page(viewport={"width": 1440, "height": 1000})
+            page.on(
+                "console",
+                lambda msg: errors.append(f"console:{msg.type}:{msg.text}")
+                if msg.type == "error" else None,
+            )
+            page.on("pageerror", lambda exc: errors.append(f"pageerror:{exc}"))
+            for path, expected in PAGES:
+                page.goto(
+                    f"{BASE}{path}?k=ci-live-smoke",
+                    wait_until="domcontentloaded",
+                )
+                page.locator('[data-testid="stApp"]').wait_for(timeout=30_000)
+                page.get_by_text(expected, exact=False).first.wait_for(
+                    state="visible", timeout=30_000)
+                body = page.locator("body").inner_text()
+                if "Traceback (most recent call last)" in body:
+                    raise AssertionError(f"Streamlit-Traceback auf {path}")
+                print(f"OK {path} -> {expected}", flush=True)
+            browser.close()
+        fatal = [
+            error for error in errors
+            if "favicon" not in error.lower()
+            and "failed to load resource" not in error.lower()
+        ]
+        if fatal:
+            raise AssertionError("\n".join(fatal))
+        return 0
+    except Exception:
+        if proc.stdout:
+            print("\n--- Streamlit log ---", file=sys.stderr)
+            proc.terminate()
+            try:
+                output, _ = proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                output, _ = proc.communicate()
+            print(output[-12_000:], file=sys.stderr)
+        raise
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
