@@ -969,7 +969,10 @@ _active_tab = st.segmented_control(
 )
 
 if _active_tab == "🌾 Karten erstellen":
-    _render_karten_erstellen()
+    st.caption("Standardweg oben: Dokumente wählen → Lernset erstellen → Vorschau. "
+               "Chunk-Limits, manuelles Ernten und Klausurkatalog liegen im Expertenmodus.")
+    with st.expander("Expertenmodus", expanded=False):
+        _render_karten_erstellen()
 
 if _active_tab == "🗂️ Stapel verwalten":
     st.caption(
