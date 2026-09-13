@@ -155,6 +155,15 @@ if _sektion == "Analyse":
                 from ragapp.ui._style import PAGE_REGISTRY as _PR
                 st.switch_page(next(p["target"] for p in _PR if p["key"] == "lernen"))
 
+        _cal = analytics.jol_calibration(subject)
+        if _cal["n"]:
+            _pct = int(round(100 * _cal["overconfidence_rate"]))
+            st.caption(
+                f"Kalibrierung: **{_cal['overconfidence_n']}** von {_cal['sicher_n']} "
+                f"Mal sicher und trotzdem falsch ({_pct} %). "
+                "Das zeigt, wo die Einschätzung und das Ergebnis auseinanderlaufen – "
+                "kein Vorwurf.")
+
 if _sektion == "Errungenschaften":
     # --------------------------------------------------------------------------- #
     # Errungenschaften: Katalog lebt in ragapp/achievements.py, hier nur Anzeige +

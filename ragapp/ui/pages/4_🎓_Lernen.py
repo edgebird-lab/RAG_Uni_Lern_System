@@ -273,6 +273,7 @@ def _start_study(karten: list, mode: str) -> None:
     st.session_state[ACTIVE] = True
     st.session_state[REVEAL] = False
     st.session_state[TALLY] = {"gewusst": 0, "halb": 0, "nicht": 0}
+    st.session_state["_session_jol"] = {"n": 0, "sicher_wrong": 0}
     st.session_state["_study_combo"] = 0
     st.session_state["_study_combo_best"] = 0
     st.session_state["_study_leech_cleared"] = 0
@@ -596,6 +597,14 @@ else:
         # Runde fertig
         beantwortet = sum(tally.values())
         st.success(f"🎉 Runde geschafft! **{beantwortet}** Karten geübt.")
+        _jol_sess = st.session_state.get("_session_jol") or {}
+        _sw = int(_jol_sess.get("sicher_wrong") or 0)
+        if _sw:
+            st.info(
+                f"{_sw}× warst du sicher und lagst daneben. Das markiert eine harte Lücke, "
+                "kein Versagen – die Karten landen im Fehlerheft.")
+        elif int(_jol_sess.get("n") or 0):
+            st.caption("Sicherheit und Ergebnis lagen in dieser Runde nah beieinander.")
         _combo_best = st.session_state.get("_study_combo_best", 0)
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("✅ Gewusst", tally["gewusst"])
@@ -626,11 +635,11 @@ else:
 
         b1, b2 = st.columns(2)
         if b1.button("🔁 Neue Runde", use_container_width=True):
-            for k in (Q, ACTIVE, REVEAL, TALLY, ROUND):
+            for k in (Q, ACTIVE, REVEAL, TALLY, ROUND, "_session_jol"):
                 st.session_state.pop(k, None)
             st.rerun()
         if b2.button("Beenden", use_container_width=True):
-            for k in (Q, ACTIVE, REVEAL, TALLY, ROUND):
+            for k in (Q, ACTIVE, REVEAL, TALLY, ROUND, "_session_jol"):
                 st.session_state.pop(k, None)
             st.rerun()
         st.stop()
@@ -815,6 +824,11 @@ else:
         def _bewerten(rating: int) -> None:
             _conf = st.session_state.get("_study_conf")
             nxt = study.rate_card(karte, rating, confidence=_conf)
+            _jol = st.session_state.setdefault("_session_jol", {"n": 0, "sicher_wrong": 0})
+            if _conf:
+                _jol["n"] = int(_jol.get("n") or 0) + 1
+                if _conf == "sicher" and rating <= study.NICHT:
+                    _jol["sicher_wrong"] = int(_jol.get("sicher_wrong") or 0) + 1
             # Dezentes, aber SPUERBARES Feedback fuer die haeufigste Aktion der
             # ganzen App - vorher gab es hier nur einen stillen Hinweis auf das
             # naechste Faelligkeitsdatum, unabhaengig vom Ergebnis. Ein Kombo-
