@@ -335,21 +335,38 @@ with card("kopf"):
     # ein verpasster Tag verschwand so unbemerkt aus dem Blick).
     _today_iso_plan = date.today().isoformat()
     _overdue_blocks = manifest.list_overdue_plan_blocks(_today_iso_plan, plan_id=_active_plan_id)
-    if _overdue_blocks and not st.session_state.get(f"_splan_autoshift_{_active_plan_id}"):
-        manifest.reschedule_overdue_blocks(_active_plan_id, _today_iso_plan, _today_iso_plan)
-        st.session_state[f"_splan_autoshift_{_active_plan_id}"] = True
-        st.info(f"{len(_overdue_blocks)} überfällige Block(e) auf heute gelegt.")
-        st.rerun()
     if _overdue_blocks:
         _overdue_min = sum(b["planned_min"] for b in _overdue_blocks)
         oc1, oc2 = st.columns([3, 1])
         oc1.warning(f"⚠️ **{len(_overdue_blocks)} Block(e) im Rückstand** "
                    f"({_fmt_min(_overdue_min)}) – ältester: {_overdue_blocks[0]['planned_date']}")
-        if oc2.button("🔁 Auf heute verschieben", key=f"splan_catchup_{_active_plan_id}",
+        if oc2.button("🔧 Plan reparieren", key=f"splan_catchup_{_active_plan_id}",
                      use_container_width=True):
-            manifest.reschedule_overdue_blocks(_active_plan_id, _today_iso_plan, _today_iso_plan)
-            st.success(f"{len(_overdue_blocks)} Block(e) auf heute verschoben.")
-            st.rerun()
+            st.session_state[f"_splan_repair_preview_{_active_plan_id}"] = True
+        if st.session_state.get(f"_splan_repair_preview_{_active_plan_id}"):
+            _repair = study_plan.repair_overdue_blocks(_active_plan_id, apply=False)
+            if _repair["moves"]:
+                _by_day: dict[str, int] = {}
+                for _move in _repair["moves"]:
+                    _by_day[_move["to_date"]] = (
+                        _by_day.get(_move["to_date"], 0) + _move["minutes"])
+                st.caption("Vorschau: " + " · ".join(
+                    f"{_day}: {_fmt_min(_mins)}" for _day, _mins in _by_day.items()))
+            if _repair["shortfall_minutes"]:
+                st.warning(
+                    f"{_fmt_min(_repair['shortfall_minutes'])} passen bis zum Horizont "
+                    "nicht in die Lastgrenze und bleiben als Rückstand sichtbar.")
+            _rp1, _rp2 = st.columns(2)
+            if _rp1.button(
+                    "Reparatur anwenden", type="primary",
+                    disabled=not _repair["moves"],
+                    key=f"splan_repair_apply_{_active_plan_id}"):
+                study_plan.repair_overdue_blocks(_active_plan_id, apply=True)
+                st.session_state.pop(f"_splan_repair_preview_{_active_plan_id}", None)
+                st.rerun()
+            if _rp2.button("Abbrechen", key=f"splan_repair_cancel_{_active_plan_id}"):
+                st.session_state.pop(f"_splan_repair_preview_{_active_plan_id}", None)
+                st.rerun()
 
     _next_block = next((b for b in _blocks if not b["done"]), None)
     if _next_block is not None:

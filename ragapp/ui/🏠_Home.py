@@ -320,6 +320,34 @@ if _snap:
             st.caption("Für heute liegt nichts Dringendes an – gute Gelegenheit, "
                         "freiwillig etwas zu wiederholen.")
 
+        if _snap["overdue_plan_blocks"]:
+            from ragapp.student_flow import repair_all_overdue_plans as _repair_plans
+            if st.button("🔧 Plan reparieren", key="home_repair_plan"):
+                st.session_state["_home_repair_preview"] = True
+            if st.session_state.get("_home_repair_preview"):
+                _repair = _repair_plans(apply=False)
+                _by_day: dict[str, int] = {}
+                for _move in _repair["moves"]:
+                    _by_day[_move["to_date"]] = (
+                        _by_day.get(_move["to_date"], 0) + _move["minutes"])
+                if _by_day:
+                    st.caption("Vorschau: " + " · ".join(
+                        f"{_day}: {_mins} Min" for _day, _mins in _by_day.items()))
+                if _repair["shortfall_minutes"]:
+                    st.warning(
+                        f"{_repair['shortfall_minutes']} Min passen noch nicht in die "
+                        "Lastgrenze und bleiben sichtbar.")
+                _hr1, _hr2 = st.columns(2)
+                if _hr1.button(
+                        "Anwenden", type="primary", disabled=not _repair["moves"],
+                        key="home_repair_apply"):
+                    _repair_plans(apply=True)
+                    st.session_state.pop("_home_repair_preview", None)
+                    st.rerun()
+                if _hr2.button("Abbrechen", key="home_repair_cancel"):
+                    st.session_state.pop("_home_repair_preview", None)
+                    st.rerun()
+
         _sched: list[str] = []
         for _s in _snap["today_classes"]:
             _room = f" ({_html_escape(_s['room'])})" if _s.get("room") else ""

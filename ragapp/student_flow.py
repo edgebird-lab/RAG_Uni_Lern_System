@@ -338,19 +338,29 @@ def fehlerheft_cards(limit: int = 20, subject: Optional[str] = None) -> list[dic
     return manifest.gather_study_cards(deck=FEHLERHEFT_DECK, limit=limit)
 
 
-def reschedule_all_overdue_today() -> int:
-    """Schiebt alle überfälligen Planblöcke auf heute (ein Klick / Autostart)."""
+def repair_all_overdue_plans(*, apply: bool = False) -> dict:
+    """Vorschau/Anwendung der fairen Reparatur für alle betroffenen Pläne."""
+    from ragapp.study_plan import repair_overdue_blocks
     today = date.today().isoformat()
     overdue = manifest.list_overdue_plan_blocks(today)
-    moved = 0
-    seen: set[str] = set()
-    for b in overdue:
-        pid = b.get("plan_id")
-        if not pid or pid in seen:
-            continue
-        seen.add(pid)
-        moved += manifest.reschedule_overdue_blocks(pid, today, today)
-    return moved
+    plan_ids = list(dict.fromkeys(
+        b.get("plan_id") for b in overdue if b.get("plan_id")))
+    results = [
+        repair_overdue_blocks(pid, apply=apply) for pid in plan_ids
+    ]
+    return {
+        "plans": results,
+        "moves": [m for result in results for m in result["moves"]],
+        "moved_blocks": sum(r["moved_blocks"] for r in results),
+        "moved_minutes": sum(r["moved_minutes"] for r in results),
+        "shortfall_minutes": sum(r["shortfall_minutes"] for r in results),
+        "applied": bool(apply),
+    }
+
+
+def reschedule_all_overdue_today() -> int:
+    """Kompatibilitätswrapper: repariert verteilt, nie mehr alles auf heute."""
+    return repair_all_overdue_plans(apply=True)["moved_blocks"]
 
 
 def default_plan_deadline(subject: Optional[str] = None) -> Optional[str]:

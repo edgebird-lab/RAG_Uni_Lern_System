@@ -186,3 +186,24 @@ def test_daily_missions_bevorzugt_sicher_falsche_karte(isolated_db):
     assert mission["kind"] == "reviews"
     assert mission["prefer_overconfidence"] is True
     assert mission["subject"] == "BWL"
+
+
+def test_repair_all_overdue_plans_liefert_vorschau_und_wendet_an(
+        isolated_db, monkeypatch):
+    from ragapp import student_flow, study_plan
+    monkeypatch.setattr(
+        study_plan.settings, "PLAN_MAX_DAILY_FOCUS_MIN", 60, raising=False)
+    monkeypatch.setattr(
+        study_plan.settings, "PLAN_REST_WEEKDAYS", [], raising=False)
+    pid = manifest.create_study_plan(
+        title="Plan", subject=None, doc_ids=[], deadline=None, daily_minutes=60)
+    manifest.update_study_plan(pid, status="active")
+    sid = manifest.append_plan_section(pid, title="Alt", est_minutes=30)
+    manifest.append_plan_block(
+        pid, section_id=sid, planned_date=_iso(-2), planned_min=30)
+    preview = student_flow.repair_all_overdue_plans(apply=False)
+    assert preview["moved_blocks"] == 1
+    assert len(manifest.list_overdue_plan_blocks(_iso(0))) == 1
+    applied = student_flow.repair_all_overdue_plans(apply=True)
+    assert applied["moved_blocks"] == 1
+    assert manifest.list_overdue_plan_blocks(_iso(0)) == []
