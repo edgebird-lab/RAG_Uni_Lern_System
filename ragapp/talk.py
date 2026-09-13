@@ -948,31 +948,104 @@ def find_chrome_for_marp() -> Optional[str]:
     return str(wrap)
 
 
+def ensure_marp_shot_deps() -> Path:
+    """Stellt ``.tools/marp-shot`` inkl. puppeteer-core bereit (einmaliges npm install)."""
+    import json
+    import os
+
+    node = shutil.which("node")
+    npm = shutil.which("npm")
+    if not node:
+        raise TalkError("node nicht gefunden (Node.js nötig für HTML→PNG).")
+    if not npm:
+        raise TalkError("npm nicht gefunden (für puppeteer-core nötig).")
+    tools = Path(__file__).resolve().parents[1] / ".tools" / "marp-shot"
+    tools.mkdir(parents=True, exist_ok=True)
+    src = Path(__file__).resolve().parent / "marp_screenshot.mjs"
+    script = tools / "marp_screenshot.mjs"
+    if src.is_file():
+        script.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    pkg = tools / "package.json"
+    if not pkg.is_file():
+        pkg.write_text(
+            json.dumps(
+                {
+                    "name": "marp-shot",
+                    "private": True,
+                    "type": "module",
+                    "dependencies": {"puppeteer-core": "^24.0.0"},
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    if not (tools / "node_modules" / "puppeteer-core").is_dir():
+        try:
+            proc = subprocess.run(
+                [npm, "install", "puppeteer-core@^24"],
+                cwd=str(tools),
+                capture_output=True,
+                text=True,
+                timeout=300,
+                check=False,
+                env=dict(os.environ),
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise TalkError("npm install puppeteer-core Timeout.") from exc
+        if proc.returncode != 0 or not (tools / "node_modules" / "puppeteer-core").is_dir():
+            err = (proc.stderr or proc.stdout or "").strip()[:600]
+            raise TalkError(f"npm install puppeteer-core fehlgeschlagen: {err or proc.returncode}")
+    return tools
+
+
+def ensure_chrome_for_screenshots() -> str:
+    """System- oder Puppeteer-Chrome; lädt bei Bedarf Chrome via @puppeteer/browsers."""
+    import os
+
+    chrome = find_chrome_binary()
+    if chrome:
+        return chrome
+    npx = shutil.which("npx")
+    if not npx:
+        raise TalkError(
+            "Chrome/Chromium nicht gefunden und npx fehlt "
+            "(HTML→PNG braucht eine Chrome-Binary)."
+        )
+    cache = Path.home() / ".cache" / "puppeteer"
+    cache.mkdir(parents=True, exist_ok=True)
+    try:
+        proc = subprocess.run(
+            [npx, "--yes", "@puppeteer/browsers", "install", "chrome@stable",
+             "--path", str(cache)],
+            capture_output=True,
+            text=True,
+            timeout=600,
+            check=False,
+            env=dict(os.environ),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise TalkError("Chrome-Download Timeout.") from exc
+    chrome = find_chrome_binary()
+    if not chrome:
+        err = (proc.stderr or proc.stdout or "").strip()[:600]
+        raise TalkError(
+            f"Chrome/Chromium nicht gefunden (Download fehlgeschlagen): "
+            f"{err or proc.returncode}"
+        )
+    return chrome
+
+
 def html_sections_to_pngs(html_path: Path, out_dir: Path) -> list[Path]:
     """Rendert jede ``<section>`` der Marp-HTML-Datei als PNG (WYSIWYG)."""
     import os
-    chrome = find_chrome_binary()
-    if not chrome:
-        raise TalkError("Chrome/Chromium nicht gefunden (für HTML→PNG nötig).")
+    chrome = ensure_chrome_for_screenshots()
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    node = shutil.which("node")
-    if not node:
-        raise TalkError("node nicht gefunden (Node.js nötig für HTML→PNG).")
-    # Skript + puppeteer-core liegen unter .tools/marp-shot/ (ESM-Resolve)
-    tools = Path(__file__).resolve().parents[1] / ".tools" / "marp-shot"
+    tools = ensure_marp_shot_deps()
     script = tools / "marp_screenshot.mjs"
-    src = Path(__file__).resolve().parent / "marp_screenshot.mjs"
-    tools.mkdir(parents=True, exist_ok=True)
-    if src.is_file():
-        script.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
-    if not (tools / "node_modules" / "puppeteer-core").is_dir():
-        raise TalkError(
-            "puppeteer-core fehlt. Einmalig:\n"
-            "  mkdir -p .tools/marp-shot && cd .tools/marp-shot && "
-            "npm init -y && npm install puppeteer-core && "
-            "cp ../../ragapp/marp_screenshot.mjs ."
-        )
+    node = shutil.which("node")
+    assert node  # ensure_marp_shot_deps prüft node
     env = dict(os.environ)
     cmd = [
         node, str(script.resolve()),
