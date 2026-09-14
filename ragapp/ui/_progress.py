@@ -133,6 +133,28 @@ class WaitLine:
         self._slot.empty()
 
 
+class LlmWait:
+    """Statusbox wie im Chat: sagt, was die KI gerade tut (statt stummem Spinner)."""
+
+    def __init__(self, message: str):
+        self._box = st.status(message, expanded=True)
+
+    def set(self, message: str) -> None:
+        self._box.update(label=message)
+
+    def done(self, message: str = "Fertig", *, ok: bool = True) -> None:
+        self._box.update(
+            label=message, state="complete" if ok else "error")
+
+    def __enter__(self) -> "LlmWait":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        if exc_type is not None:
+            self.done("Nicht geklappt", ok=False)
+        return False
+
+
 def progress_tracker(bar, caption, label: str) -> Callable[[int, int, str], None]:
     """Zweiter Fortschritts-Baustein für den EINFACHEREN ``(done, total,
     unit_label)``-Aufrufvertrag (siehe ``audio_overview.ProgressCallback``) -

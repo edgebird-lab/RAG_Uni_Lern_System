@@ -600,9 +600,10 @@ def _remaining() -> float:
 # werden. Das erzwingt das Limit auch dann, wenn nur die Seite neu geladen wird.
 if _remaining() <= 0 and not exam.get("done"):
     _sync_answers()
-    with st.spinner("Zeit abgelaufen – die Klausur wird automatisch abgegeben und "
-                    "ausgewertet …"):
+    with st.status("Zeit abgelaufen – die Klausur wird automatisch abgegeben …",
+                   expanded=True) as _ab:
         _auswerten()
+        _ab.update(label="Fertig", state="complete")
     st.rerun()
 
 
@@ -639,7 +640,8 @@ for i, card in enumerate(exam["cards"]):
     st.divider()
 
 if st.button("✅ Abgeben & auswerten", type="primary", use_container_width=True):
-    with st.spinner("Werte die Klausur aus … das kann je nach Anzahl der Aufgaben "
-                    "einige Minuten dauern."):
+    from ragapp.ui._progress import LlmWait
+    with LlmWait("Werte die Klausur aus …") as wait:
         _auswerten()
+        wait.done()
     st.rerun()

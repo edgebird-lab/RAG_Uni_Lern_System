@@ -277,15 +277,18 @@ if _active_plan_id is None:
         st.caption(_time_factor_caption(_new_subject))
 
     if st.button("🧠 Gliederung erzeugen", type="primary", disabled=not _new_doc_names):
+        from ragapp.ui._progress import LlmWait
         doc_ids = [_subj_docs[n] for n in _new_doc_names]
-        with st.spinner("KI erstellt die Gliederung … das kann je nach Umfang und "
-                        "Hardware einige Zeit dauern (siehe Schätzung oben)."):
+        with LlmWait("Suche in den Unterlagen …") as wait:
+            wait.set("Formuliere die Gliederung …")
             try:
                 outline, _outline_warning = study_plan.generate_outline(
                     doc_ids, _new_subject, model=_new_model)
             except study_plan.OutlineError as exc:
+                wait.done("Nicht geklappt", ok=False)
                 st.error(str(exc))
                 st.stop()
+            wait.done()
         pid = manifest.create_study_plan(
             title=_new_title or f"Lernplan {_fach(_new_subject)}", subject=_new_subject,
             doc_ids=doc_ids, deadline=_new_deadline.isoformat() if _new_deadline else None,
@@ -465,14 +468,17 @@ st.caption(f"Geschätzte Wartezeit: ~{_regen_eta // 60} Min" if _regen_eta >= 90
 st.caption(_time_factor_caption(_plan["subject"]))
 
 if st.button("🔄 Gliederung neu erzeugen", key=f"splan_regen_{_active_plan_id}"):
-    with st.spinner("KI erstellt die Gliederung neu … das kann je nach Umfang und "
-                    "Hardware einige Zeit dauern."):
+    from ragapp.ui._progress import LlmWait
+    with LlmWait("Suche in den Unterlagen …") as wait:
+        wait.set("Formuliere die Gliederung …")
         try:
             outline, _regen_warning = study_plan.generate_outline(
                 _plan["doc_ids"], _plan["subject"], model=_regen_model)
         except study_plan.OutlineError as exc:
+            wait.done("Nicht geklappt", ok=False)
             st.error(str(exc))
             st.stop()
+        wait.done()
     manifest.replace_plan_sections(_active_plan_id, outline)
     if _regen_warning:
         st.session_state["_splan_gen_warning"] = _regen_warning

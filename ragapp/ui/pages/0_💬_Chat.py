@@ -735,7 +735,7 @@ else:
                                    last_user=prompt)
 
         # Schnell-Modus (Gegenprüfung AUS) / Tutor UND Quellen-Anzeige AN -> streamen
-        if not _vram_low and _faith_for_call is False and show_sources:
+        if not _vram_low and _faith_for_call is False:
             try:
                 _stream, _holder = answer_query_stream(
                     prompt, subject=subject_filter,

@@ -140,20 +140,23 @@ with sticky_expander("➕ Neue Übungsaufgabe generieren",
             horizontal=True, key="practice_gen_model")
 
     if st.button("🧮 Aufgabe generieren", type="primary", disabled=not _g_doc_names):
+        from ragapp.ui._progress import LlmWait
         _kind_arg = {"🧮 Rechenaufgabe": "numeric",
                     "📐 Begründung / Beweis": "proof",
                     "📖 Anwendungsszenario": "scenario"}.get(_g_kind_choice)
         _model_arg = settings.LLM_MODEL_FAST if "Schnell" in _g_model_choice else None
         _doc_ids = [_subj_docs[n] for n in _g_doc_names]
-        with st.spinner("KI erstellt die Aufgabe aus den gewählten Unterlagen … "
-                        "das kann je nach Umfang einige Minuten dauern."):
+        with LlmWait("Suche in den Unterlagen …") as wait:
+            wait.set("Formuliere die Aufgabe …")
             try:
                 _new_pid = practice_gen.generate_practice_problem(
                     subject=_g_subject, doc_ids=_doc_ids, topic=_g_topic or None,
                     kind=_kind_arg, model=_model_arg)
             except practice_gen.PracticeGenError as exc:
+                wait.done("Nicht geklappt", ok=False)
                 st.error(str(exc))
                 st.stop()
+            wait.done()
         st.success("Aufgabe erstellt.")
         st.session_state["_practice_pending_choice"] = _new_pid
         st.rerun()
@@ -295,14 +298,16 @@ with col_practice:
                         not (_typed_answer or "").strip()
                         or bool(st.session_state.get(_grade_key)))):
                 from ragapp import grading
+                from ragapp.ui._progress import LlmWait
                 _reference = "\n".join(
                     [s.get("step_text", "") for s in _active.get("steps", [])]
                     + [_active.get("final_answer") or ""]
                 ).strip()
-                with st.spinner("Prüfe Rechenweg und Ergebnis …"):
+                with LlmWait("Prüfe Rechenweg und Ergebnis …") as wait:
                     _graded = grading.grade_typed_answer(
                         _active.get("problem_text") or "",
                         _reference, _typed_answer)
+                    wait.done()
                 _score = _graded.get("score")
                 if _score is None:
                     st.warning(
@@ -465,15 +470,18 @@ if _subj_arg:
                   "Formeln, Methoden oder Merksätze, je nach Fach. Ohne die konkreten "
                   "Zahlenwerte einzelner Aufgaben.")
         if st.button("📎 Sammlung erstellen/aktualisieren", key="formelsammlung_gen"):
-            with st.spinner("KI fasst die bisherigen Aufgaben zusammen …"):
+            from ragapp.ui._progress import LlmWait
+            with LlmWait("Fasse die bisherigen Aufgaben zusammen …") as wait:
                 try:
                     _fs_text = practice_gen.generate_formelsammlung(_subj_arg)
                 except practice_gen.PracticeGenError as exc:
+                    wait.done("Nicht geklappt", ok=False)
                     st.error(str(exc))
                 else:
                     from ragapp.student_flow import upsert_formelsammlung
                     upsert_formelsammlung(_subj_arg, _fs_text)
                     st.session_state[f"_formelsammlung_{_subj_arg}"] = _fs_text
+                    wait.done()
         from ragapp.student_flow import formelsammlung_text as _fs_load
         _fs_cached = (
             st.session_state.get(f"_formelsammlung_{_subj_arg}")

@@ -205,16 +205,19 @@ if _active_id is None:
     _new_model = _model_picker("mm_new_model")
 
     if st.button("🧠 Mindmap erstellen", type="primary", disabled=not _new_doc_names):
+        from ragapp.ui._progress import LlmWait
         _doc_ids = [_subj_docs[n] for n in _new_doc_names]
-        with st.spinner("KI erstellt die Mindmap … das kann je nach Umfang und "
-                        "Hardware einige Zeit dauern."):
+        with LlmWait("Suche Themen in den Unterlagen …") as wait:
+            wait.set("Formuliere die Mindmap …")
             try:
                 _new_mid, _new_warning = mindmap.create_and_save_mindmap(
                     _doc_ids, _new_subject, _new_title or f"Mindmap {_fach(_new_subject)}",
                     model=_new_model)
             except mindmap.MindmapError as exc:
+                wait.done("Nicht geklappt", ok=False)
                 st.error(str(exc))
                 st.stop()
+            wait.done()
         if _new_warning:
             st.session_state["_mm_gen_warning"] = _new_warning
         else:
@@ -252,14 +255,17 @@ with card("viewer"):
     with st.expander("⚙️ Neu generieren & Löschen", key=f"mm_regen_expander_{_active_id}"):
         _regen_model = _model_picker(f"mm_regen_model_{_active_id}")
         if st.button("🔄 Mindmap neu generieren", key=f"mm_regen_{_active_id}"):
-            with st.spinner("KI erstellt die Mindmap neu … das kann je nach Umfang und "
-                            "Hardware einige Zeit dauern."):
+            from ragapp.ui._progress import LlmWait
+            with LlmWait("Suche Themen in den Unterlagen …") as wait:
+                wait.set("Formuliere die Mindmap …")
                 try:
                     _new_graph, _regen_warning = mindmap.generate_mindmap(
                         _active["doc_ids"], _active["subject"], model=_regen_model)
                 except mindmap.MindmapError as exc:
+                    wait.done("Nicht geklappt", ok=False)
                     st.error(str(exc))
                     st.stop()
+                wait.done()
             # NICHT sofort überschreiben - erst zur Vorschau anbieten (siehe
             # _pending_key unten). Ein misslungener/schlechterer Vorschlag
             # (z. B. bei einer Quelle ohne erkennbare Kapitelstruktur) darf
@@ -523,23 +529,32 @@ with card("chat"):
             st.markdown(_mm_prompt)
         with st.chat_message("assistant", avatar="🤖"):
             from ragapp.graph.rag_graph import answer_query_stream
+            from ragapp.ui._progress import LlmWait
             _history = [{"role": m["role"], "content": m["content"]}
                        for m in st.session_state[_chat_key][:-1]]
-            with st.spinner("🧠 Antwort wird erstellt …"):
+            with LlmWait("Suche in den Unterlagen …") as wait:
+                def _on_stage(name: str) -> None:
+                    if name == "generate":
+                        wait.set("Formuliere Antwort …")
+                    else:
+                        wait.set("Suche in den Unterlagen …")
                 try:
                     _mm_stream, _mm_holder = answer_query_stream(
                         _rag_prompt, subject=_active["subject"], doc_ids=_active["doc_ids"],
-                        check_faithfulness=False, history=_history, chat_mode="tutor")
+                        check_faithfulness=False, history=_history, chat_mode="tutor",
+                        on_stage=_on_stage)
                 except Exception:  # noqa: BLE001 - Setup-Fehler -> als Antwort anzeigen
                     _mm_stream, _mm_holder = None, {}
                 if _mm_stream is not None:
                     try:
+                        wait.set("Formuliere Antwort …")
                         _mm_answer = st.write_stream(_mm_stream)
                     except Exception as exc:  # noqa: BLE001 - Stream-Fehler nie roh anzeigen
                         _mm_answer = _mm_holder.get("answer") or f"Fehler: {exc}"
                 else:
                     _mm_answer = _mm_holder.get("answer") or "Keine Antwort erhalten."
                     st.markdown(_mm_answer)
+                wait.done()
             _mm_sources = _mm_holder.get("sources", [])
             if _mm_sources:
                 with st.expander(f"📚 Quellen ({len(_mm_sources)})"):
