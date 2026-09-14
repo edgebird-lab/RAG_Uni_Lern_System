@@ -232,8 +232,9 @@ Karten pro Tag**). Eine zweite Sitzung am selben Tag bringt **keine** weiteren n
 Karten, sondern nur noch fällige Wiederholungen bzw. Lern-Schritte.
 
 Unter **Karten fürs Lernen ankreuzen** kannst du einzelne Karten dauerhaft aus der
-Abfrage nehmen (sie bleiben gespeichert). Die **Challenge** ist optional für feste
-Rundengröße, Cram oder Prüfungsphase – für den Alltag nicht nötig. Gibt es noch kein
+Abfrage nehmen (sie bleiben gespeichert). Die **Challenge** (zugeklappt) ist optional
+für feste Rundengröße, Cram oder eine **gemischte Kartenrunde** über alle Fächer –
+keine Klausur. Zeitlimit und mündlich liegen unter **Prüfung**. Gibt es noch kein
 Fragenmaterial, zuerst auf **Lernen → Expertenmodus** Fragen generieren bzw. den Lernkatalog
 erstellen.
 

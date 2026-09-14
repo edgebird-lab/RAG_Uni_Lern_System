@@ -91,6 +91,9 @@ def main() -> int:
                 body = page.locator("body").inner_text()
                 if "Traceback (most recent call last)" in body:
                     raise AssertionError(f"Streamlit-Traceback auf {path}")
+                if path == "/Lernen" and "Prüfungsphase" in body:
+                    raise AssertionError(
+                        "Lernen zeigt noch Prüfungsphase – die Simulation liegt unter Prüfung.")
                 if screenshot_dir:
                     skel = page.locator(".rag-skel")
                     if skel.count() > 0:

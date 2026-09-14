@@ -459,8 +459,8 @@ if not st.session_state.get(ACTIVE):
         st.warning("Kein Stapel ausgewählt – klicke mindestens einen an.")
     elif faellig == 0:
         st.success("✅ Für diese Auswahl ist gerade **nichts fällig** – gut gemacht! "
-                   "Komm später wieder, oder nutze die **Challenge** unten "
-                   "(Klausur-Modus), um trotzdem zu üben.")
+                   "Komm später wieder, oder klappe unten die **Challenge** auf "
+                   "(Cram). Zeitlimit und mündlich liegen unter **Prüfung**.")
     _go1, _go2, _go3, _go4 = st.columns(4)
     if _go1.button("▶️ Jetzt lernen", type="primary", use_container_width=True,
                    disabled=not decks or faellig == 0,
@@ -560,9 +560,10 @@ if not st.session_state.get(ACTIVE):
                     st.rerun()
 
     # --- Challenge: bisheriger Runden-Baukasten ---
-    with st.expander("🏆 Challenge – Interleaving & Prüfungsphase", expanded=True):
+    with st.expander("🏆 Challenge – Themen mischen", expanded=False):
         st.caption("Cram und Sprint liegen oben bei **Jetzt lernen**. "
-                   "Hier: Themen mischen und Fächer-übergreifende Runde.")
+                   "Schriftlich und mündlich mit Zeitlimit stehen unter **Prüfung**. "
+                   "Hier nur: Themen verschränken oder alle Fächer in einer Kartenrunde.")
         _srs_max = int(getattr(settings, "SRS_MAX_PER_SESSION", 100))
         _ch_decks = decks if decks else None
         _ch_fc = manifest.review_counts(subj, decks=_ch_decks) if _ch_decks is not None else {"total": 0}
@@ -584,13 +585,14 @@ if not st.session_state.get(ACTIVE):
             help="Auch noch nicht fällige, schwache Karten ziehen.")
         if len(_faecher) >= 2:
             with st.container(border=True):
-                st.markdown("**🎓 Prüfungsphase** – alle Fächer gemischt.")
+                st.markdown("**Alle Fächer in einer Runde**")
+                st.caption("Gemischte Karteikarten – keine Simulation mit Zeitlimit.")
                 _pp1, _pp2, _pp3 = st.columns([1, 1, 1])
                 _pp_n = _pp1.number_input(
                     "Karten", min_value=5, max_value=_srs_max, value=20,
                     step=5, key="phase_n")
                 _pp_cram = _pp2.checkbox("🔥 Cram", key="phase_cram")
-                if _pp3.button("▶️ Prüfungsphase", key="phase_start",
+                if _pp3.button("▶️ Gemischte Runde", key="phase_start",
                                use_container_width=True):
                     from ragapp import planner as _pl
                     _pk = _pl.phase_round(limit=int(_pp_n), cram=bool(_pp_cram))
@@ -599,6 +601,10 @@ if not st.session_state.get(ACTIVE):
                     else:
                         _start_study(_pk, _MODE_MAP[_mode_lbl])
                         st.rerun()
+                if st.button("📝 Zur Prüfung", key="phase_to_exam",
+                             use_container_width=True):
+                    st.session_state["exam_prefill"] = {"mode": "written"}
+                    st.switch_page("pages/6_📝_Prüfung.py")
         if _ch_faellig == 0 and not _cram:
             st.caption("Nichts fällig – Cram aktivieren oder später wiederkommen.")
         else:
