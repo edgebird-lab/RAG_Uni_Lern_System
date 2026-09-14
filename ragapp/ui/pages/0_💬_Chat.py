@@ -532,13 +532,19 @@ for _mi, msg in enumerate(st.session_state.messages):
 
 def _socratic_topic_suggestions(subject: "str | None") -> list[str]:
     from ragapp.graph.socratic import (
-        collect_socratic_topic_suggestions, read_source_text,
+        collect_socratic_topic_suggestions, pdf_toc_titles, read_source_text,
     )
     cards = manifest.list_cards(subject=subject, limit=40)
     docs = [dict(d) for d in manifest.list_documents()]
+    extras: list[str] = []
+    for d in docs:
+        if subject and d.get("subject") != subject:
+            continue
+        extras.extend(pdf_toc_titles(str(d.get("source_path") or ""), root=PROJECT_ROOT))
     return collect_socratic_topic_suggestions(
         cards=cards, documents=docs, subject=subject,
         read_text=lambda p: read_source_text(p, root=PROJECT_ROOT),
+        extra_headings=extras,
         limit=9,
     )
 
@@ -549,6 +555,7 @@ def _start_socratic_dialog(topic: str) -> None:
     if not topic:
         return
     st.session_state["socratic_topic"] = topic
+    st.session_state.pop("_socratic_pick_again", None)
     st.session_state["_pending_prompt"] = SOKRATISCH_START_USER.format(topic=topic)
     # Ein kurzer Rerun ohne LLM, damit die Startkarte weg ist, bevor die
     # Generierung die Seite lange blockiert (sonst bleiben die Picker-Widgets
@@ -584,6 +591,9 @@ def _render_socratic_start() -> None:
                 if cols[i % 3].button(name, key=f"soc_sug_{i}",
                                       use_container_width=True):
                     _start_socratic_dialog(name)
+        else:
+            st.caption("Keine Vorschläge aus den Unterlagen – tippe den Begriff "
+                       "ins Feld oder unten in die Eingabe.")
 
 
 def _render_onboarding() -> None:
@@ -623,23 +633,23 @@ def _friendly_error(exc: Exception) -> str:
 # sichtbar). _pending_prompt / socratic_topic: Dialog schon gestartet.
 _incoming = bool(st.session_state.get("_pending_prompt"))
 _socratic_started = bool(st.session_state.get("socratic_topic"))
+_pick_again = bool(st.session_state.get("_socratic_pick_again"))
 _intro_slot = st.empty()
-if (not st.session_state.messages and stats["chunks"] > 0 and not _incoming
-        and not _socratic_started):
+if (stats["chunks"] > 0 and not _incoming and not _socratic_started
+        and (_pick_again or not st.session_state.messages)):
     with _intro_slot.container():
         if _chat_mode == "sokratisch":
             _render_socratic_start()
-        else:
+        elif not st.session_state.messages:
             _render_onboarding()
 
 if _chat_mode == "sokratisch" and st.session_state.get("socratic_topic"):
     _tb1, _tb2 = st.columns([4, 1])
     _tb1.caption(f"🧭 Thema: **{st.session_state['socratic_topic']}**")
-    if _tb2.button("Neues Thema", key="soc_reset_topic"):
-        st.session_state.messages = []
+    if _tb2.button("Neues Thema", key="soc_reset_topic",
+                   help="Nächste Dialoglinie – der Verlauf bleibt."):
         st.session_state.pop("socratic_topic", None)
-        st.session_state["_chat_pending_choice"] = None
-        st.session_state["_chat_loaded_session_id"] = None
+        st.session_state["_socratic_pick_again"] = True
         st.rerun()
 
 

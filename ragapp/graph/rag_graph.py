@@ -729,12 +729,18 @@ _GIVE_UP_MARKERS = ("weiß es nicht", "weiss es nicht", "weiß ich nicht",
                     "verrat mir die antwort", "verrate mir die antwort",
                     "löse es auf", "loese es auf", "ich gebe auf",
                     "gib mir die antwort", "erklär es mir einfach",
-                    "erklaer es mir einfach")
+                    "erklaer es mir einfach", "zeig die lösung",
+                    "zeige die lösung", "auflösen")
 _PARTIAL_MARKERS = ("weiß es teilweise", "weiss es teilweise",
                     "weiß ich teilweise", "weiss ich teilweise",
-                    "weiß nur einen teil", "weiss nur einen teil")
-_HINT_MARKERS = ("gib mir einen hinweis", "ohne die antwort zu verraten")
-_NEXT_ASPECT_MARKERS = ("nächster aspekt", "naechster aspekt")
+                    "weiß nur einen teil", "weiss nur einen teil",
+                    "weiß nur zum teil", "weiss nur zum teil",
+                    "nur zum teil", "ich weiß einen teil", "ich weiss einen teil")
+_HINT_MARKERS = ("gib mir einen hinweis", "ohne die antwort zu verraten",
+                 "einen tipp", "tipp bitte", "kleiner hinweis",
+                 "hilf mir mit einem hinweis")
+_NEXT_ASPECT_MARKERS = ("nächster aspekt", "naechster aspekt",
+                       "nächstes thema dazu", "naechstes thema dazu")
 _START_MARKERS = ("lass uns über", "lass uns ueber")
 
 

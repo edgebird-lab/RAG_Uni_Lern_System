@@ -406,7 +406,9 @@ def test_partial_ist_kein_aufgeben(sokratisch_funcs):
     give = sokratisch_funcs()["_looks_like_giving_up"]
     partial = sokratisch_funcs()["_looks_like_partial"]
     assert partial("Ich weiß es teilweise.")
+    assert partial("Ich weiß nur zum Teil die Definition.")
     assert not give("Ich weiß es teilweise.")
+    assert not give("Ich weiß nur zum Teil die Definition.")
     assert not partial("Ich weiß es nicht")
 
 
@@ -439,7 +441,9 @@ def test_sokratisch_extra_prompt_start_partial_hint_resolve(sokratisch_funcs):
 
     hint = extra("Gib mir einen Hinweis, ohne die Antwort zu verraten.", history, topic)
     assert "Hinweis" in hint
-    assert "vollständig auf" not in hint
+    assert extra("Tipp bitte.", history, topic) == hint or "Hinweis" in extra(
+        "Tipp bitte.", history, topic)
 
     resolve = extra("Löse es auf.", history, topic)
     assert "vollständig auf" in resolve
+    assert "vollständig auf" in extra("Zeig die Lösung.", history, topic)

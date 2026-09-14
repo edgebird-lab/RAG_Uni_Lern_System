@@ -32,6 +32,9 @@ def test_is_usable_topic_filtert_dateinamen_und_fachlabel():
     assert not is_usable_topic("Definitionen", subject="Livetest",
                                filename_stems=stems)
     assert not is_usable_topic("Anleitung", subject="Livetest")
+    assert not is_usable_topic("Seite 7")
+    assert not is_usable_topic("Folie 3")
+    assert not is_usable_topic("Page 12")
 
 
 def test_collect_nimmt_karten_themen_nicht_dateinamen():
@@ -57,7 +60,15 @@ def test_collect_nimmt_karten_themen_nicht_dateinamen():
     assert "Anleitung" not in out
 
 
-def test_collect_faellt_auf_markdown_ueberschriften_zurueck():
+def test_collect_nimmt_nummerierte_und_extra_ueberschriften():
+    md = "1. Testing-Effekt\n\nText\n\n2. Spaced Repetition\n"
+    out = collect_socratic_topic_suggestions(
+        cards=[], documents=[], extra_headings=["Grounding"])
+    assert out == ["Grounding"]
+    from ragapp.graph.socratic import topics_from_markdown
+    heads = topics_from_markdown(md)
+    assert "Testing-Effekt" in heads
+    assert "Spaced Repetition" in heads
     md = (
         "# Livetest: Begriffskarten\n\n"
         "## Testing-Effekt\n\nText\n\n"
@@ -70,3 +81,13 @@ def test_collect_faellt_auf_markdown_ueberschriften_zurueck():
         read_text=lambda p: md if p == "def.md" else "")
     assert out == ["Testing-Effekt", "Spaced Repetition"]
     assert topics_from_markdown(md, subject="Livetest") == out
+
+    mixed = collect_socratic_topic_suggestions(
+        cards=[], documents=docs, subject="Livetest",
+        read_text=lambda p: md if p == "def.md" else "",
+        extra_headings=["Seite 7", "Grounding", "Folie 2"],
+    )
+    assert mixed[0] == "Testing-Effekt"
+    assert "Seite 7" not in mixed
+    assert "Folie 2" not in mixed
+    assert "Grounding" in mixed

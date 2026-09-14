@@ -31,8 +31,13 @@ _FRONT_RES = (
 _NOUN_VON_RE = re.compile(
     r"^([A-ZÄÖÜ][\w\-]*(?:\s+[A-ZÄÖÜ][\w\-]*)?)\s+von\b")
 _HEADING_RE = re.compile(r"^#{2,3}\s+(.+?)\s*$", re.MULTILINE)
+_NUM_HEAD_RE = re.compile(
+    r"^(?:\d+(?:\.\d+){0,3})[.)]?\s+(.{4,48})\s*$", re.MULTILINE)
 _LATEX_RE = re.compile(r"\$[^$]*\$")
 _FILENAME_LIKE_RE = re.compile(r"^[A-Za-z0-9ÄÖÜäöüß]+(?:_[A-Za-z0-9ÄÖÜäöüß]+)+$")
+# PDF-Lesezeichen heissen oft nur "Seite 12" / "Folie 3" – kein Dialogthema.
+_PAGE_LABEL_RE = re.compile(
+    r"^(?:seite|page|folie|slide|abschnitt|kapitel|chapter)\s*\d+$", re.I)
 
 
 def filename_stem(name: str) -> str:
@@ -76,6 +81,8 @@ def is_usable_topic(label: str, *, subject: Optional[str] = None,
     key = name.lower()
     if key in _GENERIC_LABELS:
         return False
+    if _PAGE_LABEL_RE.match(name):
+        return False
     subj = (subject or "").strip().lower()
     if subj and (key == subj or key.startswith(subj + " ") or key.startswith(subj + "-")):
         return False
@@ -111,6 +118,37 @@ def topics_from_markdown(md: str, *, subject: Optional[str] = None,
     for m in _HEADING_RE.finditer(md or ""):
         if _add(out, seen, m.group(1), subject=subject, stems=stems, limit=limit):
             break
+    if len(out) >= limit:
+        return out
+    for m in _NUM_HEAD_RE.finditer(md or ""):
+        if _add(out, seen, m.group(1), subject=subject, stems=stems, limit=limit):
+            break
+    return out
+
+
+def pdf_toc_titles(source_path: str, *, root: Path) -> list[str]:
+    """PDF-Lesezeichen (Inhaltsverzeichnis), ohne den ganzen Text zu laden."""
+    p = Path(source_path)
+    if not p.is_absolute():
+        p = root / p
+    if not p.is_file() or p.suffix.lower() != ".pdf":
+        return []
+    try:
+        import fitz
+        doc = fitz.open(p)
+        toc = doc.get_toc() or []
+        doc.close()
+    except Exception:
+        return []
+    out: list[str] = []
+    for level, title, _page in toc:
+        if int(level or 99) > 2:
+            continue
+        title = (title or "").strip()
+        if title:
+            out.append(title)
+        if len(out) >= 24:
+            break
     return out
 
 
@@ -120,12 +158,10 @@ def collect_socratic_topic_suggestions(
     documents: Optional[Iterable[Mapping]] = None,
     subject: Optional[str] = None,
     read_text: Optional[Callable[[str], str]] = None,
+    extra_headings: Optional[Iterable[str]] = None,
     limit: int = 9,
 ) -> list[str]:
-    """Themen aus Karten (topic/front), danach Markdown-``##``-Ueberschriften.
-
-    Dateinamen werden bewusst nicht als Fallback genutzt.
-    """
+    """Themen aus Karten, Markdown-/PDF-Ueberschriften, Dateinamen nie."""
     docs = [dict(d) for d in (documents or [])]
     if subject:
         docs = [d for d in docs if d.get("subject") == subject]
@@ -141,25 +177,28 @@ def collect_socratic_topic_suggestions(
         if _add(out, seen, label, subject=subject, stems=stems, limit=limit):
             return out
 
-    if read_text is None:
-        return out
-    for doc in docs:
-        if len(out) >= limit:
-            break
-        name = str(doc.get("filename") or "")
-        if not name.lower().endswith(".md"):
-            continue
-        path = str(doc.get("source_path") or "")
-        if not path:
-            continue
-        try:
-            text = read_text(path) or ""
-        except OSError:
-            continue
-        for heading in topics_from_markdown(
-                text, subject=subject, filename_stems=stems, limit=limit):
-            if _add(out, seen, heading, subject=subject, stems=stems, limit=limit):
-                return out
+    if read_text is not None:
+        for doc in docs:
+            if len(out) >= limit:
+                break
+            name = str(doc.get("filename") or "")
+            path = str(doc.get("source_path") or "")
+            if not path:
+                continue
+            if name.lower().endswith(".pdf"):
+                continue
+            try:
+                text = read_text(path) or ""
+            except OSError:
+                continue
+            for heading in topics_from_markdown(
+                    text, subject=subject, filename_stems=stems, limit=limit):
+                if _add(out, seen, heading, subject=subject, stems=stems, limit=limit):
+                    return out
+
+    for heading in extra_headings or []:
+        if _add(out, seen, heading, subject=subject, stems=stems, limit=limit):
+            return out
     return out
 
 
