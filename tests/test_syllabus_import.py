@@ -85,10 +85,26 @@ def test_parse_subjects_normalfall():
     assert len(s.lectures) == 1
 
 
-def test_parse_subjects_ohne_code_wird_uebersprungen():
-    data = [{"label": "Kein Code hier"}, {"code": "OK", "label": "Gueltig"}]
+def test_parse_subjects_ohne_code_nutzt_label_als_code():
+    data = [{"label": "Wahlmodul Nachhaltigkeit"}, {"code": "OK", "label": "Gueltig"}]
     subjects = si._parse_subjects(data)
-    assert len(subjects) == 1 and subjects[0].code == "OK"
+    codes = {s.code for s in subjects}
+    assert "OK" in codes
+    assert any(s.code.startswith("Wahlmodul") for s in subjects)
+
+
+def test_parse_subjects_digit_und_abgeschnittener_code_nutzen_label():
+    data = [
+        {"code": "31", "label": "Wirtschaftsinformatik I"},
+        {"code": "Modul 4 (Fortsetzung", "label": "Modul 4 Fortsetzung Datenbanken"},
+        {"code": "DSA", "label": "Algorithmen & Datenstrukturen"},
+    ]
+    subjects = {s.code: s for s in si._parse_subjects(data)}
+    assert "31" not in subjects
+    assert "Modul 4 (Fortsetzung" not in subjects
+    assert "DSA" in subjects
+    assert any("Wirtschaftsinformatik" in c for c in subjects)
+    assert any("Datenbanken" in c or "Fortsetzung" in c for c in subjects)
 
 
 def test_parse_subjects_dedupliziert_gleichen_code():

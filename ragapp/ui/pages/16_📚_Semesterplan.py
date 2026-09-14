@@ -78,8 +78,11 @@ with card("upload"):
         "Modulhandbuch / Semesterplan / Prüfungsordnung", type=["pdf", "docx", "txt", "md"],
         key="syllabus_upload")
     _model_choice = _model_picker("syllabus_model")
-
-    if _upload is not None and st.button("🔎 Fächer extrahieren", type="primary"):
+    _extract = st.button(
+        "🔎 Fächer extrahieren", type="primary",
+        disabled=_upload is None, key="syllabus_extract",
+        help="Zuerst eine Datei hochladen." if _upload is None else None)
+    if _extract and _upload is not None:
         _TMP_DIR.mkdir(parents=True, exist_ok=True)
         _tmp_path = _TMP_DIR / f"_tmp_{_upload.name}"
         _tmp_path.write_bytes(_upload.getvalue())
@@ -177,17 +180,40 @@ if _already or _slots_n:
     with card("bestand"):
         st.subheader("Bereits übernommen")
         st.caption("Das landet nach dem Import hier – nicht bei den Karteikarten.")
-        if _already:
-            for _ex in _already:
-                _title = _ex.get("notiz") or _ex["subject"]
-                _extra = _ex["subject"] if _ex.get("notiz") and _ex["notiz"] != _ex["subject"] else None
-                _bits = []
-                if _extra:
-                    _bits.append(_extra)
-                _bits.append(_ex.get("exam_date") or "kein Klausurdatum")
-                if _ex.get("ects"):
-                    _bits.append(f"{_ex['ects']:g} ECTS")
-                st.write(f"• **{_title}** · " + " · ".join(_bits))
+
+        def _exam_fragment(ex: dict) -> bool:
+            subj = (ex.get("subject") or "").strip()
+            if ex.get("exam_date"):
+                return False
+            if subj.isdigit():
+                return True
+            if subj.count("(") != subj.count(")"):
+                return True
+            return subj.endswith(("(", "-", "–", "/", "&"))
+
+        _ok_exams = [e for e in _already if not _exam_fragment(e)]
+        _frag_exams = [e for e in _already if _exam_fragment(e)]
+
+        def _exam_line(ex: dict) -> str:
+            title = ex.get("notiz") or ex["subject"]
+            extra = ex["subject"] if ex.get("notiz") and ex["notiz"] != ex["subject"] else None
+            bits = []
+            if extra:
+                bits.append(extra)
+            bits.append(ex.get("exam_date") or "kein Klausurdatum")
+            if ex.get("ects"):
+                bits.append(f"{ex['ects']:g} ECTS")
+            return "• **" + title + "** · " + " · ".join(bits)
+
+        for _ex in _ok_exams:
+            st.write(_exam_line(_ex))
+        if _frag_exams:
+            with st.expander(
+                    f"Unvollständige Importreste ({len(_frag_exams)})", expanded=False):
+                st.caption("Kürzel ohne Klausurdatum, oft abgeschnittene Modulnummern. "
+                           "Unter Fortschritt löschen oder einen Termin setzen.")
+                for _ex in _frag_exams:
+                    st.write(_exam_line(_ex))
         if _slots_n:
             st.write(f"• {_slots_n} Vorlesungszeit(en) unter **🗂️ Kurse & Stundenplan**.")
         else:
