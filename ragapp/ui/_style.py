@@ -19,6 +19,7 @@ Zielgruppen Heute, Kurse, Lernen, Werkzeuge, Fortschritt.
 """
 from __future__ import annotations
 
+import json
 import re
 from html import escape as html_escape
 
@@ -80,9 +81,8 @@ PAGE_REGISTRY: list[dict] = [
 ]
 _PAGE_BY_KEY = {p["key"]: p for p in PAGE_REGISTRY}
 
-# Eine Hub-Seite je Zielgruppe. Kurzwahl und Home-Pins zeigen diese Ziele,
-# nicht Chat/Karten/Fortschritt als gleichrangige Werkzeuge. Generatoren
-# (Zusammenfassung, Audio, Vortrag, Mindmap) bleiben hinter "Mehr".
+# Eine Hub-Seite je Zielgruppe – nur noch fuer die Gruppen in "Mehr",
+# nicht fuer die Alltagskurzwahl (die haette sonst Notizen als Pflicht-Hub).
 GOAL_HUB_KEYS: dict[str, str] = {
     "Heute": "home",
     "Kurse": "organisation",
@@ -91,14 +91,20 @@ GOAL_HUB_KEYS: dict[str, str] = {
     "Fortschritt": "fortschritt",
 }
 
-# Hamburger-Kurzwahl: die fünf Zielgruppen (Home steht fuer Heute).
-HAMBURGER_KEYS = [GOAL_HUB_KEYS[c] for c in GOAL_CATEGORIES]
+# Alltag: dieselbe Reihenfolge in Untereiste, Hamburger-Kurzwahl und Home-Pins.
+# Beschriftung: Heute · Kurse · Karten · Chat (+ Mehr fuer den Rest).
+PRIMARY_NAV: list[dict] = [
+    {"key": "home", "label": "Heute", "path": "/"},
+    {"key": "organisation", "label": "Kurse", "path": "/Organisation"},
+    {"key": "lernen", "label": "Karten", "path": "/Lernen"},
+    {"key": "chat", "label": "Chat", "path": "/Chat"},
+]
+PRIMARY_NAV_LABELS = {p["key"]: p["label"] for p in PRIMARY_NAV}
+HAMBURGER_KEYS = [p["key"] for p in PRIMARY_NAV]
 
-# Home-Kacheln: dieselben fünf Ziele; Home hat keine Kachel zu sich selbst,
-# daher Lernplan als Heute-Einstieg. Generatoren liegen hinter "Mehr".
+# Home hat keine Kachel zu sich selbst, daher Lernplan als Heute-Einstieg.
 HOME_PIN_KEYS = [
-    "lernplan" if GOAL_HUB_KEYS[c] == "home" else GOAL_HUB_KEYS[c]
-    for c in GOAL_CATEGORIES
+    "lernplan" if p["key"] == "home" else p["key"] for p in PRIMARY_NAV
 ]
 
 # Operator-Seiten: nicht im Studenten-Alltag (Home/Hamburger-Gruppen).
@@ -877,6 +883,52 @@ html.rag-dark #rag-theme-switch {{
   background:#0f2440; border-color:#1e3a5f; box-shadow:0 2px 10px rgba(0,0,0,.35);
 }}
 
+/* Untereiste nur am Handy: Heute · Kurse · Karten · Chat · Mehr. */
+#rag-bottom-nav {{
+  display:none;
+}}
+@media (max-width: 700px) {{
+  #rag-bottom-nav {{
+    display:flex; position:fixed; left:0; right:0; bottom:0;
+    z-index:100040; align-items:stretch; justify-content:space-around;
+    gap:0; margin:0; padding:4px 4px max(8px, env(safe-area-inset-bottom));
+    background:rgba(255,255,255,.94); border-top:1px solid #eadfd8;
+    box-shadow:0 -6px 18px rgba(43,32,54,.08);
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  }}
+  html.rag-dark #rag-bottom-nav {{
+    background:rgba(12,31,58,.94); border-top-color:#1e3a5f;
+    box-shadow:0 -6px 18px rgba(0,0,0,.35);
+  }}
+  .rag-bottom-item {{
+    flex:1; min-width:0; min-height:48px; border:0; background:transparent;
+    color:#2b2036; cursor:pointer; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:1px; padding:4px 2px;
+    font-family:inherit; font-size:11px; font-weight:650; line-height:1.15;
+    border-radius:12px; -webkit-tap-highlight-color:transparent;
+  }}
+  html.rag-dark .rag-bottom-item {{ color:#e7edf5; }}
+  .rag-bottom-icon {{ font-size:1.15rem; line-height:1; font-variant-emoji:text; }}
+  .rag-bottom-item.rag-bottom-here {{
+    color:#b83250; background:rgba(184,50,80,.10);
+  }}
+  html.rag-dark .rag-bottom-item.rag-bottom-here {{
+    color:#ffb3c2; background:rgba(184,50,80,.22);
+  }}
+  .block-container {{
+    padding-bottom:calc(9rem + env(safe-area-inset-bottom)) !important;
+  }}
+  [data-testid="stChatInput"] {{
+    bottom:calc(3.85rem + env(safe-area-inset-bottom)) !important;
+  }}
+  [data-testid="stChatInput"] textarea {{
+    min-height:2.85rem !important;
+  }}
+  #rag-pwa {{
+    bottom:calc(4.2rem + env(safe-area-inset-bottom)) !important;
+  }}
+}}
+
 /* Doodle-Hintergrund: fix positioniert, klickdurchlaessig, dezent. */
 .rag-doodles {{position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden;}}
 .rag-doodle {{position:absolute; opacity:.16;}}
@@ -1279,18 +1331,15 @@ def _i18n_patch_html() -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Hamburger-Kurzwahl: die fünf Zielgruppen (GOAL_HUB_KEYS), darunter alle
-# uebrigen Seiten nach Kategorie. Beenden und zweites Fenster liegen zusaetzlich
+# Hamburger-Kurzwahl: Heute · Kurse · Karten · Chat, darunter alle uebrigen
+# Seiten nach Kategorie. Beenden und zweites Fenster liegen zusaetzlich
 # im Menue (nicht nur in der auf dem Handy unsichtbaren Sidebar).
 # --------------------------------------------------------------------------- #
 def render_hamburger_nav(current_page_key: str) -> None:
-    """Kurzwahl der fünf Zielgruppen (HAMBURGER_KEYS) PLUS - darunter,
-    nach Kategorie gruppiert wie die Home-Kacheln - alle uebrigen Seiten. Bis
-    Version X gab es hier NUR die Kurzwahl: von einer Nicht-Kurzwahl-Seite
-    (14 von 18) aus fuehrte JEDE Navigation ueber einen Umweg zurueck zu Home.
-    Die Kategorie-Gruppierung uebernimmt bewusst dieselbe Reihenfolge/
-    Einteilung wie PAGE_REGISTRY (siehe Home-Kacheln), damit Nutzer nicht
-    zwei verschiedene Gliederungen im Kopf behalten muessen.
+    """Kurzwahl (HAMBURGER_KEYS / PRIMARY_NAV) PLUS darunter, nach Kategorie
+    gruppiert wie PAGE_REGISTRY, alle uebrigen Seiten. Dieselbe Reihenfolge
+    wie die Handy-Untereiste und die Home-Pins, damit es nur eine Gliederung
+    gibt. Werkzeuge/Notizen sind kein Pflicht-Hub mehr.
 
     BEWUSST NICHT (mehr) in ``st.sidebar``: Streamlit klappt die Sidebar auf
     schmalen (Handy-)Viewports automatisch komplett aus dem sichtbaren Bereich
@@ -1302,12 +1351,13 @@ def render_hamburger_nav(current_page_key: str) -> None:
     vor dem Titel) - dort ist sie auf jedem Geraet ohne Umweg erreichbar."""
     with st.popover("☰ Menü", use_container_width=False):
         st.caption("Schnellzugriff")
-        for cat, key in zip(GOAL_CATEGORIES, HAMBURGER_KEYS, strict=True):
+        for item in PRIMARY_NAV:
+            key = item["key"]
             page = _PAGE_BY_KEY.get(key)
             if not page:
                 continue
             is_here = key == current_page_key
-            shown = "Heute" if key == "home" else page["title"]
+            shown = PRIMARY_NAV_LABELS.get(key, page["title"])
             if is_here:
                 st.markdown(
                     f'<div class="rag-nav-here">{page["icon"]} {shown} · hier</div>',
@@ -1542,6 +1592,97 @@ def block_done_banner(*, state_key: str, key_prefix: str) -> None:
             st.rerun()
 
 
+def _bottom_nav_html(page_key: str) -> str:
+    """Handy-Untereiste ins Elternfenster: Heute · Kurse · Karten · Chat · Mehr.
+
+    Wie der Theme-Switch: bei jedem Inject neu binden, weil das Iframe nach
+    Navigation stirbt. Klicks nutzen Streamlits vorhandene (nur per CSS
+    versteckte) Seitenlinks; Mehr oeffnet das ☰-Menue."""
+    items = []
+    for spec in PRIMARY_NAV:
+        page = _PAGE_BY_KEY[spec["key"]]
+        items.append({
+            "key": spec["key"],
+            "label": spec["label"],
+            "path": spec["path"],
+            "icon": page["icon"],
+        })
+    payload = json.dumps({
+        "items": items,
+        "here": page_key,
+        "primary": [p["key"] for p in PRIMARY_NAV],
+    }, ensure_ascii=False)
+    return """
+<script>
+(function() {
+  try {
+    var parent = window.parent;
+    var doc = parent.document;
+    var cfg = """ + payload + """;
+    var f = window.frameElement;
+    if (f) {
+      f.style.cssText = 'pointer-events:none!important;width:0!important;height:0!important;position:absolute!important;border:0!important;';
+      if (f.parentElement) {
+        f.parentElement.style.pointerEvents = 'none';
+        f.parentElement.style.height = '0';
+        f.parentElement.style.overflow = 'hidden';
+      }
+    }
+    var nav = doc.getElementById('rag-bottom-nav');
+    if (!nav) {
+      nav = doc.createElement('nav');
+      nav.id = 'rag-bottom-nav';
+      nav.setAttribute('aria-label', 'Hauptnavigation');
+      doc.body.appendChild(nav);
+    }
+    var herePrimary = cfg.primary.indexOf(cfg.here) >= 0;
+    var html = '';
+    cfg.items.forEach(function(it) {
+      var on = it.key === cfg.here;
+      html += '<button type="button" class="rag-bottom-item' + (on ? ' rag-bottom-here' : '') + '"'
+        + ' data-rag-go="' + it.path + '"'
+        + (on ? ' aria-current="page"' : '') + '>'
+        + '<span class="rag-bottom-icon">' + it.icon + '</span>'
+        + '<span class="rag-bottom-label">' + it.label + '</span></button>';
+    });
+    html += '<button type="button" class="rag-bottom-item' + (herePrimary ? '' : ' rag-bottom-here') + '"'
+      + ' data-rag-mehr="1"' + (herePrimary ? '' : ' aria-current="page"') + '>'
+      + '<span class="rag-bottom-icon">⋯</span>'
+      + '<span class="rag-bottom-label">Mehr</span></button>';
+    nav.innerHTML = html;
+    function goPath(path) {
+      var links = doc.querySelectorAll('a[href]');
+      var want = (path || '/').replace(/\\/$/, '') || '/';
+      for (var i = 0; i < links.length; i++) {
+        try {
+          var p = new parent.URL(links[i].href, parent.location.href).pathname.replace(/\\/$/, '') || '/';
+          if (p === want) { links[i].click(); return; }
+        } catch (e) {}
+      }
+      parent.location.href = path;
+    }
+    function openMenu() {
+      var buttons = doc.querySelectorAll('button');
+      for (var i = 0; i < buttons.length; i++) {
+        if ((buttons[i].innerText || '').indexOf('Menü') >= 0) {
+          buttons[i].click();
+          return;
+        }
+      }
+    }
+    nav.querySelectorAll('.rag-bottom-item').forEach(function(btn) {
+      btn.onclick = function() {
+        if (btn.getAttribute('data-rag-mehr')) { openMenu(); return; }
+        var path = btn.getAttribute('data-rag-go');
+        if (path) goPath(path);
+      };
+    });
+  } catch (e) {}
+})();
+</script>
+"""
+
+
 # --------------------------------------------------------------------------- #
 # Haupt-Einstiegspunkt: von page_boot() fuer jede normale Seite aufgerufen,
 # und direkt von der Home-Seite (🏠_Home.py), die ihre Boot-Sequenz aus
@@ -1564,6 +1705,7 @@ def apply_page_style(page_key: str, *, show_nav: bool = True) -> dict:
     components.html(_theme_toggle_html(), height=0)
     components.html(_i18n_patch_html(), height=0)
     components.html(_command_palette_shortcut_html(), height=0)
+    components.html(_bottom_nav_html(page_key), height=0)
 
     # Uebergangs-Animation NUR bei echter Seiten-Navigation abspielen (nicht
     # bei jedem Widget-Rerun innerhalb derselben Seite - siehe _transition_html

@@ -299,7 +299,7 @@ if not st.session_state.get(ACTIVE):
         _render_lernset_pfad()
         st.stop()
     st.subheader("Stapel")
-    st.caption("Fach wählen, **Jetzt lernen**. Stapel nur ankreuzen, wenn nicht alle.")
+    st.caption("Fach, dann **Jetzt lernen**. Stapel nur ankreuzen, wenn nicht alle.")
 
     _faecher = manifest.study_subjects()
     _subj_pick = st.selectbox(
@@ -314,8 +314,10 @@ if not st.session_state.get(ACTIVE):
         if _ex and _ex.get("exam_date"):
             _dte = planner.days_to_exam(_ex["exam_date"])
             _rd = analytics.subject_readiness(subj)["readiness_pct"]
-            st.info(f"🗓️ Klausur **{_fach_label(subj)}**: {planner.humanize_days(_dte)} "
-                    f"({_ex['exam_date']}) · Bereitschaft **{_rd} %**")
+            st.caption(
+                f"Klausur {_fach_label(subj)}: {planner.humanize_days(_dte)} "
+                f"({_ex['exam_date']}) · {_rd} %"
+            )
 
     # Auswahl aus dem letzten Lauf (Default: alle). Tabelle erst NACH der
     # Hauptaktion, damit „Jetzt lernen“ auf dem Handy im ersten Screen liegt.
@@ -349,12 +351,33 @@ if not st.session_state.get(ACTIVE):
     _npd = int(getattr(settings, "SRS_NEW_PER_DAY", 20))
     _npd_txt = "unbegrenzt" if _npd <= 0 else str(_npd)
     st.caption(
-        f"Heute **{_breakdown.get('due_review', 0)}** Wiederholungen · "
-        f"**{_breakdown.get('due_learning', 0)}** in Lernen · "
-        f"noch **{_new_eff}** von {_npd_txt} neuen"
-        + (f" (heute schon {_neu_heute} eingeführt)" if _neu_heute else "")
-        + "."
+        f"**{_breakdown.get('due_review', 0)}** Wdh. · "
+        f"**{_breakdown.get('due_learning', 0)}** Lernen · "
+        f"**{_new_eff}**/{_npd_txt} neu"
+        + (f" · heute {_neu_heute}" if _neu_heute else "")
     )
+
+    # Primary CTA before alerts/mode so the phone bar cannot cover it.
+    _mode_lbl = st.session_state.get("study_mode_choice", _MODE_LABELS[0])
+    if st.button(
+        "▶️ Jetzt lernen",
+        type="primary",
+        use_container_width=True,
+        key="start_study",
+        disabled=not decks or faellig == 0,
+        help="Zieht Lernen → Wiederholen → neue Karten bis zum Tageskontingent.",
+    ):
+        karten = manifest.gather_study_cards(subj, decks=decks)
+        if not karten:
+            st.warning("Für diese Auswahl wurden keine Karten gefunden.")
+        else:
+            _start_study(karten, _MODE_MAP[_mode_lbl])
+            st.rerun()
+
+    if decks == []:
+        st.warning("Kein Stapel ausgewählt – mindestens einen ankreuzen.")
+    elif faellig == 0:
+        st.success("Nichts fällig. Später wiederkommen oder unten Cram.")
 
     _mode_lbl = st.selectbox(
         "Übungsmodus",
@@ -362,23 +385,7 @@ if not st.session_state.get(ACTIVE):
         key="study_mode_choice",
         help="**Aufdecken**: klassisch. **Tippen & benoten**: KI-Teilpunkte. "
              "**Lückentext** / **Multiple Choice**: andere Abfrageformen.")
-
-    if decks == []:
-        st.warning("Kein Stapel ausgewählt – klicke mindestens einen an.")
-    elif faellig == 0:
-        st.success("✅ Für diese Auswahl ist gerade **nichts fällig** – gut gemacht! "
-                   "Komm später wieder, oder klappe unten die **Challenge** auf "
-                   "(Cram). Zeitlimit und mündlich liegen unter **Prüfung**.")
-    _go1, _go2, _go3, _go4 = st.columns(4)
-    if _go1.button("▶️ Jetzt lernen", type="primary", use_container_width=True,
-                   disabled=not decks or faellig == 0,
-                   help="Zieht Lernen → Wiederholen → neue Karten bis zum Tageskontingent."):
-        karten = manifest.gather_study_cards(subj, decks=decks)
-        if not karten:
-            st.warning("Für diese Auswahl wurden keine Karten gefunden.")
-        else:
-            _start_study(karten, _MODE_MAP[_mode_lbl])
-            st.rerun()
+    _go2, _go3, _go4 = st.columns(3)
     if _go2.button("🔥 Cram", use_container_width=True, disabled=not decks):
         karten = manifest.get_due_cards(subj, limit=20, cram=True,
                                         decks=decks if decks else None)

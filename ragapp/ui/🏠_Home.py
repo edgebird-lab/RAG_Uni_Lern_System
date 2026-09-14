@@ -191,8 +191,8 @@ _components.html(
 # Quelle der Wahrheit fuer Titel/Icon/Zielpfad/Gruppierung.
 # --------------------------------------------------------------------------- #
 from ragapp.ui._style import (apply_page_style, PAGE_REGISTRY, HOME_PIN_KEYS,
-                               HIDDEN_PAGE_KEYS, GOAL_CATEGORIES, render_nav_tile,
-                               render_goal_tile, render_hero_title, card,
+                               HIDDEN_PAGE_KEYS, render_nav_tile,
+                               render_hero_title, card,
                                speech_bubble_mascot, mark_tight_nums)
 from ragapp.ui._mascot import render_mascot, home_mood, home_mood_line
 _theme = apply_page_style("home")
@@ -704,10 +704,10 @@ with card("missionen"):
         st.caption("Keine Missionen – erst Karten oder einen Lernplan anlegen.")
 
 st.markdown("#### Direkt zu")
-_pin_cols = st.columns(3)
-for _i, _cat in enumerate(GOAL_CATEGORIES):
-    with _pin_cols[_i % 3]:
-        render_goal_tile(_cat)
+_pin_cols = st.columns(2)
+for _i, _key in enumerate(HOME_PIN_KEYS):
+    with _pin_cols[_i % 2]:
+        render_nav_tile(_key)
 
 _more_pages = [p for p in PAGE_REGISTRY
                if p.get("category") and p["key"] not in HOME_PIN_KEYS

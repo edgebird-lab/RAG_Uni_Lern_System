@@ -97,3 +97,16 @@ def test_collect_nimmt_nummerierte_und_extra_ueberschriften():
     assert "Seite 7" not in mixed
     assert "Folie 2" not in mixed
     assert "Grounding" in mixed
+
+
+def test_chat_onboarding_questions_nimmt_stoff_sonst_fach_sonst_allgemein():
+    from ragapp.graph.socratic import chat_onboarding_questions
+    with_topics = chat_onboarding_questions(
+        ["Testing-Effekt", "Grounding", "Spaced Repetition"])
+    assert with_topics[0] == "Was ist Testing-Effekt?"
+    assert "Grounding" in with_topics[1]
+    assert "Spaced Repetition" in with_topics[2]
+    by_subject = chat_onboarding_questions([], subject_label="Livetest")
+    assert all("Livetest" in q for q in by_subject)
+    generic = chat_onboarding_questions([])
+    assert "Unterlagen" in generic[0]

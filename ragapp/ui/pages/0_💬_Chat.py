@@ -73,14 +73,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Klickbare Einstiegs-Fragen fuer den leeren Chat (Onboarding). Bewusst allgemein
-# gehalten, damit sie zu beliebigem Lernstoff passen.
-_EXAMPLE_QUESTIONS = [
-    "Was sind die wichtigsten Themen in meinen Unterlagen?",
-    "Erkläre mir ein zentrales Konzept einfach und mit Beispiel.",
-    "Was sollte ich für die Klausur unbedingt wiederholen?",
-]
-
 # Seitenspezifische ragapp-Importe erst JETZT - unter einem Ladehinweis, damit beim
 # ersten (kalten) Laden ein Spinner statt eines weissen Bereichs erscheint. Der
 # import im with-Block bindet modulweit -> alle spaeteren Verwendungen unveraendert.
@@ -597,15 +589,18 @@ def _render_socratic_start() -> None:
 
 
 def _render_onboarding() -> None:
-    """Leerer Chat: ein paar klickbare Beispiel-Fragen als sanfter Einstieg.
-    Ein Klick legt die Frage als 'ausstehend' ab und startet sie via Rerun -
-    so wirkt der Button wie eine vorab ausgefüllte Eingabe."""
+    """Leerer Chat: klickbare Beispiel-Fragen, bei Fachfilter aus dem Stoff."""
+    from ragapp.graph.socratic import chat_onboarding_questions
+    _label = (SUBJECT_LABELS.get(subject_filter, subject_filter)
+              if subject_filter else None)
+    _topics = _socratic_topic_suggestions(subject_filter)
+    questions = chat_onboarding_questions(_topics, subject_label=_label)
     with card("onboarding"):
         st.markdown("<span class='small'>Neu hier? Starte mit einer dieser Fragen "
                     "– oder tippe unten einfach deine eigene:</span>",
                     unsafe_allow_html=True)
-        cols = st.columns(len(_EXAMPLE_QUESTIONS))
-        for _i, (_col, _q) in enumerate(zip(cols, _EXAMPLE_QUESTIONS)):
+        cols = st.columns(len(questions))
+        for _i, (_col, _q) in enumerate(zip(cols, questions)):
             if _col.button(_q, key=f"example_{_i}", use_container_width=True):
                 st.session_state["_pending_prompt"] = _q
                 st.rerun()

@@ -15,6 +15,8 @@ from ragapp.ui._style import (
     HOME_PIN_KEYS,
     PAGE_REGISTRY,
     PAGE_THEMES,
+    PRIMARY_NAV,
+    PRIMARY_NAV_LABELS,
     TECHNICAL_PAGE_KEYS,
     _command_palette_shortcut_html,
     _doodle_layer,
@@ -22,6 +24,7 @@ from ragapp.ui._style import (
     _technical_override_css,
     _theme_toggle_html,
     _i18n_patch_html,
+    _bottom_nav_html,
     _BASE_CSS,
     _FONT_FACE_CSS,
     celebration_effects_html,
@@ -126,19 +129,18 @@ def test_home_pin_keys_existieren_und_sind_alltagsrelevant():
     for key in HOME_PIN_KEYS:
         assert key in _keys
     assert "lernen" in HOME_PIN_KEYS
-    assert "fortschritt" in HOME_PIN_KEYS
+    assert "chat" in HOME_PIN_KEYS
 
 
-def test_kurzwahl_und_home_pins_sind_die_fuenf_zielgruppen():
-    assert list(GOAL_HUB_KEYS) == list(GOAL_CATEGORIES)
-    assert HAMBURGER_KEYS == [GOAL_HUB_KEYS[c] for c in GOAL_CATEGORIES]
-    assert HAMBURGER_KEYS == [
-        "home", "organisation", "lernen", "notizen", "fortschritt",
-    ]
-    assert "chat" not in HAMBURGER_KEYS
-    assert HOME_PIN_KEYS == [
-        "lernplan", "organisation", "lernen", "notizen", "fortschritt",
-    ]
+def test_kurzwahl_und_home_pins_sind_heute_kurse_karten_chat():
+    assert [p["label"] for p in PRIMARY_NAV] == ["Heute", "Kurse", "Karten", "Chat"]
+    assert HAMBURGER_KEYS == ["home", "organisation", "lernen", "chat"]
+    assert HOME_PIN_KEYS == ["lernplan", "organisation", "lernen", "chat"]
+    assert PRIMARY_NAV_LABELS["lernen"] == "Karten"
+    assert "notizen" not in HAMBURGER_KEYS
+    assert "notizen" not in HOME_PIN_KEYS
+    assert "fortschritt" not in HAMBURGER_KEYS
+    assert "fortschritt" not in HOME_PIN_KEYS
     for key in ("zusammenfassung", "audio", "vortrag", "mindmap"):
         assert key not in HOME_PIN_KEYS
         assert key not in HAMBURGER_KEYS
@@ -334,11 +336,12 @@ def test_hero_buchstaben_starten_lesbar_und_disabled_ist_grau():
     assert "opacity:1 !important" in reduced[-1]
 
 
-def test_hamburger_zeigt_seitentitel_statt_gruppennamen():
+def test_hamburger_zeigt_alltags_kuerzel_statt_hub_pflicht():
     import inspect
     from ragapp.ui._style import render_hamburger_nav
     src = inspect.getsource(render_hamburger_nav)
-    assert 'shown = "Heute" if key == "home" else page["title"]' in src
+    assert "PRIMARY_NAV" in src
+    assert "PRIMARY_NAV_LABELS" in src
     assert '_p["key"] in HIDDEN_PAGE_KEYS or _p["key"] in HAMBURGER_KEYS' in src
     assert "Schnellzugriff" in src
     assert "render_session_controls" in src
@@ -346,6 +349,7 @@ def test_hamburger_zeigt_seitentitel_statt_gruppennamen():
     assert "rag-nav-here" in src
     assert "disabled=True" not in src
     assert "· hier" in src
+    assert "zip(GOAL_CATEGORIES, HAMBURGER_KEYS" not in src
 
 
 def test_delete_button_oeffnet_gemeinsamen_dialog():
@@ -391,8 +395,11 @@ def test_lernen_zeigt_stapel_vor_der_lernset_fabrik():
     src = Path("ragapp/ui/pages/4_🎓_Lernen.py").read_text(encoding="utf-8")
     assert 'with card("lernset")' not in src
     assert 'st.subheader("Stapel")' in src
-    assert src.index('_go1.button("▶️ Jetzt lernen"') < src.index(
+    assert src.index('"▶️ Jetzt lernen"') < src.index('"Übungsmodus"')
+    assert src.index('"▶️ Jetzt lernen"') < src.index(
         '"Lernset erstellen",\n            expanded=bool(st.session_state.get("_lernset_result"))')
+    assert src.index('key="start_study"') < src.index("Nichts fällig")
+    assert "_go2, _go3, _go4 = st.columns(3)" in src
     assert "Stapel ankreuzen" in src
     assert "Bestand ·" in src
     assert "heading: bool = True" in src
@@ -405,3 +412,26 @@ def test_chat_leerer_verlauf_scrollt_nicht_zur_eingabe():
     assert "scrollIntoView" in src
     assert "stChatInput" in src
     assert "stChatMessage" in src
+    assert "chat_onboarding_questions" in src
+
+
+def test_bottom_nav_html_hat_alltag_und_mehr():
+    html = _bottom_nav_html("chat")
+    assert "rag-bottom-nav" in html
+    for label in ("Heute", "Kurse", "Karten", "Chat", "Mehr"):
+        assert label in html
+    assert "/Chat" in html
+    assert "/Lernen" in html
+    assert "Menü" in html
+    assert "rag-bottom-here" in html
+    assert "#rag-bottom-nav" in _BASE_CSS
+    css = _BASE_CSS.format(accent="#c43b58", soft="#f6d5dc")
+    assert "rag-bottom-item" in css
+
+
+def test_home_pins_folgen_der_untereiste():
+    from pathlib import Path
+    src = Path("ragapp/ui/🏠_Home.py").read_text(encoding="utf-8")
+    assert "HOME_PIN_KEYS" in src
+    assert "GOAL_CATEGORIES" not in src
+    assert "render_goal_tile" not in src

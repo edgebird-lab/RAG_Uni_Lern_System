@@ -207,6 +207,43 @@ def collect_socratic_topic_suggestions(
     return out
 
 
+def chat_onboarding_questions(
+        topics: Iterable[str], *, subject_label: str | None = None) -> list[str]:
+    """Einstiegsfragen fuer den leeren Chat: Stoff des Filters, sonst allgemein."""
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in topics or []:
+        topic = (raw or "").strip()
+        if not topic:
+            continue
+        key = topic.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(topic)
+        if len(cleaned) >= 3:
+            break
+    if cleaned:
+        first, last = cleaned[0], cleaned[-1]
+        second = cleaned[1] if len(cleaned) > 1 else first
+        return [
+            f"Was ist {first}?",
+            f"Erkläre {second} einfach und mit Beispiel.",
+            f"Was sollte ich zu {last} für die Klausur wiederholen?",
+        ]
+    if subject_label:
+        return [
+            f"Was sind die wichtigsten Themen in {subject_label}?",
+            f"Erkläre mir ein zentrales Konzept aus {subject_label} einfach und mit Beispiel.",
+            f"Was sollte ich in {subject_label} für die Klausur unbedingt wiederholen?",
+        ]
+    return [
+        "Was sind die wichtigsten Themen in meinen Unterlagen?",
+        "Erkläre mir ein zentrales Konzept einfach und mit Beispiel.",
+        "Was sollte ich für die Klausur unbedingt wiederholen?",
+    ]
+
+
 def read_source_text(source_path: str, *, root: Path) -> str:
     """Liest eine Unterlage relativ zum Projektroot, gekappt fuer Ueberschriften."""
     p = Path(source_path)
