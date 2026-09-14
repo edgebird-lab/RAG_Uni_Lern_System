@@ -688,7 +688,7 @@ else:
             for k in (Q, ACTIVE, REVEAL, TALLY, ROUND, "_session_jol"):
                 st.session_state.pop(k, None)
             st.rerun()
-        if b2.button("Beenden", use_container_width=True):
+        if b2.button("Zur Stapelliste", use_container_width=True):
             for k in (Q, ACTIVE, REVEAL, TALLY, ROUND, "_session_jol"):
                 st.session_state.pop(k, None)
             st.rerun()
@@ -710,7 +710,7 @@ else:
     _capc.caption(f"📚 {_tt}" + (f" · {_topic}" if _topic else "") + _combo_suffix)
     # Runde JEDERZEIT beenden bzw. Fach/Stapel wechseln (z. B. nach 5 Karten oder wenn
     # das Tagesziel erreicht ist). Schon bewertete Karten sind bereits gespeichert.
-    if _stopc.button("⏹ Beenden", use_container_width=True,
+    if _stopc.button("⏹ Runde beenden", use_container_width=True,
                      help="Lernrunde beenden und zurück zur Auswahl (Fach/Stapel "
                           "wechseln). Bereits bewertete Karten bleiben gespeichert."):
         for _k in (Q, ACTIVE, REVEAL, TALLY, ROUND, "_study_sprint",
