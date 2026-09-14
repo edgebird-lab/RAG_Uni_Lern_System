@@ -1,11 +1,10 @@
 """
-RAG-Lernsystem: Seite „Probeklausur" (getimte Simulation + Batch-Benotung)
-=========================================================================
-Reproduziert echte Klausurbedingungen: ein gemischtes Set aus deinen Karten,
-ein Zeitlimit, KEIN Zwischenfeedback – am Ende benotet die KI alle Antworten auf
-einmal (Teilpunkte + was fehlt) und schreibt das Ergebnis in die
-Wiederholungs-Planung zurück (schwache Karten kommen sofort wieder dran).
-Getimtes Üben unter Prüfungsbedingungen ist einer der stärksten Leistungsprädiktoren.
+RAG-Lernsystem: Seite „Prüfung" (schriftlich oder mündlich)
+===========================================================
+Ein Einstieg, zwei Modi. Schriftlich: getimte Probeklausur ohne Zwischenfeedback,
+KI-Benotung am Ende, Rückschreiben in FSRS. Mündlich: eine Frage nach der
+anderen, Transkript, optionale Rückfrage, Teilpunkte ebenfalls in FSRS.
+Historie zum Starten liegt hier; Klausurtermine bleiben auf Fortschritt.
 """
 from __future__ import annotations
 
@@ -23,7 +22,7 @@ for _anc in _p.parents:
 import streamlit as st
 
 from ragapp.ui._loading import page_boot, skeleton
-page_boot("📝 Probeklausur", page_title="Probeklausur", icon="📝", layout="wide",
+page_boot("📝 Prüfung", page_title="Prüfung", icon="📝", layout="wide",
          accent="pruefung")
 
 from ragapp.ui._style import card
@@ -31,9 +30,9 @@ from ragapp.ui._style import card
 st.markdown("<style>.block-container{max-width:900px;}</style>",
             unsafe_allow_html=True)
 
-with skeleton("Probeklausur wird geladen …"):
-    from ragapp import manifest, study, planner
-    from ragapp.config import settings, SUBJECT_LABELS
+with skeleton("Prüfung wird geladen …"):
+    from ragapp import manifest, oral_exam, study, planner, student_flow
+    from ragapp.config import SUBJECT_LABELS
 
 
 def _fach(code: str) -> str:
@@ -61,8 +60,6 @@ def _fair_exam_selection(per_subject, n: int, seed: int = 0) -> list[dict]:
     return picked
 
 
-st.caption("Wie in der Klausur: Zeitlimit, keine Zwischentipps, Bewertung erst am Ende.")
-
 EXAM = "_exam"        # aktive Probeklausur (dict: cards, answers, start, limit)
 
 
@@ -73,128 +70,151 @@ def _clear_exam_answer_widgets() -> None:
             st.session_state.pop(_key, None)
 
 
+def _oral_row():
+    sid = st.session_state.get("_oral_session_id")
+    if not sid:
+        return None
+    return oral_exam.get_session(sid)
+
+
+def _clear_oral_session() -> None:
+    st.session_state.pop("_oral_session_id", None)
+    st.session_state.pop("_oral_last_index", None)
+
+
 subjects = manifest.study_subjects()
 
-# F2: schlanke Sprechschleife, noch ohne das spätere Prüfungszentrum (F4).
-with st.expander("🎙️ Mündliche Prüfung", expanded=False):
-    from ragapp import oral_exam
+_pref = st.session_state.pop("exam_prefill", None)
+if _pref:
+    _norm = student_flow.normalize_exam_prefill(_pref)
+    st.session_state["exam_hub_mode"] = _norm["mode"]
+    if _norm["subject"] and _norm["subject"] in subjects:
+        st.session_state["oral_subject"] = _norm["subject"]
+        st.session_state["exam_written_subjects"] = [_norm["subject"]]
+    if _norm["limit"]:
+        if _norm["mode"] == "oral":
+            st.session_state["oral_count"] = max(1, min(10, _norm["limit"]))
+        else:
+            st.session_state["exam_written_n"] = max(3, min(40, _norm["limit"]))
+
+
+def _render_oral_setup() -> None:
     if not subjects:
         st.caption("Für mündliche Fragen zuerst Karteikarten anlegen.")
-    elif not st.session_state.get("_oral_session_id"):
-        _oral_subject = st.selectbox(
-            "Fach", subjects, format_func=_fach, key="oral_subject")
-        _oral_n = st.number_input(
-            "Fragen", 1, 10, 5, key="oral_count")
-        if st.button("Mündliche Prüfung starten", type="primary", key="oral_start"):
-            _started = oral_exam.session_from_cards(
-                _oral_subject, limit=int(_oral_n))
-            if _started.get("session_id"):
-                st.session_state["_oral_session_id"] = _started["session_id"]
-                st.rerun()
-            else:
-                st.warning("Keine geeigneten Fragen in diesem Fach.")
-    else:
-        _oral_sid = st.session_state["_oral_session_id"]
-        _oral = oral_exam.get_session(_oral_sid)
-        if not _oral or _oral.get("status") != "active":
-            st.session_state.pop("_oral_session_id", None)
+        return
+    _oral_subject = st.selectbox(
+        "Fach", subjects, format_func=_fach, key="oral_subject")
+    _oral_n = st.number_input(
+        "Fragen", 1, 10, 5, key="oral_count")
+    if st.button("Mündliche Prüfung starten", type="primary", key="oral_start",
+                 use_container_width=True):
+        _started = oral_exam.session_from_cards(
+            _oral_subject, limit=int(_oral_n))
+        if _started.get("session_id"):
+            st.session_state["_oral_session_id"] = _started["session_id"]
             st.rerun()
-        _idx = int(_oral.get("current_index") or 0)
-        _questions = _oral.get("questions") or []
-        _last_idx = st.session_state.get("_oral_last_index")
-        if (_last_idx is None and _idx < len(_questions)
-                and _questions[_idx].get("transcript")):
-            # Nach Reload kommt der offene Rückfrage-Schritt aus SQLite zurück.
-            _last_idx = _idx
-        # Solange Transkript/Rückfrage offen ist, wird noch NICHT die nächste
-        # Hauptfrage gezeigt. So bleibt die Schleife wirklich bei einer Frage.
-        if _last_idx is None and _idx >= len(_questions):
-            st.success("Alle mündlichen Fragen beantwortet.")
-            if st.button("Sitzung abschließen", key="oral_finish"):
-                oral_exam.finish_session(_oral_sid)
-                st.session_state.pop("_oral_session_id", None)
-                st.session_state.pop("_oral_last_index", None)
-                st.rerun()
-        elif _last_idx is None:
-            _item = _questions[_idx]
-            st.caption(f"Frage {_idx + 1} von {len(_questions)}")
-            st.markdown(f"### {_item['question']}")
-            _audio = st.audio_input(
-                "Antwort aufnehmen", key=f"oral_audio_{_oral_sid}_{_idx}")
-            if st.button(
-                    "Aufnahme transkribieren", type="primary",
-                    disabled=_audio is None,
-                    key=f"oral_transcribe_{_oral_sid}_{_idx}"):
-                _tr = oral_exam.transcribe_answer(
-                    _audio.getvalue() if _audio else b"")
-                if _tr["status"] != "ok":
-                    st.error(_tr.get("message") or "Keine Transkription möglich.")
-                else:
-                    oral_exam.record_answer(
-                        _oral_sid, _idx, _tr["transcript"])
-                    st.session_state["_oral_last_index"] = _idx
-                    st.rerun()
+        else:
+            st.warning("Keine geeigneten Fragen in diesem Fach.")
 
-        if _last_idx is not None and int(_last_idx) < len(_questions):
-            _last = _questions[int(_last_idx)]
-            if _last.get("transcript"):
-                st.markdown("**Transkript**")
-                st.write(_last["transcript"])
-                _oral_points = st.segmented_control(
-                    "Selbsteinschätzung",
-                    options=[0, 50, 100],
-                    format_func=lambda p: {
-                        0: "Nicht beantwortet",
-                        50: "Teilweise",
-                        100: "Sicher",
-                    }[p],
-                    default=(_last.get("partial_points")
-                             if _last.get("partial_points") is not None else 50),
-                    key=f"oral_points_{_oral_sid}_{_last_idx}",
-                )
-                if not _last.get("followups"):
-                    if st.button(
-                            "Optionale Rückfrage stellen",
-                            key=f"oral_followup_{_oral_sid}_{_last_idx}"):
-                        _fu = oral_exam.generate_followup(
-                            _last["question"], _last["transcript"],
-                            _last.get("reference") or "")
-                        if _fu["status"] != "ok":
-                            st.error(_fu.get("message") or
-                                     "Rückfrage ohne Modell nicht möglich.")
-                        else:
-                            oral_exam.record_answer(
-                                _oral_sid, int(_last_idx), _last["transcript"],
-                                followup=_fu["followup"])
-                            st.rerun()
-                else:
-                    _fu_item = _last["followups"][-1]
-                    st.markdown(f"**Rückfrage:** {_fu_item['question']}")
-                    _fu_audio = st.audio_input(
-                        "Rückfrage beantworten",
-                        key=f"oral_fu_audio_{_oral_sid}_{_last_idx}")
-                    if st.button(
-                            "Rückfrage transkribieren",
-                            disabled=_fu_audio is None,
-                            key=f"oral_fu_transcribe_{_oral_sid}_{_last_idx}"):
-                        _fu_tr = oral_exam.transcribe_answer(
-                            _fu_audio.getvalue() if _fu_audio else b"")
-                        if _fu_tr["status"] != "ok":
-                            st.error(_fu_tr.get("message") or
-                                     "Keine Transkription möglich.")
-                        else:
-                            oral_exam.record_answer(
-                                _oral_sid, int(_last_idx),
-                                _last["transcript"],
-                                partial_points=int(_oral_points))
-                            oral_exam.record_followup_answer(
-                                _oral_sid, int(_last_idx),
-                                len(_last["followups"]) - 1,
-                                _fu_tr["transcript"])
-                            oral_exam.advance_session(
-                                _oral_sid, int(_last_idx))
-                            st.session_state.pop("_oral_last_index", None)
-                            st.rerun()
+
+def _render_oral_active(_oral: dict) -> None:
+    _oral_sid = _oral["session_id"]
+    _idx = int(_oral.get("current_index") or 0)
+    _questions = _oral.get("questions") or []
+    _last_idx = st.session_state.get("_oral_last_index")
+    if (_last_idx is None and _idx < len(_questions)
+            and _questions[_idx].get("transcript")):
+        # Nach Reload kommt der offene Rückfrage-Schritt aus SQLite zurück.
+        _last_idx = _idx
+    # Solange Transkript/Rückfrage offen ist, wird noch NICHT die nächste
+    # Hauptfrage gezeigt. So bleibt die Schleife wirklich bei einer Frage.
+    if _last_idx is None and _idx >= len(_questions):
+        st.success("Alle mündlichen Fragen beantwortet.")
+        if st.button("Sitzung abschließen", key="oral_finish", type="primary",
+                     use_container_width=True):
+            oral_exam.finish_session(_oral_sid)
+            st.session_state.pop("_oral_last_index", None)
+            st.rerun()
+    elif _last_idx is None:
+        _item = _questions[_idx]
+        st.caption(f"Frage {_idx + 1} von {len(_questions)}")
+        st.markdown(f"### {_item['question']}")
+        _audio = st.audio_input(
+            "Antwort aufnehmen", key=f"oral_audio_{_oral_sid}_{_idx}")
+        if st.button(
+                "Aufnahme transkribieren", type="primary",
+                disabled=_audio is None,
+                key=f"oral_transcribe_{_oral_sid}_{_idx}"):
+            _tr = oral_exam.transcribe_answer(
+                _audio.getvalue() if _audio else b"")
+            if _tr["status"] != "ok":
+                st.error(_tr.get("message") or "Keine Transkription möglich.")
+            else:
+                oral_exam.record_answer(
+                    _oral_sid, _idx, _tr["transcript"])
+                st.session_state["_oral_last_index"] = _idx
+                st.rerun()
+
+    if _last_idx is not None and int(_last_idx) < len(_questions):
+        _last = _questions[int(_last_idx)]
+        if _last.get("transcript"):
+            st.markdown("**Transkript**")
+            st.write(_last["transcript"])
+            _oral_points = st.segmented_control(
+                "Selbsteinschätzung",
+                options=[0, 50, 100],
+                format_func=lambda p: {
+                    0: "Nicht beantwortet",
+                    50: "Teilweise",
+                    100: "Sicher",
+                }[p],
+                default=(_last.get("partial_points")
+                         if _last.get("partial_points") is not None else 50),
+                key=f"oral_points_{_oral_sid}_{_last_idx}",
+            )
+            if not _last.get("followups"):
+                if st.button(
+                        "Optionale Rückfrage stellen",
+                        key=f"oral_followup_{_oral_sid}_{_last_idx}"):
+                    _fu = oral_exam.generate_followup(
+                        _last["question"], _last["transcript"],
+                        _last.get("reference") or "")
+                    if _fu["status"] != "ok":
+                        st.error(_fu.get("message") or
+                                 "Rückfrage ohne Modell nicht möglich.")
+                    else:
+                        oral_exam.record_answer(
+                            _oral_sid, int(_last_idx), _last["transcript"],
+                            followup=_fu["followup"])
+                        st.rerun()
+            else:
+                _fu_item = _last["followups"][-1]
+                st.markdown(f"**Rückfrage:** {_fu_item['question']}")
+                _fu_audio = st.audio_input(
+                    "Rückfrage beantworten",
+                    key=f"oral_fu_audio_{_oral_sid}_{_last_idx}")
+                if st.button(
+                        "Rückfrage transkribieren",
+                        disabled=_fu_audio is None,
+                        key=f"oral_fu_transcribe_{_oral_sid}_{_last_idx}"):
+                    _fu_tr = oral_exam.transcribe_answer(
+                        _fu_audio.getvalue() if _fu_audio else b"")
+                    if _fu_tr["status"] != "ok":
+                        st.error(_fu_tr.get("message") or
+                                 "Keine Transkription möglich.")
+                    else:
+                        oral_exam.record_answer(
+                            _oral_sid, int(_last_idx),
+                            _last["transcript"],
+                            partial_points=int(_oral_points))
+                        oral_exam.record_followup_answer(
+                            _oral_sid, int(_last_idx),
+                            len(_last["followups"]) - 1,
+                            _fu_tr["transcript"])
+                        oral_exam.advance_session(
+                            _oral_sid, int(_last_idx))
+                        st.session_state.pop("_oral_last_index", None)
+                        st.rerun()
             if st.button(
                     "Ohne Rückfrage weiter", key=f"oral_next_{_oral_sid}_{_last_idx}"):
                 oral_exam.record_answer(
@@ -204,13 +224,93 @@ with st.expander("🎙️ Mündliche Prüfung", expanded=False):
                 st.session_state.pop("_oral_last_index", None)
                 st.rerun()
 
-        if st.button("Mündliche Sitzung abbrechen", key="oral_abort"):
-            oral_exam.abort_session(_oral_sid)
-            st.session_state.pop("_oral_session_id", None)
-            st.session_state.pop("_oral_last_index", None)
+    if st.button("Mündliche Sitzung abbrechen", key="oral_abort"):
+        oral_exam.abort_session(_oral_sid)
+        _clear_oral_session()
+        st.rerun()
+
+
+def _render_oral_result(_oral: dict) -> None:
+    _pct = _oral.get("total_pct")
+    _questions = _oral.get("questions") or []
+    with card("oral_ergebnis"):
+        st.subheader("📊 Mündliches Ergebnis")
+        m1, m2 = st.columns(2)
+        m1.metric("Gesamt", f"{_pct} %" if _pct is not None else "–")
+        m2.metric("Fragen", len(_questions))
+        if _pct is not None:
+            st.progress(min(1.0, _pct / 100))
+        st.caption(_fach(_oral.get("subject")))
+    for i, item in enumerate(_questions, 1):
+        _pts = item.get("partial_points")
+        _icon = "✅" if (_pts or 0) >= 75 else ("🟡" if (_pts or 0) >= 40 else "❌")
+        with st.expander(
+                f"{_icon} Frage {i} · {_pts if _pts is not None else '—'} %",
+                key=f"oral_res_{_oral.get('session_id')}_{i}"):
+            st.markdown(f"**Frage:** {item.get('question') or ''}")
+            if item.get("transcript"):
+                st.markdown(f"**Antwort:** {item['transcript']}")
+            if item.get("reference"):
+                with st.popover("Musterlösung"):
+                    st.markdown(item["reference"])
+    _weak = student_flow.oral_weak_card_ids(_oral)
+    o1, o2 = st.columns(2)
+    if o1.button("🔁 Neue mündliche Runde", use_container_width=True):
+        _clear_oral_session()
+        st.session_state["exam_hub_mode"] = "oral"
+        st.rerun()
+    if o2.button("🎯 Schwachstellen üben", use_container_width=True,
+                 disabled=not _weak):
+        st.session_state["study_prefill"] = {
+            "source": "oral", "mode": "reveal", "limit": 15,
+            "subject": _oral.get("subject"),
+            "card_ids": _weak,
+        }
+        _clear_oral_session()
+        st.switch_page("pages/4_🎓_Lernen.py")
+
+
+def _render_hub_history() -> None:
+    _rows = student_flow.exam_hub_history(limit=8)
+    if not _rows:
+        return
+    st.markdown("##### Letzte Ergebnisse")
+    for row in _rows:
+        _when = time.strftime("%d.%m. %H:%M", time.localtime(row["when"]))
+        if row["kind"] == "written":
+            _label = (f"📝 {row['total_pct']} % · {row['count']} Aufgaben · {_when}")
+        else:
+            _pct = (f"{row['total_pct']} %" if row.get("total_pct") is not None
+                    else "ohne Gesamtwert")
+            _label = f"🎙️ {_pct} · {_fach(row.get('subject'))} · {_when}"
+        if st.button(_label, key=f"hub_hist_{row['kind']}_{row['id']}",
+                     use_container_width=True):
+            st.session_state["exam_hub_mode"] = row["kind"]
+            if row.get("subject") and row["subject"] in subjects:
+                st.session_state["oral_subject"] = row["subject"]
+                st.session_state["exam_written_subjects"] = [row["subject"]]
             st.rerun()
 
-if not subjects:
+
+_oral = _oral_row()
+if _oral and _oral.get("status") == "aborted":
+    _clear_oral_session()
+    _oral = None
+
+_written_running = EXAM in st.session_state
+_oral_active = bool(_oral and _oral.get("status") == "active")
+_oral_done = bool(_oral and _oral.get("status") == "done")
+
+if _written_running:
+    st.caption("Wie in der Klausur: Zeitlimit, keine Zwischentipps, Bewertung erst am Ende.")
+elif _oral_active:
+    st.caption("Mündlich: eine Frage nach der anderen, Bewertung nach jeder Antwort.")
+elif _oral_done:
+    st.caption("Mündliche Sitzung abgeschlossen.")
+else:
+    st.caption("Schriftlich mit Zeitlimit oder mündlich Frage für Frage.")
+
+if not subjects and not _written_running and not _oral_active and not _oral_done:
     from ragapp.ui._style import empty_state, page_title as _pt
     empty_state(
         "Noch keine Karteikarten – erstelle sie zuerst unter Karteikarten.",
@@ -221,51 +321,62 @@ if not subjects:
     )
     st.stop()
 
-# --------------------------------------------------------------------------- #
-# Aufbau
-# --------------------------------------------------------------------------- #
-if EXAM not in st.session_state:
+if _oral_done:
+    _render_oral_result(_oral)
+    st.stop()
+
+if _oral_active:
+    with card("muendlich"):
+        _render_oral_active(_oral)
+    st.stop()
+
+if not _written_running:
     with card("aufbau"):
-        st.subheader("Probeklausur zusammenstellen")
-        c1, c2, c3 = st.columns(3)
-        _fs = c1.multiselect("Fächer (leer = alle)", subjects, format_func=_fach,
-                            placeholder="Alle")
-        n = c2.number_input("Aufgaben", min_value=3, max_value=40, value=10, step=1)
-        minutes = c3.number_input("Zeitlimit (Min.)", min_value=5, max_value=240, value=30, step=5)
-        st.caption("Die Aufgaben werden aus deinen fälligen und – falls nötig – den schwächsten "
-                   "Karten gemischt (fächerübergreifend, wenn kein Fach gewählt ist).")
+        _mode = st.segmented_control(
+            "Modus",
+            options=["written", "oral"],
+            format_func=lambda k: "Schriftlich" if k == "written" else "Mündlich",
+            default="written",
+            key="exam_hub_mode",
+            required=True,
+        )
+        if _mode == "oral":
+            st.subheader("Mündliche Prüfung")
+            st.caption("Eine Frage nach der anderen. Teilpunkte landen in der "
+                       "Wiederholungsplanung.")
+            _render_oral_setup()
+        else:
+            st.subheader("Probeklausur zusammenstellen")
+            c1, c2, c3 = st.columns(3)
+            _fs = c1.multiselect("Fächer (leer = alle)", subjects, format_func=_fach,
+                                placeholder="Alle", key="exam_written_subjects")
+            n = c2.number_input("Aufgaben", min_value=3, max_value=40, value=10, step=1,
+                                key="exam_written_n")
+            minutes = c3.number_input("Zeitlimit (Min.)", min_value=5, max_value=240,
+                                      value=30, step=5, key="exam_written_minutes")
+            st.caption("Die Aufgaben werden aus deinen fälligen und – falls nötig – den schwächsten "
+                       "Karten gemischt (fächerübergreifend, wenn kein Fach gewählt ist).")
 
-        if st.button("▶️ Probeklausur starten", type="primary", use_container_width=True):
-            if _fs:
-                # Pro Fach die (fälligen/schwächsten) Karten holen und daraus gleichmäßig
-                # per Round-Robin bis n auswählen, dann deterministisch mischen – so ist
-                # jedes gewählte Fach fair vertreten (nicht nur die zuerst geladenen).
-                per_subject = [(s, manifest.get_due_cards(s, limit=int(n), cram=True))
-                               for s in _fs]
-                cards = _fair_exam_selection(per_subject, int(n))
-            else:
-                cards = planner.phase_round(limit=int(n), cram=True)
-            if not cards:
-                st.warning("Keine Karten für diese Auswahl gefunden.")
-            else:
-                _clear_exam_answer_widgets()
-                st.session_state[EXAM] = {
-                    "cards": cards, "answers": {}, "start": time.time(),
-                    "limit": int(minutes) * 60, "done": False,
-                }
-                st.rerun()
-
-        _hist = manifest.list_exam_attempts(limit=5)
-        if _hist:
-            with st.expander("Letzte Probeklausuren", expanded=False):
-                for _a in _hist:
-                    _when = time.strftime("%d.%m. %H:%M", time.localtime(_a["taken_at"]))
-                    st.markdown(f"**{_a['total_pct']} %** · {_a['num_items']} Aufgaben · {_when}")
-                    _aits = manifest.list_exam_attempt_items(_a["attempt_id"])
-                    if _aits:
-                        for _j, _it in enumerate(_aits, 1):
-                            st.caption(f"{_j}. {(_it.get('front') or '')[:80]} · "
-                                       f"{_it.get('score') if _it.get('score') is not None else '—'} %")
+            if st.button("▶️ Probeklausur starten", type="primary", use_container_width=True):
+                if _fs:
+                    # Pro Fach die (fälligen/schwächsten) Karten holen und daraus gleichmäßig
+                    # per Round-Robin bis n auswählen, dann deterministisch mischen – so ist
+                    # jedes gewählte Fach fair vertreten (nicht nur die zuerst geladenen).
+                    per_subject = [(s, manifest.get_due_cards(s, limit=int(n), cram=True))
+                                   for s in _fs]
+                    cards = _fair_exam_selection(per_subject, int(n))
+                else:
+                    cards = planner.phase_round(limit=int(n), cram=True)
+                if not cards:
+                    st.warning("Keine Karten für diese Auswahl gefunden.")
+                else:
+                    _clear_exam_answer_widgets()
+                    st.session_state[EXAM] = {
+                        "cards": cards, "answers": {}, "start": time.time(),
+                        "limit": int(minutes) * 60, "done": False,
+                    }
+                    st.rerun()
+        _render_hub_history()
     st.stop()
 
 exam = st.session_state[EXAM]
@@ -317,7 +428,7 @@ if exam.get("done"):
                 }
                 st.switch_page("pages/12_🗒️_Notizen.py")
     _w1, _w2 = st.columns(2)
-    if _w1.button("🔁 Neue Probeklausur", use_container_width=True):
+    if _w1.button("🔁 Neue Prüfung", use_container_width=True):
         _clear_exam_answer_widgets()
         del st.session_state[EXAM]
         st.rerun()

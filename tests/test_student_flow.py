@@ -610,3 +610,45 @@ def test_apply_oral_score_rates_card_and_errors(isolated_db):
     student_flow.apply_oral_score(cid, 10, subject="BWL", front="Was ist X?")
     errors = manifest.list_errors(subject="BWL")
     assert any(e.get("source") == "oral" for e in errors)
+
+
+def test_normalize_exam_prefill_defaults_and_caps():
+    assert student_flow.normalize_exam_prefill({})["mode"] == "written"
+    assert student_flow.normalize_exam_prefill({"mode": "oral", "limit": "7"}) == {
+        "mode": "oral", "subject": None, "limit": 7,
+    }
+    assert student_flow.normalize_exam_prefill({"mode": "nope"})["mode"] == "written"
+    assert student_flow.normalize_exam_prefill({"limit": 0})["limit"] is None
+
+
+def test_exam_hub_history_mixes_written_and_oral(isolated_db):
+    from ragapp import oral_exam
+    manifest.log_exam_attempt(50, 5)
+    session = oral_exam.create_session("BWL", [{"question": "X?"}])
+    oral_exam.finish_session(session["session_id"], total_pct=80)
+    rows = student_flow.exam_hub_history()
+    kinds = {r["kind"] for r in rows}
+    assert kinds == {"written", "oral"}
+    oral_row = next(r for r in rows if r["kind"] == "oral")
+    assert oral_row["total_pct"] == 80
+    assert oral_row["subject"] == "BWL"
+
+
+def test_exam_hub_history_skips_aborted_oral(isolated_db):
+    from ragapp import oral_exam
+    session = oral_exam.create_session("BWL", [{"question": "X?"}])
+    oral_exam.abort_session(session["session_id"])
+    assert student_flow.exam_hub_history() == []
+
+
+def test_oral_weak_card_ids_skips_passed_and_missing():
+    ids = student_flow.oral_weak_card_ids({
+        "questions": [
+            {"card_id": "a", "partial_points": 80},
+            {"card_id": "b", "partial_points": 40},
+            {"card_id": "c", "partial_points": None},
+            {"question": "ohne id", "partial_points": 0},
+            {"card_id": "b", "partial_points": 10},
+        ]
+    })
+    assert ids == ["b"]

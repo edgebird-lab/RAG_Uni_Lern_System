@@ -357,32 +357,27 @@ if _sektion == "Klausurstatus":
             st.info(f"Noch **{_ev['evenings']} Abend(e)** bis "
                     f"**{_fach(_snap_ex['next_exam']['subject'])}** "
                     f"({_ev.get('minutes_per_evening', 45)} Min/Abend).")
-        _attempts = manifest.list_exam_attempts(limit=8)
-        if _attempts:
-            with st.expander("Probeklausur-Historie (mit Aufgaben)", expanded=False):
-                for _a in _attempts:
-                    _when = time.strftime("%d.%m. %H:%M", time.localtime(_a["taken_at"]))
-                    st.markdown(f"**{_a['total_pct']} %** · {_a['num_items']} Aufgaben · {_when}")
-                    for _it in manifest.list_exam_attempt_items(_a["attempt_id"]):
-                        st.caption(f"· {(_it.get('front') or '')[:90]} · {_it.get('score', '—')} %")
-
-        from ragapp import oral_exam as _oral_hist
-        _orals = _oral_hist.list_sessions(limit=8)
-        if _orals:
-            with st.expander("Mündliche Prüfungen", expanded=False):
-                for _os in _orals:
-                    _when = time.strftime(
-                        "%d.%m. %H:%M", time.localtime(_os.get("updated_at") or 0))
-                    _pct = _os.get("total_pct")
-                    st.markdown(
-                        f"**{_fach(_os.get('subject'))}** · {_os.get('status')} · "
-                        + (f"{_pct} %" if _pct is not None else "ohne Gesamtwert")
-                        + f" · {_when}")
-                    for _q in (_os.get("questions") or [])[:6]:
-                        _qpts = _q.get("partial_points")
-                        st.caption(
-                            f"· {(_q.get('question') or '')[:80]}"
-                            + (f" · {_qpts} %" if _qpts is not None else ""))
+        from ragapp.student_flow import exam_hub_history as _exam_hist
+        _hist = _exam_hist(limit=8)
+        _last_w = next((r for r in _hist if r["kind"] == "written"), None)
+        _last_o = next((r for r in _hist if r["kind"] == "oral"), None)
+        _bits = []
+        if _last_w:
+            _bits.append(f"schriftlich {_last_w['total_pct']} %")
+        if _last_o:
+            _op = _last_o.get("total_pct")
+            _bits.append(
+                "mündlich " + (f"{_op} %" if _op is not None else "ohne Gesamtwert")
+                + f" ({_fach(_last_o.get('subject'))})")
+        if _bits:
+            st.caption("Zuletzt: " + " · ".join(_bits) + ".")
+        if st.button("Auf Prüfung öffnen", key="fp_to_pruefung"):
+            from ragapp.ui._style import PAGE_REGISTRY as _PR
+            st.session_state["exam_prefill"] = {
+                "mode": "written",
+                "subject": (_snap_ex.get("next_exam") or {}).get("subject"),
+            }
+            st.switch_page(next(p["target"] for p in _PR if p["key"] == "pruefung"))
 
         with st.expander("Klausurtermin setzen / ändern", expanded=not manifest.list_exams()):
             with st.form("exam_form", clear_on_submit=False):

@@ -28,7 +28,7 @@ PAGES = [
     ("/Fortschritt", "Klausurstatus"),
     ("/Lernplan", "Lernplan"),
     ("/Übungsaufgaben", "Übungsaufgaben"),
-    ("/Prüfung", "Mündliche Prüfung"),
+    ("/Prüfung", "Prüfung"),
 ]
 
 

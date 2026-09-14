@@ -56,7 +56,7 @@ PAGE_REGISTRY: list[dict] = [
     {"key": "uebungsaufgaben", "icon": "🧮", "title": "Übungsaufgaben",
      "subtitle": "Rechnen, Begründen, Anwenden", "target": "pages/13_🧮_Übungsaufgaben.py",
      "category": "Lernen"},
-    {"key": "pruefung", "icon": "📝", "title": "Probeklausur", "subtitle": "Echte Prüfungssimulation",
+    {"key": "pruefung", "icon": "📝", "title": "Prüfung", "subtitle": "Schriftlich oder mündlich",
      "target": "pages/6_📝_Prüfung.py", "category": "Lernen"},
     {"key": "mindmap", "icon": "🧠", "title": "Mindmap", "subtitle": "Themen visuell verknüpfen",
      "target": "pages/14_🧠_Mindmap.py", "category": "Lernen"},

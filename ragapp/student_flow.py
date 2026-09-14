@@ -243,6 +243,72 @@ def apply_oral_score(card_id: Optional[str], partial_points: int, *,
             detail=f"Mündlich {pts} %")
 
 
+def normalize_exam_prefill(prefill: dict) -> dict:
+    """exam_prefill: mode written|oral, Fach, optionales Limit – ohne Auto-Start."""
+    prefill = prefill or {}
+    mode = prefill.get("mode") or "written"
+    if mode not in ("written", "oral"):
+        mode = "written"
+    limit = prefill.get("limit")
+    try:
+        limit_n = int(limit) if limit is not None else None
+    except (TypeError, ValueError):
+        limit_n = None
+    return {
+        "mode": mode,
+        "subject": prefill.get("subject") or None,
+        "limit": limit_n if limit_n and limit_n > 0 else None,
+    }
+
+
+def exam_hub_history(*, limit: int = 8) -> list[dict]:
+    """Gemischte letzte Ergebnisse: schriftliche Versuche und abgeschlossene Mündliche."""
+    from ragapp import oral_exam
+
+    limit = max(1, min(int(limit), 20))
+    rows: list[dict] = []
+    for attempt in manifest.list_exam_attempts(limit=limit):
+        rows.append({
+            "kind": "written",
+            "id": attempt.get("attempt_id"),
+            "when": float(attempt.get("taken_at") or 0),
+            "total_pct": attempt.get("total_pct"),
+            "count": attempt.get("num_items"),
+            "subject": None,
+            "status": "done",
+        })
+    for session in oral_exam.list_sessions(limit=limit):
+        if session.get("status") != "done":
+            continue
+        questions = session.get("questions") or []
+        rows.append({
+            "kind": "oral",
+            "id": session.get("session_id"),
+            "when": float(session.get("updated_at") or session.get("created_at") or 0),
+            "total_pct": session.get("total_pct"),
+            "count": len(questions),
+            "subject": session.get("subject"),
+            "status": session.get("status"),
+        })
+    rows.sort(key=lambda r: r["when"], reverse=True)
+    return rows[:limit]
+
+
+def oral_weak_card_ids(session: dict, *, threshold: int = 75) -> list[str]:
+    """Karten einer mündlichen Sitzung unter der Bestehensschwelle."""
+    ids: list[str] = []
+    seen: set[str] = set()
+    for item in (session or {}).get("questions") or []:
+        cid = item.get("card_id")
+        pts = item.get("partial_points")
+        if not cid or cid in seen or pts is None:
+            continue
+        if int(pts) < int(threshold):
+            seen.add(cid)
+            ids.append(cid)
+    return ids
+
+
 def card_looks_like_formula(card: dict) -> bool:
     """True, wenn Vorder- oder Rückseite nach einer echten Formel aussieht."""
     front = (card.get("front") or "").strip()

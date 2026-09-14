@@ -207,7 +207,7 @@ else:
         "lernen": "Jetzt lernen",
         "planen": "Lernplan öffnen",
         "Unterlagen": "Unterlagen öffnen",
-        "Prüfung": "Probeklausur",
+        "Prüfung": "Prüfung",
     }
     for _subj in _kurs_faecher:
         _ks = _sf.course_snapshot(_subj)

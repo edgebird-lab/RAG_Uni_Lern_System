@@ -26,7 +26,7 @@ Zielgruppen, nicht eine lange Werkzeugliste:
 | ----- | ----- |
 | **Heute** | Was jetzt dran ist: Tagesplan, Timer, **Heute starten**. |
 | **Kurse** | Fächer, Stundenplan, Semester einrichten (Modulhandbuch importieren), Unterlagen. |
-| **Lernen** | Karteikarten, Chat, Übungen, Probeklausur, Generatoren. |
+| **Lernen** | Karteikarten, Chat, Übungen, Prüfung, Generatoren. |
 | **Werkzeuge** | Notizen und Einstellungen. |
 | **Fortschritt** | Klausurstatus, Analyse, Errungenschaften, Datenexport. |
 
@@ -34,7 +34,7 @@ Zielgruppen, nicht eine lange Werkzeugliste:
 Import und Evaluation sind Betreiber-Seiten und erscheinen nicht in der
 Alltags-Navigation.
 
-Chat, Karteikarten, Fortschritt und Probeklausur sind in den Abschnitten 2–3
+Chat, Karteikarten, Fortschritt und Prüfung sind in den Abschnitten 2–3
 bzw. 7 beschrieben. OCR, Modellwahl und Qualitäts-Gate stehen in Abschnitt 8.
 
 Ist noch nichts indexiert, weist die Oberfläche darauf hin, zuerst Dokumente
@@ -208,11 +208,11 @@ erkennen und gezielt nachzujustieren.
 
 ---
 
-## 7. Aktiv lernen: Karteikarten, Fortschritt, Probeklausur & Zusammenfassung
+## 7. Aktiv lernen: Karteikarten, Fortschritt, Prüfung & Zusammenfassung
 
 Neben dem Nachschlagen im Chat kann die App dich **aktiv abfragen** – der wirksamste
 Klausur-Hebel. Die drei Lern-Seiten arbeiten offline mit dem schon indexierten
-Material und brauchen zur Laufzeit **kein** LLM (nur die Probeklausur-Benotung und
+Material und brauchen zur Laufzeit **kein** LLM (nur die schriftliche Benotung und
 das Zusammenfassung-Schreiben nutzen das Modell).
 
 ### 🎓 Lernen (Karteikarten + Spaced Repetition)
@@ -263,15 +263,21 @@ mit Teilpunkten prüfen lassen. Fehlende Schritte werden erklärt; Ergebnisse
 unter 75 % landen automatisch im Fehlerheft. Eine bestandene inhaltlich
 passende Übung kann ein Lernziel auf „sitzt“ setzen.
 
-### 📝 Prüfung (Probeklausur)
+### 📝 Prüfung (schriftlich oder mündlich)
 
-Simuliert echte Klausurbedingungen: ein gemischtes Set aus deinen fälligen und –
-falls nötig – schwächsten Karten, ein **Zeitlimit** und **kein Zwischenfeedback**.
-Fächer, Aufgabenzahl (3–40) und Zeitlimit stellst du beim Start ein. Am Ende
-**benotet die KI alle Antworten auf einmal** (Teilpunkte + was fehlt) und schreibt
-das Ergebnis in die Wiederholungs-Planung zurück – schwache Karten kommen sofort
-wieder dran. Getimtes Üben unter Prüfungsbedingungen ist einer der stärksten
-Leistungsprädiktoren.
+Unter **Prüfung** startest du **eine** von zwei Simulationen – nicht zwei getrennte
+Werkzeuge:
+
+- **Schriftlich:** gemischtes Set aus fälligen und – falls nötig – schwächsten
+  Karten, **Zeitlimit**, **kein Zwischenfeedback**. Fächer, Aufgabenzahl (3–40)
+  und Zeit stellst du beim Start ein. Am Ende **benotet die KI alle Antworten
+  auf einmal** und schreibt das Ergebnis in die Wiederholungsplanung.
+- **Mündlich:** eine Frage nach der anderen, Aufnahme, optionale Rückfrage,
+  Selbsteinschätzung. Teilpunkte landen ebenfalls in FSRS und im Fehlerheft.
+
+Die letzten Ergebnisse beider Modi stehen auf derselben Seite und wechseln den
+Modus, starten aber nicht automatisch. **Klausurtermine** setzt du unter
+**Fortschritt**; von dort führt **Auf Prüfung öffnen** hierher.
 
 ### 📄 Zusammenfassung schreiben
 

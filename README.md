@@ -89,8 +89,8 @@ eigenen Kurs- und Klausurunterlagen bleiben ausschließlich auf deinem Rechner:
   Wiederholungen Mastery, Vergessenskurve, Streak, Dauerpatzer (*Leeches*) und eine
   geschätzte **Klausur-Bereitschaft**; mit Klausurterminen priorisiert das System nach
   *Nähe × Wissenslücke × Gewicht* (inkl. `.ics`-Export).
-- **📝 Probeklausur:** getimte Prüfungssimulation aus deinen Karten (Tippen & Benoten,
-  Multiple Choice, Lückentext).
+- **📝 Prüfung:** schriftliche Probeklausur mit Zeitlimit **oder** mündliche
+  Sprechschleife – ein Einstieg, Verlauf zum Starten auf derselben Seite.
 - **📄 Zusammenfassung schreiben:** erzeugt aus einem Dokument/Fach eine strukturierte,
   **gegroundete** Markdown-Zusammenfassung – mit einem separat wählbaren, großen
   **Autoren-Modell** (`LLM_MODEL_AUTHOR`), während der interaktive Chat auf einem
@@ -153,7 +153,7 @@ eigenen Kurs- und Klausurunterlagen bleiben ausschließlich auf deinem Rechner:
 
 ![Fortschritt & Analytics](docs/img/fortschritt.png)
 
-**📝 Probeklausur – getimte Prüfungssimulation aus deinen Karten**
+**📝 Prüfung – schriftlich mit Zeitlimit oder mündlich Frage für Frage**
 
 ![Probeklausur](docs/img/pruefung.png)
 
