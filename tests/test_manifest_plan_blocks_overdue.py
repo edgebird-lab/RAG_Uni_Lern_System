@@ -93,3 +93,52 @@ def test_reschedule_overdue_blocks_gibt_null_zurueck_wenn_nichts_rueckstaendig(i
         {"section_id": None, "planned_date": "2026-09-15", "planned_min": 25},
     ])
     assert manifest.reschedule_overdue_blocks(pid, "2026-09-10", "2026-09-10") == 0
+
+
+def test_neuberechnung_erhaelt_erledigte_bloecke_und_zieht_sie_ab(isolated_db):
+    pid = _make_plan_with_blocks([
+        {"section_id": "sec-a", "planned_date": "2026-09-01", "planned_min": 25},
+        {"section_id": "sec-a", "planned_date": "2026-09-02", "planned_min": 25},
+    ])
+    first = manifest.list_plan_blocks(pid)[0]
+    manifest.add_block_actual_min(first["block_id"], 22)
+    manifest.set_block_done(first["block_id"], True, via="pomodoro")
+    manifest.replace_plan_blocks(pid, [
+        {"section_id": "sec-a", "planned_date": "2026-09-10", "planned_min": 30},
+        {"section_id": "sec-a", "planned_date": "2026-09-11", "planned_min": 20},
+    ])
+    rows = manifest.list_plan_blocks(pid)
+    done = [b for b in rows if b["done"]]
+    open_blocks = [b for b in rows if not b["done"]]
+    assert len(done) == 1
+    assert done[0]["block_id"] == first["block_id"]
+    assert done[0]["done_via"] == "pomodoro"
+    assert done[0]["actual_min"] == 22
+    assert sum(b["planned_min"] for b in open_blocks) == 25
+
+
+def test_neue_gliederung_verknuepft_erledigten_block_ueber_quelle(isolated_db):
+    pid = manifest.create_study_plan(
+        title="Plan", subject="BWL", doc_ids=["d1"], deadline=None,
+        daily_minutes=30)
+    refs = [{"doc_id": "d1", "filename": "x.pdf", "section": "Kapitel 1"}]
+    manifest.replace_plan_sections(pid, [{
+        "title": "Alter Titel", "est_minutes": 30, "source_refs": refs}])
+    old_sid = manifest.list_plan_sections(pid)[0]["section_id"]
+    manifest.replace_plan_blocks(pid, [{
+        "section_id": old_sid, "planned_date": "2026-09-01",
+        "planned_min": 30}])
+    block = manifest.list_plan_blocks(pid)[0]
+    manifest.set_block_done(block["block_id"], True, via="manual")
+
+    manifest.replace_plan_sections(pid, [{
+        "title": "Völlig neu formulierter Titel", "est_minutes": 30,
+        "source_refs": refs}])
+    new_sid = manifest.list_plan_sections(pid)[0]["section_id"]
+    assert manifest.list_plan_blocks(pid)[0]["section_id"] == new_sid
+    manifest.replace_plan_blocks(pid, [{
+        "section_id": new_sid, "planned_date": "2026-09-10",
+        "planned_min": 30}])
+    rows = manifest.list_plan_blocks(pid)
+    assert len(rows) == 1
+    assert rows[0]["done"] == 1

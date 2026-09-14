@@ -103,7 +103,9 @@ def _granular_sections(doc_ids: list[str]) -> list[tuple[str, str, str]]:
     out: list[tuple[str, str, str]] = []
     for doc_id in doc_ids:
         doc = manifest.get_document(doc_id)
-        label = doc["filename"] if doc else doc_id
+        # Intern stabile ID statt Dateiname: zwei ausgewählte Ordner dürfen
+        # gleichnamige PDFs enthalten, ohne dass Quellenverknüpfungen kollidieren.
+        label = doc_id
         chunks = sorted(
             (c for c in all_chunks if c["meta"].get("doc_id") == doc_id),
             key=lambda c: int(c["meta"].get("chunk_index", 0)))
@@ -302,7 +304,7 @@ def generate_outline(
     groebere Gliederung (Geschwindigkeit/Qualitaet-Abwaegung fuer die UI).
 
     Rueckgabe ``(sections, warning)``: ``sections`` eine Liste ``{title,
-    summary, est_chars, est_minutes}`` in Lernreihenfolge; ``warning`` ist
+    summary, source_refs, est_chars, est_minutes}`` in Lernreihenfolge; ``warning`` ist
     ``None`` im Normalfall, sonst ein Klartext-Hinweis, WARUM auf den 1:1-
     Fallback zurueckgefallen wurde (insbesondere bei Token-Budget-Abbruch -
     siehe ``mindmap.generate_mindmap`` fuer dieselbe, dort zuerst behobene
@@ -364,11 +366,38 @@ def generate_outline(
                     for i, (_, t, _) in enumerate(capped)]
 
     out = []
+    docs = [
+        d for d in (manifest.get_document(doc_id) for doc_id in doc_ids) if d
+    ]
+    doc_by_label = {d["doc_id"]: d for d in docs}
+    filename_counts = {
+        name: sum(1 for d in docs if d["filename"] == name)
+        for name in {d["filename"] for d in docs}
+    }
+    doc_by_label.update({
+        d["filename"]: d for d in docs
+        if filename_counts[d["filename"]] == 1
+    })
     for s in sections:
         bodies = [capped[i][2] for i in s["indices"] if 0 <= i < len(capped)]
         chars = sum(len(b) for b in bodies)
         cm = _content_multiplier("\n".join(bodies))
+        source_refs = []
+        for i in s["indices"]:
+            if not (0 <= i < len(capped)):
+                continue
+            label, section_title, _ = capped[i]
+            source_doc = doc_by_label.get(label)
+            ref = {
+                "doc_id": source_doc.get("doc_id") if source_doc else None,
+                "filename": (
+                    source_doc.get("filename") if source_doc else label),
+                "section": section_title,
+            }
+            if ref not in source_refs:
+                source_refs.append(ref)
         out.append({"title": s["title"], "summary": s.get("summary") or "",
+                    "source_refs": source_refs,
                     "est_chars": chars,
                     "est_minutes": estimate_minutes(chars, subject, cm)})
     return out, warning

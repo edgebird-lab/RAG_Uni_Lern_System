@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import threading
 import time
 from datetime import date, timedelta
 from typing import Optional
@@ -615,6 +616,108 @@ def backfill_failed_index_jobs() -> int:
     return added
 
 
+def enqueue_ocr_jobs() -> int:
+    """Macht leere/partielle Scan-PDFs automatisch zu verarbeitbaren Jobs."""
+    from pathlib import Path
+    from ragapp.config import PROJECT_ROOT
+    existing = {
+        (j["source_path"], j.get("subject") or "")
+        for j in manifest.list_index_retry_jobs(include_done=False, limit=5000)
+    }
+    added = 0
+    for doc in manifest.documents_needing_ocr():
+        if not doc.get("use_rag"):
+            continue
+        source_path = doc.get("source_path") or ""
+        key = (source_path, doc.get("subject") or "")
+        path = Path(source_path)
+        if not path.is_absolute():
+            path = PROJECT_ROOT / path
+        if not source_path or not path.is_file() or key in existing:
+            continue
+        manifest.enqueue_index_retry(
+            source_path=source_path, subject=doc.get("subject"),
+            doc_id=doc.get("doc_id"), use_rag=True, job_type="ocr",
+            error=(
+                f"OCR ausstehend: {int(doc.get('ocr_partial_pages') or 0)} "
+                "unvollständige Seite(n)"
+                if doc.get("reason") == "partial"
+                else "OCR ausstehend: kein verwertbarer Text"
+            ))
+        added += 1
+    return added
+
+
+def reconcile_indexes(*, rebuild_bm25: bool = True,
+                      enqueue_repairs: bool = True,
+                      remove_orphans: bool = True) -> dict:
+    """Gleicht Manifest, Chroma und BM25 dokumentweise ab."""
+    from collections import Counter
+    from pathlib import Path
+    from ragapp.config import PROJECT_ROOT
+    from ragapp.retrieval.vectorstore import get_vectorstore
+    from ragapp.retrieval.bm25_index import get_bm25, rebuild_bm25_from_store
+
+    store = get_vectorstore()
+    chunks = store.get_all_chunks()
+    vector_counts = Counter(
+        (c.get("meta") or {}).get("doc_id") for c in chunks
+        if (c.get("meta") or {}).get("doc_id")
+    )
+    bm25 = get_bm25()
+    bm25_counts = Counter(
+        (meta or {}).get("doc_id") for meta in (bm25.metas or [])
+        if (meta or {}).get("doc_id")
+    )
+    documents = [dict(d) for d in manifest.list_documents()]
+    known = {d["doc_id"] for d in documents}
+    mismatches = []
+    queued = 0
+    bm25_dirty = False
+    for doc in documents:
+        if not doc.get("use_rag"):
+            continue
+        expected = int(doc.get("num_chunks") or 0)
+        vector_n = int(vector_counts.get(doc["doc_id"], 0))
+        bm25_n = int(bm25_counts.get(doc["doc_id"], 0))
+        if vector_n != expected:
+            mismatches.append({
+                "doc_id": doc["doc_id"], "filename": doc["filename"],
+                "manifest": expected, "chroma": vector_n, "bm25": bm25_n,
+            })
+            if enqueue_repairs:
+                path = Path(doc.get("source_path") or "")
+                if not path.is_absolute():
+                    path = PROJECT_ROOT / path
+                if path.is_file():
+                    enqueue_index_retry(
+                        path, doc.get("subject"),
+                        error=(
+                            f"Index-Abgleich: Manifest {expected}, "
+                            f"Chroma {vector_n} Chunks"),
+                        doc_id=doc["doc_id"])
+                    queued += 1
+        if bm25_n != vector_n:
+            bm25_dirty = True
+    orphan_ids = [
+        c["id"] for c in chunks
+        if (c.get("meta") or {}).get("doc_id")
+        and (c.get("meta") or {}).get("doc_id") not in known
+    ]
+    orphan_chunks = len(orphan_ids)
+    if remove_orphans and orphan_ids:
+        store.delete_by_ids(orphan_ids)
+        bm25_dirty = True
+    if rebuild_bm25 and bm25_dirty:
+        rebuild_bm25_from_store()
+    return {
+        "documents": len(documents), "mismatches": mismatches,
+        "queued": queued, "bm25_rebuilt": bool(rebuild_bm25 and bm25_dirty),
+        "orphan_chunks": orphan_chunks,
+        "orphan_chunks_removed": orphan_chunks if remove_orphans else 0,
+    }
+
+
 def retry_index_queue(*, job_ids: Optional[list[str]] = None,
                       force: bool = False, limit: int = 5,
                       progress=None) -> dict:
@@ -632,11 +735,21 @@ def retry_index_queue(*, job_ids: Optional[list[str]] = None,
     jobs = jobs[:max(1, int(limit))]
     result = {"processed": 0, "ok": 0, "failed": 0, "errors": []}
     for i, job in enumerate(jobs, 1):
+        if not manifest.claim_index_retry_job(job["job_id"], force=force):
+            continue
         result["processed"] += 1
         attempts = int(job.get("attempts") or 0) + 1
-        manifest.update_index_retry_job(
-            job["job_id"], status="running", attempts=attempts,
-            last_error=job.get("last_error"))
+        lease_stop = threading.Event()
+
+        def _heartbeat(job_id=job["job_id"]) -> None:
+            while not lease_stop.wait(60):
+                if not manifest.heartbeat_index_retry_job(job_id):
+                    return
+
+        lease_thread = threading.Thread(
+            target=_heartbeat, name=f"index-lease-{job['job_id']}",
+            daemon=True)
+        lease_thread.start()
         source = Path(job["source_path"])
         if not source.is_absolute():
             source = PROJECT_ROOT / source
@@ -649,7 +762,10 @@ def retry_index_queue(*, job_ids: Optional[list[str]] = None,
                 source, subject=job.get("subject"), force=True,
                 use_rag=bool(job.get("use_rag", 1)))
             status = ingest.get("status")
-            if status not in {"ok", "unchanged", "duplicate", "duplicate_chunks"}:
+            good = {"ok", "unchanged", "duplicate", "duplicate_chunks"}
+            if job.get("job_type") == "ocr":
+                good = {"ok", "unchanged"}
+            if status not in good:
                 raise RuntimeError(ingest.get("error") or f"Status: {status}")
         except Exception as exc:  # noqa: BLE001
             delay = min(24 * 3600, 60 * (2 ** min(attempts - 1, 10)))
@@ -666,7 +782,53 @@ def retry_index_queue(*, job_ids: Optional[list[str]] = None,
                 job["job_id"], status="done", attempts=attempts,
                 next_attempt_at=0, last_error=None)
             result["ok"] += 1
+        finally:
+            lease_stop.set()
+            lease_thread.join(timeout=1)
     return result
+
+
+_RECOVERY_THREAD = None
+_RECOVERY_STARTED = False
+_RECOVERY_LOCK = threading.Lock()
+
+
+def start_recovery_worker() -> bool:
+    """Startet einmalig einen schonenden Hintergrundlauf für Index/OCR-Reparatur."""
+    global _RECOVERY_THREAD, _RECOVERY_STARTED
+    import os
+    if os.environ.get("RAG_AUTO_RECOVERY", "1") != "1":
+        return False
+
+    def _run() -> None:
+        cycle = 0
+        once = os.environ.get("RAG_RECOVERY_ONCE") == "1"
+        while True:
+            try:
+                backfill_failed_index_jobs()
+                enqueue_ocr_jobs()
+                # Vollabgleich beim Start und danach alle 15 Minuten. Fällige
+                # Retry-Jobs werden jede Minute in kleinen Batches abgearbeitet.
+                if cycle % 15 == 0:
+                    reconcile_indexes(
+                        rebuild_bm25=True, enqueue_repairs=True)
+                retry_index_queue(limit=3)
+            except Exception:  # noqa: BLE001
+                # Selbstheilung darf den normalen App-Betrieb niemals verhindern.
+                pass
+            if once:
+                return
+            cycle += 1
+            time.sleep(60)
+
+    with _RECOVERY_LOCK:
+        if _RECOVERY_STARTED:
+            return False
+        _RECOVERY_THREAD = threading.Thread(
+            target=_run, name="rag-index-recovery", daemon=True)
+        _RECOVERY_STARTED = True
+        _RECOVERY_THREAD.start()
+    return True
 
 
 def add_course_material(subject: str, *, text: Optional[str] = None,
@@ -855,6 +1017,8 @@ def course_snapshot(subject: str) -> dict:
         "evenings": (evenings or {}).get("evenings"),
         "due_cards": due_cards,
         "readiness_pct": ready.get("readiness_pct", 0),
+        "retention_pct": ready.get("retention_pct", 0),
+        "coverage_pct": ready.get("coverage_pct"),
         "weak_topics": [
             {"topic": w.get("topic"), "mastery_pct": w.get("mastery_pct")}
             for w in weak

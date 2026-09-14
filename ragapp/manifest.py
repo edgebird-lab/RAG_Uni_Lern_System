@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+import threading
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
@@ -39,6 +40,7 @@ _DEVICE_ID_FILE = DATA_DIR / ".device_id"
 # Import-Nebenwirkung). _ensure_initialized() ist idempotent und wird von
 # _connect() aufgerufen.
 _initialized = False
+_INIT_LOCK = threading.RLock()
 
 
 def _device_id() -> str:
@@ -88,6 +90,7 @@ CREATE TABLE IF NOT EXISTS index_retry_jobs (
     doc_id          TEXT,
     source_path     TEXT NOT NULL,
     subject         TEXT NOT NULL DEFAULT '',
+    job_type        TEXT DEFAULT 'index', -- index | ocr
     use_rag         INTEGER DEFAULT 1,
     status          TEXT DEFAULT 'pending', -- pending | running | failed | done
     attempts        INTEGER DEFAULT 0,
@@ -262,6 +265,7 @@ CREATE TABLE IF NOT EXISTS study_plan_sections (
     order_index   INTEGER NOT NULL,
     title         TEXT NOT NULL,
     summary       TEXT,
+    source_json   TEXT,             -- konkrete Dokumentabschnitte dieses Themas
     est_chars     INTEGER DEFAULT 0,
     est_minutes   INTEGER DEFAULT 0,
     done          INTEGER DEFAULT 0
@@ -359,7 +363,11 @@ CREATE TABLE IF NOT EXISTS practice_attempts (
     problem_id   TEXT NOT NULL,
     attempted_at REAL,
     self_rating  INTEGER,   -- 0=falsch, 1=teilweise, 2=richtig (wie review_log.rating)
-    notiz        TEXT
+    notiz        TEXT,
+    typed_answer TEXT,
+    score         INTEGER,
+    feedback      TEXT,
+    fehlt         TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_practice_attempts_problem ON practice_attempts(problem_id);
 
@@ -563,8 +571,11 @@ CREATE INDEX IF NOT EXISTS idx_progress_snapshots_subject ON progress_snapshots(
 @contextmanager
 def _connect() -> Iterator[sqlite3.Connection]:
     _ensure_initialized()
-    conn = sqlite3.connect(str(MANIFEST_DB))
+    conn = sqlite3.connect(str(MANIFEST_DB), timeout=10.0)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=10000")
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     try:
         yield conn
         conn.commit()
@@ -648,6 +659,19 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE documents ADD COLUMN tags TEXT")
         except Exception:  # noqa: BLE001
             _log.warning("Additive Migration documents uebersprungen", exc_info=True)
+        try:
+            jcols = {
+                r["name"] for r in conn.execute(
+                    "PRAGMA table_info(index_retry_jobs)")
+            }
+            if "job_type" not in jcols:
+                conn.execute(
+                    "ALTER TABLE index_retry_jobs "
+                    "ADD COLUMN job_type TEXT DEFAULT 'index'")
+        except Exception:  # noqa: BLE001
+            _log.warning(
+                "Additive Migration index_retry_jobs uebersprungen",
+                exc_info=True)
         # Additive Migration fuer study_plan_blocks: ehrlich unterscheiden, ob ein
         # Block ueber eine echte Pomodoro-Zeitmessung oder manuell abgehakt wurde.
         try:
@@ -666,6 +690,37 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE study_plans ADD COLUMN rest_weekdays TEXT")
         except Exception:  # noqa: BLE001
             _log.warning("Additive Migration study_plans uebersprungen", exc_info=True)
+        try:
+            scols = {
+                r["name"] for r in conn.execute(
+                    "PRAGMA table_info(study_plan_sections)")
+            }
+            if "source_json" not in scols:
+                conn.execute(
+                    "ALTER TABLE study_plan_sections ADD COLUMN source_json TEXT")
+        except Exception:  # noqa: BLE001
+            _log.warning(
+                "Additive Migration study_plan_sections uebersprungen",
+                exc_info=True)
+        try:
+            pacols = {
+                r["name"] for r in conn.execute(
+                    "PRAGMA table_info(practice_attempts)")
+            }
+            for name, ddl in (
+                ("typed_answer",
+                 "ALTER TABLE practice_attempts ADD COLUMN typed_answer TEXT"),
+                ("score", "ALTER TABLE practice_attempts ADD COLUMN score INTEGER"),
+                ("feedback",
+                 "ALTER TABLE practice_attempts ADD COLUMN feedback TEXT"),
+                ("fehlt", "ALTER TABLE practice_attempts ADD COLUMN fehlt TEXT"),
+            ):
+                if name not in pacols:
+                    conn.execute(ddl)
+        except Exception:  # noqa: BLE001
+            _log.warning(
+                "Additive Migration practice_attempts uebersprungen",
+                exc_info=True)
         # Additive Migration fuer exams: tatsaechlich erhaltene Note (Noten-
         # Tracking/GPA, siehe upsert_exam()/planner.gpa_summary()) - kommt zeitlich
         # NACH dem Anlegen des Klausurtermins, daher separate Migration.
@@ -725,17 +780,18 @@ def _ensure_initialized() -> None:
     Flag zurueckgesetzt (naechster Zugriff versucht es erneut), der Fehler geloggt
     und weitergereicht - statt still verschluckt."""
     global _initialized
-    if _initialized:
-        return
-    # Flag VOR init_db() setzen: init_db() nutzt _connect(), das wiederum
-    # _ensure_initialized() aufruft - so wird eine Endlos-Rekursion vermieden.
-    _initialized = True
-    try:
-        init_db()
-    except Exception:
-        _initialized = False
-        _log.exception("Manifest-Initialisierung fehlgeschlagen")
-        raise
+    with _INIT_LOCK:
+        if _initialized:
+            return
+        # Flag VOR init_db() setzen: init_db() nutzt _connect(), das wiederum
+        # _ensure_initialized() aufruft. RLock verhindert dabei Parallelstarts.
+        _initialized = True
+        try:
+            init_db()
+        except Exception:
+            _initialized = False
+            _log.exception("Manifest-Initialisierung fehlgeschlagen")
+            raise
 
 
 def _pre_destructive_snapshot(reason: str) -> None:
@@ -853,22 +909,29 @@ def set_document_index_state(doc_id: str, *, status: str,
 
 def enqueue_index_retry(*, source_path: str, subject: Optional[str],
                         doc_id: Optional[str] = None, use_rag: bool = True,
-                        error: Optional[str] = None) -> str:
+                        error: Optional[str] = None,
+                        job_type: str = "index") -> str:
     """Legt genau einen wiederholbaren Indexierungsauftrag pro Datei/Fach an."""
     now = time.time()
     job_id = uuid.uuid4().hex[:16]
     subject_key = (subject or "").strip()
+    kind = "ocr" if job_type == "ocr" else "index"
     with _connect() as conn:
         conn.execute(
             "INSERT INTO index_retry_jobs "
-            "(job_id, doc_id, source_path, subject, use_rag, status, attempts, "
+            "(job_id, doc_id, source_path, subject, job_type, use_rag, status, attempts, "
             "next_attempt_at, last_error, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,'pending',0,0,?,?,?) "
+            "VALUES (?,?,?,?,?,?,'pending',0,0,?,?,?) "
             "ON CONFLICT(source_path, subject) DO UPDATE SET "
             "doc_id=COALESCE(excluded.doc_id,index_retry_jobs.doc_id), "
-            "use_rag=excluded.use_rag, status='pending', next_attempt_at=0, "
+            "job_type=excluded.job_type, use_rag=excluded.use_rag, "
+            "status=CASE WHEN index_retry_jobs.status='done' "
+            "THEN 'pending' ELSE index_retry_jobs.status END, "
+            "next_attempt_at=CASE WHEN index_retry_jobs.status='done' "
+            "THEN 0 ELSE index_retry_jobs.next_attempt_at END, "
             "last_error=excluded.last_error, updated_at=excluded.updated_at",
-            (job_id, doc_id, source_path, subject_key, 1 if use_rag else 0,
+            (job_id, doc_id, source_path, subject_key, kind,
+             1 if use_rag else 0,
              error, now, now),
         )
         row = conn.execute(
@@ -913,6 +976,36 @@ def update_index_retry_job(job_id: str, *, status: str,
     with _connect() as conn:
         conn.execute(
             f"UPDATE index_retry_jobs SET {','.join(sets)} WHERE job_id=?", args)
+
+
+def claim_index_retry_job(job_id: str, *, force: bool = False) -> bool:
+    """Beansprucht einen Job atomar; UI und Hintergrundworker laufen nie doppelt."""
+    now = time.time()
+    stale_before = now - 15 * 60
+    with _connect() as conn:
+        due_clause = "" if force else "AND next_attempt_at<=?"
+        args = [now, job_id]
+        if not force:
+            args.append(now)
+        args.append(stale_before)
+        cur = conn.execute(
+            "UPDATE index_retry_jobs SET status='running', updated_at=? "
+            "WHERE job_id=? AND ("
+            f"(status IN ('pending','failed') {due_clause}) "
+            "OR (status='running' AND updated_at<=?))",
+            args,
+        )
+        return cur.rowcount == 1
+
+
+def heartbeat_index_retry_job(job_id: str) -> bool:
+    """Verlängert die Lease eines tatsächlich noch laufenden Retry-Jobs."""
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE index_retry_jobs SET updated_at=? "
+            "WHERE job_id=? AND status='running'",
+            (time.time(), job_id))
+        return cur.rowcount == 1
 
 
 def delete_index_retry_jobs_for_document(doc_id: str) -> None:
@@ -2319,14 +2412,82 @@ def replace_plan_sections(plan_id: str, sections: list[dict]) -> None:
     """Ersetzt die komplette Gliederung eines Plans (KI-Erstellung oder Bearbeitung
     speichern beides ueber diesen Weg - einfacher als Zeile-fuer-Zeile-Diffing).
     ``sections``: Liste von {title, summary, est_chars, est_minutes, done?}."""
+    from difflib import SequenceMatcher
+
+    def _refs(raw) -> set[tuple]:
+        try:
+            values = raw if isinstance(raw, list) else json.loads(raw or "[]")
+        except Exception:  # noqa: BLE001
+            values = []
+        return {
+            (r.get("doc_id"), r.get("section"))
+            for r in values if isinstance(r, dict)
+        }
+
     with _connect() as conn:
+        old_rows = [
+            dict(r) for r in conn.execute(
+                "SELECT * FROM study_plan_sections WHERE plan_id=?",
+                (plan_id,)).fetchall()
+        ]
+        old_by_id = {r["section_id"]: r for r in old_rows}
+        assigned: list[dict] = []
+        unused_old = set(old_by_id)
+        for section in sections:
+            item = dict(section)
+            sid = item.get("section_id")
+            if sid not in old_by_id:
+                title = (item.get("title") or "").strip().casefold()
+                exact = next(
+                    (oid for oid in unused_old
+                     if (old_by_id[oid].get("title") or "").strip().casefold() == title),
+                    None)
+                if exact is None:
+                    new_refs = _refs(item.get("source_refs"))
+                    ranked = sorted(
+                        ((len(new_refs & _refs(old_by_id[oid].get("source_json"))), oid)
+                         for oid in unused_old),
+                        reverse=True)
+                    exact = ranked[0][1] if ranked and ranked[0][0] > 0 else None
+                sid = exact or uuid.uuid4().hex[:16]
+            unused_old.discard(sid)
+            item["section_id"] = sid
+            assigned.append(item)
+
+        # Auch bei komplett neu formulierter KI-Gliederung bleiben alte Blöcke
+        # semantisch über Quellenüberlappung (Fallback: Titelähnlichkeit) verknüpft.
+        remap: dict[str, str] = {}
+        for old in old_rows:
+            if any(s["section_id"] == old["section_id"] for s in assigned):
+                remap[old["section_id"]] = old["section_id"]
+                continue
+            old_refs = _refs(old.get("source_json"))
+            candidates = []
+            for new in assigned:
+                overlap = len(old_refs & _refs(new.get("source_refs")))
+                similarity = SequenceMatcher(
+                    None, old.get("title") or "", new.get("title") or "").ratio()
+                candidates.append((overlap, similarity, new["section_id"]))
+            if candidates:
+                overlap, similarity, target = max(candidates)
+                if overlap > 0 or similarity >= 0.55:
+                    remap[old["section_id"]] = target
+        for old_id, new_id in remap.items():
+            if old_id != new_id:
+                conn.execute(
+                    "UPDATE study_plan_blocks SET section_id=? "
+                    "WHERE plan_id=? AND section_id=?",
+                    (new_id, plan_id, old_id))
+
         conn.execute("DELETE FROM study_plan_sections WHERE plan_id=?", (plan_id,))
-        for i, s in enumerate(sections):
+        for i, s in enumerate(assigned):
             conn.execute(
                 "INSERT INTO study_plan_sections (section_id, plan_id, order_index, "
-                "title, summary, est_chars, est_minutes, done) VALUES (?,?,?,?,?,?,?,?)",
+                "title, summary, source_json, est_chars, est_minutes, done) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
                 (s.get("section_id") or uuid.uuid4().hex[:16], plan_id, i,
                  (s.get("title") or "").strip(), s.get("summary"),
+                 json.dumps(s.get("source_refs") or [], ensure_ascii=False),
                  int(s.get("est_chars") or 0), int(s.get("est_minutes") or 0),
                  1 if s.get("done") else 0),
             )
@@ -2338,7 +2499,15 @@ def list_plan_sections(plan_id: str) -> list[dict]:
         rows = conn.execute(
             "SELECT * FROM study_plan_sections WHERE plan_id=? ORDER BY order_index",
             (plan_id,)).fetchall()
-        return [dict(r) for r in rows]
+        out = []
+        for row in rows:
+            item = dict(row)
+            try:
+                item["source_refs"] = json.loads(item.get("source_json") or "[]")
+            except Exception:  # noqa: BLE001
+                item["source_refs"] = []
+            out.append(item)
+        return out
 
 
 def set_section_done(section_id: str, done: bool) -> None:
@@ -2348,15 +2517,19 @@ def set_section_done(section_id: str, done: bool) -> None:
 
 
 def append_plan_section(plan_id: str, *, title: str, summary: str = "",
-                        est_minutes: int = 15) -> str:
+                        est_minutes: int = 15,
+                        source_refs: Optional[list[dict]] = None) -> str:
     """Hängt einen Abschnitt an, ohne die bestehende Gliederung zu löschen."""
     existing = list_plan_sections(plan_id)
     sid = uuid.uuid4().hex[:16]
     with _connect() as conn:
         conn.execute(
             "INSERT INTO study_plan_sections (section_id, plan_id, order_index, "
-            "title, summary, est_chars, est_minutes, done) VALUES (?,?,?,?,?,?,?,0)",
-            (sid, plan_id, len(existing), title.strip(), summary, 0, int(est_minutes)))
+            "title, summary, source_json, est_chars, est_minutes, done) "
+            "VALUES (?,?,?,?,?,?,?,?,0)",
+            (sid, plan_id, len(existing), title.strip(), summary,
+             json.dumps(source_refs or [], ensure_ascii=False), 0,
+             int(est_minutes)))
         conn.execute("UPDATE study_plans SET updated_at=? WHERE plan_id=?",
                      (time.time(), plan_id))
     return sid
@@ -2377,16 +2550,42 @@ def append_plan_block(plan_id: str, *, section_id: Optional[str],
 
 
 def replace_plan_blocks(plan_id: str, blocks: list[dict]) -> None:
-    """Ersetzt den kompletten Tages-Zeitplan eines Plans (Neuberechnung).
-    ``blocks``: Liste von {section_id, planned_date, planned_min}."""
+    """Berechnet offene Blöcke neu, ohne erledigte Arbeit zu verlieren.
+
+    Erledigte Blöcke bleiben mit ``done_via`` und ``actual_min`` als Historie
+    erhalten. Ihre geplanten Minuten werden je Abschnitt von der neuen
+    Vollplanung abgezogen, damit bereits bearbeiteter Stoff nicht erneut
+    eingeplant wird.
+    """
     with _connect() as conn:
-        conn.execute("DELETE FROM study_plan_blocks WHERE plan_id=?", (plan_id,))
+        completed = conn.execute(
+            "SELECT section_id, planned_min FROM study_plan_blocks "
+            "WHERE plan_id=? AND done=1", (plan_id,)).fetchall()
+        completed_left: dict[Optional[str], int] = {}
+        for old in completed:
+            sid = old["section_id"]
+            completed_left[sid] = (
+                completed_left.get(sid, 0) + int(old["planned_min"] or 0)
+            )
+        conn.execute(
+            "DELETE FROM study_plan_blocks WHERE plan_id=? AND done=0", (plan_id,))
         for b in blocks:
+            section_id = b.get("section_id")
+            planned = int(b["planned_min"])
+            credit = completed_left.get(section_id, 0)
+            if credit >= planned:
+                completed_left[section_id] = credit - planned
+                continue
+            if credit > 0:
+                planned -= credit
+                completed_left[section_id] = 0
+            if planned <= 0:
+                continue
             conn.execute(
                 "INSERT INTO study_plan_blocks (block_id, plan_id, section_id, "
                 "planned_date, planned_min, done) VALUES (?,?,?,?,?,0)",
                 (uuid.uuid4().hex[:16], plan_id, b.get("section_id"),
-                 b["planned_date"], int(b["planned_min"])),
+                 b["planned_date"], planned),
             )
         conn.execute("UPDATE study_plans SET updated_at=? WHERE plan_id=?", (time.time(), plan_id))
 
@@ -2860,13 +3059,20 @@ def delete_practice_problem(problem_id: str) -> None:
 
 
 def log_practice_attempt(problem_id: str, *, self_rating: int,
-                         notiz: Optional[str] = None) -> str:
+                         notiz: Optional[str] = None,
+                         typed_answer: Optional[str] = None,
+                         score: Optional[int] = None,
+                         feedback: Optional[str] = None,
+                         fehlt: Optional[str] = None) -> str:
     aid = uuid.uuid4().hex[:16]
     with _connect() as conn:
         conn.execute(
             "INSERT INTO practice_attempts (attempt_id, problem_id, attempted_at, "
-            "self_rating, notiz) VALUES (?,?,?,?,?)",
-            (aid, problem_id, time.time(), int(self_rating), notiz),
+            "self_rating, notiz, typed_answer, score, feedback, fehlt) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (aid, problem_id, time.time(), int(self_rating), notiz,
+             typed_answer, (max(0, min(100, int(score))) if score is not None else None),
+             feedback, fehlt),
         )
     return aid
 
@@ -2894,10 +3100,11 @@ def practice_attempt_summary(problem_ids: Optional[list[str]] = None) -> dict[st
     if problem_ids is not None and not problem_ids:
         return {}   # explizit LEERE Auswahl -> nicht mit "kein Filter" verwechseln
     sql = (
-        "SELECT problem_id, self_rating AS last_rating, "
-        "attempted_at AS last_attempted_at, cnt AS attempts FROM ("
-        "  SELECT problem_id, self_rating, attempted_at, "
+        "SELECT problem_id, self_rating AS last_rating, score AS last_score, "
+        "best_score, attempted_at AS last_attempted_at, cnt AS attempts FROM ("
+        "  SELECT problem_id, self_rating, score, attempted_at, "
         "         COUNT(*) OVER (PARTITION BY problem_id) AS cnt, "
+        "         MAX(score) OVER (PARTITION BY problem_id) AS best_score, "
         "         ROW_NUMBER() OVER (PARTITION BY problem_id "
         "                            ORDER BY attempted_at DESC) AS rn "
         "  FROM practice_attempts"

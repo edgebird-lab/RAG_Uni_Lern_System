@@ -294,6 +294,21 @@ if _prefill and not st.session_state.get(ACTIVE):
             prefer=_prefill.get("prefer") or "auto")
         st.session_state["_study_sprint"] = True
         st.session_state["_study_sprint_prefer"] = _prefill.get("prefer") or "auto"
+    elif _prefill.get("doc_ids"):
+        _pk = manifest.find_cards(
+            subject=_prefill.get("subject"),
+            doc_ids=_prefill.get("doc_ids"),
+            topics=_prefill.get("topics") or None,
+            limit=_lim,
+        )
+        # Abschnittstitel und Karten-Themen sind nicht immer wortgleich. Der
+        # konkrete Dokumentbezug bleibt dann der verlässliche Scope.
+        if not _pk and _prefill.get("topics"):
+            _pk = manifest.find_cards(
+                subject=_prefill.get("subject"),
+                doc_ids=_prefill.get("doc_ids"),
+                limit=_lim,
+            )
     else:
         _pk = _sf.today_session_cards(
             subject=_prefill.get("subject"), limit=_lim,

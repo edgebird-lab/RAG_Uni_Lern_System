@@ -73,6 +73,8 @@ def coverage_for_subject(subject: str) -> list[dict]:
         if not c.get("suspended") and c.get("use_flashcard", 1) != 0
     ]
     problems = manifest.list_practice_problems(subject=subject)
+    problem_attempts = manifest.practice_attempt_summary(
+        [p["problem_id"] for p in problems])
     target = analytics._target_reps()
     out: list[dict] = []
     for g in goals:
@@ -81,7 +83,11 @@ def coverage_for_subject(subject: str) -> list[dict]:
         hit_cards = [c for c in cards if _matches(tokens, _haystack_card(c))]
         hit_probs = [p for p in problems if _matches(tokens, _haystack_problem(p))]
         sitzt_cards = [c for c in hit_cards if _sitzt(c, target)]
-        if sitzt_cards:
+        passed_probs = [
+            p for p in hit_probs
+            if (problem_attempts.get(p["problem_id"], {}).get("best_score") or 0) >= 75
+        ]
+        if sitzt_cards or passed_probs:
             status = "sitzt"
         elif hit_probs:
             status = "Übung"

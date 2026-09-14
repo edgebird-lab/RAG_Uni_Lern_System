@@ -244,6 +244,8 @@ with col_practice:
             _hint_key = f"practice_hints_{pid}"
             _step_key = f"practice_steps_{pid}"
             _resolved_key = f"practice_resolved_{pid}"
+            _answer_key = f"practice_typed_{pid}"
+            _grade_key = f"practice_grade_{pid}"
             st.session_state.setdefault(_hint_key, 0)
             st.session_state.setdefault(_step_key, 0)
             st.session_state.setdefault(_resolved_key, False)
@@ -258,6 +260,66 @@ with col_practice:
                 for g in _active["given"]:
                     st.markdown(f"- {g.get('label', '')}: {g.get('value', '')}"
                                if g.get("label") else f"- {g.get('value', '')}")
+
+            _typed_answer = st.text_area(
+                "Dein Rechenweg / deine Antwort",
+                key=_answer_key, height=150,
+                placeholder="Rechenschritte, Begründung und Ergebnis …",
+            )
+            if st.button(
+                    "Antwort mit Teilpunkten prüfen", type="primary",
+                    key=f"practice_grade_btn_{pid}",
+                    disabled=(
+                        not (_typed_answer or "").strip()
+                        or bool(st.session_state.get(_grade_key)))):
+                from ragapp import grading
+                _reference = "\n".join(
+                    [s.get("step_text", "") for s in _active.get("steps", [])]
+                    + [_active.get("final_answer") or ""]
+                ).strip()
+                with st.spinner("Prüfe Rechenweg und Ergebnis …"):
+                    _graded = grading.grade_typed_answer(
+                        _active.get("problem_text") or "",
+                        _reference, _typed_answer)
+                _score = _graded.get("score")
+                if _score is None:
+                    st.warning(
+                        _graded.get("feedback")
+                        or "Die Antwort konnte gerade nicht bewertet werden.")
+                else:
+                    _score = int(_score)
+                    _rating = 2 if _score >= 75 else (1 if _score >= 40 else 0)
+                    manifest.log_practice_attempt(
+                        pid, self_rating=_rating, typed_answer=_typed_answer,
+                        score=_score, feedback=_graded.get("feedback"),
+                        fehlt=_graded.get("fehlt"))
+                    st.session_state[_grade_key] = {
+                        **_graded, "score": _score,
+                    }
+                    if _score < 75:
+                        from ragapp.student_flow import record_error, card_from_text
+                        _cid = card_from_text(
+                            (_active.get("problem_text") or "")[:200],
+                            (_reference or "Siehe Lösungsweg.")[:800],
+                            source="practice", subject=_active.get("subject"),
+                            topic=_active.get("topic"))
+                        record_error(
+                            source="practice", source_id=pid, card_id=_cid,
+                            subject=_active.get("subject"),
+                            front=(_active.get("problem_text") or "")[:200],
+                            detail=(
+                                f"Übung { _score } %"
+                                + (f" · {_graded.get('fehlt')}"
+                                   if _graded.get("fehlt") else "")
+                            ))
+
+            _grade = st.session_state.get(_grade_key)
+            if _grade:
+                st.metric("Teilpunkte", f"{_grade['score']} %")
+                if _grade.get("feedback"):
+                    st.info(_grade["feedback"])
+                if _grade.get("fehlt"):
+                    st.warning(f"Fehlt noch: {_grade['fehlt']}")
 
             hcol, scol, rcol = st.columns(3)
             _n_hints = len(_active["hints"])
@@ -299,7 +361,9 @@ with col_practice:
             r1, r2, r3 = st.columns(3)
 
             def _bewerten(rating: int) -> None:
-                manifest.log_practice_attempt(pid, self_rating=rating)
+                manifest.log_practice_attempt(
+                    pid, self_rating=rating,
+                    typed_answer=st.session_state.get(_answer_key) or None)
                 if rating <= 1:
                     from ragapp.student_flow import record_error, card_from_text
                     cid = card_from_text(
@@ -321,19 +385,30 @@ with col_practice:
                         topic=_active.get("topic"))
                 for k in (_hint_key, _step_key):
                     st.session_state[k] = 0
+                st.session_state.pop(_answer_key, None)
+                st.session_state.pop(_grade_key, None)
                 st.session_state[_resolved_key] = False
                 st.rerun()
 
-            if r1.button("❌ Nicht gewusst", key=f"practice_rate0_{pid}", use_container_width=True):
+            if r1.button(
+                    "❌ Nicht gewusst", key=f"practice_rate0_{pid}",
+                    use_container_width=True, disabled=bool(_grade)):
                 _bewerten(0)
-            if r2.button("🟡 Teilweise", key=f"practice_rate1_{pid}", use_container_width=True):
+            if r2.button(
+                    "🟡 Teilweise", key=f"practice_rate1_{pid}",
+                    use_container_width=True, disabled=bool(_grade)):
                 _bewerten(1)
-            if r3.button("✅ Gewusst", key=f"practice_rate2_{pid}", use_container_width=True):
+            if r3.button(
+                    "✅ Gewusst", key=f"practice_rate2_{pid}",
+                    use_container_width=True, disabled=bool(_grade)):
                 _bewerten(2)
 
             _attempts = manifest.list_practice_attempts(pid, limit=5)
             if _attempts:
-                _hist = " · ".join(_RATING_LABEL.get(a["self_rating"], "?") for a in _attempts)
+                _hist = " · ".join(
+                    (f"{a['score']} %" if a.get("score") is not None
+                     else _RATING_LABEL.get(a["self_rating"], "?"))
+                    for a in _attempts)
                 st.caption(f"Bisher {len(_attempts)}x geübt (neueste zuerst): {_hist}")
 
             if st.button("🗑️ Aufgabe löschen", key=f"practice_delete_{pid}"):

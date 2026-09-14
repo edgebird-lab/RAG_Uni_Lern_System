@@ -25,6 +25,7 @@ PAGES = [
     ("/Semesterplan", "Semester einrichten"),
     ("/Fortschritt", "Klausurstatus"),
     ("/Lernplan", "Lernplan"),
+    ("/Übungsaufgaben", "Übungsaufgaben"),
     ("/Prüfung", "Mündliche Prüfung"),
 ]
 
@@ -49,6 +50,7 @@ def main() -> int:
         "RAG_LOCAL_TOKEN": "ci-live-smoke",
         "RAG_DISABLE_PREWARM": "1",
         "RAG_IDLE_SHUTDOWN": "0",
+        "RAG_AUTO_RECOVERY": "0",
     }
     proc = subprocess.Popen(
         [

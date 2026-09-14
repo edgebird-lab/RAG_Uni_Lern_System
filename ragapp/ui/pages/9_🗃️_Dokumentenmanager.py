@@ -412,8 +412,12 @@ with card("kurs_inbox"):
                 }
                 st.rerun()
 
-from ragapp.student_flow import backfill_failed_index_jobs, retry_index_queue
+from ragapp.student_flow import (
+    backfill_failed_index_jobs, enqueue_ocr_jobs, reconcile_indexes,
+    retry_index_queue,
+)
 backfill_failed_index_jobs()
+enqueue_ocr_jobs()
 _retry_jobs = manifest.list_index_retry_jobs(limit=100)
 if _retry_jobs:
     with card("index_retry_queue"):
@@ -425,6 +429,7 @@ if _retry_jobs:
             _retry_name = pathlib.Path(_job["source_path"]).name
             st.write(
                 f"· **{_retry_name}** · {_fach(_job.get('subject'))} · "
+                f"{'OCR' if _job.get('job_type') == 'ocr' else 'Index'} · "
                 f"{int(_job.get('attempts') or 0)} Versuch(e)")
             if _job.get("last_error"):
                 st.caption(str(_job["last_error"])[:240])
@@ -451,6 +456,25 @@ if _retry_jobs:
             }
             st.rerun()
 
+with st.expander("🩺 Index-Konsistenz", expanded=False):
+    st.caption(
+        "Vergleicht jedes Dokument zwischen Manifest, Chroma und BM25. "
+        "Abweichungen werden zur Reparatur vorgemerkt.")
+    if st.button("Jetzt abgleichen", key="docmgr_reconcile"):
+        with st.spinner("Prüfe Suchindizes …"):
+            _reconciled = reconcile_indexes(
+                rebuild_bm25=True, enqueue_repairs=True)
+        if _reconciled["mismatches"] or _reconciled["orphan_chunks"]:
+            st.warning(
+                f"{len(_reconciled['mismatches'])} Dokumentabweichung(en), "
+                f"{_reconciled['orphan_chunks']} verwaiste Chunks; "
+                f"{_reconciled['queued']} Reparatur(en) vorgemerkt.")
+        else:
+            st.success(
+                f"{_reconciled['documents']} Dokument(e) konsistent. "
+                + ("BM25 wurde neu aufgebaut."
+                   if _reconciled["bm25_rebuilt"] else ""))
+
 _ingest_ui.render_upload(default_subject=st.session_state.get("doc_folder"))
 _ingest_ui.render_ocr_warnings()
 with st.expander("Weitere Importwege (Inbox, Quellordner)", expanded=False):
@@ -462,6 +486,14 @@ _docs = [dict(d) for d in manifest.list_documents()]
 _folder = st.session_state.get("doc_folder")
 if _folder:
     _docs = [d for d in _docs if d.get("subject") == _folder]
+_focus_ids = set(st.session_state.pop("doc_focus_ids", []) or [])
+if _focus_ids:
+    _focused = [d for d in _docs if d.get("doc_id") in _focus_ids]
+    if _focused:
+        _docs = _focused
+        st.info(
+            f"Konkreter Lernplan-Abschnitt: {len(_docs)} zugehörige "
+            "Unterlage(n) werden angezeigt.")
 if not _docs:
     if _folder:
         st.info(f"Ordner **{_fach(_folder)}** ist leer. Lade oben Dateien hoch – "

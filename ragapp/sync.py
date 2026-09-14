@@ -35,8 +35,13 @@ _FIELDS = ("card_id", "subject", "topic", "rating", "reviewed_at",
 
 @contextmanager
 def _conn() -> Iterator[sqlite3.Connection]:
-    c = sqlite3.connect(str(MANIFEST_DB))
+    from ragapp import manifest
+    manifest._ensure_initialized()
+    c = sqlite3.connect(str(MANIFEST_DB), timeout=10.0)
     c.row_factory = sqlite3.Row
+    c.execute("PRAGMA busy_timeout=10000")
+    c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA synchronous=NORMAL")
     try:
         yield c
         c.commit()

@@ -457,3 +457,88 @@ def test_index_retry_queue_behaelt_fehler_mit_backoff(
     assert job["attempts"] == 1
     assert job["next_attempt_at"] > 0
     assert "VRAM voll" in job["last_error"]
+
+
+def test_ocr_luecke_wird_automatisch_job(isolated_db, tmp_path, monkeypatch):
+    source = tmp_path / "scan.pdf"
+    source.write_bytes(b"%PDF fake")
+    monkeypatch.setattr("ragapp.config.PROJECT_ROOT", tmp_path)
+    manifest.upsert_document(
+        doc_id="scan-1", content_hash="h", source_path="scan.pdf",
+        filename="scan.pdf", subject="BWL", filetype="pdf",
+        num_chunks=0, num_questions=0, char_count=0, status="ocr_needed",
+        use_rag=True)
+    assert student_flow.enqueue_ocr_jobs() == 1
+    job = manifest.list_index_retry_jobs()[0]
+    assert job["job_type"] == "ocr"
+    assert job["doc_id"] == "scan-1"
+    assert student_flow.enqueue_ocr_jobs() == 0
+
+
+def test_ocr_worker_respektiert_archivierte_dokumente(
+        isolated_db, tmp_path, monkeypatch):
+    source = tmp_path / "archiv.pdf"
+    source.write_bytes(b"%PDF fake")
+    monkeypatch.setattr("ragapp.config.PROJECT_ROOT", tmp_path)
+    manifest.upsert_document(
+        doc_id="archiv-1", content_hash="h", source_path="archiv.pdf",
+        filename="archiv.pdf", subject="BWL", filetype="pdf",
+        num_chunks=0, num_questions=0, char_count=0, status="ocr_needed",
+        use_rag=False)
+    assert student_flow.enqueue_ocr_jobs() == 0
+    assert manifest.list_index_retry_jobs() == []
+
+
+def test_reconcile_erkennt_chroma_drift_und_baut_bm25_neu(
+        isolated_db, tmp_path, monkeypatch):
+    import sys
+    import types
+    source = tmp_path / "skript.pdf"
+    source.write_bytes(b"%PDF fake")
+    monkeypatch.setattr("ragapp.config.PROJECT_ROOT", tmp_path)
+    manifest.upsert_document(
+        doc_id="doc-1", content_hash="h", source_path="skript.pdf",
+        filename="skript.pdf", subject="BWL", filetype="pdf",
+        num_chunks=2, num_questions=0, char_count=100, status="ok",
+        use_rag=True)
+
+    class _Store:
+        def get_all_chunks(self):
+            return [{"id": "c1", "document": "x", "meta": {"doc_id": "doc-1"}}]
+
+    rebuilt = []
+    monkeypatch.setitem(
+        sys.modules, "ragapp.retrieval.vectorstore",
+        types.SimpleNamespace(get_vectorstore=lambda: _Store()))
+    monkeypatch.setitem(
+        sys.modules, "ragapp.retrieval.bm25_index",
+        types.SimpleNamespace(
+            get_bm25=lambda: types.SimpleNamespace(metas=[]),
+            rebuild_bm25_from_store=lambda: rebuilt.append(True)))
+    result = student_flow.reconcile_indexes()
+    assert result["mismatches"][0]["chroma"] == 1
+    assert result["queued"] == 1
+    assert result["bm25_rebuilt"] is True
+    assert rebuilt == [True]
+
+
+def test_recovery_worker_startet_nur_einmal(monkeypatch):
+    calls = []
+    monkeypatch.setenv("RAG_AUTO_RECOVERY", "1")
+    monkeypatch.setenv("RAG_RECOVERY_ONCE", "1")
+    monkeypatch.setattr(student_flow, "_RECOVERY_STARTED", False)
+    monkeypatch.setattr(
+        student_flow, "backfill_failed_index_jobs",
+        lambda: calls.append("backfill"))
+    monkeypatch.setattr(
+        student_flow, "enqueue_ocr_jobs", lambda: calls.append("ocr"))
+    monkeypatch.setattr(
+        student_flow, "reconcile_indexes",
+        lambda **kwargs: calls.append("reconcile"))
+    monkeypatch.setattr(
+        student_flow, "retry_index_queue",
+        lambda **kwargs: calls.append("retry"))
+    assert student_flow.start_recovery_worker() is True
+    student_flow._RECOVERY_THREAD.join(timeout=2)
+    assert calls == ["backfill", "ocr", "reconcile", "retry"]
+    assert student_flow.start_recovery_worker() is False

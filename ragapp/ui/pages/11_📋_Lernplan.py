@@ -502,8 +502,12 @@ else:
                 + "</div></div>", unsafe_allow_html=True)
             if st.button("🧮 Übungsaufgabe", key=f"splan_practice_{_s['section_id']}",
                         use_container_width=True):
+                _section_docs = [
+                    ref["doc_id"] for ref in _s.get("source_refs", [])
+                    if ref.get("doc_id")
+                ] or _plan["doc_ids"]
                 st.session_state["practice_prefill"] = {
-                    "subject": _plan["subject"], "doc_ids": _plan["doc_ids"],
+                    "subject": _plan["subject"], "doc_ids": _section_docs,
                     "topic": _s["title"],
                 }
                 st.switch_page("pages/13_🧮_Übungsaufgaben.py")
@@ -533,6 +537,7 @@ else:
             "title": row["Titel"], "summary": row["Zusammenfassung"],
             "est_chars": row["Zeichen"], "est_minutes": row["Minuten"],
             "done": _sec_orig.get(row["_id"], {}).get("done", False),
+            "source_refs": _sec_orig.get(row["_id"], {}).get("source_refs", []),
         } for row in kept]
         manifest.replace_plan_sections(_active_plan_id, new_sections)
         st.success("Gliederung gespeichert.")
@@ -595,6 +600,7 @@ with card("zeitplan"):
                    "„📐 Plan berechnen“ klicken.")
     else:
         _sec_title = {s["section_id"]: s["title"] for s in _sections}
+        _sec_by_id = {s["section_id"]: s for s in _sections}
         _total_planned = sum(b["planned_min"] for b in _blocks)
         _done_planned = sum(b["planned_min"] for b in _blocks if b["done"])
         st.progress(_done_planned / _total_planned if _total_planned else 0.0,
@@ -638,8 +644,14 @@ with card("zeitplan"):
                             + (" ✅" if _day_done == _day_total else ""),
                             expanded=(d == date.today().isoformat())):
                 for bl in _day_blocks:
-                    bcol1, bcol2, bcol3, bcol4, bcol5 = st.columns([3.2, 1, 1, 1, 1])
+                    bcol1, bcol2, bcol3, bcol4, bcol5, bcol6 = st.columns(
+                        [3.2, 1, 1, .7, .7, .7])
                     title = _sec_title.get(bl["section_id"], "Abschnitt")
+                    section = _sec_by_id.get(bl["section_id"], {})
+                    source_doc_ids = list(dict.fromkeys(
+                        ref.get("doc_id") for ref in section.get("source_refs", [])
+                        if ref.get("doc_id")
+                    )) or list(_plan.get("doc_ids") or [])
                     # Ehrlich sichtbar machen, WORAUF ein "erledigt" beruht: 🍅 = echte
                     # Pomodoro-Zeit erfasst, ✍️ = manuell abgehakt (z. B. Programmier-
                     # aufgaben, die sich nicht sinnvoll per Timer tracken lassen - beide
@@ -667,15 +679,23 @@ with card("zeitplan"):
                             }
                             st.switch_page("pages/10_⏱️_Lernzeit.py")
                         if bcol4.button("🎴", key=f"splan_cards_{bl['block_id']}",
-                                        help="Karten zu diesem Fach"):
+                                        help="Karten zu diesem Stoffabschnitt"):
                             st.session_state["study_prefill"] = {
-                                "subject": _plan.get("subject"), "limit": 12, "mode": "reveal"}
+                                "subject": _plan.get("subject"), "limit": 12,
+                                "mode": "reveal", "doc_ids": source_doc_ids,
+                                "topics": [title],
+                            }
                             st.switch_page("pages/4_🎓_Lernen.py")
                         if bcol5.button("🧮", key=f"splan_prac_{bl['block_id']}",
-                                        help="Eine Übung zu diesem Fach"):
+                                        help="Eine Übung zu diesem Stoffabschnitt"):
                             st.session_state["practice_prefill"] = {
                                 "subject": _plan.get("subject"),
-                                "doc_ids": _plan.get("doc_ids") or [],
+                                "doc_ids": source_doc_ids,
                                 "topic": title,
                             }
                             st.switch_page("pages/13_🧮_Übungsaufgaben.py")
+                        if bcol6.button("📄", key=f"splan_docs_{bl['block_id']}",
+                                        help="Zugehörige Unterlagen öffnen"):
+                            st.session_state["doc_folder"] = _plan.get("subject")
+                            st.session_state["doc_focus_ids"] = source_doc_ids
+                            st.switch_page("pages/9_🗃️_Dokumentenmanager.py")

@@ -75,3 +75,33 @@ def test_coverage_ignoriert_suspendierte_karte(isolated_db):
         conn.execute(
             "UPDATE review_items SET suspended=1 WHERE card_id=?", (cid,))
     assert coverage.coverage_for_subject("BWL")[0]["status"] == "fehlend"
+
+
+def test_klausurbereitschaft_kombiniert_behalten_und_lernzielabdeckung(
+        isolated_db, monkeypatch):
+    manifest.add_learning_goals(
+        "BWL", ["Die Studierenden können den Deckungsbeitrag berechnen."])
+    manifest.upsert_document(
+        doc_id="d1", content_hash="h", source_path="BWL/deckungsbeitrag.pdf",
+        filename="deckungsbeitrag.pdf", subject="BWL", filetype="pdf",
+        num_chunks=1, num_questions=0, char_count=10, status="ok")
+    student_flow.card_from_text(
+        "Was ist Marktforschung?", "Datenerhebung", subject="BWL",
+        topic="Marktforschung")
+    monkeypatch.setattr(analytics, "card_retrievability", lambda card, at=None: 1.0)
+    ready = analytics.subject_readiness("BWL")
+    assert ready["retention_pct"] == 100
+    assert ready["coverage_pct"] == 25
+    assert ready["readiness_pct"] == 74
+
+
+def test_bestandene_getippte_uebung_schliesst_lernziel(isolated_db):
+    goal = "Die Studierenden können den Deckungsbeitrag berechnen."
+    manifest.add_learning_goals("BWL", [goal])
+    pid = manifest.create_practice_problem(
+        subject="BWL", topic="Deckungsbeitrag", kind="numeric",
+        problem_text="Berechne den Deckungsbeitrag.",
+        steps=[{"step_text": "Erlös minus variable Kosten"}])
+    manifest.log_practice_attempt(
+        pid, self_rating=2, typed_answer="100-60=40", score=85)
+    assert coverage.coverage_for_subject("BWL")[0]["status"] == "sitzt"

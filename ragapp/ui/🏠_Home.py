@@ -61,6 +61,15 @@ if not st.session_state.get("_backup_checked"):
 from ragapp.ui._auth import require_pin
 require_pin()
 
+# Leichte, einmalige Selbstheilung im Hintergrund: fällige Retry-/OCR-Jobs
+# abarbeiten und Manifest/Chroma/BM25 abgleichen, ohne den Seitenaufbau zu blockieren.
+if os.environ.get("RAG_DISABLE_PREWARM") != "1":
+    try:
+        from ragapp.student_flow import start_recovery_worker
+        start_recovery_worker()
+    except Exception:  # noqa: BLE001
+        pass
+
 # Einheitliches Theme (idempotent) - direkt nach der PIN-Sperre anwenden.
 from ragapp.ui._theme import apply_theme
 apply_theme()

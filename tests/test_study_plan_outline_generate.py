@@ -51,6 +51,9 @@ class _FakeManifest:
     def log_eta_sample(self, *a, **kw):
         pass
 
+    def get_document(self, doc_id):
+        return {"doc_id": doc_id, "filename": "doc.pdf"}
+
 
 def _fake_granular_sections_factory(n=5):
     def _fake(doc_ids):
@@ -95,6 +98,11 @@ def test_generate_outline_erfolgsfall_gibt_repariertes_ergebnis_ohne_warnung(
     sections, warning = f(["doc1"], "DSA")
     assert warning is None
     assert sections[0]["title"] == "Thema A"
+    assert sections[0]["source_refs"][:2] == [
+        {"doc_id": "doc1", "filename": "doc.pdf", "section": "Seite 0"},
+        {"doc_id": "doc1", "filename": "doc.pdf", "section": "Seite 1"},
+    ]
+    assert len(sections[0]["source_refs"]) == 5
 
 
 def test_generate_outline_keine_abschnitte_wirft_outline_error(generate_outline_funcs):

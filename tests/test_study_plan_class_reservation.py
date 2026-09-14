@@ -234,6 +234,18 @@ def test_ruhetage_sind_pro_lernplan_getrennt(isolated_db, monkeypatch):
     assert study_plan.repair_overdue_blocks(p2, start=monday)["moves"] == []
 
 
+def test_planabschnitt_persistiert_konkrete_quellen(isolated_db):
+    pid = manifest.create_study_plan(
+        title="Plan", subject="BWL", doc_ids=["doc-1"], deadline=None,
+        daily_minutes=45)
+    refs = [{"doc_id": "doc-1", "filename": "Skript.pdf", "section": "Kapitel 2"}]
+    manifest.replace_plan_sections(pid, [{
+        "title": "Deckungsbeitrag", "summary": "Rechnen", "est_chars": 1000,
+        "est_minutes": 20, "source_refs": refs,
+    }])
+    assert manifest.list_plan_sections(pid)[0]["source_refs"] == refs
+
+
 def test_alle_tage_ruhe_liefert_shortfall_statt_endlosschleife(isolated_db):
     out = study_plan.build_schedule(
         [{"section_id": "s1", "est_minutes": 90}],

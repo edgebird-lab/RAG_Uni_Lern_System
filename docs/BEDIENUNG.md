@@ -247,6 +247,24 @@ eine **Fälligkeits-Prognose** (Stau-Warnung) und deine **Dauerpatzer**. So lenk
 knappe Zeit gezielt auf schwache, klausurrelevante Themen. Enthält außerdem die
 **Datensicherung** (Backup deines Lernstands).
 
+Die angezeigte **Klausurbereitschaft** kombiniert die mit FSRS geschätzte
+Abrufwahrscheinlichkeit bereits gelernter Karten und die Abdeckung der
+Lernziele. Beide Teilwerte werden transparent angezeigt.
+
+### 📋 Lernplan und konkrete Arbeitsblöcke
+
+Neu erzeugte Planabschnitte merken sich die zugehörigen Dokumentabschnitte.
+Ein Tagesblock kann dadurch direkt passende Unterlagen, Karten oder eine
+themenspezifische Übung öffnen. Beim Neuberechnen bleiben erledigte Blöcke,
+Pomodoro-Herkunft und gemessene Ist-Zeit erhalten.
+
+### 🧮 Übungsaufgaben mit Teilpunkten
+
+Unter **Übungsaufgaben** kannst du den vollständigen Rechenweg eintippen und
+mit Teilpunkten prüfen lassen. Fehlende Schritte werden erklärt; Ergebnisse
+unter 75 % landen automatisch im Fehlerheft. Eine bestandene inhaltlich
+passende Übung kann ein Lernziel auf „sitzt“ setzen.
+
 ### 📝 Prüfung (Probeklausur)
 
 Simuliert echte Klausurbedingungen: ein gemischtes Set aus deinen fälligen und –
@@ -297,8 +315,9 @@ Audio-Overview, `AUDIO_MAX_SCRIPT_CHARS` / `TALK_MAX_SCRIPT_CHARS`).
 PDFs **ohne Textebene** (reine Scans, abfotografierte Seiten, Handschrift) liefern
 beim normalen Einlesen keinen brauchbaren Text. Die App erkennt das und markiert
 betroffene Dokumente auf der **📥 Ingestion**-Seite (Hinweis „evtl. unvollständig
-eingelesen – OCR empfohlen", inklusive der Zahl teilweise leerer Seiten). Über
-**„Neu einlesen"** liest dann ein **vision-fähiges Modell** die Seiten per OCR und
+eingelesen – OCR empfohlen", inklusive der Zahl teilweise leerer Seiten) und
+merkt sie automatisch als OCR-Jobs vor. Über **„Neu einlesen"** liest dann ein
+**vision-fähiges Modell** die Seiten per OCR und
 ersetzt den fehlenden Text. Welches OCR-Modell zum Einsatz kommt, richtet sich nach
 deiner Hardware (s. u.).
 

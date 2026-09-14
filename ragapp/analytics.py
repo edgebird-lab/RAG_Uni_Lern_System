@@ -26,8 +26,13 @@ _GEWUSST = 2
 
 @contextmanager
 def _conn() -> Iterator[sqlite3.Connection]:
-    c = sqlite3.connect(str(MANIFEST_DB))
+    from ragapp import manifest
+    manifest._ensure_initialized()
+    c = sqlite3.connect(str(MANIFEST_DB), timeout=10.0)
     c.row_factory = sqlite3.Row
+    c.execute("PRAGMA busy_timeout=10000")
+    c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA synchronous=NORMAL")
     try:
         yield c
     finally:
@@ -357,13 +362,42 @@ def card_retrievability(card: dict, at_time: Optional[float] = None) -> float:
 
 def subject_readiness(subject: str, at_time: Optional[float] = None,
                       cards: Optional[list] = None) -> dict:
-    """Klausur-Bereitschaft eines Fachs: mittlere Abrufwahrscheinlichkeit ueber alle
-    Karten (nie geuebte zaehlen als 0 -> deckt Abdeckung UND Behalten ab)."""
+    """Klausurbereitschaft aus Behalten (FSRS) und Lernzielabdeckung.
+
+    Ohne importierte/abgeleitete Lernziele bleibt die bisherige reine
+    FSRS-Metrik erhalten. Mit Zielen verhindert ein 35-%-Abdeckungsanteil
+    Scheinsicherheit durch ein kleines, gut gelerntes Kartenset.
+    """
     cards = cards if cards is not None else _active_cards(subject)
-    if not cards:
-        return {"cards": 0, "readiness_pct": 0}
     rs = [card_retrievability(c, at_time) for c in cards]
-    return {"cards": len(cards), "readiness_pct": round(100 * sum(rs) / len(rs))}
+    retention = round(100 * sum(rs) / len(rs)) if rs else 0
+    coverage_pct = None
+    goal_count = 0
+    if subject:
+        try:
+            from ragapp import coverage
+            rows = coverage.coverage_for_subject(subject)
+            goal_count = len(rows)
+            if rows:
+                weights = {
+                    "fehlend": 0.0, "Dokument": 0.25, "Karte": 0.5,
+                    "Übung": 0.75, "sitzt": 1.0,
+                }
+                coverage_pct = round(
+                    100 * sum(weights.get(r["status"], 0.0) for r in rows)
+                    / len(rows)
+                )
+        except Exception:  # noqa: BLE001
+            coverage_pct = None
+    readiness = (
+        round(0.65 * retention + 0.35 * coverage_pct)
+        if coverage_pct is not None else retention
+    )
+    return {
+        "cards": len(cards), "readiness_pct": readiness,
+        "retention_pct": retention, "coverage_pct": coverage_pct,
+        "learning_goals": goal_count,
+    }
 
 
 def forgetting_curve(subject: str, days_ahead: int = 30,

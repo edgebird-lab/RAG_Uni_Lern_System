@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import pickle
 import re
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -23,6 +25,26 @@ from rank_bm25 import BM25Okapi
 from ragapp.config import BM25_DIR
 
 _INDEX_FILE = BM25_DIR / "bm25.pkl"
+_INDEX_LOCK = threading.RLock()
+_REBUILD_LOCK_FILE = BM25_DIR / ".rebuild.lock"
+
+
+@contextmanager
+def _rebuild_lock():
+    """Thread- und prozessübergreifender Single-Writer für den BM25-Snapshot."""
+    with _INDEX_LOCK:
+        lock_file = open(_REBUILD_LOCK_FILE, "a+b")
+        try:
+            try:
+                import fcntl
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            except (ImportError, OSError):  # pragma: no cover - Windows-Fallback
+                fcntl = None
+            yield
+        finally:
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            lock_file.close()
 
 # kompakte, praxistaugliche deutsche Stoppwortliste
 _STOPWORDS = {
@@ -96,18 +118,22 @@ class BM25Index:
 
     # ------------------------------------------------------------------ #
     def save(self) -> None:
-        with open(_INDEX_FILE, "wb") as f:
-            pickle.dump(
-                {"ids": self.ids, "documents": self.documents,
-                 "metas": self.metas, "bm25": self.bm25}, f
-            )
+        with _INDEX_LOCK:
+            tmp = _INDEX_FILE.with_suffix(".pkl.tmp")
+            with open(tmp, "wb") as f:
+                pickle.dump(
+                    {"ids": self.ids, "documents": self.documents,
+                     "metas": self.metas, "bm25": self.bm25}, f
+                )
+            tmp.replace(_INDEX_FILE)
 
     def load(self) -> bool:
         if not _INDEX_FILE.exists():
             return False
         try:
-            with open(_INDEX_FILE, "rb") as f:
-                data = pickle.load(f)
+            with _INDEX_LOCK:
+                with open(_INDEX_FILE, "rb") as f:
+                    data = pickle.load(f)
             self.ids = data["ids"]
             self.documents = data["documents"]
             self.metas = data["metas"]
@@ -132,8 +158,9 @@ def rebuild_bm25_from_store() -> BM25Index:
     """Baut den BM25-Index aus allen Chunks der Vektordatenbank neu auf."""
     from ragapp.retrieval.vectorstore import get_vectorstore
 
-    idx = BM25Index()
-    idx.build(get_vectorstore().get_all_chunks())
-    global _default_bm25
-    _default_bm25 = idx
-    return idx
+    with _rebuild_lock():
+        idx = BM25Index()
+        idx.build(get_vectorstore().get_all_chunks())
+        global _default_bm25
+        _default_bm25 = idx
+        return idx

@@ -217,6 +217,11 @@ else:
             _c2.metric("Unterlagen", _ks["doc_count"])
             _c3.metric("Bereitschaft", f'{_ks["readiness_pct"]} %')
             _c4.metric("Fällig", _ks["due_cards"])
+            if _ks.get("coverage_pct") is not None:
+                st.caption(
+                    f"Bereitschaft kombiniert Behalten "
+                    f"({_ks['retention_pct']} %) und Lernzielabdeckung "
+                    f"({_ks['coverage_pct']} %).")
             if _ks["weak_topics"]:
                 st.caption("Lücken: " + ", ".join(
                     f'{w["topic"]} ({w["mastery_pct"]} %)' for w in _ks["weak_topics"][:3]))
