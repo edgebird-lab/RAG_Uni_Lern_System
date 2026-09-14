@@ -1,18 +1,15 @@
 """
-Lernplaner (Prioritaet nach Klausurnaehe & Wissensluecke)
-=========================================================
-Die App hat einen einzigen Zweck: das Lernen fuer eine bestimmte Klausur. Dieser
-Planer macht die Klausurnaehe nutzbar. Fuer jedes Fach berechnet er einen
-Prioritaets-Score:
+Lernplaner (was heute lohnt)
+============================
+Rangfolge der Faecher nach Luecke und optionalem Termin:
 
-    prio = Dringlichkeit(Tage bis Klausur) x (0.3 + Wissensluecke) x Gewicht
+    prio = Dringlichkeit(Tage bis Termin) x (0.3 + Wissensluecke) x Gewicht
 
-- Dringlichkeit steigt, je naeher der Termin ist (ohne Termin: Grundwert).
+- Ohne Termin gilt ein flacher Grundwert (0.3) – die Reihenfolge folgt der Luecke.
 - Wissensluecke = 1 - Mastery (Anteil sitzender Karten, aus analytics).
-- Gewicht kommt aus dem Klausurtermin (ECTS/manuell).
+- Gewicht kommt aus einem gesetzten Klausurtermin (ECTS/manuell).
 
-Rein rechnerisch, offline. Grundlage fuer die Fortschritt-Seite (Phase 0) und
-spaeter fuer die faecheruebergreifende Pruefungsphasen-Runde (Phase 4).
+Ein Termin ist ein Schalter, kein App-Zweck. Rein rechnerisch, offline.
 """
 from __future__ import annotations
 
@@ -96,8 +93,14 @@ def today_snapshot() -> dict:
     open_tasks = manifest.list_tasks(include_done=False)
     overdue_tasks = [t for t in open_tasks if t.get("due_date") and t["due_date"] < today_iso]
     due_today_tasks = [t for t in open_tasks if t.get("due_date") == today_iso]
-    next_exam = next((e for e in manifest.list_exams()
-                      if e.get("exam_date") and e["exam_date"] >= today_iso), None)
+    from ragapp.student_flow import is_fixture_subject, is_placeholder_subject
+    next_exam = next(
+        (e for e in manifest.list_exams()
+         if e.get("exam_date") and e["exam_date"] >= today_iso
+         and not is_placeholder_subject(e.get("subject"))
+         and not is_fixture_subject(e.get("subject"))),
+        None,
+    )
     study_min_today = round(manifest.study_time_total(since=today_start_ts) / 60)
     plan_blocks_today = [
         b for b in manifest.list_plan_blocks_detailed(date=today_iso)

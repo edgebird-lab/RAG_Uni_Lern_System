@@ -413,6 +413,21 @@ def test_course_snapshot_empfiehlt_unterlagen_ohne_docs(isolated_db):
     assert snap["next_action"] == "Unterlagen"
 
 
+def test_default_plan_deadline_ohne_termin_ist_none(isolated_db):
+    assert student_flow.default_plan_deadline("BWL") is None
+    assert student_flow.default_plan_deadline() is None
+
+
+def test_default_plan_deadline_nimmt_nur_das_eigene_fach(isolated_db):
+    future = (date.today() + timedelta(days=12)).isoformat()
+    other = (date.today() + timedelta(days=4)).isoformat()
+    manifest.upsert_exam("BWL", exam_date=future)
+    manifest.upsert_exam("Livetest", exam_date=other)
+    assert student_flow.default_plan_deadline("BWL") == future
+    assert student_flow.default_plan_deadline("Mathe") is None
+    assert student_flow.default_plan_deadline() == future
+
+
 def test_add_course_material_schreibt_in_fachordner(isolated_db, tmp_path, monkeypatch):
     src = tmp_path / "quellen"
     monkeypatch.setattr("ragapp.config.SOURCE_DIR", src)

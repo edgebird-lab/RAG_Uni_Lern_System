@@ -376,7 +376,10 @@ def card_retrievability(card: dict, at_time: Optional[float] = None) -> float:
 
 def subject_readiness(subject: str, at_time: Optional[float] = None,
                       cards: Optional[list] = None) -> dict:
-    """Klausurbereitschaft aus Behalten (FSRS) und Lernzielabdeckung.
+    """Behalten (FSRS) plus optionaler Lernziel-Anteil.
+
+    Die UI zeigt ``retention_pct`` als Behalten. ``readiness_pct`` bleibt der
+    gespeicherte Mischwert (Keys nicht umbenennen).
 
     Ohne importierte/abgeleitete Lernziele bleibt die bisherige reine
     FSRS-Metrik erhalten. Mit Zielen verhindert ein 35-%-Abdeckungsanteil

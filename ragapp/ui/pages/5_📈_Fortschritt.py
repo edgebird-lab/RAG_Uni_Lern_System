@@ -49,7 +49,7 @@ def _fmt_min(m: int) -> str:
     return f"{h} Std {r} Min" if r else f"{h} Std"
 
 
-st.caption("Was sitzt, was wackelt, und wie bereit du für die nächste Klausur bist.")
+st.caption("Was sitzt, was wackelt – und womit sich die nächste Sitzung lohnt.")
 
 # --------------------------------------------------------------------------- #
 # Fach-Filter
@@ -83,11 +83,13 @@ sync_query_param("fach", subject)
 # (Speichern, Wiederherstellen) setzt den ersten Tab zurueck - gleiches Muster
 # wie Lernen.py (st.segmented_control an session_state).
 # --------------------------------------------------------------------------- #
-_FORTSCHRITT_SEKTIONEN = ["Klausurstatus", "Analyse", "Errungenschaften", "Daten"]
+_FORTSCHRITT_SEKTIONEN = ["Lernstand", "Analyse", "Errungenschaften", "Daten"]
+if st.session_state.get("fortschritt_sektion") == "Klausurstatus":
+    st.session_state["fortschritt_sektion"] = "Lernstand"
 _sektion = st.segmented_control(
     "Bereich",
     _FORTSCHRITT_SEKTIONEN,
-    default="Klausurstatus",
+    default="Lernstand",
     key="fortschritt_sektion",
     label_visibility="collapsed",
     required=True,
@@ -125,7 +127,8 @@ if _sektion == "Analyse":
         if ov["leeches"]:
             st.caption(f'⚠️ {ov["leeches"]} Dauerpatzer (Leech-Karten) in der Auswahl – siehe unten.')
 
-        _ready = analytics.subject_readiness(subject)["readiness_pct"]
+        _ready = analytics.subject_readiness(subject)
+        _behalten = _ready["retention_pct"]
         _goal = analytics.daily_goal_status(subject)
         _ampel = {"grün": "🟢", "gelb": "🟡", "rot": "🔴"}.get(_goal["ampel"], "🟢")
         _goal_label = {
@@ -139,11 +142,12 @@ if _sektion == "Analyse":
                   delta_color="off",
                   help=f"Heutiges Prozessziel: {_goal_label}.")
         gc1, _gc2 = st.columns(2)
-        gc1.metric("Klausur-Bereitschaft (Schätzung)", f"{_ready} %",
-                   help="Geschätzte mittlere Abrufwahrscheinlichkeit über alle Karten "
-                        "(Vergessenskurve aus FSRS-6). Eine Schätzung, keine Garantie.")
-        gc1.caption("Bereitschaft: wie viel du morgen noch abrufen kannst.")
-        gc1.markdown(_charts.progress_bar(_ready, color="#C08A2E"), unsafe_allow_html=True)
+        gc1.metric("Behalten", f"{_behalten} %",
+                   help="Mittlere Abrufwahrscheinlichkeit der Karten (FSRS-6). "
+                        "Wie viel du morgen noch weißt – ohne Üben sinkt sie. "
+                        "Keine Klausurreife.")
+        gc1.caption("Behalten: Schätzung, keine Garantie.")
+        gc1.markdown(_charts.progress_bar(_behalten, color="#C08A2E"), unsafe_allow_html=True)
         if len(_snap_trend) >= 2:
             gc1.markdown(_charts.sparkline([d["readiness_pct"] for d in _snap_trend],
                                            color="#C08A2E", height=24),
@@ -253,11 +257,11 @@ if _sektion == "Analyse":
                       delta=(_tw["minutes"] - _pw["minutes"]) or None,
                       help="Minuten diese Woche vs. die 7 Tage davor.")
 
-if _sektion == "Klausurstatus":
-    # Bereitschaft, naechste Luecke und Termine zuerst (A5) – Errungenschaften
+if _sektion == "Lernstand":
+    # Behalten, naechste Luecke, optional Termin – Errungenschaften
     # bleiben in ihrer eigenen Sektion.
     with card("klausurstatus"):
-        st.subheader("Klausurstatus")
+        st.subheader("Lernstand")
         _priority_subjects = planner.all_priorities()
         _ks_subj = (
             subject
@@ -266,27 +270,10 @@ if _sektion == "Klausurstatus":
         )
         if subject is None and _ks_subj:
             st.caption(
-                f"Alle Fächer: nächste Lücke und Abdeckung zeigen das aktuell "
-                f"höchst priorisierte Fach **{_fach(_ks_subj)}**.")
-        _ready = analytics.subject_readiness(subject)["readiness_pct"]
-        _ks1, _ks2, _ks3 = st.columns(3)
-        _ks1.metric(
-            "Bereitschaft", f"{_ready} %",
-            help="Geschätzte mittlere Abrufwahrscheinlichkeit über die Karten "
-                 "(Vergessenskurve aus FSRS-6). Eine Schätzung, keine Garantie.")
-        _ks1.caption("Bereitschaft: wie viel du morgen noch abrufen kannst – ohne Üben sinkt sie.")
-        _ks1.markdown(_charts.progress_bar(_ready, color="#C08A2E"),
-                      unsafe_allow_html=True)
-        _gap_subj = _ks_subj
-        _gaps = analytics.mastery_by_topic(_gap_subj, limit=1) if _gap_subj else []
-        if _gaps:
-            _g = _gaps[0]
-            _ks2.metric("Nächste Lücke", (_g.get("topic") or "ohne Thema")[:40],
-                        delta=f'{_g["mastery_pct"]} % sitzt', delta_color="off",
-                        help="Schwächstes Thema in der Auswahl – dort lohnt die nächste Runde.")
-        else:
-            _ks2.metric("Nächste Lücke", "–",
-                        help="Noch keine Themendaten. Nach ein paar Wiederholungen erscheint hier die schwächste Stelle.")
+                f"Alle Fächer: Behalten und nächste Lücke zeigen **{_fach(_ks_subj)}** "
+                f"(wo gerade am wenigsten sitzt).")
+        _ready = analytics.subject_readiness(_ks_subj or subject)
+        _behalten = _ready["retention_pct"]
         _exams = manifest.list_exams()
         if subject:
             _exams = [e for e in _exams if e["subject"] == subject]
@@ -301,19 +288,38 @@ if _sektion == "Klausurstatus":
             if _best_days is None or _d < _best_days:
                 _best_days, _next_ex = _d, _e
         if _next_ex:
-            _ks3.metric("Nächste Klausur", planner.humanize_days(_best_days),
-                        help=_fach(_next_ex["subject"]))
+            _ks1, _ks2, _ks3 = st.columns(3)
         else:
-            _ks3.metric("Nächste Klausur", "kein Termin",
-                        help="Unten einen Klausurtermin setzen.")
+            _ks1, _ks2 = st.columns(2)
+            _ks3 = None
+        _ks1.metric(
+            "Behalten", f"{_behalten} %",
+            help="Mittlere Abrufwahrscheinlichkeit der Karten (FSRS-6). "
+                 "Wie viel du morgen noch weißt – ohne Üben sinkt sie.")
+        _ks1.caption("Behalten: Schätzung, keine Klausurreife.")
+        _ks1.markdown(_charts.progress_bar(_behalten, color="#C08A2E"),
+                      unsafe_allow_html=True)
+        _gap_subj = _ks_subj
+        _gaps = analytics.mastery_by_topic(_gap_subj, limit=1) if _gap_subj else []
+        if _gaps:
+            _g = _gaps[0]
+            _ks2.metric("Nächste Lücke", (_g.get("topic") or "ohne Thema")[:40],
+                        delta=f'{_g["mastery_pct"]} % sitzt', delta_color="off",
+                        help="Schwächstes Thema – dort lohnt die nächste Sitzung.")
+        else:
+            _ks2.metric("Nächste Lücke", "–",
+                        help="Noch keine Themendaten. Nach ein paar Wiederholungen erscheint hier die schwächste Stelle.")
+        if _ks3 is not None and _next_ex:
+            _ks3.metric("Termin", planner.humanize_days(_best_days),
+                        help=_fach(_next_ex["subject"]))
         if _ks_subj:
             _ex_one = manifest.get_exam(_ks_subj)
             _dte = planner.days_to_exam(_ex_one["exam_date"]) if _ex_one and _ex_one.get("exam_date") else None
             _ahead = min(max(_dte, 7), 90) if _dte and _dte > 0 else 14
             _curve = analytics.forgetting_curve(_ks_subj, days_ahead=_ahead)
             if _curve:
-                st.caption("Bereitschaft ohne weiteres Üben"
-                           + (f" · Klausur in {_dte} Tagen" if _dte and _dte > 0 else "")
+                st.caption("Behalten ohne weiteres Üben"
+                           + (f" · Termin in {_dte} Tagen" if _dte and _dte > 0 else "")
                            + ".")
                 st.markdown(_charts.line_chart(
                     [_charts.german_day_label(c["tag"]) for c in _curve],
@@ -325,7 +331,7 @@ if _sektion == "Klausurstatus":
         _cov_subj = _ks_subj
         _cov_rows = _cov.coverage_for_subject(_cov_subj) if _cov_subj else []
         if _cov_rows:
-            st.caption("Dieselbe Abdeckung wie im Kurs-Cockpit – Klick startet die Lücke.")
+            st.caption("Stoffleiter – Klick startet die Lücke.")
             for _row in _cov_rows:
                 _act = _cov.coverage_start_action(_row)
                 _g1, _g2 = st.columns([3, 1])
@@ -355,7 +361,9 @@ if _sektion == "Klausurstatus":
     # --------------------------------------------------------------------------- #
     with card("klausur"):
         st.subheader("🗓️ Klausurtermine & Priorität")
-        st.caption("Setze die Termine, dann priorisiert das System nach Klausurnähe × Wissenslücke × Gewicht.")
+        st.caption("Optional: ein Datum kappt die Wiederhol-Intervalle, damit Karten "
+                   "vor dem Tag noch einmal kommen. Ohne Datum ändert sich an der Rangfolge "
+                   "nur die Lücke.")
         _snap_ex = planner.today_snapshot()
         _ev = _snap_ex.get("evenings") or {}
         if _ev.get("evenings") is not None and _snap_ex.get("next_exam"):
@@ -460,7 +468,7 @@ if _sektion == "Klausurstatus":
             st.dataframe(dfg, use_container_width=True, hide_index=True)
 
 if _sektion == "Daten":
-    st.caption("Datensicherung, Sync und Export liegen nur hier – Klausurstatus "
+    st.caption("Datensicherung, Sync und Export liegen nur hier – Lernstand "
                "und Analyse bleiben frei von Backup- und Sync-Buttons.")
     # --------------------------------------------------------------------------- #
     # Fach-Archivierung: ein "fertiges" Fach (Klausur vorbei, Note eingetragen)
@@ -590,10 +598,10 @@ if _sektion == "Analyse":
                       "kalibrierten Faktor – bis dahin gilt der Standard-/manuelle Wert.")
 
     # --------------------------------------------------------------------------- #
-    # Vergessenskurve (projizierte Bereitschaft zum Klausurtermin)
+    # Vergessenskurve (projiziertes Behalten, optional bis zum Termin)
     # --------------------------------------------------------------------------- #
     with card("kurve"):
-        st.subheader("📈 Klausur-Bereitschaft im Zeitverlauf")
+        st.subheader("📈 Behalten im Zeitverlauf")
         _curve_subj = subject or (subjects[0] if subjects else None)
         if _curve_subj:
             _ex = manifest.get_exam(_curve_subj)
@@ -603,7 +611,7 @@ if _sektion == "Analyse":
             if _curve:
                 _cap_txt = f"Ohne weiteres Üben · {_fach(_curve_subj)}"
                 if _dte and _dte > 0:
-                    _cap_txt += f" · Klausur in {_dte} Tagen (rechter Rand)"
+                    _cap_txt += f" · Termin in {_dte} Tagen (rechter Rand)"
                 st.caption(_cap_txt + " – übe weiter, damit die Kurve oben bleibt.")
                 st.markdown(_charts.line_chart(
                     [c["tag"] for c in _curve], [c["bereitschaft_pct"] for c in _curve],

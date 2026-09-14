@@ -224,14 +224,16 @@ else:
             st.markdown(
                 f'<p class="rag-kurs-title">{_html.escape(_fach(_subj))}</p>',
                 unsafe_allow_html=True)
-            _items = [
-                (planner.humanize_days(_ks["days_to_exam"])
-                 if _ks["days_to_exam"] is not None else "–", "Termin"),
+            _items = []
+            if _ks["days_to_exam"] is not None:
+                _items.append(
+                    (planner.humanize_days(_ks["days_to_exam"]), "Termin"))
+            _items.extend([
                 (str(_ks["doc_count"] or "–"), "Unterlagen"),
                 ("–" if quiet or not _ks["doc_count"]
-                 else f'{_ks["readiness_pct"]} %', "Bereitschaft"),
+                 else f'{_ks["retention_pct"]} %', "Behalten"),
                 (str(_ks["due_cards"] or "–"), "Fällig"),
-            ]
+            ])
             _cells = "".join(
                 f'<span class="rag-kurs-metric"><b>{mark_tight_nums(_html.escape(str(_v)))}</b>'
                 f'{_html.escape(_lab)}</span>'
@@ -245,7 +247,7 @@ else:
                         f"Behalten {_ks['retention_pct']} % · "
                         f"Ziele {_ks['coverage_pct']} %")
                 if _ks["weak_topics"]:
-                    st.caption("Lücken – Klick öffnet Karten zu dem Thema:")
+                    st.caption("Heute lohnt – Klick öffnet Karten zu dem Thema:")
                     _wcols = st.columns(min(3, len(_ks["weak_topics"][:3])))
                     for _wi, _w in enumerate(_ks["weak_topics"][:3]):
                         _wlabel = f'{_w["topic"] or "ohne Thema"} ({_w["mastery_pct"]} %)'
@@ -370,13 +372,10 @@ with card("heute"):
              if _plan_blocks_today else "–")
     if _next_exam:
         _dte = planner.days_to_exam(_next_exam["exam_date"])
-        d6.metric(f"Nächste Klausur: {_fach(_next_exam['subject'])}", planner.humanize_days(_dte))
+        d6.metric(f"Termin: {_fach(_next_exam['subject'])}", planner.humanize_days(_dte))
     else:
-        d6.metric("Nächste Klausur", "–")
-    _ev = _snap.get("evenings") or {}
-    if _ev.get("evenings") is not None:
-        st.caption(f"Noch **{_ev['evenings']} Abend(e)** à {_ev.get('minutes_per_evening', 45)} Min "
-                   "bis zur nächsten Klausur.")
+        _tp = _snap.get("top_priority") or {}
+        d6.metric("Heute lohnt", _fach(_tp["subject"]) if _tp.get("subject") else "–")
 
     with st.expander("Klausurtermine", expanded=not manifest.list_exams()):
         _exams_now = manifest.list_exams()

@@ -391,6 +391,9 @@ def test_home_heute_starten_steht_vor_den_chips():
     assert "Mehr heute" not in src
     assert src.index('key="heute_start"') < src.index("rag-heute-chips")
     assert "Karten fällig" not in src
+    assert "Nächste Klausur-Priorität" not in src
+    assert "Heute lohnt" in src
+    assert 'if _snap.get("cram_active")' in src
 
 
 def test_lernen_zeigt_stapel_vor_der_lernset_fabrik():
@@ -459,7 +462,20 @@ def test_kurskarten_nutzen_dichte_kennzahlen():
     src = Path("ragapp/ui/pages/8_🗂️_Organisation.py").read_text(encoding="utf-8")
     assert "rag-kurs-metrics" in src
     assert "rag-kurs-metric" in src
+    assert '"Behalten"' in src
+    assert '"Bereitschaft"' not in src
     assert "_c1, _c2, _c3, _c4 = st.columns(4)" not in src
+
+
+def test_fortschritt_nennt_lernstand_statt_klausurstatus():
+    from pathlib import Path
+    src = Path("ragapp/ui/pages/5_📈_Fortschritt.py").read_text(encoding="utf-8")
+    assert '"Lernstand"' in src
+    assert 'st.subheader("Lernstand")' in src
+    assert 'gc1.metric("Behalten"' in src
+    assert "Klausur-Bereitschaft" not in src
+    assert 'st.subheader("Klausurstatus")' not in src
+    assert "nächste Klausur bist" not in src
 
 
 def test_uebung_legende_ist_chips_und_fach_kommt_aus_der_url():

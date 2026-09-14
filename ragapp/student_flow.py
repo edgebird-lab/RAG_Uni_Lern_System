@@ -607,13 +607,20 @@ def reschedule_all_overdue_today() -> int:
 
 
 def default_plan_deadline(subject: Optional[str] = None) -> Optional[str]:
+    """Echtes Klausurdatum des Fachs, sonst None – kein erfundenes +21-Tage-Ziel."""
     if subject:
         exam = manifest.get_exam(subject)
         if exam and exam.get("exam_date"):
             return exam["exam_date"]
-    exams = [e for e in manifest.list_exams() if e.get("exam_date")]
+        return None
+    exams = [
+        e for e in manifest.list_exams()
+        if e.get("exam_date")
+        and not is_placeholder_subject(e.get("subject"))
+        and not is_fixture_subject(e.get("subject"))
+    ]
     exams.sort(key=lambda e: e["exam_date"])
-    return exams[0]["exam_date"] if exams else (date.today() + timedelta(days=21)).isoformat()
+    return exams[0]["exam_date"] if exams else None
 
 
 def notes_context(subject: Optional[str] = None, query: Optional[str] = None,

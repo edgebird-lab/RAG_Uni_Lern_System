@@ -254,3 +254,19 @@ def test_all_priorities_ueberspringt_importreste(isolated_db):
     assert "IT-Recht und IT-Comp" not in codes
     assert "Livetest" not in codes
     assert "BWL" in codes
+
+
+def test_today_snapshot_nimmt_keine_livetest_klausur(isolated_db):
+    manifest.upsert_exam("Livetest", exam_date=_iso(3), ects=5)
+    manifest.upsert_exam("BWL", exam_date=_iso(20), ects=5)
+    snap = planner.today_snapshot()
+    assert snap["next_exam"]["subject"] == "BWL"
+    assert snap["days_to_exam"] == 20
+
+
+def test_today_snapshot_ohne_echte_klausur_hat_keinen_termin(isolated_db):
+    manifest.upsert_exam("Livetest", exam_date=_iso(3), ects=5)
+    snap = planner.today_snapshot()
+    assert snap["next_exam"] is None
+    assert snap["days_to_exam"] is None
+    assert snap["cram_active"] is False

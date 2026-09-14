@@ -291,8 +291,11 @@ if _snap:
                           help="Bis zu 16 Karten, fällige zuerst."):
                 st.session_state["study_prefill"] = {
                     "source": "heute", "limit": 16, "mode": "reveal",
-                    "subject": (_snap.get("next_exam") or {}).get("subject")
-                    or ((_snap.get("top_priority") or {}).get("subject")),
+                    "subject": (
+                        (_snap.get("next_exam") or {}).get("subject")
+                        if _snap.get("cram_active")
+                        else ((_snap.get("top_priority") or {}).get("subject"))
+                    ),
                     "cram": bool(_snap.get("cram_active")),
                 }
                 st.switch_page(_target["lernen"])
@@ -315,11 +318,8 @@ if _snap:
         if _snap["next_exam"] and _snap["days_to_exam"] is not None:
             _ex_subj = _html_escape(SUBJECT_LABELS.get(
                 _snap["next_exam"]["subject"], _snap["next_exam"]["subject"]))
-            _ev = _snap.get("evenings") or {}
-            _abend = (f" · noch {_ev.get('evenings', _snap['days_to_exam'])} Abend(e)"
-                      if _ev.get("evenings") is not None else "")
             _chips_rest.append(
-                f"📝 {_ex_subj}: {planner.humanize_days(_snap['days_to_exam'])}{_abend}")
+                f"📝 {_ex_subj}: {planner.humanize_days(_snap['days_to_exam'])}")
         if _snap["overdue_plan_blocks"]:
             _chips_rest.append(
                 f"📋 {len(_snap['overdue_plan_blocks'])} im Rückstand")
@@ -398,9 +398,8 @@ if _snap:
 
         _tp = _snap.get("top_priority") or {}
         _tp_subj = SUBJECT_LABELS.get(_tp.get("subject"), _tp.get("subject")) if _tp else None
-        if _tp_subj and _snap.get("days_to_exam") is not None:
-            st.caption(f"Nächste Klausur-Priorität: **{_tp_subj}** "
-                       f"({planner.humanize_days(_snap['days_to_exam'])}).")
+        if _tp_subj:
+            st.caption(f"Heute lohnt: **{_tp_subj}**.")
 
         from ragapp import student_flow as _sf
         _faecher = _home_manifest.study_subjects()
@@ -421,7 +420,7 @@ if _snap:
                     else SUBJECT_LABELS.get(s, s),
                     key="home_sprint_subject",
                     help="Welches Fach du im Kurz-Sprint durchgehen willst – "
-                         "nicht automatisch die Klausur-Priorität.")
+                         "unabhängig davon, was heute oben steht.")
             _sprint_subj = None if _sprint_pick == "Alle Fächer" else _sprint_pick
             _inv = _sf.sprint_inventory(subject=_sprint_subj)
             with _sp2:

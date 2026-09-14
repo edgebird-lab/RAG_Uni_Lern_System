@@ -32,7 +32,7 @@ PAGES = [
     ("/Organisation", "Kurse"),
     ("/Dokumentenmanager", "Kurs-Inbox"),
     ("/Semesterplan", "Semester einrichten"),
-    ("/Fortschritt", "Klausurstatus"),
+    ("/Fortschritt", "Lernstand"),
     ("/Lernplan", "Lernplan"),
     ("/Übungsaufgaben", "Übungsaufgaben"),
     ("/Prüfung", "Prüfung"),

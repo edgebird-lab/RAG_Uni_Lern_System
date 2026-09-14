@@ -246,14 +246,17 @@ if _active_plan_id is None:
         st.caption(f"Wird auf max. {settings.PLAN_MAX_DAILY_FOCUS_MIN} Min gedeckelt "
                    "(nachhaltige Tagesobergrenze, siehe Forschung).")
     with tc2:
-        _has_deadline = st.checkbox("Zieldatum setzen", value=True, key="splan_new_has_deadline")
-    with tc3:
         from ragapp.student_flow import default_plan_deadline
-        _dl_guess = study_plan.parse_iso_date(default_plan_deadline(_new_subject)) or (
-            date.today() + timedelta(days=21))
+        _exam_dl = default_plan_deadline(_new_subject)
+        _has_deadline = st.checkbox(
+            "Zieldatum setzen", value=bool(_exam_dl),
+            key="splan_new_has_deadline",
+            help="Nur wenn du selbst einen Horizont willst. Ohne Datum bleibt der Plan offen.")
+    with tc3:
+        _dl_guess = study_plan.parse_iso_date(_exam_dl) or date.today()
         _new_deadline = (st.date_input("Zieldatum", value=_dl_guess,
                                        key="splan_new_deadline") if _has_deadline else None)
-        st.caption("Standard: nächste Klausur oder +21 Tage, 45 Min/Abend.")
+        st.caption("Standard: Klausurdatum des Fachs, sonst keines.")
     _new_rest_days = st.multiselect(
         "Ruhetage",
         options=list(range(7)),

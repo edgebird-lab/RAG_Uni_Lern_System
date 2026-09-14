@@ -316,10 +316,10 @@ if not st.session_state.get(ACTIVE):
         _ex = manifest.get_exam(subj)
         if _ex and _ex.get("exam_date"):
             _dte = planner.days_to_exam(_ex["exam_date"])
-            _rd = analytics.subject_readiness(subj)["readiness_pct"]
+            _rd = analytics.subject_readiness(subj)["retention_pct"]
             st.caption(
-                f"Klausur {_fach_label(subj)}: {planner.humanize_days(_dte)} "
-                f"({_ex['exam_date']}) · {_rd} %"
+                f"Termin {planner.humanize_days(_dte)} ({_ex['exam_date']}) · "
+                f"Behalten {_rd} %"
             )
 
     # Auswahl aus dem letzten Lauf (Default: alle). Tabelle erst NACH der
