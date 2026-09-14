@@ -26,6 +26,9 @@ Variante, damit das Maskottchen nicht auf jeder Seite identisch wirkt.
 """
 from __future__ import annotations
 
+import re
+from html import escape as html_escape
+
 _MOUTHS = {
     "idle":  '<path d="M 98 152 Q 110 162 122 152" fill="none" stroke="{ink}" stroke-width="3.2" stroke-linecap="round"/>',
     "cheer": '<path d="M 92 150 Q 110 172 128 150 Q 110 166 92 150 Z" fill="{ink}"/>',
@@ -152,6 +155,83 @@ def home_mood_line(snapshot: "dict | None", *, celebrate: bool = False,
     return ("👋", "Schön, dass du da bist – such dir unten aus, womit du starten willst.")
 
 
+_TRAILING_CITE_RE = re.compile(r"(\[Quelle[^\]]*\]\s*)+$")
+
+
+def _assistant_is_question(text: "str | None") -> bool:
+    stripped = _TRAILING_CITE_RE.sub("", (text or "").strip()).strip()
+    return stripped.endswith("?")
+
+
+def _chat_user_cue(text: "str | None") -> "str | None":
+    """Steuer-Chips aus dem sokratischen Dialog (Hinweis / Teilweise / Auflösen)."""
+    ql = (text or "").strip().lower()
+    if not ql:
+        return None
+    if "weiß es teilweise" in ql or "weiss es teilweise" in ql:
+        return "partial"
+    if "löse es auf" in ql or "loese es auf" in ql:
+        return "resolve"
+    if "gib mir einen hinweis" in ql or "ohne die antwort zu verraten" in ql:
+        return "hint"
+    if "nächster aspekt" in ql or "naechster aspekt" in ql:
+        return "next"
+    return None
+
+
+def chat_mood(*, waiting: bool = False, empty: bool = False,
+              chat_mode: str = "strict",
+              last_meta: "dict | None" = None,
+              last_content: "str | None" = None,
+              last_user: "str | None" = None) -> tuple[str, str, "str | None"]:
+    """Pose des Chat-Ecken-Maskottchens: Warten → Ergebnis, analog zu home_mood.
+
+    waiting  – Suche/Formulieren läuft (fokussiert + Birne).
+    empty    – noch keine Nachricht (winken, wie der Home-Gruss).
+    Danach: Fallback/VRAM/unsicher besorgt; sokratische offene Frage fokussiert;
+    Auflösen und belegte Antworten kurz feiern."""
+    if waiting:
+        return ("focused", "float", "bulb")
+    if empty:
+        return ("cheer", "wave", None)
+    meta = last_meta or {}
+    mode = meta.get("mode")
+    if mode in ("fallback", "vram_warn") or meta.get("confidence") == "unsicher":
+        return ("worried", "shake", None)
+    cue = _chat_user_cue(last_user)
+    if cue == "resolve":
+        return ("cheer", "wave", "star")
+    if cue in ("hint", "partial", "next"):
+        return ("focused", "float", "bulb")
+    if chat_mode == "sokratisch" and _assistant_is_question(last_content):
+        return ("focused", "float", "bulb")
+    if mode == "answer":
+        return ("cheer", "wave", "star")
+    return ("idle", "float", None)
+
+
+def chat_mood_line(*, waiting: bool = False, waiting_stage: str = "retrieve",
+                   chat_mode: str = "strict") -> "tuple[str, str] | None":
+    """Sprechblase NUR während des Wartens – sonst None (Figur reicht)."""
+    if not waiting:
+        return None
+    if waiting_stage == "load":
+        return ("⏳", "Modell wird geladen …")
+    if waiting_stage == "generate":
+        if chat_mode == "sokratisch":
+            return ("💭", "Nächste Frage …")
+        return ("✏️", "Ich formuliere …")
+    return ("🔍", "Ich schau in den Unterlagen …")
+
+
+def _corner_bubble_html(text: "str | None", icon: str = "") -> str:
+    if not (text or "").strip():
+        return ""
+    label = f"{icon} {text}".strip() if icon else (text or "").strip()
+    return (f'<div class="rag-bubble-mascot rag-bubble-mascot-corner">'
+            f"{html_escape(label)}</div>")
+
+
 def mascot_svg(accent: str, *, size: int = 200, ink: str = "#2b2036",
                pose: str = "idle", animation: str = "float",
                prop: "str | None" = None, extra_class: str = "") -> str:
@@ -252,7 +332,8 @@ def render_mascot(accent: str, *, size: int = 200, ink: str = "#2b2036",
 
 
 def render_mascot_corner(accent: str, *, pose: str = "idle", animation: str = "float",
-                          prop: "str | None" = None, size: int = 92) -> None:
+                          prop: "str | None" = None, size: int = 92,
+                          bubble: "str | None" = None, bubble_icon: str = "") -> None:
     """Kleines Ecken-Maskottchen, direkt an ``document.body`` angehaengt statt
     in den normalen Streamlit-Elementbaum gerendert. NOETIG, nicht nur Stil:
     ``st.markdown`` haengt Inhalte in ``.block-container`` ein, und dessen
@@ -265,16 +346,18 @@ def render_mascot_corner(accent: str, *, pose: str = "idle", animation: str = "f
     sichtbaren Bereichs statt unten links). Direkt an ``body`` gehaengt (wie
     schon der Theme-Toggle-Button) umgeht das zuverlaessig. Ersetzt bei jedem
     Aufruf eine evtl. vorhandene fruehere Instanz (Seitenwechsel = neuer
-    Skript-Lauf, alte Figur muss weg, bevor die neue Pose reinkommt)."""
+    Skript-Lauf, alte Figur muss weg, bevor die neue Pose reinkommt).
+    ``bubble``: optionale Mini-Sprechblase ueber der Figur (Chat-Warten)."""
     import streamlit.components.v1 as components
 
     svg_html = mascot_svg(accent, size=size, pose=pose, animation=animation, prop=prop,
                            extra_class="rag-mascot-corner")
+    bubble_html = _corner_bubble_html(bubble, bubble_icon)
     # In ein Template-Element verpackt uebergeben (nicht direkt als JS-String-
     # Literal), damit Anführungszeichen/Sonderzeichen im SVG (z. B. in
     # style="...") nicht mit der JS-String-Syntax kollidieren koennen.
     components.html(f"""
-<template id="rag-mascot-corner-tpl">{svg_html}</template>
+<template id="rag-mascot-corner-tpl">{bubble_html}{svg_html}</template>
 <script>
 (function() {{
   try {{

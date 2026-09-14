@@ -37,6 +37,7 @@ from ragapp.ui._style import card, delete_button, sticky_expander
 st.markdown("""
 <style>
 .block-container {padding-bottom: 6rem;}
+#rag-mascot-corner-wrap {bottom: 5.8rem;}
 ul[role="listbox"], [data-testid="stSelectboxVirtualDropdown"] ul,
 [data-baseweb="menu"] {max-height: 45vh !important; overflow-y: auto !important;}
 .stChatMessage {border-radius: 14px;}
@@ -449,6 +450,37 @@ def _socratic_chips(idx: int) -> None:
             st.rerun()
 
 
+def _apply_chat_mascot(*, waiting: bool = False, waiting_stage: str = "retrieve",
+                       last_meta: "dict | None" = None,
+                       last_content: "str | None" = None,
+                       last_user: "str | None" = None) -> None:
+    """Setzt die Ecken-Figur auf Chat-Stimmung (Warten oder letzte Antwort)."""
+    from ragapp.ui._style import theme_for
+    from ragapp.ui._mascot import chat_mood, chat_mood_line, render_mascot_corner
+    msgs = st.session_state.get("messages") or []
+    if last_meta is None:
+        for m in reversed(msgs):
+            if m.get("role") == "assistant":
+                last_meta = m.get("meta")
+                last_content = last_content if last_content is not None else m.get("content")
+                break
+    if last_user is None:
+        for m in reversed(msgs):
+            if m.get("role") == "user":
+                last_user = m.get("content")
+                break
+    pose, anim, prop = chat_mood(
+        waiting=waiting, empty=not msgs and not waiting,
+        chat_mode=_chat_mode, last_meta=last_meta,
+        last_content=last_content, last_user=last_user)
+    line = chat_mood_line(waiting=waiting, waiting_stage=waiting_stage,
+                          chat_mode=_chat_mode)
+    icon, bubble = (line if line else ("", None))
+    render_mascot_corner(
+        theme_for("chat")["accent"], pose=pose, animation=anim, prop=prop,
+        bubble=bubble, bubble_icon=icon)
+
+
 # Verlauf rendern
 for _mi, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"], avatar="🧑‍🎓" if msg["role"] == "user" else "🤖"):
@@ -593,7 +625,13 @@ prompt = st.chat_input(_chat_ph)
 # Klick auf eine Beispiel-Frage (Onboarding) wirkt wie eine getippte Eingabe.
 if not prompt:
     prompt = st.session_state.pop("_pending_prompt", None)
-if prompt:
+
+if not prompt:
+    _apply_chat_mascot(waiting=False)
+else:
+    _wait_stage = ("load" if not st.session_state.get("_first_query_done")
+                   else "retrieve")
+    _apply_chat_mascot(waiting=True, waiting_stage=_wait_stage)
     if (_chat_mode == "sokratisch" and not st.session_state.get("socratic_topic")
             and not st.session_state.messages):
         st.session_state["socratic_topic"] = prompt.strip().splitlines()[0][:120]
@@ -640,6 +678,8 @@ if prompt:
             result = {"answer": _vram_msg, "mode": "vram_warn", "sources": [],
                       "total_time": 0}
             _streamed = True
+            _apply_chat_mascot(waiting=False, last_meta={"mode": "vram_warn"},
+                               last_user=prompt)
 
         from ragapp.graph.rag_graph import answer_query, answer_query_stream
 
@@ -655,8 +695,12 @@ if prompt:
                 return
             if name == "generate":
                 _status_box.update(label=_wait_generate)
+                _apply_chat_mascot(waiting=True, waiting_stage="generate",
+                                   last_user=prompt)
             else:
                 _status_box.update(label=_wait_retrieve)
+                _apply_chat_mascot(waiting=True, waiting_stage="retrieve",
+                                   last_user=prompt)
 
         # Schnell-Modus (Gegenprüfung AUS) / Tutor UND Quellen-Anzeige AN -> streamen
         if not _vram_low and _faith_for_call is False and show_sources:
@@ -728,6 +772,8 @@ if prompt:
                 _socratic_chips("new")
             else:
                 _followup_chips("new")
+            _apply_chat_mascot(
+                waiting=False, last_meta=meta, last_content=_answer, last_user=prompt)
 
     st.session_state.messages.append({
         "role": "assistant",

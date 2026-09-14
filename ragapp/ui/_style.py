@@ -652,11 +652,19 @@ html.rag-dark .rag-bubble-mascot::after {{background:#0f2440; border-color:rgba(
 html.rag-dark .rag-heute-schedule li {{border-bottom-color:rgba(231,237,245,.08);}}
 
 .rag-mascot-corner {{
-  position:fixed; right:16px; bottom:10px; z-index:5; pointer-events:none;
   opacity:.92;
 }}
+#rag-mascot-corner-wrap {{
+  position:fixed; right:16px; bottom:10px; z-index:5; pointer-events:none;
+  display:flex; flex-direction:column; align-items:flex-end; gap:2px;
+  max-width:min(220px, 42vw);
+}}
+.rag-bubble-mascot-corner {{
+  font-size:.78rem; padding:.4rem .7rem; max-width:180px; margin:0 6px 2px 0;
+  text-align:center; line-height:1.3;
+}}
 @media (max-height: 620px), (max-width: 700px) {{
-  .rag-mascot-corner {{display:none;}}
+  .rag-mascot-corner, #rag-mascot-corner-wrap {{display:none;}}
 }}
 @media (max-width: 480px) {{
   .rag-mascot-hero-unit .rag-mascot svg {{width:110px !important; height:auto !important;}}

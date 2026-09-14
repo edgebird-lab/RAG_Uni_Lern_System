@@ -94,6 +94,64 @@ def test_home_mood_line_nennt_faellige_karten():
     assert "3" in text
 
 
+def test_chat_mood_warten_ist_fokussiert_mit_birne():
+    from ragapp.ui._mascot import chat_mood, chat_mood_line
+    assert chat_mood(waiting=True) == ("focused", "float", "bulb")
+    icon, text = chat_mood_line(waiting=True, waiting_stage="retrieve")
+    assert "Unterlagen" in text
+    assert chat_mood_line(waiting=False) is None
+
+
+def test_chat_mood_leerer_chat_winkt():
+    from ragapp.ui._mascot import chat_mood
+    assert chat_mood(empty=True) == ("cheer", "wave", None)
+
+
+def test_chat_mood_fallback_und_vram_sind_besorgt():
+    from ragapp.ui._mascot import chat_mood
+    assert chat_mood(last_meta={"mode": "fallback"}) == ("worried", "shake", None)
+    assert chat_mood(last_meta={"mode": "vram_warn"}) == ("worried", "shake", None)
+    assert chat_mood(last_meta={"mode": "answer", "confidence": "unsicher"}) == (
+        "worried", "shake", None)
+
+
+def test_chat_mood_sokratisch_offene_frage_bleibt_fokussiert():
+    from ragapp.ui._mascot import chat_mood
+    assert chat_mood(
+        chat_mode="sokratisch", last_meta={"mode": "answer"},
+        last_content="Was ist der Testing-Effekt? [Quelle 4]",
+    ) == ("focused", "float", "bulb")
+
+
+def test_chat_mood_aufloesen_und_belegte_antwort_feiern():
+    from ragapp.ui._mascot import chat_mood
+    assert chat_mood(
+        last_meta={"mode": "answer"}, last_user="Löse es auf.",
+        last_content="Die Antwort ist X.",
+    ) == ("cheer", "wave", "star")
+    assert chat_mood(
+        last_meta={"mode": "answer"}, last_content="So berechnet man den DB.",
+    ) == ("cheer", "wave", "star")
+
+
+def test_chat_mood_hinweis_chip_laesst_birne():
+    from ragapp.ui._mascot import chat_mood
+    assert chat_mood(
+        last_user="Gib mir einen Hinweis, ohne die Antwort zu verraten.",
+        last_meta={"mode": "answer"},
+        last_content="Denk an den Abstand.",
+    ) == ("focused", "float", "bulb")
+
+
+def test_corner_bubble_html_escaped_and_empty_safe():
+    from ragapp.ui._mascot import _corner_bubble_html
+    html = _corner_bubble_html("Ich schau in den Unterlagen …", "🔍")
+    assert "rag-bubble-mascot-corner" in html
+    assert "🔍" in html
+    assert _corner_bubble_html(None) == ""
+    assert "&lt;" in _corner_bubble_html("<script>x</script>")
+
+
 def test_mascot_svg_prop_hat_ragm_prop_klasse():
     html = mascot_svg("#FF8FA3", prop="book")
     assert 'class="ragm-prop"' in html
