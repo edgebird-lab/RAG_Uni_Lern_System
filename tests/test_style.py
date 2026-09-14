@@ -394,6 +394,8 @@ def test_home_heute_starten_steht_vor_den_chips():
     assert "Nächste Klausur-Priorität" not in src
     assert "Heute lohnt" in src
     assert 'if _snap.get("cram_active")' in src
+    assert "verstehen_prefill" in src
+    assert 'key="heute_verstehen"' in src
 
 
 def test_lernen_zeigt_stapel_vor_der_lernset_fabrik():
@@ -419,6 +421,14 @@ def test_chat_leerer_verlauf_scrollt_nicht_zur_eingabe():
     assert "stChatInput" in src
     assert "stChatMessage" in src
     assert "chat_onboarding_questions" in src
+    assert "verstehen_prefill" in src
+    assert "Los geht" in src
+    assert "finish_verstehen_session" in src
+    _prefill = src.split("_verstehen_prefill = st.session_state.pop")[1].split(
+        'if "_chat_pending_choice"')[0]
+    assert "_pending_prompt" not in _prefill
+    assert "_socratic_boot" not in _prefill
+    assert "_start_socratic_dialog" not in _prefill
 
 
 def test_bottom_nav_html_hat_alltag_und_mehr():

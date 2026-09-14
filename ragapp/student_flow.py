@@ -463,6 +463,143 @@ def cards_from_markdown(md: str, *, subject: Optional[str] = None,
     return ids
 
 
+_VERSTEHEN_CTRL = frozenset({
+    "Gib mir einen Hinweis, ohne die Antwort zu verraten.",
+    "Ich weiß es teilweise.",
+    "Löse es auf.",
+    "Nächster Aspekt desselben Themas.",
+})
+_SKIP_TOPICS = frozenset({"(ohne thema)", "ohne thema", "ohne Thema", ""})
+
+
+def pick_verstehen_topic() -> Optional[dict]:
+    """Ein Fach und ein Thema für die nächste Verstehen-Sitzung – ohne Klausurdatum."""
+    from ragapp import analytics
+    from ragapp.graph.socratic import collect_socratic_topic_suggestions, is_usable_topic
+
+    snap = planner.today_snapshot()
+    subject = (snap.get("top_priority") or {}).get("subject")
+    if not subject or is_fixture_subject(subject) or is_placeholder_subject(subject):
+        subject = None
+        for s in manifest.study_subjects():
+            if not is_fixture_subject(s) and not is_placeholder_subject(s):
+                subject = s
+                break
+        if not subject:
+            return None
+    topic = None
+    mastery = None
+    for row in analytics.mastery_by_topic(subject, limit=8):
+        cand = (row.get("topic") or "").strip()
+        if cand.lower() in {x.lower() for x in _SKIP_TOPICS}:
+            continue
+        if not is_usable_topic(cand, subject=subject):
+            continue
+        topic = cand
+        mastery = row.get("mastery_pct")
+        break
+    if not topic:
+        cards = [dict(c) for c in manifest.list_cards(subject=subject, limit=40)]
+        docs = [dict(d) for d in manifest.list_documents()]
+        docs = [d for d in docs if d.get("subject") == subject]
+        sugg = collect_socratic_topic_suggestions(
+            cards=cards, documents=docs, subject=subject, limit=5)
+        topic = sugg[0] if sugg else None
+    if not topic:
+        return None
+    return {
+        "subject": subject,
+        "topic": topic,
+        "minutes": 20,
+        "mastery_pct": mastery,
+    }
+
+
+def verstehen_pairs(messages: list, topic: str) -> list[tuple[str, str]]:
+    """Frage/Antwort-Paare aus einem sokratischen Verlauf – ohne extra LLM."""
+    pairs: list[tuple[str, str]] = []
+    prev_asst = (topic or "").strip() or "Thema"
+    prev_user = ""
+    seen: set[str] = set()
+    for msg in messages or []:
+        text = (msg.get("content") or "").strip()
+        role = msg.get("role")
+        if not text:
+            continue
+        if role == "user":
+            prev_user = text
+            if (text.startswith("Lass uns über ")
+                    or text in _VERSTEHEN_CTRL or len(text) < 40):
+                continue
+            front = prev_asst[:200]
+            key = front.lower()
+            if key not in seen:
+                seen.add(key)
+                pairs.append((front, text[:1500]))
+        elif role == "assistant":
+            if prev_user == "Löse es auf.":
+                front = prev_asst[:200]
+                key = front.lower()
+                if key not in seen:
+                    seen.add(key)
+                    pairs.append((front, text[:1500]))
+            prev_asst = (text.split("\n")[0] or prev_asst)[:180]
+            prev_user = ""
+        if len(pairs) >= 4:
+            break
+    return pairs
+
+
+def finish_verstehen_session(
+    messages: list, *, topic: str, subject: Optional[str] = None,
+    started_at: Optional[float] = None, minutes: int = 20,
+) -> dict:
+    """Notiz + Karten aus der Sitzung. Kein LLM, kein Harvest."""
+    topic = (topic or "").strip() or "Thema"
+    lines: list[str] = [f"Thema: {topic}"]
+    for msg in messages or []:
+        text = (msg.get("content") or "").strip()
+        if not text:
+            continue
+        role = msg.get("role")
+        if role == "user":
+            if text.startswith("Lass uns über "):
+                continue
+            label = "Steuerung" if text in _VERSTEHEN_CTRL else "Du"
+            lines.append(f"**{label}:** {text[:600]}")
+        elif role == "assistant":
+            lines.append(text[:500])
+    body = "\n\n".join(lines).strip()
+    if body == f"Thema: {topic}":
+        body += "\n\nNoch keine Dialogzeilen."
+    note_id = manifest.create_note(
+        subject=subject, topic=topic, collection="Verstehen",
+        title=f"Verstehen: {topic}"[:80], body=body)
+    card_ids: list[str] = []
+    for front, back in verstehen_pairs(messages, topic):
+        cid = card_from_text(
+            front, back, source="chat", subject=subject, topic=topic)
+        if cid:
+            card_ids.append(cid)
+    ended = time.time()
+    started = float(started_at or ended)
+    duration = max(1, int(ended - started))
+    try:
+        manifest.log_study_session(
+            subject=subject, mode="verstehen",
+            started_at=started, ended_at=ended, duration_sec=duration,
+            notiz=topic)
+    except Exception:  # noqa: BLE001
+        pass
+    return {
+        "note_id": note_id,
+        "card_ids": card_ids,
+        "topic": topic,
+        "subject": subject,
+        "minutes": minutes,
+    }
+
+
 def capture_lecture(text: str, *, subject: Optional[str] = None,
                     title: Optional[str] = None, doc_id: Optional[str] = None
                     ) -> dict:

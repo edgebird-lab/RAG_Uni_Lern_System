@@ -13,6 +13,7 @@ from __future__ import annotations
 import sys
 import html
 import pathlib
+import time
 
 _p = pathlib.Path(__file__).resolve()
 for _anc in _p.parents:
@@ -86,6 +87,25 @@ with skeleton("Chat wird geladen …"):
 _chat_sessions = manifest.list_chat_sessions()
 _sess_by_id = {s["session_id"]: s for s in _chat_sessions}
 
+_verstehen_prefill = st.session_state.pop("verstehen_prefill", None)
+if _verstehen_prefill:
+    st.session_state["_chat_pending_choice"] = None
+    st.session_state["_verstehen_keep_topic"] = True
+    st.session_state["ui_chat_mode"] = "🧭 Sokratischer Dialog"
+    _vs_subj = (_verstehen_prefill.get("subject") or "").strip()
+    _vs_docs = {d["subject"] for d in manifest.list_documents() if d["subject"]}
+    if _vs_subj in _vs_docs:
+        st.session_state["chat_subject_filter"] = _vs_subj
+    _vs_topic = (_verstehen_prefill.get("topic") or "").strip()
+    st.session_state["socratic_topic"] = _vs_topic
+    st.session_state["verstehen_session"] = {
+        "subject": _vs_subj or None,
+        "topic": _vs_topic,
+        "minutes": int(_verstehen_prefill.get("minutes") or 20),
+        "started_at": time.time(),
+    }
+    st.session_state.messages = []
+
 if "_chat_pending_choice" in st.session_state:
     st.session_state["chat_session_choice"] = st.session_state.pop("_chat_pending_choice")
 elif st.session_state.get("chat_session_choice") not in ([None] + list(_sess_by_id.keys())):
@@ -106,17 +126,23 @@ _active_session_id = st.session_state.get("chat_session_choice")
 # sich, welche Sitzung zuletzt in st.session_state.messages geladen wurde.
 if st.session_state.get("_chat_loaded_session_id", "__unset__") != _active_session_id:
     st.session_state["_chat_loaded_session_id"] = _active_session_id
-    _sess = _sess_by_id.get(_active_session_id) if _active_session_id else None
-    st.session_state.messages = list(_sess["messages"]) if _sess else []
-    if _sess and _sess.get("subject"):
-        st.session_state["chat_subject_filter"] = _sess["subject"]
-    st.session_state.pop("socratic_topic", None)
-    _m0 = ""
-    if st.session_state.messages:
-        _m0 = (st.session_state.messages[0].get("content") or "").strip()
-    if _m0.startswith("Lass uns über ") and " sprechen." in _m0:
-        st.session_state["socratic_topic"] = (
-            _m0[len("Lass uns über "):].split(" sprechen.", 1)[0].strip())
+    _keep_verstehen = bool(st.session_state.pop("_verstehen_keep_topic", False))
+    if _keep_verstehen:
+        st.session_state.messages = []
+    else:
+        _sess = _sess_by_id.get(_active_session_id) if _active_session_id else None
+        st.session_state.messages = list(_sess["messages"]) if _sess else []
+        if _sess and _sess.get("subject"):
+            st.session_state["chat_subject_filter"] = _sess["subject"]
+        st.session_state.pop("socratic_topic", None)
+        _m0 = ""
+        if st.session_state.messages:
+            _m0 = (st.session_state.messages[0].get("content") or "").strip()
+        if _m0.startswith("Lass uns über ") and " sprechen." in _m0:
+            st.session_state["socratic_topic"] = (
+                _m0[len("Lass uns über "):].split(" sprechen.", 1)[0].strip())
+else:
+    st.session_state.pop("_verstehen_keep_topic", None)
 
 with sticky_expander("⚙️ Chat & Filter", key="chat_filter_expander", expanded=False):
     st.caption(f"Modell: `{settings.LLM_MODEL}` · Embedding: `{settings.EMBED_MODEL}`")
@@ -225,6 +251,7 @@ with sticky_expander("⚙️ Chat & Filter", key="chat_filter_expander", expande
         st.session_state.messages = []
         st.session_state["_chat_pending_choice"] = None
         st.session_state.pop("socratic_topic", None)
+        st.session_state.pop("verstehen_session", None)
         st.rerun()
 
 
@@ -640,14 +667,61 @@ if (stats["chunks"] > 0 and not _incoming and not _socratic_started
         elif not st.session_state.messages:
             _render_onboarding()
 
+_vs_flash = st.session_state.pop("_verstehen_flash", None)
+if _vs_flash:
+    st.success(_vs_flash)
+
 if _chat_mode == "sokratisch" and st.session_state.get("socratic_topic"):
-    _tb1, _tb2 = st.columns([4, 1])
-    _tb1.caption(f"🧭 Thema: **{st.session_state['socratic_topic']}**")
-    if _tb2.button("Neues Thema", key="soc_reset_topic",
-                   help="Nächste Dialoglinie – der Verlauf bleibt."):
-        st.session_state.pop("socratic_topic", None)
-        st.session_state["_socratic_pick_again"] = True
-        st.rerun()
+    _topic_now = st.session_state["socratic_topic"]
+    _vs_sess = st.session_state.get("verstehen_session") or {}
+    if _vs_sess.get("topic") == _topic_now:
+        _left = max(0, int(_vs_sess.get("minutes") or 20) - int(
+            (time.time() - float(_vs_sess.get("started_at") or time.time())) / 60))
+        st.info(f"Verstehen-Sitzung · **{_topic_now}** · noch etwa {_left} Min")
+        _has_msgs = bool(st.session_state.get("messages"))
+        _pending = bool(st.session_state.get("_pending_prompt"))
+        _end_clicked = False
+        if not _has_msgs and not _pending:
+            _c_go, _c_end = st.columns(2)
+            with _c_go:
+                if st.button("Los geht’s", type="primary", key="verstehen_los",
+                             use_container_width=True):
+                    _start_socratic_dialog(_topic_now)
+            with _c_end:
+                _end_clicked = st.button(
+                    "Sitzung beenden – Notiz + Karten",
+                    key="verstehen_end", use_container_width=True)
+        else:
+            _end_clicked = st.button(
+                "Sitzung beenden – Notiz + Karten",
+                key="verstehen_end", use_container_width=True)
+        if _end_clicked:
+            from ragapp import student_flow as _sf
+            _out = _sf.finish_verstehen_session(
+                st.session_state.get("messages") or [],
+                topic=_topic_now,
+                subject=str(_vs_sess.get("subject") or "") or None,
+                started_at=float(_vs_sess.get("started_at") or time.time()),
+                minutes=int(_vs_sess.get("minutes") or 20),
+            )
+            st.session_state.pop("verstehen_session", None)
+            _n = 1 if _out.get("note_id") else 0
+            _k = len(_out.get("card_ids") or [])
+            st.session_state["_verstehen_flash"] = (
+                f"Notiz + {_k} Karte(n) gespeichert" if (_n or _k)
+                else "Sitzung beendet")
+            if not st.session_state.get("messages"):
+                st.session_state.pop("socratic_topic", None)
+                st.session_state["_socratic_pick_again"] = True
+            st.rerun()
+    else:
+        _tb1, _tb2 = st.columns([4, 1])
+        _tb1.caption(f"🧭 Thema: **{_topic_now}**")
+        if _tb2.button("Neues Thema", key="soc_reset_topic",
+                       help="Nächste Dialoglinie – der Verlauf bleibt."):
+            st.session_state.pop("socratic_topic", None)
+            st.session_state["_socratic_pick_again"] = True
+            st.rerun()
 
 
 # --------------------------------------------------------------------------- #

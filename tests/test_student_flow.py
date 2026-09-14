@@ -789,3 +789,100 @@ def test_plain_study_snippet_strips_math_and_markdown():
     long = student_flow.plain_study_snippet("a" * 80, limit=42)
     assert long.endswith("…")
     assert len(long) == 43
+
+
+def test_pick_verstehen_topic_ueberspringt_livetest(isolated_db):
+    student_flow.card_from_text(
+        "Was ist der Testing-Effekt?",
+        "Wiederholen verbessert das Behalten stärker als nur nochmal lesen.",
+        subject="Livetest", topic="Testing-Effekt")
+    assert student_flow.pick_verstehen_topic() is None
+
+
+def test_pick_verstehen_topic_nimmt_echtes_fach(isolated_db):
+    student_flow.card_from_text(
+        "Was ist der Testing-Effekt?",
+        "Wiederholen verbessert das Behalten stärker als nur nochmal lesen.",
+        subject="Livetest", topic="Testing-Effekt")
+    student_flow.card_from_text(
+        "Was ist der Deckungsbeitrag?",
+        "Erlös minus variable Kosten in der Kosten- und Leistungsrechnung.",
+        subject="BWL", topic="Deckungsbeitrag")
+    got = student_flow.pick_verstehen_topic()
+    assert got is not None
+    assert got["subject"] == "BWL"
+    assert got["topic"] == "Deckungsbeitrag"
+    assert got["minutes"] == 20
+    assert "Livetest" not in (got["subject"] or "")
+
+
+def test_pick_verstehen_topic_nimmt_kartenfrage_statt_seite(isolated_db):
+    student_flow.card_from_text(
+        "Was ist ein Incident-Report?",
+        "Ein Bericht nach einem Sicherheitsvorfall mit Zeitlinie und Maßnahmen.",
+        subject="Cybersecurity", topic="Seite 7")
+    manifest.upsert_document(
+        doc_id="d-cs", content_hash="h", source_path="cs.pdf", filename="cs.pdf",
+        subject="Cybersecurity", filetype="pdf", num_chunks=1, num_questions=0,
+        char_count=10, status="ok")
+    got = student_flow.pick_verstehen_topic()
+    assert got is not None
+    assert got["subject"] == "Cybersecurity"
+    assert got["topic"]
+    assert "Seite" not in got["topic"]
+    assert got["topic"].lower() not in {"(ohne thema)", "ohne thema"}
+
+
+def test_verstehen_pairs_erklaeren_und_aufloesen():
+    messages = [
+        {"role": "user", "content": "Lass uns über Schutzziele sprechen."},
+        {"role": "assistant", "content": "Was sind die drei Schutzziele?\nBleib bei diesem Punkt."},
+        {"role": "user", "content": (
+            "Vertraulichkeit, Integrität und Verfügbarkeit sind die klassischen "
+            "Schutzziele der Informationssicherheit.")},
+        {"role": "assistant", "content": "Welches Ziel schützt vor unbefugtem Lesen?"},
+        {"role": "user", "content": "Löse es auf."},
+        {"role": "assistant", "content": "Vertraulichkeit schützt vor unbefugtem Lesen."},
+    ]
+    pairs = student_flow.verstehen_pairs(messages, "Schutzziele")
+    assert len(pairs) == 2
+    assert "drei Schutzziele" in pairs[0][0]
+    assert "Vertraulichkeit, Integrität" in pairs[0][1]
+    assert "unbefugtem Lesen" in pairs[1][0]
+    assert "Vertraulichkeit schützt" in pairs[1][1]
+
+
+def test_finish_verstehen_session_schreibt_notiz_und_karten(isolated_db):
+    messages = [
+        {"role": "user", "content": "Lass uns über Schutzziele sprechen."},
+        {"role": "assistant", "content": "Was sind die drei Schutzziele?"},
+        {"role": "user", "content": (
+            "Vertraulichkeit, Integrität und Verfügbarkeit sind die klassischen "
+            "Schutzziele der Informationssicherheit.")},
+        {"role": "assistant", "content": "Welches Ziel schützt vor unbefugtem Lesen?"},
+        {"role": "user", "content": "Löse es auf."},
+        {"role": "assistant", "content": "Vertraulichkeit schützt vor unbefugtem Lesen."},
+    ]
+    out = student_flow.finish_verstehen_session(
+        messages, topic="Schutzziele", subject="IT-Sicherheit",
+        started_at=1000.0, minutes=20)
+    assert out["note_id"]
+    note = manifest.get_note(out["note_id"])
+    assert note["collection"] == "Verstehen"
+    assert "Schutzziele" in note["title"]
+    assert "Vertraulichkeit" in note["body"]
+    assert out["card_ids"]
+    cards = manifest.get_cards_by_ids(out["card_ids"])
+    assert any(c.get("source") == "chat" for c in cards)
+    sessions = manifest.list_study_sessions(subject="IT-Sicherheit")
+    assert any(s.get("mode") == "verstehen" for s in sessions)
+
+
+def test_finish_verstehen_leerer_dialog_legt_trotzdem_notiz_an(isolated_db):
+    out = student_flow.finish_verstehen_session(
+        [], topic="Schutzziele", subject="IT-Sicherheit")
+    assert out["note_id"]
+    assert out["card_ids"] == []
+    note = manifest.get_note(out["note_id"])
+    assert "Noch keine Dialogzeilen" in note["body"]
+    assert note["collection"] == "Verstehen"

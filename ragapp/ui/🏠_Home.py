@@ -398,10 +398,24 @@ if _snap:
 
         _tp = _snap.get("top_priority") or {}
         _tp_subj = SUBJECT_LABELS.get(_tp.get("subject"), _tp.get("subject")) if _tp else None
-        if _tp_subj:
+        from ragapp import student_flow as _sf
+        _vs = _sf.pick_verstehen_topic()
+        if _vs:
+            _vs_label = (_vs["topic"] or "").strip()
+            if len(_vs_label) > 42:
+                _vs_label = _vs_label[:40].rstrip() + "…"
+            if st.button(
+                    f"🧭 Verstehen: {_vs_label} · {_vs['minutes']} Min",
+                    type="primary" if not _snap.get("due_cards") else "secondary",
+                    key="heute_verstehen",
+                    use_container_width=True,
+                    help="20 Minuten mit einem Thema: sokratischer Dialog, "
+                         "am Ende eine Notiz und ein paar Karten."):
+                st.session_state["verstehen_prefill"] = _vs
+                st.switch_page(_target["chat"])
+        elif _tp_subj:
             st.caption(f"Heute lohnt: **{_tp_subj}**.")
 
-        from ragapp import student_flow as _sf
         _faecher = _home_manifest.study_subjects()
         _sprint_choices = ["Alle Fächer"] + _faecher
         if "home_sprint_subject" not in st.session_state:
