@@ -28,7 +28,7 @@ from ragapp.ui._loading import page_boot, skeleton
 page_boot("💬 Chat", page_title="Chat", icon="💬",
           layout="wide", accent="chat")
 
-from ragapp.ui._style import card, delete_button
+from ragapp.ui._style import card, delete_button, sticky_expander
 
 # --------------------------------------------------------------------------- #
 # Styling - Rest kommt zentral aus apply_theme()/apply_page_style(); hier nur
@@ -121,7 +121,7 @@ if st.session_state.get("_chat_loaded_session_id", "__unset__") != _active_sessi
     if _sess and _sess.get("subject"):
         st.session_state["chat_subject_filter"] = _sess["subject"]
 
-with st.expander("⚙️ Chat & Filter", expanded=False):
+with sticky_expander("⚙️ Chat & Filter", key="chat_filter_expander", expanded=False):
     st.caption(f"Modell: `{settings.LLM_MODEL}` · Embedding: `{settings.EMBED_MODEL}`")
     if _active_session_id is not None:
         _new_title = st.text_input(
