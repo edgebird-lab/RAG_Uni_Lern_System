@@ -100,6 +100,149 @@ def today_session_cards(*, subject: Optional[str] = None, limit: int = 15,
     return cards[:limit]
 
 
+def cards_for_prefill(prefill: dict) -> list[dict]:
+    """Karten aus ``study_prefill``: card_ids vor doc_ids, danach Heute-Session."""
+    prefill = prefill or {}
+    limit = max(1, min(int(prefill.get("limit") or 16), 40))
+    subject = prefill.get("subject")
+    if prefill.get("source") == "fehlerheft" or prefill.get("deck") == "Fehlerheft":
+        return fehlerheft_cards(limit=limit, subject=subject)
+    if prefill.get("sprint") or prefill.get("mode") == "sprint":
+        return sprint_cards(
+            subject=subject, limit=limit,
+            decks=prefill.get("decks"), deck=prefill.get("deck"),
+            prefer=prefill.get("prefer") or "auto")
+    card_ids = [c for c in (prefill.get("card_ids") or []) if c]
+    if card_ids:
+        found = manifest.find_cards(
+            card_ids=card_ids, exclude_suspended=True, limit=limit)
+        by_id = {c["card_id"]: c for c in found}
+        ordered = [by_id[i] for i in card_ids if i in by_id]
+        if ordered:
+            return ordered[:limit]
+    doc_ids = [d for d in (prefill.get("doc_ids") or []) if d]
+    topics = [t for t in (prefill.get("topics") or []) if t]
+    if doc_ids or topics:
+        cards = manifest.find_cards(
+            subject=subject, doc_ids=doc_ids or None,
+            topics=topics or None, limit=limit)
+        if not cards and topics and doc_ids:
+            cards = manifest.find_cards(
+                subject=subject, doc_ids=doc_ids, limit=limit)
+        if cards:
+            return cards[:limit]
+    return today_session_cards(
+        subject=subject, limit=limit,
+        cram=bool(prefill.get("cram")), deck=prefill.get("deck"),
+        sprint=bool(prefill.get("sprint")),
+        preferred_card_ids=card_ids or None)
+
+
+def prefill_from_plan_block(block_id: str, **extra) -> dict:
+    """study_prefill / practice_prefill aus einem Lernplan-Block."""
+    out = {"source": "plan", "mode": "reveal", "limit": 12, "block_id": block_id}
+    out.update(extra)
+    block = manifest.get_plan_block(block_id) if block_id else None
+    if not block:
+        return out
+    plan = manifest.get_study_plan(block["plan_id"]) or {}
+    section: dict = {}
+    if block.get("section_id"):
+        for sec in manifest.list_plan_sections(block["plan_id"]):
+            if sec.get("section_id") == block["section_id"]:
+                section = sec
+                break
+    doc_ids = [
+        ref.get("doc_id") for ref in (section.get("source_refs") or [])
+        if ref.get("doc_id")
+    ]
+    if not doc_ids:
+        doc_ids = list(plan.get("doc_ids") or [])
+    topics = [section["title"]] if section.get("title") else []
+    out.setdefault("subject", plan.get("subject"))
+    out.setdefault("doc_ids", doc_ids)
+    out.setdefault("topics", topics)
+    return out
+
+
+def mark_plan_block_done(block_id: str, via: str = "manual") -> None:
+    """Block abhaken und Planstatus nachziehen."""
+    if not block_id:
+        return
+    manifest.set_block_done(block_id, True, via=via)
+    block = manifest.get_plan_block(block_id)
+    if block:
+        manifest.sync_plan_status(block["plan_id"])
+
+
+def upsert_formelsammlung(subject: str, text: str) -> str:
+    """Eine Formelsammlung pro Fach als angeheftete Notiz."""
+    body = (text or "").strip()
+    title = f"Formelsammlung {subject}".strip()
+    existing = manifest.list_notes(
+        subject=subject, collection="Formelsammlung", limit=1)
+    if existing:
+        manifest.update_note(
+            existing[0]["note_id"], body=body, title=title, pinned=True)
+        return existing[0]["note_id"]
+    return manifest.create_note(
+        subject=subject, collection="Formelsammlung", topic="Formel",
+        title=title, body=body, pinned=True)
+
+
+def formelsammlung_text(subject: str) -> Optional[str]:
+    notes = manifest.list_notes(
+        subject=subject, collection="Formelsammlung", limit=1)
+    if notes:
+        return notes[0].get("body") or ""
+    return None
+
+
+def overconfidence_card_ids(*, subject: Optional[str] = None,
+                            limit: int = 20) -> list[str]:
+    """Karten aus dem Fehlerheft, die als sicher-und-falsch markiert sind."""
+    ids: list[str] = []
+    seen: set[str] = set()
+    for err in manifest.list_errors(subject=subject, limit=max(limit * 2, 20)):
+        cid = err.get("card_id")
+        if not cid or cid in seen:
+            continue
+        if not (err.get("detail") or "").startswith("Sicher eingeschätzt"):
+            continue
+        seen.add(cid)
+        ids.append(cid)
+        if len(ids) >= limit:
+            break
+    return ids
+
+
+def apply_oral_score(card_id: Optional[str], partial_points: int, *,
+                     subject: Optional[str] = None,
+                     front: Optional[str] = None) -> None:
+    """Mündliche Teilpunkte auf FSRS und Fehlerheft abbilden."""
+    from ragapp.study import GEWUSST, HALB, NICHT, rate_card
+
+    if not card_id:
+        return
+    cards = manifest.get_cards_by_ids([card_id])
+    if not cards:
+        return
+    pts = max(0, min(100, int(partial_points)))
+    if pts >= 75:
+        rating = GEWUSST
+    elif pts >= 40:
+        rating = HALB
+    else:
+        rating = NICHT
+    rate_card(cards[0], rating)
+    if rating <= NICHT:
+        record_error(
+            source="oral", card=cards[0], card_id=card_id,
+            subject=subject or cards[0].get("subject"),
+            front=front or cards[0].get("front"),
+            detail=f"Mündlich {pts} %")
+
+
 def card_looks_like_formula(card: dict) -> bool:
     """True, wenn Vorder- oder Rückseite nach einer echten Formel aussieht."""
     front = (card.get("front") or "").strip()

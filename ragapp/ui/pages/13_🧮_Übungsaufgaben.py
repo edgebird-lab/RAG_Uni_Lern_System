@@ -23,7 +23,7 @@ from ragapp.ui._loading import page_boot, skeleton
 page_boot("🧮 Übungsaufgaben", page_title="Übungsaufgaben", icon="🧮", layout="wide",
          accent="uebungsaufgaben")
 
-from ragapp.ui._style import card, delete_button
+from ragapp.ui._style import block_done_banner, card, delete_button
 
 st.markdown("""
 <style>
@@ -76,7 +76,14 @@ if _prefill and _prefill.get("subject") in _subjects_with_docs:
     st.session_state["_practice_prefill_doc_ids"] = _prefill.get("doc_ids") or []
     st.session_state["practice_gen_topic"] = _prefill.get("topic") or ""
     st.session_state["_practice_gen_expanded"] = True
+    if _prefill.get("block_id"):
+        st.session_state["_practice_from_block_id"] = _prefill["block_id"]
     st.info("🧮 Vorbelegt aus dem Lernplan – unten Art/Modell wählen und generieren.")
+
+if st.session_state.get("_practice_session_done"):
+    block_done_banner(state_key="_practice_from_block_id", key_prefix="practice")
+    if not st.session_state.get("_practice_from_block_id"):
+        st.session_state.pop("_practice_session_done", None)
 
 # --------------------------------------------------------------------------- #
 # Neue Aufgabe generieren
@@ -177,6 +184,9 @@ def _practice_priority(p: dict) -> tuple:
     info = _attempt_summary.get(p["problem_id"])
     if info is None:
         return (0, 0.0)                          # nie geuebt -> zuerst
+    best = info.get("best_score")
+    if best is not None and best >= 75:
+        return (3, info["last_attempted_at"] or 0.0)  # sitzt
     _rank = {0: 1, 1: 2, 2: 3}.get(info["last_rating"], 1)
     return (_rank, info["last_attempted_at"] or 0.0)
 
@@ -188,6 +198,9 @@ def _practice_badge(p: dict) -> str:
     info = _attempt_summary.get(p["problem_id"])
     if info is None:
         return "🔴 "
+    best = info.get("best_score")
+    if best is not None and best >= 75:
+        return "✅ "
     return {0: "🔴 ", 1: "🟡 "}.get(info["last_rating"], "")
 
 if "_practice_pending_choice" in st.session_state:
@@ -201,8 +214,8 @@ col_list, col_practice = st.columns([1, 2])
 with col_list:
     with card("liste"):
         if _problems:
-            st.caption("🔴 empfohlen (nie/schlecht geübt) · 🟡 teilweise gewusst – "
-                      "sonst zuletzt gut gelöst.")
+            st.caption("🔴 empfohlen (nie/schlecht geübt) · 🟡 teilweise · "
+                      "✅ sitzt (Bestwert ≥ 75 %).")
         if not _problems:
             # KEIN leerer st.container(height=480) mehr, wenn es nichts zu
             # zeigen gibt - wirkte sonst wie ein verwaistes, kaputtes Element
@@ -384,6 +397,7 @@ with col_practice:
                 st.session_state.pop(_answer_key, None)
                 st.session_state.pop(_grade_key, None)
                 st.session_state[_resolved_key] = False
+                st.session_state["_practice_session_done"] = True
                 st.rerun()
 
             if r1.button(
@@ -435,8 +449,14 @@ if _subj_arg:
                 except practice_gen.PracticeGenError as exc:
                     st.error(str(exc))
                 else:
+                    from ragapp.student_flow import upsert_formelsammlung
+                    upsert_formelsammlung(_subj_arg, _fs_text)
                     st.session_state[f"_formelsammlung_{_subj_arg}"] = _fs_text
-        _fs_cached = st.session_state.get(f"_formelsammlung_{_subj_arg}")
+        from ragapp.student_flow import formelsammlung_text as _fs_load
+        _fs_cached = (
+            st.session_state.get(f"_formelsammlung_{_subj_arg}")
+            or _fs_load(_subj_arg)
+        )
         if _fs_cached:
             st.markdown(_fs_cached)
             st.download_button(

@@ -483,7 +483,7 @@ with card("chat"):
         st.session_state[_chat_key] = []
         st.rerun()
 
-    for _msg in st.session_state[_chat_key]:
+    for _mi, _msg in enumerate(st.session_state[_chat_key]):
         with st.chat_message(_msg["role"], avatar="🧑‍🎓" if _msg["role"] == "user" else "🤖"):
             st.markdown(_msg["content"])
             if _msg.get("sources"):
@@ -493,6 +493,19 @@ with card("chat"):
                         st.caption(f"[{s['rank']}] {s['filename']}{loc}")
                         _snip = s.get("snippet", "")
                         st.caption("„" + _snip[:240] + ("…" if len(_snip) > 240 else "") + "”")
+            if _msg["role"] == "assistant" and (_msg.get("content") or "").strip():
+                _prev = st.session_state[_chat_key][_mi - 1] if _mi > 0 else {}
+                _q = _prev.get("content") if _prev.get("role") == "user" else None
+                if _q and st.button(
+                        "➕ Als Karte speichern",
+                        key=f"mm_save_card_{_active_id}_{_mi}"):
+                    from ragapp import study as _mm_study
+                    _cid = _mm_study.card_from_chat(
+                        _q, _msg["content"],
+                        subject=_active.get("subject"),
+                        sources=_msg.get("sources"))
+                    st.toast("📇 Als Karte gespeichert – üben auf 🎓 Karteikarten!"
+                             if _cid else "Konnte keine Karte anlegen.")
 
     _mm_prompt = st.chat_input(_chat_placeholder, key=f"mm_chat_input_{_active_id}")
     if not _mm_prompt:

@@ -162,6 +162,18 @@ if _sektion == "Analyse":
                 f"Mal sicher und trotzdem falsch ({_pct} %). "
                 "Das zeigt, wo die Einschätzung und das Ergebnis auseinanderlaufen – "
                 "kein Vorwurf.")
+            if _cal["overconfidence_n"]:
+                from ragapp.student_flow import overconfidence_card_ids
+                _jol_ids = overconfidence_card_ids(subject=subject, limit=15)
+                if st.button("Sicher-falsch üben", key="fp_jol_practice"):
+                    from ragapp.ui._style import PAGE_REGISTRY as _PR
+                    st.session_state["study_prefill"] = {
+                        "source": "fehlerheft", "deck": "Fehlerheft",
+                        "mode": "reveal", "limit": 15,
+                        "subject": subject,
+                        "card_ids": _jol_ids,
+                    }
+                    st.switch_page(next(p["target"] for p in _PR if p["key"] == "lernen"))
 
 if _sektion == "Errungenschaften":
     # --------------------------------------------------------------------------- #
@@ -353,6 +365,24 @@ if _sektion == "Klausurstatus":
                     st.markdown(f"**{_a['total_pct']} %** · {_a['num_items']} Aufgaben · {_when}")
                     for _it in manifest.list_exam_attempt_items(_a["attempt_id"]):
                         st.caption(f"· {(_it.get('front') or '')[:90]} · {_it.get('score', '—')} %")
+
+        from ragapp import oral_exam as _oral_hist
+        _orals = _oral_hist.list_sessions(limit=8)
+        if _orals:
+            with st.expander("Mündliche Prüfungen", expanded=False):
+                for _os in _orals:
+                    _when = time.strftime(
+                        "%d.%m. %H:%M", time.localtime(_os.get("updated_at") or 0))
+                    _pct = _os.get("total_pct")
+                    st.markdown(
+                        f"**{_fach(_os.get('subject'))}** · {_os.get('status')} · "
+                        + (f"{_pct} %" if _pct is not None else "ohne Gesamtwert")
+                        + f" · {_when}")
+                    for _q in (_os.get("questions") or [])[:6]:
+                        _qpts = _q.get("partial_points")
+                        st.caption(
+                            f"· {(_q.get('question') or '')[:80]}"
+                            + (f" · {_qpts} %" if _qpts is not None else ""))
 
         with st.expander("Klausurtermin setzen / ändern", expanded=not manifest.list_exams()):
             with st.form("exam_form", clear_on_submit=False):

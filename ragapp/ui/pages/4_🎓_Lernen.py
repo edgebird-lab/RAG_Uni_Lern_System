@@ -26,7 +26,7 @@ from ragapp.ui._loading import page_boot, skeleton
 # damit beim Seitenwechsel kein weisser Bildschirm entsteht.
 page_boot("🎓 Karteikarten", page_title="Karteikarten", icon="🎓", layout="wide", accent="lernen")
 
-from ragapp.ui._style import card, delete_button
+from ragapp.ui._style import block_done_banner, card, delete_button
 
 # Nur noch das seiten-spezifische Layout; die Karteikarten-Optik (hell + dunkel)
 # kommt jetzt zentral aus ragapp.ui._theme.apply_theme().
@@ -127,6 +127,12 @@ def _render_lernset_pfad() -> None:
                  use_container_width=True):
         st.session_state["study_prefill"] = {
             "source": "lernset", "limit": 16, "mode": "reveal",
+            "doc_ids": prev.get("doc_ids") or picked,
+            "card_ids": prev.get("card_ids") or [
+                ex.get("card_id") for ex in (prev.get("examples") or [])
+                if ex.get("card_id")
+            ],
+            "topics": prev.get("topics") or [],
         }
         st.session_state.pop("_lernset_result", None)
         st.rerun()
@@ -292,37 +298,12 @@ if _prefill and not st.session_state.get(ACTIVE):
                        use_container_width=True):
             _prefill = st.session_state.pop("study_prefill", {}) or {}
             from ragapp import student_flow as _sf
-            _lim = int(_prefill.get("limit") or 16)
-            if _prefill.get("source") == "fehlerheft" or _prefill.get("deck") == "Fehlerheft":
-                _pk = _sf.fehlerheft_cards(limit=_lim, subject=_prefill.get("subject"))
-            elif _prefill.get("sprint") or _prefill.get("mode") == "sprint":
-                _pk = _sf.sprint_cards(
-                    subject=_prefill.get("subject"), limit=_lim,
-                    decks=_prefill.get("decks"),
-                    prefer=_prefill.get("prefer") or "auto")
+            if _prefill.get("sprint") or _prefill.get("mode") == "sprint":
                 st.session_state["_study_sprint"] = True
                 st.session_state["_study_sprint_prefer"] = _prefill.get("prefer") or "auto"
-            elif _prefill.get("doc_ids"):
-                _pk = manifest.find_cards(
-                    subject=_prefill.get("subject"),
-                    doc_ids=_prefill.get("doc_ids"),
-                    topics=_prefill.get("topics") or None,
-                    limit=_lim,
-                )
-                if not _pk and _prefill.get("topics"):
-                    _pk = manifest.find_cards(
-                        subject=_prefill.get("subject"),
-                        doc_ids=_prefill.get("doc_ids"),
-                        limit=_lim,
-                    )
-            else:
-                _pk = _sf.today_session_cards(
-                    subject=_prefill.get("subject"), limit=_lim,
-                    cram=bool(_prefill.get("cram")), deck=_prefill.get("deck"),
-                    sprint=bool(_prefill.get("sprint")),
-                    preferred_card_ids=_prefill.get("card_ids"))
-                if _prefill.get("mode") == "sprint":
-                    st.session_state["_study_sprint"] = True
+            if _prefill.get("block_id"):
+                st.session_state["_study_from_block_id"] = _prefill["block_id"]
+            _pk = _sf.cards_for_prefill(_prefill)
             _pmode = _prefill.get("mode") or "reveal"
             if _pmode == "sprint":
                 _pmode = "reveal"
@@ -335,6 +316,33 @@ if _prefill and not st.session_state.get(ACTIVE):
                        use_container_width=True):
             st.session_state.pop("study_prefill", None)
             st.rerun()
+
+
+if not st.session_state.get(ACTIVE):
+    block_done_banner(state_key="_study_from_block_id", key_prefix="study")
+    _err_open = manifest.list_errors(limit=8)
+    if _err_open:
+        with st.expander(
+                f"📒 Fehlerheft ({manifest.count_open_errors()} offen)",
+                expanded=False):
+            st.caption("Offene Lücken – üben oder als erledigt abhaken.")
+            for _err in _err_open:
+                _e1, _e2, _e3 = st.columns([3.2, 1, 1])
+                _e1.write((_err.get("front") or _err.get("detail") or "Eintrag")[:90])
+                if _e2.button("Üben", key=f"err_practice_{_err['error_id']}",
+                              use_container_width=True):
+                    st.session_state["study_prefill"] = {
+                        "source": "fehlerheft", "deck": "Fehlerheft",
+                        "mode": "reveal", "limit": 15,
+                        "subject": _err.get("subject"),
+                        "card_ids": (
+                            [_err["card_id"]] if _err.get("card_id") else []),
+                    }
+                    st.rerun()
+                if _e3.button("Erledigt", key=f"err_done_{_err['error_id']}",
+                              use_container_width=True):
+                    manifest.resolve_error(_err["error_id"])
+                    st.rerun()
 
 
 if not st.session_state.get(ACTIVE):
@@ -658,6 +666,8 @@ else:
             components.html(_celebration_effects_html(), height=0)
             for _na in _round_newly:
                 st.success(f"**Neu freigeschaltet:** {_na.icon} {_na.title} – {_na.description}")
+
+        block_done_banner(state_key="_study_from_block_id", key_prefix="study_round")
 
         b1, b2 = st.columns(2)
         if b1.button("🔁 Neue Runde", use_container_width=True):
@@ -1010,7 +1020,8 @@ _active_tab = st.segmented_control(
 
 if _active_tab == "🌾 Karten erstellen":
     st.caption("Standardweg oben: Dokumente wählen → Lernset erstellen → Vorschau. "
-               "Chunk-Limits, manuelles Ernten und Klausurkatalog liegen im Expertenmodus.")
+               "Fragen anreichern, manuelles Ernten und Klausurkatalog bleiben "
+               "im Expertenmodus.")
     with st.expander("Expertenmodus", expanded=False):
         _render_karten_erstellen()
 

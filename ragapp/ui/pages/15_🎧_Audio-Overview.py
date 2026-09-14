@@ -289,6 +289,9 @@ if _active_id is None:
     if _pref_script:
         st.session_state["audio_create_mode"] = "✍️ Eigenes Skript schreiben"
         st.session_state["audio_manual_script"] = _pref_script
+    _pref_subj = st.session_state.pop("audio_prefill_subject", None)
+    if _pref_subj and _pref_subj in _subjects_with_docs:
+        st.session_state["audio_new_subject"] = _pref_subj
     st.markdown("##### Neue Audio-Übersicht anlegen")
     if st.button("🎯 Nur schwaches Fach vorlesen", key="audio_weak"):
         from ragapp.student_flow import weak_subject

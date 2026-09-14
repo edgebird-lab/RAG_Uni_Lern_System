@@ -542,3 +542,71 @@ def test_recovery_worker_startet_nur_einmal(monkeypatch):
     student_flow._RECOVERY_THREAD.join(timeout=2)
     assert calls == ["backfill", "ocr", "reconcile", "retry"]
     assert student_flow.start_recovery_worker() is False
+
+
+def test_cards_for_prefill_prefers_card_ids(isolated_db):
+    a = student_flow.card_from_text("A?", "aa", subject="BWL", doc_id="d1")
+    b = student_flow.card_from_text("B?", "bb", subject="BWL", doc_id="d2")
+    cards = student_flow.cards_for_prefill({
+        "card_ids": [b], "doc_ids": ["d1"], "limit": 10,
+    })
+    assert [c["card_id"] for c in cards] == [b]
+    assert a not in [c["card_id"] for c in cards]
+
+
+def test_cards_for_prefill_uses_doc_ids(isolated_db):
+    a = student_flow.card_from_text("A?", "aa", subject="BWL", doc_id="d1")
+    student_flow.card_from_text("B?", "bb", subject="BWL", doc_id="d2")
+    cards = student_flow.cards_for_prefill({"doc_ids": ["d1"], "limit": 10})
+    assert [c["card_id"] for c in cards] == [a]
+
+
+def test_prefill_from_plan_block_carries_section_docs(isolated_db):
+    pid = manifest.create_study_plan(
+        title="P", subject="BWL", doc_ids=["fallback"],
+        deadline=None, daily_minutes=45)
+    sid = manifest.append_plan_section(
+        pid, title="Kosten", summary="", est_minutes=25,
+        source_refs=[{"doc_id": "d1", "filename": "a.pdf", "section": "1.1"}])
+    manifest.append_plan_block(
+        pid, section_id=sid, planned_date=date.today().isoformat(),
+        planned_min=25)
+    bid = manifest.list_plan_blocks(pid)[0]["block_id"]
+    pre = student_flow.prefill_from_plan_block(bid, limit=8)
+    assert pre["subject"] == "BWL"
+    assert pre["doc_ids"] == ["d1"]
+    assert pre["topics"] == ["Kosten"]
+    assert pre["block_id"] == bid
+    assert pre["limit"] == 8
+    student_flow.mark_plan_block_done(bid, via="manual")
+    assert manifest.get_plan_block(bid)["done"] == 1
+
+
+def test_formelsammlung_note_upsert(isolated_db):
+    nid = student_flow.upsert_formelsammlung("BWL", "DB = E - Kv")
+    assert student_flow.formelsammlung_text("BWL") == "DB = E - Kv"
+    nid2 = student_flow.upsert_formelsammlung("BWL", "neu")
+    assert nid2 == nid
+    assert student_flow.formelsammlung_text("BWL") == "neu"
+    notes = manifest.list_notes(subject="BWL", collection="Formelsammlung")
+    assert len(notes) == 1
+    assert notes[0]["pinned"]
+
+
+def test_resolve_error_lowers_open_count(isolated_db):
+    cid = student_flow.card_from_text("Q", "A", source="chat", subject="X")
+    eid = student_flow.record_error(
+        source="card", card_id=cid, front="Q", subject="X")
+    assert manifest.count_open_errors() == 1
+    manifest.resolve_error(eid)
+    assert manifest.count_open_errors() == 0
+
+
+def test_apply_oral_score_rates_card_and_errors(isolated_db):
+    cid = student_flow.card_from_text("Was ist X?", "X ist Y.", subject="BWL")
+    student_flow.apply_oral_score(cid, 80, subject="BWL", front="Was ist X?")
+    row = manifest.get_cards_by_ids([cid])[0]
+    assert int(row.get("reps") or 0) >= 1
+    student_flow.apply_oral_score(cid, 10, subject="BWL", front="Was ist X?")
+    errors = manifest.list_errors(subject="BWL")
+    assert any(e.get("source") == "oral" for e in errors)

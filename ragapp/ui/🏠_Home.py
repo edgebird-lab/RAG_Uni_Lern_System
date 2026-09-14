@@ -338,6 +338,16 @@ if _snap:
             st.caption("Für heute liegt nichts Dringendes an – gute Gelegenheit, "
                         "freiwillig etwas zu wiederholen.")
 
+        if _snap.get("open_errors"):
+            if st.button(
+                    f"📒 {_snap['open_errors']} im Fehlerheft üben",
+                    key="home_chip_fehler", use_container_width=True):
+                st.session_state["study_prefill"] = {
+                    "source": "fehlerheft", "deck": "Fehlerheft",
+                    "mode": "reveal", "limit": 15,
+                }
+                st.switch_page(_target["lernen"])
+
         if _snap["overdue_plan_blocks"]:
             from ragapp.student_flow import repair_all_overdue_plans as _repair_plans
             if st.button("🔧 Plan reparieren", key="home_repair_plan"):
@@ -540,10 +550,16 @@ with st.expander("📥 Vorlesung einfangen", expanded=False):
                         filename=_vl_file.name if _vl_file else None,
                         image_bytes=_img)
                     _n = len((_cap.get("capture") or {}).get("card_ids") or [])
-                    _saved_msg = (
-                        "Im Fach-Ordner gesichert"
-                        + (f" · {_n} Karte(n)" if _n else "") + "."
-                    )
+                    _goals = (_cap.get("capture") or {}).get("goals") or []
+                    _block = (_cap.get("capture") or {}).get("block_id")
+                    _saved_msg = "Im Fach-Ordner gesichert"
+                    if _n:
+                        _saved_msg += f" · {_n} Karte(n)"
+                    if _goals:
+                        _saved_msg += f" · {len(_goals)} Lernziel(e)"
+                    if _block:
+                        _saved_msg += " · Abend-Block im Plan"
+                    _saved_msg += "."
                     st.session_state["_capture_flash"] = {
                         "error": _cap.get("status") == "error",
                         "message": (
@@ -677,6 +693,9 @@ with card("missionen"):
                 if _m["kind"] == "plan":
                     if _m.get("plan_id"):
                         st.session_state["_splan_pending_choice"] = _m["plan_id"]
+                    if _m.get("block_ids"):
+                        st.session_state["splan_focus_block_ids"] = list(
+                            _m["block_ids"])
                     st.switch_page(_target["lernplan"])
                 else:
                     st.session_state["study_prefill"] = {

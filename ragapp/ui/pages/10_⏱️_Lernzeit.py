@@ -213,9 +213,15 @@ with card("timer"):
                 st.success(f"✅ Arbeitsblock fertig! {st.session_state['pomo_work_min']} Min "
                           f"für {_subj_txt} gespeichert.")
                 if st.button("🎴 3 Karten zu diesem Fach", key="pomo_three_cards"):
-                    st.session_state["study_prefill"] = {
+                    from ragapp.student_flow import prefill_from_plan_block
+                    _pomo_prefill = {
                         "subject": st.session_state.get("pomo_subject"),
                         "limit": 3, "mode": "reveal"}
+                    _pomo_bid = st.session_state.get("pomo_plan_block_id")
+                    if _pomo_bid:
+                        _pomo_prefill = prefill_from_plan_block(
+                            _pomo_bid, limit=3, mode="reveal")
+                    st.session_state["study_prefill"] = _pomo_prefill
                     st.switch_page("pages/4_🎓_Lernen.py")
                 is_long = st.session_state["pomo_cycle"] % st.session_state["pomo_long_every"] == 0
                 break_min = (st.session_state["pomo_long_break_min"] if is_long

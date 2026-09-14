@@ -36,6 +36,7 @@ def create_session(subject: Optional[str] = None,
                 "followups": list(q.get("followups") or []),
                 "transcript": q.get("transcript"),
                 "partial_points": q.get("partial_points"),
+                **({"card_id": q["card_id"]} if q.get("card_id") else {}),
             }
             for q in (questions or []) if str(q.get("question") or "").strip()
         ],
@@ -117,7 +118,14 @@ def record_answer(session_id: str, index: int, transcript: str, *,
             "partial_points": None,
         })
     if partial_points is not None:
+        prev = item.get("partial_points")
         item["partial_points"] = max(0, min(100, int(partial_points)))
+        if prev is None and item.get("card_id"):
+            from ragapp.student_flow import apply_oral_score
+            apply_oral_score(
+                item.get("card_id"), item["partial_points"],
+                subject=session.get("subject"),
+                front=item.get("question"))
     return _save(session)
 
 
@@ -163,6 +171,7 @@ def session_from_cards(subject: str, *, limit: int = 5) -> dict:
         {
             "question": card.get("front") or "",
             "reference": card.get("answer") or card.get("back") or "",
+            "card_id": card.get("card_id"),
         }
         for card in cards if (card.get("front") or "").strip()
     ]

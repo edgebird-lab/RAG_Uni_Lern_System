@@ -91,6 +91,7 @@ def test_oral_exam_session_from_cards_zeigt_eine_frage_nach_der_anderen(
     assert session["status"] == "active"
     assert len(session["questions"]) == 1
     assert session["questions"][0]["question"] == "Erkläre X."
+    assert session["questions"][0]["card_id"]
 
 
 def test_oral_transcribe_audio_klarer_abbruch_ohne_stt(monkeypatch):

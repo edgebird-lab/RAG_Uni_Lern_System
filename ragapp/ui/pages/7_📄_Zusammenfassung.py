@@ -60,6 +60,7 @@ with card("quelle"):
     if _pref_subj and _pref_subj in subjects:
         st.session_state["zus_quelle"] = "Fach"
         st.session_state["zus_subject"] = _pref_subj
+        st.session_state["_zus_subject_for_cards"] = _pref_subj
     quelle = st.radio("Quelle", ["Dokument", "Fach"], horizontal=True, key="zus_quelle")
 
     if quelle == "Dokument":
@@ -141,7 +142,9 @@ if st.session_state.get("_zus_md"):
             from ragapp.student_flow import cards_from_markdown
             _ids = cards_from_markdown(
                 st.session_state["_zus_md"],
-                subject=st.session_state.get("zus_prefill_subject"),
+                subject=st.session_state.get("_zus_subject_for_cards")
+                or (st.session_state.get("zus_subject")
+                    if st.session_state.get("zus_quelle") == "Fach" else None),
                 source="summary")
             st.success(f"{len(_ids)} Karte(n) angelegt.")
         if _z2.button("🎧 Als Audio-Übersicht", use_container_width=True):

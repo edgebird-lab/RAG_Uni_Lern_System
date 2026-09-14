@@ -225,8 +225,19 @@ else:
                     f"({_ks['retention_pct']} %) und Lernzielabdeckung "
                     f"({_ks['coverage_pct']} %).")
             if _ks["weak_topics"]:
-                st.caption("Lücken: " + ", ".join(
-                    f'{w["topic"]} ({w["mastery_pct"]} %)' for w in _ks["weak_topics"][:3]))
+                st.caption("Lücken – Klick öffnet Karten zu dem Thema:")
+                _wcols = st.columns(min(3, len(_ks["weak_topics"][:3])))
+                for _wi, _w in enumerate(_ks["weak_topics"][:3]):
+                    _wlabel = f'{_w["topic"] or "ohne Thema"} ({_w["mastery_pct"]} %)'
+                    if _wcols[_wi].button(
+                            _wlabel, key=f"org_weak_{_subj}_{_wi}",
+                            use_container_width=True):
+                        st.session_state["study_prefill"] = {
+                            "source": "weak_topic", "limit": 16, "mode": "reveal",
+                            "subject": _subj,
+                            "topics": [_w["topic"]] if _w.get("topic") else [],
+                        }
+                        st.switch_page("pages/4_🎓_Lernen.py")
             from ragapp import coverage as _cov
             _cov_rows = _cov.coverage_for_subject(_subj)
             if _cov_rows:
@@ -286,7 +297,6 @@ with card("heute"):
     st.subheader("📊 Heute im Blick")
 
     _snap = planner.today_snapshot()
-    _today_classes = _snap["today_classes"]
     _overdue = _snap["overdue_tasks"]
     _due_today = _snap["due_today_tasks"]
     _next_exam = _snap["next_exam"]
@@ -328,46 +338,21 @@ with card("heute"):
                      use_container_width=True):
             st.switch_page("pages/5_📈_Fortschritt.py")
 
-    if _today_classes:
-        st.markdown("Nach der Vorlesung: Stoff auf der Startseite unter **Vorlesung einfangen** sichern.")
-
-    if _snap.get("streak_at_risk"):
-        st.error(f"🔥 Streak ({_snap.get('streak', 0)} Tage) heute gefährdet – kurz üben!")
-    if _snap.get("leeches"):
-        st.caption(f"🐛 {_snap['leeches']} Problemkarten in der Auswahl.")
-
-    if _today_classes:
-        st.markdown(
-            '<ul class="rag-heute-schedule">'
-            + "".join(
-                f"<li>🗓️ {s['start_time']}–{s['end_time']} {_fach(s['subject'])}"
-                + (f" ({s['room']})" if s.get("room") else "")
-                + "</li>"
-                for s in _today_classes)
-            + "</ul>",
-            unsafe_allow_html=True,
-        )
-    if _plan_blocks_today:
-        st.markdown(
-            '<ul class="rag-heute-schedule">'
-            + "".join(
-                f"<li>{'✅' if b['done'] else '⬜'} {b['section_title'] or 'Abschnitt'} "
-                f"({b['plan_title']}, {b['planned_min']} Min)</li>"
-                for b in _plan_blocks_today)
-            + "</ul>",
-            unsafe_allow_html=True,
-        )
     if _overdue:
         _txt = ", ".join(f"{t['title']} ({_fach(t.get('subject'))})" for t in _overdue[:6])
         if len(_overdue) > 6:
             _txt += f" … +{len(_overdue) - 6} weitere"
         st.warning(f"⚠️ Überfällig: {_txt}")
 
+    st.caption("Der volle Tagesüberblick mit Missionen, Sprint und Vorlesung bleibt auf Home.")
     from ragapp.ui._style import PAGE_REGISTRY as _PR_ORG
     _lernen_t = next(p["target"] for p in _PR_ORG if p["key"] == "lernen")
+    _h1, _h2 = st.columns(2)
+    if _h1.button("Auf Home öffnen", key="org_to_home", use_container_width=True):
+        st.switch_page("🏠_Home.py")
     if (_snap.get("due_cards") or 0) > 0:
-        if st.button("▶ Jetzt lernen", type="primary", key="org_jetzt_lernen",
-                     use_container_width=True):
+        if _h2.button("▶ Jetzt lernen", type="primary", key="org_jetzt_lernen",
+                      use_container_width=True):
             st.switch_page(_lernen_t)
 
 st.divider()

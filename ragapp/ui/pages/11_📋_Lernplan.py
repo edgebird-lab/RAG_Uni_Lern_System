@@ -633,14 +633,18 @@ with card("zeitplan"):
 
         st.markdown(_render_timeline(_by_date, _plan_color), unsafe_allow_html=True)
 
+        _focus_blocks = set(st.session_state.get("splan_focus_block_ids") or [])
+
         for d in sorted(_by_date.keys()):
             _day_blocks = _by_date[d]
             _label = "**Heute**" if d == date.today().isoformat() else d
             _day_done = sum(bl["planned_min"] for bl in _day_blocks if bl["done"])
             _day_total = sum(bl["planned_min"] for bl in _day_blocks)
+            _day_focus = any(bl["block_id"] in _focus_blocks for bl in _day_blocks)
             with st.expander(f"{_label} · {_fmt_min(_day_total)}"
-                            + (" ✅" if _day_done == _day_total else ""),
-                            expanded=(d == date.today().isoformat())):
+                            + (" ✅" if _day_done == _day_total else "")
+                            + (" · Fokus" if _day_focus else ""),
+                            expanded=(d == date.today().isoformat() or _day_focus)):
                 for bl in _day_blocks:
                     bcol1, bcol2, bcol3, bcol4, bcol5, bcol6 = st.columns(
                         [3.2, 1, 1, .7, .7, .7])
@@ -656,7 +660,14 @@ with card("zeitplan"):
                     # Wege bleiben gleichwertig moeglich, siehe Verbesserungsvorschlag).
                     _via = {"pomodoro": " 🍅", "manual": " ✍️"}.get(bl.get("done_via"), "")
                     _mark = f"✅{_via}" if bl["done"] else "⬜"
-                    bcol1.write(f"{_mark} {title} · {_fmt_min(bl['planned_min'])}")
+                    _src_titles = [
+                        ref.get("section") for ref in section.get("source_refs") or []
+                        if ref.get("section") and ref.get("section") != title
+                    ]
+                    _src_txt = f" · {', '.join(_src_titles[:2])}" if _src_titles else ""
+                    _focus_mark = " · 👈 Fokus" if bl["block_id"] in _focus_blocks else ""
+                    bcol1.write(
+                        f"{_mark} {title}{_src_txt} · {_fmt_min(bl['planned_min'])}{_focus_mark}")
                     if bcol2.button("Erledigt" if not bl["done"] else "↩️",
                                    key=f"splan_block_{bl['block_id']}", use_container_width=True):
                         manifest.set_block_done(bl["block_id"], not bl["done"],
@@ -678,18 +689,20 @@ with card("zeitplan"):
                             st.switch_page("pages/10_⏱️_Lernzeit.py")
                         if bcol4.button("Karten", key=f"splan_cards_{bl['block_id']}",
                                         help="Karten zu diesem Stoffabschnitt"):
-                            st.session_state["study_prefill"] = {
-                                "subject": _plan.get("subject"), "limit": 12,
-                                "mode": "reveal", "doc_ids": source_doc_ids,
-                                "topics": [title],
-                            }
+                            from ragapp.student_flow import prefill_from_plan_block
+                            st.session_state["study_prefill"] = prefill_from_plan_block(
+                                bl["block_id"], limit=12, mode="reveal")
                             st.switch_page("pages/4_🎓_Lernen.py")
                         if bcol5.button("Übung", key=f"splan_prac_{bl['block_id']}",
                                         help="Eine Übung zu diesem Stoffabschnitt"):
+                            from ragapp.student_flow import prefill_from_plan_block
+                            _pre = prefill_from_plan_block(bl["block_id"])
                             st.session_state["practice_prefill"] = {
-                                "subject": _plan.get("subject"),
-                                "doc_ids": source_doc_ids,
-                                "topic": title,
+                                "subject": _pre.get("subject"),
+                                "doc_ids": _pre.get("doc_ids") or [],
+                                "topic": ((_pre.get("topics") or [title])[0]
+                                          if (_pre.get("topics") or [title]) else title),
+                                "block_id": bl["block_id"],
                             }
                             st.switch_page("pages/13_🧮_Übungsaufgaben.py")
                         if bcol6.button("Stoff", key=f"splan_docs_{bl['block_id']}",

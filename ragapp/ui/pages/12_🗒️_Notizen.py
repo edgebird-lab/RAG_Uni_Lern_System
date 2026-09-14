@@ -127,6 +127,12 @@ with lcol:
 _subj_arg = None if _f_subject == "Alle Fächer" else _f_subject
 _notes = manifest.list_notes(subject=_subj_arg, search=_f_search or None)
 
+_vl_flash = st.session_state.pop("_notiz_vl_flash", None)
+if _vl_flash:
+    st.success(_vl_flash["message"])
+    for _g in (_vl_flash.get("goals") or [])[:5]:
+        st.caption(f"· {_g}")
+
 with st.expander("📥 Vorlesung einfangen", expanded=False):
     _vl_t = st.text_input("Titel", key="note_vl_title")
     _vl_b = st.text_area("Was war neu?", key="note_vl_body", height=100)
@@ -136,7 +142,15 @@ with st.expander("📥 Vorlesung einfangen", expanded=False):
             st.warning("Bitte Text eingeben.")
         else:
             _cap = capture_lecture(_vl_b, subject=_subj_arg, title=_vl_t or None)
-            st.success(f"Notiz + {len(_cap['card_ids'])} Karte(n).")
+            _msg = f"Notiz + {len(_cap['card_ids'])} Karte(n)"
+            if _cap.get("goals"):
+                _msg += f" · {len(_cap['goals'])} Lernziel(e)"
+            if _cap.get("block_id"):
+                _msg += " · Abend-Block im Plan"
+            st.session_state["_notiz_vl_flash"] = {
+                "message": _msg + ".",
+                "goals": _cap.get("goals") or [],
+            }
             st.rerun()
 
 if _notes:

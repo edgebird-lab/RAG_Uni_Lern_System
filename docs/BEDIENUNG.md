@@ -123,17 +123,15 @@ python -m ragapp.scripts.cli ingest-file "C:\Pfad\zu\meiner\Zusammenfassung.pdf"
 
 ### Weg C: Über die Weboberfläche
 
-Die Oberfläche hat links drei Unterseiten:
+Unter **Kurse → Dokumente** lädst du Dateien hoch (mit Fach-Zuordnung),
+indexierst sie und siehst alle Unterlagen als Tabelle. Die frühere eigene
+Ingestion-Seite ist kein studentischer Einstieg mehr.
 
-- **📥 Ingestion**: Dateien hochladen (mit Fach-Zuordnung) und indexieren,
-  den kompletten Quellordner importieren, die **Fragen-Anreicherung** starten,
-  alle indexierten Dokumente als Tabelle sehen und einzelne löschen.
-- **📊 Evaluation**: Gold-Set erzeugen, Trefferquote (Hit@k / MRR) messen und
-  den Verlauf über die Zeit vergleichen (zum Nachjustieren).
-- **⚙️ Einstellungen**: alle Tuning-Parameter ändern und in `data/config.json`
-  speichern; auf Standard zurücksetzen.
+Fragen anreichern und den Klausur-Lernkatalog startest du unter
+**Lernen → Expertenmodus**. Evaluation und Feintuning bleiben unter
+**⚙️ Einstellungen** bzw. **📊 Evaluation**.
 
-Die Ingestion-Seite nutzt dieselbe Pipeline wie die CLI (`ingest_directory` /
+Upload und Index nutzen dieselbe Pipeline wie die CLI (`ingest_directory` /
 `ingest_file`): Datei auswählen bzw. Import anstoßen, der Rest (Laden → Dedup →
 Chunking → Embeddings → Speichern) läuft automatisch.
 
@@ -199,7 +197,7 @@ python -m ragapp.scripts.cli eval            # Trefferquote messen
 | Situation | Was tun |
 | --------- | ------- |
 | **Fallback, obwohl das Thema in den Unterlagen steht** | Frage konkreter/mit dem exakten Fachbegriff umformulieren. Fach-Filter setzen. Prüfen, ob das Dokument wirklich importiert ist (`stats`). Ggf. `enrich` für das Fach laufen lassen (Fragen-Indexierung erhöht die Trefferquote). |
-| **Gar keine Treffer / „keine passende Stelle"** | Dokument evtl. nicht indexiert oder Format nicht unterstützt. `stats` prüfen, ggf. neu importieren. Bei PDFs ohne Textebene (reine Scans/Handschrift) liefert das normale Einlesen keinen Text – auf **📥 Ingestion** die betroffenen Seiten per **OCR** „Neu einlesen" (siehe Abschnitt 8). |
+| **Gar keine Treffer / „keine passende Stelle"** | Dokument evtl. nicht indexiert oder Format nicht unterstützt. `stats` prüfen, ggf. neu importieren. Bei PDFs ohne Textebene (reine Scans/Handschrift) liefert das normale Einlesen keinen Text – auf **Kurse → Dokumente** die betroffenen Seiten per **OCR** „Neu einlesen" (siehe Abschnitt 8). |
 | **Antwort wirkt unvollständig** | Der Kontext ist auf `MAX_CONTEXT_CHARS`/`FINAL_TOP_K` begrenzt. Frage enger stellen oder in Teilfragen zerlegen; die Quellenkarten zeigen weitere Fundstellen. |
 | **Antwort wirkt falsch** | Immer gegen die Quellenkarte prüfen. Ist die richtige Quelle gar nicht unter den Treffern, ist es ein **Retrieval**-Problem → siehe [TUNING.md](TUNING.md) und [EVALUATION.md](EVALUATION.md). |
 | **Alles zu langsam** | Normal auf CPU. Fach-Filter nutzen; ggf. `USE_RERANKER`/`ENABLE_FAITHFULNESS_CHECK` in den Einstellungen abwägen (weniger Genauigkeit gegen mehr Tempo). |
@@ -236,7 +234,7 @@ Karten, sondern nur noch fällige Wiederholungen bzw. Lern-Schritte.
 Unter **Karten fürs Lernen ankreuzen** kannst du einzelne Karten dauerhaft aus der
 Abfrage nehmen (sie bleiben gespeichert). Die **Challenge** ist optional für feste
 Rundengröße, Cram oder Prüfungsphase – für den Alltag nicht nötig. Gibt es noch kein
-Fragenmaterial, zuerst auf **📥 Ingestion** Fragen generieren bzw. den Lernkatalog
+Fragenmaterial, zuerst auf **Lernen → Expertenmodus** Fragen generieren bzw. den Lernkatalog
 erstellen.
 
 ### 📈 Fortschritt (Lern-Analytik & Klausurplanung)
@@ -314,7 +312,7 @@ Audio-Overview, `AUDIO_MAX_SCRIPT_CHARS` / `TALK_MAX_SCRIPT_CHARS`).
 
 PDFs **ohne Textebene** (reine Scans, abfotografierte Seiten, Handschrift) liefern
 beim normalen Einlesen keinen brauchbaren Text. Die App erkennt das und markiert
-betroffene Dokumente auf der **📥 Ingestion**-Seite (Hinweis „evtl. unvollständig
+betroffene Dokumente auf **Kurse → Dokumente** (Hinweis „evtl. unvollständig
 eingelesen – OCR empfohlen", inklusive der Zahl teilweise leerer Seiten) und
 merkt sie automatisch als OCR-Jobs vor. Über **„Neu einlesen"** liest dann ein
 **vision-fähiges Modell** die Seiten per OCR und

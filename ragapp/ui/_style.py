@@ -1414,6 +1414,29 @@ def delete_button(label: str, *, token: str, body: str, key: str, **btn_kwargs) 
     return False
 
 
+def block_done_banner(*, state_key: str, key_prefix: str) -> None:
+    """Fragt nach einer Plan-Session, ob der Block erledigt ist."""
+    bid = st.session_state.get(state_key)
+    if not bid:
+        return
+    with st.container(border=True):
+        st.markdown("##### Block erledigt?")
+        st.caption("Du bist über den Lernplan hierher gekommen. "
+                   "Soll der Block als erledigt gelten?")
+        yes, no = st.columns(2)
+        if yes.button("Ja, Block erledigt", type="primary",
+                      key=f"{key_prefix}_block_yes", use_container_width=True):
+            from ragapp.student_flow import mark_plan_block_done
+            mark_plan_block_done(bid, via="manual")
+            st.session_state.pop(state_key, None)
+            st.success("Block als erledigt markiert.")
+            st.rerun()
+        if no.button("Noch offen lassen", key=f"{key_prefix}_block_no",
+                     use_container_width=True):
+            st.session_state.pop(state_key, None)
+            st.rerun()
+
+
 # --------------------------------------------------------------------------- #
 # Haupt-Einstiegspunkt: von page_boot() fuer jede normale Seite aufgerufen,
 # und direkt von der Home-Seite (🏠_Home.py), die ihre Boot-Sequenz aus

@@ -340,6 +340,8 @@ def study_set_preview(doc_ids: "list[str] | None" = None,
         "unanswered": len(unanswered),
         "topics": topics,
         "examples": examples,
+        "doc_ids": list(doc_ids or []),
+        "card_ids": [c.get("card_id") for c in cards if c.get("card_id")],
     }
 
 
