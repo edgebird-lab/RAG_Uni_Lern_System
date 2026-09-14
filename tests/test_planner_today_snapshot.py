@@ -245,8 +245,12 @@ def test_repair_all_overdue_plans_liefert_vorschau_und_wendet_an(
 
 def test_all_priorities_ueberspringt_importreste(isolated_db):
     manifest.upsert_exam("31", ects=5)
+    manifest.upsert_exam("IT-Recht und IT-Comp", ects=5)
+    manifest.upsert_exam("Livetest", exam_date=_iso(4), ects=5)
     manifest.upsert_exam("BWL", exam_date=_iso(10), ects=5)
     prios = planner.all_priorities()
     codes = [p["subject"] for p in prios]
     assert "31" not in codes
+    assert "IT-Recht und IT-Comp" not in codes
+    assert "Livetest" not in codes
     assert "BWL" in codes

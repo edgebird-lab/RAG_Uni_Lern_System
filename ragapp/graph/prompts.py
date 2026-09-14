@@ -191,7 +191,8 @@ eine gab. Erkläre danach die vollständige Antwort klar und direkt, belegt mit
 
 # Startnachricht, wenn die UI das Thema gesetzt hat (kein leerer Chat-Zwang).
 SOKRATISCH_START_USER = (
-    "Lass uns über {topic} sprechen. Stelle eine Einstiegsfrage dazu."
+    "Lass uns über {topic} sprechen. Stelle eine klausurtypische Einstiegsfrage "
+    "zu einem prüfbaren Begriff aus dem Kontext."
 )
 
 # Code-seitige Steuerung, weil kleine lokale Modelle sonst vom Thema springen
@@ -207,8 +208,11 @@ zu einem nur benachbarten Thema, auch wenn der Kontext weitere Stichworte hat.]"
 SOKRATISCH_START_HINWEIS = """
 
 [SYSTEMHINWEIS – nicht an die/den Studierende(n) weitergeben: Das ist der Start.
-Stelle GENAU EINE diagnostische Einstiegsfrage zu dem vereinbarten Thema, mit der
-du prüfen kannst, was die/der Studierende schon weiß. Keine Begrüßung, keine
+Stelle GENAU EINE klausurtypische diagnostische Einstiegsfrage zu einem prüfbaren
+Begriff, Verfahren oder einer Formel aus dem KONTEXT, der zum vereinbarten Thema
+gehört. Die Frage muss Wissen prüfen (Definition, Vorgehen, Unterscheidung,
+Rechnung) – niemals den Dokumenttitel, den Dateinamen oder den Fachnamen, und
+nicht in der Form „Wie wird … beschrieben?“ zum Titel. Keine Begrüßung, keine
 Stoff-Zusammenfassung, keine Antwort vorgeben.]"""
 
 SOKRATISCH_PARTIAL_HINWEIS = """

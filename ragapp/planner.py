@@ -65,11 +65,14 @@ def subject_priority(subject: str, exam: Optional[dict] = None) -> dict:
 
 def all_priorities() -> list[dict]:
     """Alle Faecher (mit Karten oder mit Termin), nach Prioritaet absteigend."""
-    from ragapp.student_flow import is_placeholder_subject
+    from ragapp.student_flow import is_fixture_subject, is_placeholder_subject
     subjects = set(manifest.study_subjects())
     exams = manifest.exam_map()
     subjects |= set(exams.keys())
-    subjects = {s for s in subjects if s and not is_placeholder_subject(s)}
+    subjects = {
+        s for s in subjects
+        if s and not is_placeholder_subject(s) and not is_fixture_subject(s)
+    }
     out = [subject_priority(s, exams.get(s)) for s in sorted(subjects)]
     out.sort(key=lambda x: x["priority"], reverse=True)
     return out

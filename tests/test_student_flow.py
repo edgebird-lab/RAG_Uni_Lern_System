@@ -334,8 +334,31 @@ def test_inbox_ist_kein_kurs_im_cockpit():
     assert student_flow.is_placeholder_subject("inbox")
     assert student_flow.is_placeholder_subject("Modul 4 (Fortsetzung")
     assert student_flow.is_placeholder_subject("BWL-")
+    assert student_flow.is_placeholder_subject("IT-Recht und IT-Comp")
+    assert student_flow.looks_truncated_subject("IT-Recht und IT-Comp")
+    assert not student_flow.looks_truncated_subject("IT-Sicherheit")
+    assert not student_flow.looks_truncated_subject("Unternehmensführung")
     assert not student_flow.is_placeholder_subject("Livetest")
     assert not student_flow.is_placeholder_subject("IT-Sicherheit")
+    assert student_flow.is_fixture_subject("Livetest")
+    assert student_flow.is_fixture_subject("Livetest-Leer")
+    assert not student_flow.is_fixture_subject("IT-Sicherheit")
+    assert student_flow.is_exam_fragment({"subject": "31", "exam_date": None})
+    assert student_flow.is_exam_fragment({"subject": "IT-Recht und IT-Comp", "exam_date": None})
+    assert not student_flow.is_exam_fragment({"subject": "31", "exam_date": "2026-07-01"})
+    assert not student_flow.is_exam_fragment({"subject": "Livetest", "exam_date": None})
+    assert not student_flow.is_exam_fragment(
+        {"subject": "Unternehmensführung", "exam_date": None})
+    skip = student_flow.course_cockpit_bucket(
+        {"subject": "inbox", "due_cards": 0, "doc_count": 2, "days_to_exam": None},
+        has_cards=False)
+    assert skip == "skip"
+    assert student_flow.course_cockpit_bucket(
+        {"subject": "Livetest", "due_cards": 3, "doc_count": 1, "days_to_exam": 21},
+        has_cards=True) == "skip"
+    assert student_flow.course_cockpit_bucket(
+        {"subject": "IT-Recht und IT-Comp", "due_cards": 0, "doc_count": 0,
+         "days_to_exam": None}, has_cards=False) == "skip"
     assert student_flow.is_exam_fragment({"subject": "31", "exam_date": None})
     assert not student_flow.is_exam_fragment({"subject": "31", "exam_date": "2026-07-01"})
     assert not student_flow.is_exam_fragment({"subject": "Livetest", "exam_date": None})
@@ -359,13 +382,17 @@ def test_inbox_ist_kein_kurs_im_cockpit():
 
 def test_purge_import_remnant_exams_laesst_echte_faecher(isolated_db):
     manifest.upsert_exam("31", exam_date=None)
+    manifest.upsert_exam("IT-Recht und IT-Comp", exam_date=None)
+    manifest.upsert_exam("Unternehmensführung", exam_date=None)
     manifest.upsert_exam("Livetest", exam_date=None)
     manifest.upsert_exam("BWL", exam_date="2026-07-15")
     n = student_flow.purge_import_remnant_exams()
-    assert n == 1
+    assert n == 2
     subjects = {e["subject"] for e in manifest.list_exams()}
     assert "31" not in subjects
+    assert "IT-Recht und IT-Comp" not in subjects
     assert "Livetest" in subjects
+    assert "Unternehmensführung" in subjects
     assert "BWL" in subjects
 
 

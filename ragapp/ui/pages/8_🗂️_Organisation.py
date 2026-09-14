@@ -197,6 +197,8 @@ _kurs_faecher = list(dict.fromkeys(
         + [d["subject"] for d in manifest.list_documents() if d["subject"]]
     )
     if subj and not _sf.is_inbox_subject(subj)
+    and not _sf.is_placeholder_subject(subj)
+    and not _sf.is_fixture_subject(subj)
 ))
 st.subheader("Kurse")
 if not _kurs_faecher:

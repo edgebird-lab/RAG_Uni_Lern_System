@@ -331,6 +331,28 @@ def render_mascot(accent: str, *, size: int = 200, ink: str = "#2b2036",
         components.html(_pupil_tracking_html(), height=0)
 
 
+def _disable_host_iframe_js() -> str:
+    """``components.html(height=0)``-Iframes liegen oft unsichtbar über Buttons
+    und schlucken Klicks (Chat-Chips). Das Host-Iframe sofort deaktivieren."""
+    return """
+(function(){
+  try {
+    var f = window.frameElement;
+    if (!f) return;
+    f.style.cssText = 'pointer-events:none!important;width:0!important;height:0!important;position:absolute!important;border:0!important;';
+    var p = f.parentElement;
+    if (p) {
+      p.style.pointerEvents = 'none';
+      p.style.height = '0';
+      p.style.overflow = 'hidden';
+      p.style.margin = '0';
+      p.style.padding = '0';
+    }
+  } catch (e) {}
+})();
+"""
+
+
 def render_mascot_corner(accent: str, *, pose: str = "idle", animation: str = "float",
                           prop: "str | None" = None, size: int = 92,
                           bubble: "str | None" = None, bubble_icon: str = "") -> None:
@@ -359,6 +381,7 @@ def render_mascot_corner(accent: str, *, pose: str = "idle", animation: str = "f
     components.html(f"""
 <template id="rag-mascot-corner-tpl">{bubble_html}{svg_html}</template>
 <script>
+{_disable_host_iframe_js()}
 (function() {{
   try {{
     var doc = window.parent.document;
@@ -383,8 +406,7 @@ def remove_mascot_corner() -> None:
     dort injizierte ``document.body``-Instanz einfach stehen bleiben, weil
     Home ``render_mascot_corner()`` selbst nie aufruft)."""
     import streamlit.components.v1 as components
-    components.html("""
-<script>
+    components.html("<script>" + _disable_host_iframe_js() + """
 (function() {
   try {
     var doc = window.parent.document;
@@ -402,8 +424,7 @@ def _pupil_tracking_html() -> str:
     Mauszeiger im ECHTEN Elternfenster folgen (kleiner Bewegungsradius, damit
     es wie ein Augen-Move statt wie ein Springen wirkt). Laeuft ueber alle
     Mascot-Instanzen der Seite hinweg (meist nur eine)."""
-    return """
-<script>
+    return "<script>\n" + _disable_host_iframe_js() + """
 (function() {
   try {
     var parent = window.parent;

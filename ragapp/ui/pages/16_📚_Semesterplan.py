@@ -204,8 +204,10 @@ if _already or _slots_n:
         if _frag_exams:
             with st.expander(
                     f"Unvollständige Importreste ({len(_frag_exams)})", expanded=False):
-                st.caption("Kürzel ohne Klausurdatum, oft abgeschnittene Modulnummern. "
-                           "Hier löschen oder unter Fortschritt einen Termin setzen.")
+                st.caption("Kürzel ohne Klausurdatum, oft abgeschnittene Modulnamen "
+                           "(z. B. „IT-Recht und IT-Comp“). Hier löschen oder unter "
+                           "Fortschritt einen Termin setzen. Livetest und vollständige "
+                           "Kursnamen ohne Datum bleiben.")
                 for _ex in _frag_exams:
                     st.write(_exam_line(_ex))
                 if delete_button(

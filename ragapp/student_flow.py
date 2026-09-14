@@ -1249,6 +1249,34 @@ def is_inbox_subject(subject: Optional[str]) -> bool:
     return (subject or "").strip().lower() == "inbox"
 
 
+def is_fixture_subject(subject: Optional[str]) -> bool:
+    """QA-Fixture (Livetest), kein Semesterkurs – im Cockpit ausblenden, nicht löschen."""
+    s = (subject or "").strip().lower()
+    return s == "livetest" or s.startswith("livetest-") or s.startswith("livetest_")
+
+
+# Kurze Endstücke, die in echten Kürzeln vorkommen – nicht als Import-Abbruch werten.
+_SUBJECT_TAIL_OK = {
+    "ai", "bio", "bwl", "chem", "db", "ds", "dsa", "ects", "hr", "inf", "it",
+    "ki", "mathe", "ml", "nlp", "ocr", "or", "os", "pdf", "phys", "pm", "pr",
+    "rag", "se", "sose", "sql", "ui", "ux", "vwl", "wifi", "wise", "wiwi",
+}
+
+
+def looks_truncated_subject(subject: Optional[str]) -> bool:
+    """Abgeschnittener Importname, z. B. ``IT-Recht und IT-Comp`` statt Compliance."""
+    s = (subject or "").strip()
+    if len(s) < 12:
+        return False
+    if not re.search(r"\b(?:und|oder|/)\s+\S+$", s):
+        return False
+    last = re.split(r"[\s/]+", s)[-1]
+    tail = last.split("-")[-1]
+    if not tail.isalpha() or len(tail) > 4:
+        return False
+    return tail.lower() not in _SUBJECT_TAIL_OK
+
+
 def is_placeholder_subject(subject: Optional[str]) -> bool:
     """Kein echter Kurs: Inbox, reine Modulnummer, abgeschnittener Importcode."""
     s = (subject or "").strip()
@@ -1259,6 +1287,8 @@ def is_placeholder_subject(subject: Optional[str]) -> bool:
     if s.count("(") != s.count(")"):
         return True
     if s.endswith(("(", "-", "–", "/", "&")):
+        return True
+    if looks_truncated_subject(s):
         return True
     return False
 
@@ -1295,6 +1325,10 @@ def course_cockpit_bucket(snapshot: dict, *, has_cards: bool) -> str:
     Inbox-Dokumente gehören nicht ins Kurs-Cockpit.
     """
     if is_inbox_subject(snapshot.get("subject")):
+        return "skip"
+    if is_fixture_subject(snapshot.get("subject")):
+        return "skip"
+    if is_placeholder_subject(snapshot.get("subject")):
         return "skip"
     days = snapshot.get("days_to_exam")
     exam_soon = days is not None and 0 <= int(days) <= 14

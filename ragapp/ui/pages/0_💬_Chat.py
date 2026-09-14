@@ -54,6 +54,14 @@ ul[role="listbox"], [data-testid="stSelectboxVirtualDropdown"] ul,
 .badge-fallback {background:#fdf0e3; color:#a15a13;}
 .badge-plain {background:#eef1f5; color:#5b6b85;}
 .badge-unsure {background:#fef6e0; color:#8a6d1a;}
+/* Höhe-0-Komponenten (Maskottchen, Scroll) dürfen Chips nicht überdecken. */
+div[data-testid="stIFrame"]:has(iframe[height="0"]),
+iframe[height="0"] {
+    pointer-events: none !important;
+    position: absolute !important;
+    width: 0 !important; height: 0 !important;
+    overflow: hidden !important; border: 0 !important;
+}
 .small {color:#7a8aa0; font-size:0.8rem;}
 </style>
 """, unsafe_allow_html=True)
@@ -482,6 +490,23 @@ def _apply_chat_mascot(*, waiting: bool = False, waiting_stage: str = "retrieve"
 
 
 # Verlauf rendern
+if st.session_state.pop("_chat_scroll_last", False):
+    from ragapp.ui._mascot import _disable_host_iframe_js
+    _components.html(
+        "<script>" + _disable_host_iframe_js() + """
+        var n = 0;
+        function toAnswer() {
+          try {
+            var m = window.parent.document.querySelectorAll('[data-testid="stChatMessage"]');
+            if (m.length) { m[m.length - 1].scrollIntoView({block: 'start'}); }
+          } catch (e) {}
+          if (++n < 6) setTimeout(toAnswer, 280);
+        }
+        setTimeout(toAnswer, 250);
+        </script>
+        """,
+        height=0,
+    )
 for _mi, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"], avatar="🧑‍🎓" if msg["role"] == "user" else "🤖"):
         st.markdown(msg["content"] if show_sources else _strip_source_labels(msg["content"]))
@@ -506,21 +531,16 @@ for _mi, msg in enumerate(st.session_state.messages):
 
 
 def _socratic_topic_suggestions(subject: "str | None") -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for d in manifest.list_documents():
-        if subject and d["subject"] != subject:
-            continue
-        raw = d["filename"] or ""
-        name = raw.rsplit(".", 1)[0].strip() if raw else ""
-        key = name.lower()
-        if len(name) < 3 or key in seen:
-            continue
-        seen.add(key)
-        out.append(name)
-        if len(out) >= 9:
-            break
-    return out
+    from ragapp.graph.socratic import (
+        collect_socratic_topic_suggestions, read_source_text,
+    )
+    cards = manifest.list_cards(subject=subject, limit=40)
+    docs = [dict(d) for d in manifest.list_documents()]
+    return collect_socratic_topic_suggestions(
+        cards=cards, documents=docs, subject=subject,
+        read_text=lambda p: read_source_text(p, root=PROJECT_ROOT),
+        limit=9,
+    )
 
 
 def _start_socratic_dialog(topic: str) -> None:
@@ -530,6 +550,10 @@ def _start_socratic_dialog(topic: str) -> None:
         return
     st.session_state["socratic_topic"] = topic
     st.session_state["_pending_prompt"] = SOKRATISCH_START_USER.format(topic=topic)
+    # Ein kurzer Rerun ohne LLM, damit die Startkarte weg ist, bevor die
+    # Generierung die Seite lange blockiert (sonst bleiben die Picker-Widgets
+    # während des Wartens sichtbar und deaktiviert).
+    st.session_state["_socratic_boot"] = True
     st.rerun()
 
 
@@ -594,13 +618,19 @@ def _friendly_error(exc: Exception) -> str:
 
 
 # Leerer Chat + vorhandene Dokumente -> Einstieg (sokratisch: erst Thema).
-# _pending_prompt: Dialog startet in DIESEM Rerun – Picker nicht mehr zeigen.
+# Slot bleibt in JEDEM Rerun stehen, damit die Startkarte sofort leergeräumt
+# wird – nicht erst nach der langen LLM-Antwort (sonst bleibt sie deaktiviert
+# sichtbar). _pending_prompt / socratic_topic: Dialog schon gestartet.
 _incoming = bool(st.session_state.get("_pending_prompt"))
-if not st.session_state.messages and stats["chunks"] > 0 and not _incoming:
-    if _chat_mode == "sokratisch":
-        _render_socratic_start()
-    else:
-        _render_onboarding()
+_socratic_started = bool(st.session_state.get("socratic_topic"))
+_intro_slot = st.empty()
+if (not st.session_state.messages and stats["chunks"] > 0 and not _incoming
+        and not _socratic_started):
+    with _intro_slot.container():
+        if _chat_mode == "sokratisch":
+            _render_socratic_start()
+        else:
+            _render_onboarding()
 
 if _chat_mode == "sokratisch" and st.session_state.get("socratic_topic"):
     _tb1, _tb2 = st.columns([4, 1])
@@ -622,6 +652,8 @@ if _chat_mode == "sokratisch":
                 if st.session_state.get("socratic_topic")
                 else "Oder tippe hier das Thema …")
 prompt = st.chat_input(_chat_ph)
+if st.session_state.pop("_socratic_boot", False):
+    st.rerun()
 # Klick auf eine Beispiel-Frage (Onboarding) wirkt wie eine getippte Eingabe.
 if not prompt:
     prompt = st.session_state.pop("_pending_prompt", None)
@@ -768,6 +800,8 @@ else:
             sources = result.get("sources", []) if show_sources else []
             if sources:
                 render_sources(sources, key_prefix="new")
+            _save_card_button(prompt, _answer, meta, sources, key="card_new")
+            _save_note_button(prompt, _answer, sources, key="note_new")
             if _chat_mode == "sokratisch":
                 _socratic_chips("new")
             else:
@@ -801,21 +835,7 @@ else:
     else:
         manifest.update_chat_session(_active_session_id, messages=st.session_state.messages)
 
-    # Nach dem Generieren an den ANFANG der Antwort scrollen (mehrfach, um Streamlits
-    # Auto-Scroll ans Ende zu ueberstimmen).
-    _components.html(
-        """
-        <script>
-        var n = 0;
-        function toAnswer() {
-          try {
-            var m = window.parent.document.querySelectorAll('[data-testid="stChatMessage"]');
-            if (m.length) { m[m.length - 1].scrollIntoView({block: 'start'}); }
-          } catch (e) {}
-          if (++n < 6) setTimeout(toAnswer, 280);
-        }
-        setTimeout(toAnswer, 250);
-        </script>
-        """,
-        height=0,
-    )
+    # Stabiler Rerun: Chips/Speichern liegen im Verlauf, Scroll-Iframe oben –
+    # nicht über den Buttons am Ende der Generierung.
+    st.session_state["_chat_scroll_last"] = True
+    st.rerun()

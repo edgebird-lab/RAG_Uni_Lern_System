@@ -430,6 +430,7 @@ def test_sokratisch_extra_prompt_start_partial_hint_resolve(sokratisch_funcs):
     assert "Schutzziele" in start
     assert "Start" in start or "Einstiegsfrage" in start
     assert "vollständig auf" not in start
+    assert "Dateiname" in start or "Dokumenttitel" in start
 
     history = [_turn("user", "x"), _turn("assistant", "Was gehört dazu?")]
     part = extra("Ich weiß es teilweise.", history, topic)
