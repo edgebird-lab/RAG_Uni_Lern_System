@@ -1249,6 +1249,18 @@ def is_inbox_subject(subject: Optional[str]) -> bool:
     return (subject or "").strip().lower() == "inbox"
 
 
+def is_placeholder_subject(subject: Optional[str]) -> bool:
+    """Kein echter Kurs: Inbox, reine Modulnummer, abgeschnittener Importcode."""
+    s = (subject or "").strip()
+    if not s or is_inbox_subject(s):
+        return True
+    if s.isdigit():
+        return True
+    if s.count("(") != s.count(")"):
+        return True
+    return False
+
+
 def course_cockpit_bucket(snapshot: dict, *, has_cards: bool) -> str:
     """Kurskarte auf Organisation: ``active``, ``stoff``, ``import`` oder ``skip``.
 

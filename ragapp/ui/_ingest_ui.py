@@ -48,6 +48,7 @@ def _document_dicts() -> list[dict]:
 
 
 def known_subjects() -> list[str]:
+    from ragapp.student_flow import is_placeholder_subject
     found = {d["subject"] for d in _document_dicts() if d.get("subject")}
     exams = {e["subject"] for e in manifest.list_exams() if e.get("subject")}
     timetable = {
@@ -55,8 +56,11 @@ def known_subjects() -> list[str]:
         if row.get("subject")
     }
     return sorted(
-        set(SUBJECT_LABELS.keys()) | found | exams | timetable
-        | set(extra_folders())
+        s for s in (
+            set(SUBJECT_LABELS.keys()) | found | exams | timetable
+            | set(extra_folders())
+        )
+        if s and not is_placeholder_subject(s)
     )
 
 

@@ -330,9 +330,10 @@ def test_course_snapshot_ohne_index_empfiehlt_unterlagen_nicht_lernplan(isolated
 
 
 def test_inbox_ist_kein_kurs_im_cockpit():
-    assert student_flow.is_inbox_subject("inbox")
-    assert student_flow.is_inbox_subject("Inbox")
-    assert not student_flow.is_inbox_subject("Livetest")
+    assert student_flow.is_placeholder_subject("31")
+    assert student_flow.is_placeholder_subject("inbox")
+    assert student_flow.is_placeholder_subject("Modul 4 (Fortsetzung")
+    assert not student_flow.is_placeholder_subject("Livetest")
     skip = student_flow.course_cockpit_bucket(
         {"subject": "inbox", "due_cards": 0, "doc_count": 2, "days_to_exam": None},
         has_cards=False)

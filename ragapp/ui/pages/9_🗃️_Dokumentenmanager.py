@@ -348,6 +348,15 @@ with card("ordner"):
     st.subheader("📁 Fächer als Ordner")
     st.caption("Wähle einen Ordner – neue Uploads landen dort. Ein leerer Ordner "
                "bleibt nach dem Löschen aller Dateien ausgewählt.")
+
+    def _folder_chip_label(name: str) -> str:
+        if name == "Alle":
+            return "📂 Alle"
+        from ragapp.student_flow import is_inbox_subject
+        if is_inbox_subject(name):
+            return "📥 Inbox (Ablage)"
+        return f"📁 {_fach(name)}"
+
     _chip_labels = ["Alle"] + _folder_names
     _per = 6
     for _row_i in range(0, len(_chip_labels), _per):
@@ -356,13 +365,14 @@ with card("ordner"):
         for _col, _name in zip(_chip_cols, _row):
             _here = (_name == "Alle" and not _folder) or (_name == _folder)
             if _col.button(
-                f"{'📂' if _name == 'Alle' else '📁'} "
-                f"{'Alle' if _name == 'Alle' else _fach(_name)}",
+                _folder_chip_label(_name),
                 type="primary" if _here else "secondary",
                 key=f"doc_folder_chip_{_name}",
                 use_container_width=True,
             ):
                 st.session_state["doc_folder"] = None if _name == "Alle" else _name
+                if _name != "Alle":
+                    st.session_state["docmgr_inbox_subj"] = _name
                 st.rerun()
     _nf1, _nf2 = st.columns([3, 1])
     _new_folder = _nf1.text_input("Neuer Ordner (Fachname)", key="doc_new_folder",
@@ -381,10 +391,15 @@ with card("kurs_inbox"):
         st.caption("Lege oben einen Fach-Ordner an, dann kannst du hier zuordnen.")
     else:
         _inbox_default = st.session_state.get("doc_folder")
-        _inbox_idx = (_inbox_subj_opts.index(_inbox_default)
-                      if _inbox_default in _inbox_subj_opts else 0)
+        if st.session_state.get("docmgr_inbox_subj") not in _inbox_subj_opts:
+            if _inbox_default in _inbox_subj_opts:
+                st.session_state["docmgr_inbox_subj"] = _inbox_default
+            else:
+                _study = [s for s in manifest.study_subjects() if s in _inbox_subj_opts]
+                st.session_state["docmgr_inbox_subj"] = (
+                    _study[0] if _study else _inbox_subj_opts[0])
         _inbox_subj = st.selectbox(
-            "Fach", _inbox_subj_opts, format_func=_fach, index=_inbox_idx,
+            "Fach", _inbox_subj_opts, format_func=_fach,
             key="docmgr_inbox_subj")
         _inbox_note = st.text_area("Notiz (optional)", key="docmgr_inbox_note", height=80)
         _inbox_file = st.file_uploader(
