@@ -25,7 +25,7 @@ from ragapp.ui._loading import page_boot, skeleton
 page_boot("🗂️ Kurse & Stundenplan", page_title="Kurse & Stundenplan", icon="🗂️", layout="wide",
          accent="organisation")
 
-from ragapp.ui._style import card, delete_button, sticky_expander
+from ragapp.ui._style import card, delete_button, mark_tight_nums, sticky_expander
 
 st.caption("Fächer, nächste Aktion, Stundenplan und Aufgaben – alles an einem Ort.")
 
@@ -224,19 +224,26 @@ else:
             st.markdown(
                 f'<p class="rag-kurs-title">{_html.escape(_fach(_subj))}</p>',
                 unsafe_allow_html=True)
-            _c1, _c2, _c3, _c4 = st.columns(4)
-            _c1.metric("Termin", planner.humanize_days(_ks["days_to_exam"])
-                       if _ks["days_to_exam"] is not None else "–")
-            _c2.metric("Unterlagen", _ks["doc_count"] or "–")
-            _c3.metric("Bereitschaft",
-                       "–" if quiet or not _ks["doc_count"] else f'{_ks["readiness_pct"]} %')
-            _c4.metric("Fällig", _ks["due_cards"] or "–")
+            _items = [
+                (planner.humanize_days(_ks["days_to_exam"])
+                 if _ks["days_to_exam"] is not None else "–", "Termin"),
+                (str(_ks["doc_count"] or "–"), "Unterlagen"),
+                ("–" if quiet or not _ks["doc_count"]
+                 else f'{_ks["readiness_pct"]} %', "Bereitschaft"),
+                (str(_ks["due_cards"] or "–"), "Fällig"),
+            ]
+            _cells = "".join(
+                f'<span class="rag-kurs-metric"><b>{mark_tight_nums(_html.escape(str(_v)))}</b>'
+                f'{_html.escape(_lab)}</span>'
+                for _v, _lab in _items
+            )
+            st.markdown(f'<div class="rag-kurs-metrics">{_cells}</div>',
+                        unsafe_allow_html=True)
             if not quiet:
                 if _ks.get("coverage_pct") is not None:
                     st.caption(
-                        f"Bereitschaft kombiniert Behalten "
-                        f"({_ks['retention_pct']} %) und Lernzielabdeckung "
-                        f"({_ks['coverage_pct']} %).")
+                        f"Behalten {_ks['retention_pct']} % · "
+                        f"Ziele {_ks['coverage_pct']} %")
                 if _ks["weak_topics"]:
                     st.caption("Lücken – Klick öffnet Karten zu dem Thema:")
                     _wcols = st.columns(min(3, len(_ks["weak_topics"][:3])))

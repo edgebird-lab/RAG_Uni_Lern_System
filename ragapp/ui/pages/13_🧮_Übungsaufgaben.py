@@ -23,7 +23,10 @@ from ragapp.ui._loading import page_boot, skeleton
 page_boot("🧮 Übungsaufgaben", page_title="Übungsaufgaben", icon="🧮", layout="wide",
          accent="uebungsaufgaben")
 
-from ragapp.ui._style import block_done_banner, card, delete_button, sticky_expander
+from ragapp.ui._style import (
+    block_done_banner, card, delete_button, seed_selectbox_from_query,
+    sticky_expander, sync_query_param,
+)
 
 st.markdown("""
 <style>
@@ -168,7 +171,9 @@ st.divider()
 # --------------------------------------------------------------------------- #
 fc1, fc2 = st.columns(2)
 with fc1:
-    _f_subject = st.selectbox("Fach", ["Alle Fächer"] + _subjects_with_docs,
+    _f_opts = ["Alle Fächer"] + _subjects_with_docs
+    seed_selectbox_from_query("practice_filter_subject", _f_opts)
+    _f_subject = st.selectbox("Fach", _f_opts,
                               format_func=lambda s: s if s == "Alle Fächer" else _fach(s),
                               key="practice_filter_subject")
 with fc2:
@@ -179,6 +184,7 @@ with fc2:
         key="practice_filter_kind")
 
 _subj_arg = None if _f_subject == "Alle Fächer" else _f_subject
+sync_query_param("fach", _subj_arg)
 _kind_arg = {"🧮 Rechenaufgabe": "numeric",
             "📐 Begründung / Beweis": "proof",
             "📖 Anwendungsszenario": "scenario"}.get(_f_kind_choice)
@@ -228,9 +234,15 @@ col_list, col_practice = st.columns([1, 2])
 
 with col_list:
     with card("liste"):
-        if _problems:
-            st.caption("🔴 empfohlen (nie/schlecht geübt) · 🟡 teilweise · "
-                      "✅ sitzt (Bestwert ≥ 75 %).")
+        st.markdown(
+            '<div class="rag-heute-chips rag-legend">'
+            '<span class="rag-heute-chip">🔴 empfohlen</span>'
+            '<span class="rag-heute-chip">🟡 teilweise</span>'
+            '<span class="rag-heute-chip" title="Bestwert mindestens 75 %">'
+            '✅ sitzt</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
         if not _problems:
             # KEIN leerer st.container(height=480) mehr, wenn es nichts zu
             # zeigen gibt - wirkte sonst wie ein verwaistes, kaputtes Element

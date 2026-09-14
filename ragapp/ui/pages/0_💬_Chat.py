@@ -27,7 +27,7 @@ from ragapp.ui._loading import page_boot, skeleton
 page_boot("💬 Chat", page_title="Chat", icon="💬",
           layout="wide", accent="chat")
 
-from ragapp.ui._style import card, delete_button, sticky_expander
+from ragapp.ui._style import card, delete_button, seed_selectbox_from_query, sticky_expander, sync_query_param
 
 # --------------------------------------------------------------------------- #
 # Styling - Rest kommt zentral aus apply_theme()/apply_page_style(); hier nur
@@ -161,10 +161,12 @@ with sticky_expander("⚙️ Chat & Filter", key="chat_filter_expander", expande
 
     subjects = sorted({d["subject"] for d in manifest.list_documents()})
     subject_options = ["Alle Fächer"] + subjects
+    seed_selectbox_from_query("chat_subject_filter", subject_options)
     chosen = st.selectbox("Fach filtern", subject_options, key="chat_subject_filter",
                           help="Sucht nur in einem Fach, das ist schneller und präziser. "
                                "Die Wahl bleibt in dieser Sitzung merken.")
     subject_filter = None if chosen == "Alle Fächer" else chosen
+    sync_query_param("fach", subject_filter)
     if _active_session_id and subject_filter:
         try:
             manifest.update_chat_session(_active_session_id, subject=subject_filter)

@@ -115,26 +115,24 @@ HIDDEN_PAGE_KEYS = {"evaluation", "ingestion"}
 # Bewusst gedaempfte Pastelltoene ("Cozy Game"-Optik) statt kraeftiger Farben -
 # muss in Hell- UND Dunkel-Modus gut aussehen (siehe _BASE_CSS unten).
 # --------------------------------------------------------------------------- #
+# Alltag (Untereiste + Home): Koralle. Vertiefen (Prüfung, Übung, Analyse): Türkis.
+# Beim Tabwechsel Heute/Kurse/Karten/Chat bleibt die Fläche gleich — kein Regenbogen.
+_CORAL = {"accent": "#FF8FA3", "soft": "#FFE3E8", "name": "Koralle"}
+_TEAL = {"accent": "#4FBFB8", "soft": "#DCF4F2", "name": "Türkis"}
+_MUTED = {"accent": "#A9A6D4", "soft": "#EAE9F7", "name": "Fliederblau"}
+_CORAL_KEYS = (
+    "home", "chat", "lernen", "organisation", "lernplan", "notizen",
+    "dokumente", "zusammenfassung", "audio", "vortrag", "semesterplan",
+)
+_TEAL_KEYS = (
+    "uebungsaufgaben", "pruefung", "fortschritt", "lernzeit", "mindmap",
+    "ingestion",
+)
 PAGE_THEMES: dict[str, dict] = {
-    "home":            {"accent": "#FF8FA3", "soft": "#FFE3E8", "name": "Koralle"},
-    "chat":            {"accent": "#5FB6E8", "soft": "#DFF1FC", "name": "Himmelblau"},
-    "lernen":          {"accent": "#61C9A8", "soft": "#DFF5EC", "name": "Smaragd"},
-    "mindmap":         {"accent": "#B98CE0", "soft": "#F0E3FA", "name": "Amethyst"},
-    "uebungsaufgaben": {"accent": "#8CC63F", "soft": "#E9F6D8", "name": "Limette"},
-    "pruefung":        {"accent": "#EF7A7A", "soft": "#FBDEDE", "name": "Koralle-Rot"},
-    "lernplan":        {"accent": "#B79CED", "soft": "#EEE6FC", "name": "Lavendel"},
-    "zusammenfassung": {"accent": "#F6C453", "soft": "#FDF1D3", "name": "Butter"},
-    "notizen":         {"accent": "#F2A0C4", "soft": "#FCE4EF", "name": "Rosé"},
-    "fortschritt":     {"accent": "#FF9F5A", "soft": "#FFE9D6", "name": "Pfirsich"},
-    "lernzeit":        {"accent": "#FF8A5B", "soft": "#FFE4D6", "name": "Tomate"},
-    "ingestion":       {"accent": "#7FD8A6", "soft": "#E1F8EC", "name": "Minze"},
-    "dokumente":       {"accent": "#8C8FE0", "soft": "#E7E7FA", "name": "Indigo"},
-    "organisation":    {"accent": "#4FBFB8", "soft": "#DCF4F2", "name": "Türkis"},
-    "evaluation":      {"accent": "#F4B942", "soft": "#FDEFD2", "name": "Honig"},
-    "einstellungen":   {"accent": "#A9A6D4", "soft": "#EAE9F7", "name": "Fliederblau"},
-    "audio":           {"accent": "#4FC3D9", "soft": "#DCF4F8", "name": "Aquamarin"},
-    "vortrag":         {"accent": "#E07A9A", "soft": "#F9E0E8", "name": "Himbeer"},
-    "semesterplan":    {"accent": "#D9A464", "soft": "#F7E7CE", "name": "Karamell"},
+    **{k: dict(_CORAL) for k in _CORAL_KEYS},
+    **{k: dict(_TEAL) for k in _TEAL_KEYS},
+    "evaluation": dict(_MUTED),
+    "einstellungen": dict(_MUTED),
 }
 _DEFAULT_THEME = PAGE_THEMES["home"]
 
@@ -861,6 +859,27 @@ html.rag-dark .rag-nav-here {{ color:#e7edf5; background:#132b4d; }}
 .rag-kurs-title {{
   font-weight:700; margin:0 0 .35rem; overflow-wrap:anywhere; line-height:1.3;
 }}
+.rag-kurs-metrics {{
+  display:flex; flex-wrap:wrap; gap:6px; margin:.1rem 0 .55rem;
+}}
+.rag-kurs-metric {{
+  flex:1 1 calc(50% - 6px); min-width:6.4rem; box-sizing:border-box;
+  background:{soft}; border:1.5px solid {accent}40; border-radius:14px;
+  padding:6px 10px 5px; font-size:.7rem; font-weight:650; color:#6a5b73;
+  line-height:1.2;
+}}
+.rag-kurs-metric b {{
+  display:block; font-size:.92rem; font-weight:750; color:#2b2036;
+  font-variant-numeric:normal; font-feature-settings:normal; letter-spacing:0;
+}}
+html.rag-dark .rag-kurs-metric {{
+  background:#132b4d; border-color:{accent}55; color:#aebdd1;
+}}
+html.rag-dark .rag-kurs-metric b {{ color:#e7edf5; }}
+@media (min-width:701px) {{
+  .rag-kurs-metric {{ flex:1 1 0; min-width:0; }}
+}}
+.rag-legend {{ margin:.15rem 0 .45rem; }}
 
 /* Dark-Mode-Umschalter (siehe _theme_toggle_html()) - schwebender runder
    Button oben rechts, ausserhalb des Streamlit-Baums direkt an <body>.
@@ -1475,6 +1494,39 @@ def render_hero_title(text: str, *, accent: str | None = None) -> None:
 def mark_tight_nums(text: str) -> str:
     """Ziffern in Chips/Sprechblasen eng setzen – Nunito splittet sonst '15' visuell."""
     return re.sub(r"(\d+)", r'<span class="rag-num">\1</span>', text or "")
+
+
+def seed_selectbox_from_query(key: str, valid: list[str], *, param: str = "fach") -> None:
+    """Setzt ein Selectbox-Widget einmalig aus ``?fach=`` (Deep-Link / Teilen)."""
+    flag = f"_qseed::{param}::{key}"
+    if st.session_state.get(flag):
+        return
+    raw = st.query_params.get(param)
+    if raw is None:
+        return
+    if isinstance(raw, (list, tuple)):
+        raw = raw[0] if raw else ""
+    raw = str(raw).strip()
+    if raw not in valid:
+        return
+    st.session_state[key] = raw
+    st.session_state[flag] = True
+
+
+def sync_query_param(param: str, value: str | None) -> None:
+    """Hält ``?fach=`` mit der aktuellen Filterwahl gleich, ohne andere Params zu löschen."""
+    cur = st.query_params.get(param)
+    if isinstance(cur, (list, tuple)):
+        cur = cur[0] if cur else None
+    cur = str(cur) if cur is not None else None
+    want = str(value) if value else None
+    if cur == want:
+        return
+    if want is None:
+        if param in st.query_params:
+            del st.query_params[param]
+    else:
+        st.query_params[param] = want
 
 
 def speech_bubble(text: str, *, icon: str = "💡") -> None:

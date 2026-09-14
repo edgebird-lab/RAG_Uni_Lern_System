@@ -26,7 +26,7 @@ from ragapp.ui._loading import page_boot, skeleton
 page_boot("📈 Fortschritt", page_title="Fortschritt", icon="📈", layout="wide",
          accent="fortschritt")
 
-from ragapp.ui._style import card, theme_for, delete_button
+from ragapp.ui._style import card, delete_button, seed_selectbox_from_query, sync_query_param, theme_for
 from ragapp.ui import _charts
 _theme = theme_for("fortschritt")
 
@@ -70,9 +70,13 @@ if not subjects:
 
 col_f, _ = st.columns([1, 2])
 with col_f:
-    fach = st.selectbox("Fach", ["Alle Fächer"] + subjects,
-                        format_func=lambda s: s if s == "Alle Fächer" else _fach(s))
+    _fach_opts = ["Alle Fächer"] + subjects
+    seed_selectbox_from_query("fortschritt_fach", _fach_opts)
+    fach = st.selectbox("Fach", _fach_opts,
+                        format_func=lambda s: s if s == "Alle Fächer" else _fach(s),
+                        key="fortschritt_fach")
 subject = None if fach == "Alle Fächer" else fach
+sync_query_param("fach", subject)
 
 # --------------------------------------------------------------------------- #
 # Vier Sektionen statt einer Scroll-Wand. Bewusst kein st.tabs(): ein Rerun

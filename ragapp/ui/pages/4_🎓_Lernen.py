@@ -26,7 +26,7 @@ from ragapp.ui._loading import page_boot, skeleton
 # damit beim Seitenwechsel kein weisser Bildschirm entsteht.
 page_boot("🎓 Karteikarten", page_title="Karteikarten", icon="🎓", layout="wide", accent="lernen")
 
-from ragapp.ui._style import block_done_banner, delete_button
+from ragapp.ui._style import block_done_banner, delete_button, seed_selectbox_from_query, sync_query_param
 
 # Nur noch das seiten-spezifische Layout; die Karteikarten-Optik (hell + dunkel)
 # kommt jetzt zentral aus ragapp.ui._theme.apply_theme().
@@ -302,11 +302,14 @@ if not st.session_state.get(ACTIVE):
     st.caption("Fach, dann **Jetzt lernen**. Stapel nur ankreuzen, wenn nicht alle.")
 
     _faecher = manifest.study_subjects()
+    _subj_opts = ["Alle Fächer"] + _faecher
+    seed_selectbox_from_query("study_subj", _subj_opts)
     _subj_pick = st.selectbox(
-        "Fach", ["Alle Fächer"] + _faecher,
+        "Fach", _subj_opts,
         format_func=lambda s: "Alle Fächer" if s == "Alle Fächer" else _fach_label(s),
         key="study_subj")
     subj = None if _subj_pick == "Alle Fächer" else _subj_pick
+    sync_query_param("fach", subj)
 
     if subj:
         from ragapp import planner, analytics

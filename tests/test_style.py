@@ -329,6 +329,9 @@ def test_hero_buchstaben_starten_lesbar_und_disabled_ist_grau():
     assert "max-height:min(80vh, 560px)" in _BASE_CSS
     assert ".rag-nav-here" in _BASE_CSS
     assert ".rag-kurs-title" in _BASE_CSS
+    assert ".rag-kurs-metrics" in _BASE_CSS
+    assert ".rag-kurs-metric" in _BASE_CSS
+    assert ".rag-legend" in _BASE_CSS
     assert "overflow-wrap:anywhere" in _BASE_CSS
     reduced = _BASE_CSS.split("@media (prefers-reduced-motion: reduce)")
     assert len(reduced) >= 2
@@ -435,3 +438,37 @@ def test_home_pins_folgen_der_untereiste():
     assert "HOME_PIN_KEYS" in src
     assert "GOAL_CATEGORIES" not in src
     assert "render_goal_tile" not in src
+
+
+def test_alltag_teilt_koralle_vertiefen_tuerkis():
+    coral = PAGE_THEMES["home"]["accent"]
+    teal = PAGE_THEMES["fortschritt"]["accent"]
+    assert coral != teal
+    for key in ("home", "chat", "lernen", "organisation"):
+        assert PAGE_THEMES[key]["accent"] == coral
+    for key in ("uebungsaufgaben", "pruefung", "fortschritt", "mindmap"):
+        assert PAGE_THEMES[key]["accent"] == teal
+    assert PAGE_THEMES["einstellungen"]["accent"] != coral
+    assert PAGE_THEMES["evaluation"]["accent"] == PAGE_THEMES["einstellungen"]["accent"]
+    for page in PAGE_REGISTRY:
+        assert page["key"] in PAGE_THEMES
+
+
+def test_kurskarten_nutzen_dichte_kennzahlen():
+    from pathlib import Path
+    src = Path("ragapp/ui/pages/8_🗂️_Organisation.py").read_text(encoding="utf-8")
+    assert "rag-kurs-metrics" in src
+    assert "rag-kurs-metric" in src
+    assert "_c1, _c2, _c3, _c4 = st.columns(4)" not in src
+
+
+def test_uebung_legende_ist_chips_und_fach_kommt_aus_der_url():
+    from pathlib import Path
+    src = Path("ragapp/ui/pages/13_🧮_Übungsaufgaben.py").read_text(encoding="utf-8")
+    assert "rag-legend" in src
+    assert "seed_selectbox_from_query" in src
+    assert 'sync_query_param("fach"' in src
+    chat = Path("ragapp/ui/pages/0_💬_Chat.py").read_text(encoding="utf-8")
+    assert "seed_selectbox_from_query" in chat
+    lernen = Path("ragapp/ui/pages/4_🎓_Lernen.py").read_text(encoding="utf-8")
+    assert "seed_selectbox_from_query" in lernen
