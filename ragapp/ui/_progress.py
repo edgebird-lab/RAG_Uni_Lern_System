@@ -112,6 +112,27 @@ class ProgressReporter:
         self._frac = 0.0
 
 
+class WaitLine:
+    """Eine Zeile, die sagt, was gerade passiert – statt stummem Spinner.
+
+    Nutzung: ``wait = WaitLine("Suche in Unterlagen …")`` und später
+    ``wait.set("Formuliere Antwort …")`` / ``wait.clear()``.
+    """
+
+    def __init__(self, message: str = "Einen Moment …"):
+        self._slot = st.empty()
+        self.set(message)
+
+    def set(self, message: str) -> None:
+        self._slot.caption(f"⏳ {message}")
+
+    def done(self, message: str = "Fertig") -> None:
+        self._slot.caption(f"✅ {message}")
+
+    def clear(self) -> None:
+        self._slot.empty()
+
+
 def progress_tracker(bar, caption, label: str) -> Callable[[int, int, str], None]:
     """Zweiter Fortschritts-Baustein für den EINFACHEREN ``(done, total,
     unit_label)``-Aufrufvertrag (siehe ``audio_overview.ProgressCallback``) -

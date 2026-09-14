@@ -639,6 +639,7 @@ for i, card in enumerate(exam["cards"]):
     st.divider()
 
 if st.button("✅ Abgeben & auswerten", type="primary", use_container_width=True):
-    with st.spinner("Werte aus …"):
+    with st.spinner("Werte die Klausur aus … das kann je nach Anzahl der Aufgaben "
+                    "einige Minuten dauern."):
         _auswerten()
     st.rerun()

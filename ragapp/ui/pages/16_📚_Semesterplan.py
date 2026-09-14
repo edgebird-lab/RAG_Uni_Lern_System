@@ -27,7 +27,7 @@ from ragapp.ui._loading import page_boot, skeleton
 page_boot("📚 Semester einrichten", page_title="Semester einrichten", icon="📚",
          layout="wide", accent="semesterplan")
 
-from ragapp.ui._style import card
+from ragapp.ui._style import card, delete_button
 
 st.markdown("<style>.block-container{padding-top:2rem;max-width:1000px;}"
             "h1{font-weight:750;letter-spacing:-.5px;}</style>", unsafe_allow_html=True)
@@ -182,14 +182,8 @@ if _already or _slots_n:
         st.caption("Das landet nach dem Import hier – nicht bei den Karteikarten.")
 
         def _exam_fragment(ex: dict) -> bool:
-            subj = (ex.get("subject") or "").strip()
-            if ex.get("exam_date"):
-                return False
-            if subj.isdigit():
-                return True
-            if subj.count("(") != subj.count(")"):
-                return True
-            return subj.endswith(("(", "-", "–", "/", "&"))
+            from ragapp.student_flow import is_exam_fragment
+            return is_exam_fragment(ex)
 
         _ok_exams = [e for e in _already if not _exam_fragment(e)]
         _frag_exams = [e for e in _already if _exam_fragment(e)]
@@ -211,9 +205,32 @@ if _already or _slots_n:
             with st.expander(
                     f"Unvollständige Importreste ({len(_frag_exams)})", expanded=False):
                 st.caption("Kürzel ohne Klausurdatum, oft abgeschnittene Modulnummern. "
-                           "Unter Fortschritt löschen oder einen Termin setzen.")
+                           "Hier löschen oder unter Fortschritt einen Termin setzen.")
                 for _ex in _frag_exams:
                     st.write(_exam_line(_ex))
+                if delete_button(
+                        "Importreste löschen",
+                        token="syllabus:import-remnants",
+                        body=("Die **unvollständigen Importreste** wirklich löschen? "
+                              "Echte Fächer mit Klausurdatum bleiben. "
+                              "Livetest und deine Kurse werden nicht angefasst."),
+                        key="syllabus_purge_fragments"):
+                    from ragapp.student_flow import purge_import_remnant_exams
+                    _n = purge_import_remnant_exams()
+                    st.session_state["_syllabus_flash"] = (
+                        f"{_n} Importrest(e) gelöscht." if _n else
+                        "Keine Importreste gefunden.")
+                    st.rerun()
+        _empty_docs = [dict(d) for d in manifest.list_documents()
+                       if int(d["num_chunks"] or 0) == 0]
+        if _empty_docs:
+            with st.expander(
+                    f"Dokumente ohne Index ({len(_empty_docs)})", expanded=False):
+                st.caption("Hochgeladen, aber noch ohne durchsuchbare Abschnitte. "
+                           "Unter Dokumente neu einlesen – nicht automatisch löschen.")
+                for _d in _empty_docs[:25]:
+                    st.write(f"• {_d.get('filename') or _d.get('doc_id')} · "
+                             f"{_d.get('subject') or '—'}")
         if _slots_n:
             st.write(f"• {_slots_n} Vorlesungszeit(en) unter **🗂️ Kurse & Stundenplan**.")
         else:

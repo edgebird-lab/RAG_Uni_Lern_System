@@ -145,8 +145,8 @@ with sticky_expander("➕ Neue Übungsaufgabe generieren",
                     "📖 Anwendungsszenario": "scenario"}.get(_g_kind_choice)
         _model_arg = settings.LLM_MODEL_FAST if "Schnell" in _g_model_choice else None
         _doc_ids = [_subj_docs[n] for n in _g_doc_names]
-        with st.spinner("KI erstellt die Aufgabe … das kann je nach Umfang und "
-                        "Hardware einige Zeit dauern."):
+        with st.spinner("KI erstellt die Aufgabe aus den gewählten Unterlagen … "
+                        "das kann je nach Umfang einige Minuten dauern."):
             try:
                 _new_pid = practice_gen.generate_practice_problem(
                     subject=_g_subject, doc_ids=_doc_ids, topic=_g_topic or None,

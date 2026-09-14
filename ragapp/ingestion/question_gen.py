@@ -15,6 +15,8 @@ Warum das die Trefferquote erhöht:
 """
 from __future__ import annotations
 
+import re
+
 from ragapp.config import settings
 from ragapp.llm import get_llm
 
@@ -43,6 +45,49 @@ def _is_frage(q: str) -> bool:
     return any(ql.startswith(v) for v in _IMPERATIVE)
 
 
+_HEADING_ECHO_FILLER = {
+    "was", "ist", "sind", "der", "die", "das", "ein", "eine", "einer",
+    "eines", "und", "oder", "wie", "wird", "werden", "bitte", "nenne",
+    "erklären", "erklaeren", "erklär", "erklaer", "sie", "den", "dem",
+    "im", "in", "zu", "zur", "zum", "von", "vom", "über", "ueber",
+    "genau", "bitte", "kurz", "sich",
+}
+
+
+def _normalize_question_text(text: str) -> str:
+    s = (text or "").strip().lower()
+    s = re.sub(r"[^\wäöüß]+", " ", s)
+    return " ".join(s.split())
+
+
+def _chunk_heading(chunk: str) -> str:
+    """Erste Zeile eines Chunks, oft die Markdown-/Abschnitt-Überschrift."""
+    first = ""
+    for line in (chunk or "").splitlines():
+        if line.strip():
+            first = line.strip()
+            break
+    return first.lstrip("#").strip()
+
+
+def _is_heading_echo(question: str, chunk: str) -> bool:
+    """True, wenn die Frage nur die Überschrift umformuliert ('Was ist X?')."""
+    heading = _chunk_heading(chunk)
+    hn = _normalize_question_text(heading)
+    qn = _normalize_question_text(question)
+    if len(hn) < 6 or not qn:
+        return False
+    h_content = [w for w in hn.split() if w not in _HEADING_ECHO_FILLER]
+    q_content = [w for w in qn.split() if w not in _HEADING_ECHO_FILLER]
+    if not h_content:
+        return False
+    if q_content == h_content:
+        return True
+    if hn in qn and len(q_content) <= len(h_content) + 1:
+        return True
+    return False
+
+
 _SYSTEM = (
     "Du bist ein erfahrener Prüfungs-Coach an einer deutschen Hochschule. "
     "Du formulierst knappe, eigenständige Klausur-/Verständnisfragen auf Deutsch."
@@ -57,6 +102,9 @@ können. Regeln:
 - Verschiedene Aspekte abdecken (Definition, Berechnung, Beispiel, Abgrenzung).
 - Natürliche Prüfungssprache, so wie ein Studierender fragen würde.
 - Keine Verweise wie "laut Abschnitt" oder "im Text".
+- Nicht die Überschrift umformulieren ("Was ist …?" mit dem Abschnittstitel).
+  Frage nach einem prüfungsrelevanten Aspekt: Definition in eigenen Worten,
+  Berechnung, Abgrenzung, Beispiel, Anwendung.
 
 Abschnitt:
 \"\"\"
@@ -140,7 +188,7 @@ def generate_questions(chunk_text: str, n: int | None = None, model: str | None 
         if isinstance(q, str):
             q = q.strip()
             key = q.lower()
-            if q and key not in seen and _is_frage(q):
+            if q and key not in seen and _is_frage(q) and not _is_heading_echo(q, chunk_text):
                 seen.add(key)
                 out.append(q)
     return out[:n]

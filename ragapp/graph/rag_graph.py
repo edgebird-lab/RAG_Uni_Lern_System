@@ -28,7 +28,7 @@ from __future__ import annotations
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, TypedDict
+from typing import Callable, Optional, TypedDict
 
 from langgraph.graph import StateGraph, START, END
 
@@ -39,6 +39,8 @@ from ragapp.retrieval.reranker import get_reranker
 from ragapp.graph.prompts import (
     ANSWER_SYSTEM, ANSWER_PROMPT, TUTOR_SYSTEM, TUTOR_PROMPT,
     SOKRATISCH_SYSTEM, SOKRATISCH_PROMPT, SOKRATISCH_RESOLVE_HINWEIS,
+    SOKRATISCH_TOPIC_HINWEIS, SOKRATISCH_START_HINWEIS, SOKRATISCH_PARTIAL_HINWEIS,
+    SOKRATISCH_HINT_HINWEIS, SOKRATISCH_NEXT_ASPECT_HINWEIS,
     COMPACT_SYSTEM, COMPACT_PROMPT, FAITHFULNESS_PROMPT, NO_ANSWER_TOKEN,
 )
 from ragapp import manifest
@@ -65,6 +67,7 @@ class RAGState(TypedDict, total=False):
     history: list            # bisherige Chat-Turns ({"role","content"}) - fuer den
                               # Sokratischen Dialog eine ECHTE Mehrturn-Historie (siehe
                               # generate_node), sonst nur zur Rueckfragen-Umformulierung
+    socratic_topic: Optional[str]  # vereinbartes Dialog-Thema (nur Modus sokratisch)
     syllabus: bool           # Ueberblicks-/Lernstoff-Frage -> breiteres Retrieval
     use_reranker: Optional[bool]        # None = Einstellung, False = "Schnelle Antworten"
     check_faithfulness: Optional[bool]  # None = Einstellung, False = "Schnelle Antworten"
@@ -490,11 +493,10 @@ def generate_node(state: RAGState) -> RAGState:
         system, prompt_template = ((SOKRATISCH_SYSTEM, SOKRATISCH_PROMPT) if mode == "sokratisch"
                                    else (TUTOR_SYSTEM, TUTOR_PROMPT))
         prompt = prompt_template.format(context=context, question=state["question"])
-        if mode == "sokratisch" and _sokratisch_force_resolve(
-                state["question"], state.get("history")):
-            # Code-seitig erzwungene Aufloesung statt einer weiteren
-            # Rueckfrage - siehe _sokratisch_force_resolve.
-            prompt += SOKRATISCH_RESOLVE_HINWEIS
+        if mode == "sokratisch":
+            prompt += _sokratisch_extra_prompt(
+                state["question"], state.get("history"),
+                state.get("socratic_topic"))
         llm_obj = get_llm()
         messages = ([{"role": "system", "content": system}]
                     + _history_for_chat(state.get("history"))
@@ -728,14 +730,90 @@ _GIVE_UP_MARKERS = ("weiß es nicht", "weiss es nicht", "weiß ich nicht",
                     "löse es auf", "loese es auf", "ich gebe auf",
                     "gib mir die antwort", "erklär es mir einfach",
                     "erklaer es mir einfach")
+_PARTIAL_MARKERS = ("weiß es teilweise", "weiss es teilweise",
+                    "weiß ich teilweise", "weiss ich teilweise",
+                    "weiß nur einen teil", "weiss nur einen teil")
+_HINT_MARKERS = ("gib mir einen hinweis", "ohne die antwort zu verraten")
+_NEXT_ASPECT_MARKERS = ("nächster aspekt", "naechster aspekt")
+_START_MARKERS = ("lass uns über", "lass uns ueber")
 
 
 def _looks_like_giving_up(question: str) -> bool:
     """Erkennt explizite Aufgeben-/Aufloese-Wuensche ('ich weiß es nicht', 'sag
     mir die Antwort' ...) - deterministischer Trigger fuer die sokratische
     Aufloesung statt einer Interpretation durch das LLM."""
+    if _looks_like_partial(question):
+        return False
+    return _marker_hit(question, _GIVE_UP_MARKERS)
+
+
+def _marker_hit(question: str, markers: tuple[str, ...]) -> bool:
     ql = (question or "").strip().lower()
-    return any(m in ql for m in _GIVE_UP_MARKERS)
+    return bool(ql) and any(m in ql for m in markers)
+
+
+def _looks_like_partial(question: str) -> bool:
+    """Teilwissen: auf derselben Zielfrage bleiben, nicht auflösen."""
+    return _marker_hit(question, _PARTIAL_MARKERS)
+
+
+def _looks_like_hint_request(question: str) -> bool:
+    return _marker_hit(question, _HINT_MARKERS)
+
+
+def _looks_like_next_aspect(question: str) -> bool:
+    return _marker_hit(question, _NEXT_ASPECT_MARKERS)
+
+
+def _looks_like_socratic_start(question: str) -> bool:
+    return _marker_hit(question, _START_MARKERS)
+
+
+def _sokratisch_is_control(question: str) -> bool:
+    """Steuerimpulse der UI (Start/Hinweis/Teilweise/Auflösen/nächster Aspekt),
+    keine inhaltliche Fachfrage – Retrieval soll am vereinbarten Thema bleiben."""
+    return (_looks_like_socratic_start(question)
+            or _looks_like_giving_up(question)
+            or _looks_like_partial(question)
+            or _looks_like_hint_request(question)
+            or _looks_like_next_aspect(question))
+
+
+def _sokratisch_search_query(question: str, history: Optional[list],
+                             topic: Optional[str]) -> str:
+    """Suche im sokratischen Dialog am vereinbarten Thema verankern, damit
+    Steuerimpulse und Kurzantworten nicht zu Nachbar-Chunks springen."""
+    topic = (topic or "").strip()
+    q = (question or "").strip()
+    if not topic:
+        return q
+    if not history or _sokratisch_is_control(q):
+        return topic
+    if topic.lower() in q.lower():
+        return q
+    return f"{topic}: {q}"
+
+
+def _sokratisch_extra_prompt(question: str, history: Optional[list],
+                             topic: Optional[str]) -> str:
+    """Haengt die code-seitigen SYSTEMHINWEISE an den Sokratisch-Prompt.
+    Reihenfolge: Thema immer, dann Start / erzwungene Aufloesung / Teilwissen /
+    Hinweis / naechster Aspekt. Aufloesung sticht die weicheren Steuerungen."""
+    parts: list[str] = []
+    topic_s = (topic or "").strip()
+    if topic_s:
+        parts.append(SOKRATISCH_TOPIC_HINWEIS.format(topic=topic_s))
+    if not history:
+        parts.append(SOKRATISCH_START_HINWEIS)
+    elif _sokratisch_force_resolve(question, history):
+        parts.append(SOKRATISCH_RESOLVE_HINWEIS)
+    elif _looks_like_partial(question):
+        parts.append(SOKRATISCH_PARTIAL_HINWEIS)
+    elif _looks_like_hint_request(question):
+        parts.append(SOKRATISCH_HINT_HINWEIS)
+    elif _looks_like_next_aspect(question):
+        parts.append(SOKRATISCH_NEXT_ASPECT_HINWEIS)
+    return "".join(parts)
 
 
 _TRAILING_SOURCE_TAGS_RE = re.compile(r"(\[Quelle[^\]]*\]\s*)+$")
@@ -798,7 +876,8 @@ def answer_query(question: str, subject: Optional[str] = None,
                  decompose: bool = True,
                  chat_mode: str = "strict",
                  doc_ids: Optional[list] = None,
-                 include_notes: bool = False) -> dict:
+                 include_notes: bool = False,
+                 socratic_topic: Optional[str] = None) -> dict:
     """Öffentliche Schnittstelle für UI/CLI. Führt den Graphen aus.
 
     use_reranker / check_faithfulness: None = globale Einstellung; False =
@@ -813,16 +892,23 @@ def answer_query(question: str, subject: Optional[str] = None,
     allen drei Modi weiterhin nur aus dem Kontext.
     doc_ids: optionale Dokument-Auswahl, schränkt das Retrieval zusätzlich zu
     ``subject`` auf genau diese Dokumente ein (z. B. der an eine Mindmap
-    gebundene Chat - siehe ragapp/ui/pages/14_🧠_Mindmap.py)."""
+    gebundene Chat - siehe ragapp/ui/pages/14_🧠_Mindmap.py).
+    socratic_topic: vereinbartes Dialog-Thema (nur Modus sokratisch); steuert
+    Retrieval und SYSTEMHINWEIS, damit der Dialog nicht zu Nachbarthemen driftet."""
     t0 = time.time()
     with llm_task():
         mode = chat_mode if chat_mode in _CHAT_MODES else "strict"
+        topic = (socratic_topic or "").strip() or None
         syllabus = _is_syllabus_intent(question)
         search_query = question
-        if history and _looks_followup(question):
+        if mode == "sokratisch" and topic:
+            search_query = _sokratisch_search_query(question, history, topic)
+        elif history and _looks_followup(question):
             search_query = _condense_query(question, history)
         # Syllabus/Ueberblick: kein teures Decompose (breiteres Retrieval reicht)
         do_decompose = decompose and _is_broad(question) and not syllabus
+        if mode == "sokratisch" and _sokratisch_is_control(question):
+            do_decompose = False
         sub_queries = _decompose_query(search_query) if do_decompose else []
         # Tutor/Sokratisch: Faithfulness default aus, sofern nicht explizit gesetzt
         faith = check_faithfulness
@@ -831,6 +917,7 @@ def answer_query(question: str, subject: Optional[str] = None,
         state: RAGState = {"question": question, "search_query": search_query,
                            "sub_queries": sub_queries, "subject": subject,
                            "doc_ids": doc_ids, "chat_mode": mode, "history": history or [],
+                           "socratic_topic": topic,
                            "syllabus": syllabus, "use_reranker": use_reranker,
                            "check_faithfulness": faith, "include_notes": bool(include_notes),
                            "mode": "answer"}
@@ -853,9 +940,13 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
                         decompose: bool = True,
                         chat_mode: str = "strict",
                         doc_ids: Optional[list] = None,
-                        include_notes: bool = False):
+                        include_notes: bool = False,
+                        socratic_topic: Optional[str] = None,
+                        on_stage: Optional[Callable[[str], None]] = None):
     """Streaming-Variante von :func:`answer_query` fuer den SCHNELL-/Tutor-/
     Sokratisch-Modus. ``doc_ids``: siehe :func:`answer_query`.
+    ``socratic_topic`` / ``on_stage``: Thema-Anker bzw. UI-Wartezeile
+    (``retrieve`` / ``generate``).
 
     Rueckgabe ``(stream, holder)``:
         * ``stream`` - Generator ueber Antwort-Token (``str``). Erschoepft man ihn
@@ -883,6 +974,15 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
 
     holder: dict = {}
     syllabus = _is_syllabus_intent(question)
+    topic = (socratic_topic or "").strip() or None
+
+    def _stage(name: str) -> None:
+        if on_stage is None:
+            return
+        try:
+            on_stage(name)
+        except Exception:  # noqa: BLE001 - UI-Callback darf den Stream nicht killen
+            pass
 
     def _gen():
         t0 = time.time()
@@ -890,10 +990,15 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
         accumulated: list[str] = []
         try:
             with llm_task():
+                _stage("retrieve")
                 search_query = question
-                if history and _looks_followup(question):
+                if mode == "sokratisch" and topic:
+                    search_query = _sokratisch_search_query(question, history, topic)
+                elif history and _looks_followup(question):
                     search_query = _condense_query(question, history)
                 do_decompose = decompose and _is_broad(question) and not syllabus
+                if mode == "sokratisch" and _sokratisch_is_control(question):
+                    do_decompose = False
                 sub_queries = _decompose_query(search_query) if do_decompose else []
                 queries = [search_query] + [q for q in sub_queries if q]
 
@@ -946,10 +1051,9 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
                                                 if mode == "sokratisch"
                                                 else (TUTOR_SYSTEM, TUTOR_PROMPT))
                     prompt = prompt_template.format(context=context, question=question)
-                    if mode == "sokratisch" and _sokratisch_force_resolve(question, history):
-                        # Code-seitig erzwungene Aufloesung statt einer weiteren
-                        # Rueckfrage - siehe _sokratisch_force_resolve.
-                        prompt += SOKRATISCH_RESOLVE_HINWEIS
+                    if mode == "sokratisch":
+                        prompt += _sokratisch_extra_prompt(
+                            question, history, topic)
                     history_messages = ([{"role": "system", "content": system}]
                                          + _history_for_chat(history)
                                          + [{"role": "user", "content": prompt}])
@@ -961,6 +1065,7 @@ def answer_query_stream(question: str, subject: Optional[str] = None,
                     stream_kwargs = {"prompt": prompt, "system": ANSWER_SYSTEM}
                     guard_sentinel = True
                 tg = time.time()
+                _stage("generate")
 
                 head = ""
                 guard = len(NO_ANSWER_TOKEN) + 12

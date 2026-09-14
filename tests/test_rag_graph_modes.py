@@ -275,11 +275,36 @@ def sokratisch_funcs(load_functions, ragapp_dir):
             SOKRATISCH_RESOLVE_AFTER_QUESTIONS=resolve_after_questions)
         return load_functions(
             ragapp_dir / "graph" / "rag_graph.py",
-            ["_looks_like_giving_up", "_is_open_question",
+            ["_looks_like_giving_up", "_looks_like_partial",
+             "_looks_like_hint_request", "_looks_like_next_aspect",
+             "_looks_like_socratic_start", "_sokratisch_is_control",
+             "_sokratisch_search_query", "_sokratisch_extra_prompt",
+             "_marker_hit", "_is_open_question",
              "_consecutive_open_questions", "_sokratisch_force_resolve"],
             {"settings": settings_obj, "Optional": Optional,
-             "re": __import__("re")},
-            const_names=["_GIVE_UP_MARKERS", "_TRAILING_SOURCE_TAGS_RE"],
+             "re": __import__("re"),
+             "SOKRATISCH_TOPIC_HINWEIS": __import__(
+                 "ragapp.graph.prompts", fromlist=["SOKRATISCH_TOPIC_HINWEIS"]
+             ).SOKRATISCH_TOPIC_HINWEIS,
+             "SOKRATISCH_START_HINWEIS": __import__(
+                 "ragapp.graph.prompts", fromlist=["SOKRATISCH_START_HINWEIS"]
+             ).SOKRATISCH_START_HINWEIS,
+             "SOKRATISCH_PARTIAL_HINWEIS": __import__(
+                 "ragapp.graph.prompts", fromlist=["SOKRATISCH_PARTIAL_HINWEIS"]
+             ).SOKRATISCH_PARTIAL_HINWEIS,
+             "SOKRATISCH_HINT_HINWEIS": __import__(
+                 "ragapp.graph.prompts", fromlist=["SOKRATISCH_HINT_HINWEIS"]
+             ).SOKRATISCH_HINT_HINWEIS,
+             "SOKRATISCH_NEXT_ASPECT_HINWEIS": __import__(
+                 "ragapp.graph.prompts", fromlist=["SOKRATISCH_NEXT_ASPECT_HINWEIS"]
+             ).SOKRATISCH_NEXT_ASPECT_HINWEIS,
+             "SOKRATISCH_RESOLVE_HINWEIS": __import__(
+                 "ragapp.graph.prompts", fromlist=["SOKRATISCH_RESOLVE_HINWEIS"]
+             ).SOKRATISCH_RESOLVE_HINWEIS,
+             },
+            const_names=["_GIVE_UP_MARKERS", "_TRAILING_SOURCE_TAGS_RE",
+                         "_PARTIAL_MARKERS", "_HINT_MARKERS",
+                         "_NEXT_ASPECT_MARKERS", "_START_MARKERS"],
         )
     return _make
 
@@ -375,3 +400,45 @@ def test_force_resolve_schwelle_ist_konfigurierbar(sokratisch_funcs):
     f = sokratisch_funcs(resolve_after_questions=1)["_sokratisch_force_resolve"]
     history = [_turn("user", "x"), _turn("assistant", "Frage 1?")]
     assert f("Verfügbarkeit", history) is True
+
+
+def test_partial_ist_kein_aufgeben(sokratisch_funcs):
+    give = sokratisch_funcs()["_looks_like_giving_up"]
+    partial = sokratisch_funcs()["_looks_like_partial"]
+    assert partial("Ich weiß es teilweise.")
+    assert not give("Ich weiß es teilweise.")
+    assert not partial("Ich weiß es nicht")
+
+
+def test_sokratisch_search_query_ankert_steuerimpulse_am_thema(sokratisch_funcs):
+    f = sokratisch_funcs()["_sokratisch_search_query"]
+    topic = "Schutzziele der Informationssicherheit"
+    history = [_turn("user", "start"), _turn("assistant", "Was fällt dir ein?")]
+    assert f("Lass uns über Schutzziele sprechen. Stelle eine Einstiegsfrage dazu.",
+             [], topic) == topic
+    assert f("Ich weiß es teilweise.", history, topic) == topic
+    assert f("Gib mir einen Hinweis, ohne die Antwort zu verraten.",
+             history, topic) == topic
+    assert f("Vertraulichkeit", history, topic) == f"{topic}: Vertraulichkeit"
+
+
+def test_sokratisch_extra_prompt_start_partial_hint_resolve(sokratisch_funcs):
+    extra = sokratisch_funcs()["_sokratisch_extra_prompt"]
+    topic = "Schutzziele"
+    start = extra("Lass uns über Schutzziele sprechen. Stelle eine Einstiegsfrage dazu.",
+                  [], topic)
+    assert "Schutzziele" in start
+    assert "Start" in start or "Einstiegsfrage" in start
+    assert "vollständig auf" not in start
+
+    history = [_turn("user", "x"), _turn("assistant", "Was gehört dazu?")]
+    part = extra("Ich weiß es teilweise.", history, topic)
+    assert "TEIL" in part
+    assert "vollständig auf" not in part
+
+    hint = extra("Gib mir einen Hinweis, ohne die Antwort zu verraten.", history, topic)
+    assert "Hinweis" in hint
+    assert "vollständig auf" not in hint
+
+    resolve = extra("Löse es auf.", history, topic)
+    assert "vollständig auf" in resolve

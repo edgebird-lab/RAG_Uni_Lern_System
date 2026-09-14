@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import sys
 import html
-import random
 import pathlib
 
 _p = pathlib.Path(__file__).resolve()
@@ -73,16 +72,6 @@ _EXAMPLE_QUESTIONS = [
     "Was sollte ich für die Klausur unbedingt wiederholen?",
 ]
 
-# Motivierende Sprüche für den Denk-/Lademoment (rotieren zufällig)
-_LERN_SPRUECHE = [
-    "Dranbleiben lohnt sich. Jede Frage bringt dich der Bestnote näher.",
-    "Wissen wächst mit jeder Frage. Du schaffst das!",
-    "Kleine Schritte, große Wirkung. Bleib neugierig!",
-    "Fokus an, Zweifel aus. Deine Klausur kann kommen!",
-    "Jede Wiederholung sitzt. Weiter so!",
-    "Verstehen schlägt Auswendiglernen. Frag ruhig nach.",
-]
-
 # Seitenspezifische ragapp-Importe erst JETZT - unter einem Ladehinweis, damit beim
 # ersten (kalten) Laden ein Spinner statt eines weissen Bereichs erscheint. Der
 # import im with-Block bindet modulweit -> alle spaeteren Verwendungen unveraendert.
@@ -120,6 +109,13 @@ if st.session_state.get("_chat_loaded_session_id", "__unset__") != _active_sessi
     st.session_state.messages = list(_sess["messages"]) if _sess else []
     if _sess and _sess.get("subject"):
         st.session_state["chat_subject_filter"] = _sess["subject"]
+    st.session_state.pop("socratic_topic", None)
+    _m0 = ""
+    if st.session_state.messages:
+        _m0 = (st.session_state.messages[0].get("content") or "").strip()
+    if _m0.startswith("Lass uns über ") and " sprechen." in _m0:
+        st.session_state["socratic_topic"] = (
+            _m0[len("Lass uns über "):].split(" sprechen.", 1)[0].strip())
 
 with sticky_expander("⚙️ Chat & Filter", key="chat_filter_expander", expanded=False):
     st.caption(f"Modell: `{settings.LLM_MODEL}` · Embedding: `{settings.EMBED_MODEL}`")
@@ -199,9 +195,10 @@ with sticky_expander("⚙️ Chat & Filter", key="chat_filter_expander", expande
         help="🎯 Strikt: nur Antworten, die direkt aus deinen Unterlagen belegt "
              "sind. 🗣️ Tutor-Gespräch: freier formuliert, strukturiert, "
              "priorisiert, Lernüberblick. 🧭 Sokratischer Dialog: stellt dir "
-             "gezielte Rückfragen und hilft, die Antwort SELBST zu erarbeiten, "
-             "statt sie direkt vorzugeben – gut zum wirklichen Verstehen statt "
-             "Nachschlagen. In allen drei Modi kommen Fakten weiterhin "
+             "gezielte Rückfragen und hilft, die Antwort SELBST zu erarbeiten. "
+             "Zuerst das Thema festlegen, dann auf einer Linie bleiben "
+             "(Hinweis / Teilwissen / Auflösen) – gut zum wirklichen Verstehen "
+             "statt Nachschlagen. In allen drei Modi kommen Fakten weiterhin "
              "ausschließlich aus dem RAG – nichts wird erfunden. Gegenprüfung "
              "ist in Tutor-Gespräch und Sokratischem Dialog aus (sonst würde "
              "Synthese oft verworfen).")
@@ -224,6 +221,7 @@ with sticky_expander("⚙️ Chat & Filter", key="chat_filter_expander", expande
             manifest.delete_chat_session(_active_session_id)
         st.session_state.messages = []
         st.session_state["_chat_pending_choice"] = None
+        st.session_state.pop("socratic_topic", None)
         st.rerun()
 
 
@@ -436,6 +434,21 @@ def _followup_chips(idx: int) -> None:
             st.rerun()
 
 
+def _socratic_chips(idx: int) -> None:
+    """Steuerung auf derselben Dialoglinie statt thematisch zu springen."""
+    cols = st.columns(4)
+    prompts = (
+        ("Hinweis", "Gib mir einen Hinweis, ohne die Antwort zu verraten."),
+        ("Teilweise", "Ich weiß es teilweise."),
+        ("Auflösen", "Löse es auf."),
+        ("Nächster Aspekt", "Nächster Aspekt desselben Themas."),
+    )
+    for col, (label, q) in zip(cols, prompts):
+        if col.button(label, key=f"soc_{idx}_{label}"):
+            st.session_state["_pending_prompt"] = q
+            st.rerun()
+
+
 # Verlauf rendern
 for _mi, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"], avatar="🧑‍🎓" if msg["role"] == "user" else "🤖"):
@@ -449,11 +462,72 @@ for _mi, msg in enumerate(st.session_state.messages):
             _save_card_button(_q, msg["content"], msg.get("meta"), msg.get("sources"),
                               key=f"card_h{_mi}")
             _save_note_button(_q, msg["content"], msg.get("sources"), key=f"note_h{_mi}")
-            _followup_chips(_mi)
+            if _chat_mode == "sokratisch":
+                if _mi == len(st.session_state.messages) - 1:
+                    _socratic_chips(_mi)
+            else:
+                _followup_chips(_mi)
         if msg.get("sources"):
             if (msg.get("meta") or {}).get("mode") == "fallback":
                 st.caption("Keine sichere Antwort – Stelle unten nachlesen.")
             render_sources(msg["sources"], key_prefix=f"h{_mi}")
+
+
+def _socratic_topic_suggestions(subject: "str | None") -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for d in manifest.list_documents():
+        if subject and d["subject"] != subject:
+            continue
+        raw = d["filename"] or ""
+        name = raw.rsplit(".", 1)[0].strip() if raw else ""
+        key = name.lower()
+        if len(name) < 3 or key in seen:
+            continue
+        seen.add(key)
+        out.append(name)
+        if len(out) >= 9:
+            break
+    return out
+
+
+def _start_socratic_dialog(topic: str) -> None:
+    from ragapp.graph.prompts import SOKRATISCH_START_USER
+    topic = (topic or "").strip()
+    if not topic:
+        return
+    st.session_state["socratic_topic"] = topic
+    st.session_state["_pending_prompt"] = SOKRATISCH_START_USER.format(topic=topic)
+    st.rerun()
+
+
+def _render_socratic_start() -> None:
+    """Leerer sokratischer Chat: erst das Thema, dann der Dialog – ohne Pflicht,
+    irgendetwas ins Eingabefeld zu tippen."""
+    with card("socratic_start"):
+        st.markdown("##### Worum soll der Dialog gehen?")
+        st.caption(
+            "Erst das Thema festlegen. Danach bleibt das Gespräch auf einer Linie: "
+            "eine Frage, deine Antwort, ein Hinweis oder die nächste Vertiefung – "
+            "kein Sprung zu einem Nachbar-Thema.")
+        with st.form("socratic_start_form", clear_on_submit=False):
+            topic = st.text_input(
+                "Thema", key="socratic_topic_input",
+                placeholder="z. B. Schutzziele der Informationssicherheit")
+            started = st.form_submit_button("Dialog starten", type="primary")
+        if started:
+            if not (topic or "").strip():
+                st.warning("Bitte zuerst ein Thema eintragen – oder unten einen Vorschlag wählen.")
+            else:
+                _start_socratic_dialog(topic)
+        suggestions = _socratic_topic_suggestions(subject_filter)
+        if suggestions:
+            st.caption("Vorschläge aus deinen Unterlagen:")
+            cols = st.columns(3)
+            for i, name in enumerate(suggestions):
+                if cols[i % 3].button(name, key=f"soc_sug_{i}",
+                                      use_container_width=True):
+                    _start_socratic_dialog(name)
 
 
 def _render_onboarding() -> None:
@@ -487,19 +561,42 @@ def _friendly_error(exc: Exception) -> str:
             "unter ⚙️ Einstellungen das richtige Modell geladen?")
 
 
-# Leerer Chat + vorhandene Dokumente -> Einstiegs-Fragen anbieten.
-if not st.session_state.messages and stats["chunks"] > 0:
-    _render_onboarding()
+# Leerer Chat + vorhandene Dokumente -> Einstieg (sokratisch: erst Thema).
+# _pending_prompt: Dialog startet in DIESEM Rerun – Picker nicht mehr zeigen.
+_incoming = bool(st.session_state.get("_pending_prompt"))
+if not st.session_state.messages and stats["chunks"] > 0 and not _incoming:
+    if _chat_mode == "sokratisch":
+        _render_socratic_start()
+    else:
+        _render_onboarding()
+
+if _chat_mode == "sokratisch" and st.session_state.get("socratic_topic"):
+    _tb1, _tb2 = st.columns([4, 1])
+    _tb1.caption(f"🧭 Thema: **{st.session_state['socratic_topic']}**")
+    if _tb2.button("Neues Thema", key="soc_reset_topic"):
+        st.session_state.messages = []
+        st.session_state.pop("socratic_topic", None)
+        st.session_state["_chat_pending_choice"] = None
+        st.session_state["_chat_loaded_session_id"] = None
+        st.rerun()
 
 
 # --------------------------------------------------------------------------- #
 # Eingabe
 # --------------------------------------------------------------------------- #
-prompt = st.chat_input("Stelle eine Frage zu deinem Lernstoff …")
+_chat_ph = "Stelle eine Frage zu deinem Lernstoff …"
+if _chat_mode == "sokratisch":
+    _chat_ph = ("Deine Antwort zum Thema …"
+                if st.session_state.get("socratic_topic")
+                else "Oder tippe hier das Thema …")
+prompt = st.chat_input(_chat_ph)
 # Klick auf eine Beispiel-Frage (Onboarding) wirkt wie eine getippte Eingabe.
 if not prompt:
     prompt = st.session_state.pop("_pending_prompt", None)
 if prompt:
+    if (_chat_mode == "sokratisch" and not st.session_state.get("socratic_topic")
+            and not st.session_state.messages):
+        st.session_state["socratic_topic"] = prompt.strip().splitlines()[0][:120]
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user", avatar="🧑‍🎓"):
         st.markdown(prompt)
@@ -508,20 +605,26 @@ if prompt:
         # Beim allerersten Query werden die Modelle ggf. noch geladen (~einmalig,
         # bis zu ~20 s). Ehrliches Erwartungsmanagement statt stiller Wartezeit.
         _first_query = not st.session_state.get("_first_query_done")
-        _spinner_text = ("🧠 Modelle werden einmalig geladen, das dauert kurz … "
-                         "(nur beim ersten Mal)") if _first_query \
-            else random.choice(_LERN_SPRUECHE)
+        if _first_query:
+            _wait_retrieve = "Modelle werden einmalig geladen, danach Suche in den Unterlagen …"
+            _wait_generate = "Formuliere Antwort …"
+        elif _chat_mode == "sokratisch":
+            _wait_retrieve = "Suche im vereinbarten Thema …"
+            _wait_generate = "Formuliere die nächste Dialogfrage …"
+        else:
+            _wait_retrieve = "Suche in deinen Unterlagen …"
+            _wait_generate = "Formuliere Antwort …"
 
         result = None
         _streamed = False
 
         # --- Pre-Flight: genug freier Grafikspeicher (VRAM) fuer das Modell? ------
-        # Reste der letzten KI-Aufgabe (Uebung, Karten, Semesterplan, …) zuerst
-        # entladen, sonst misst der Check belegten Speicher und Chat wuerde
-        # obendrauf laden -> OOM. Ist danach zu wenig frei (zweite GPU-App),
-        # lieber SOFORT eine klare Meldung statt stiller CPU-Auslagerung.
-        from ragapp.llm import release_llm, vram_preflight
-        release_llm()
+        # Nur entladen, wenn das Chat-Modell NICHT schon resident ist. Sonst
+        # zahlen wir den Reload und der VRAM-Check sieht kurz „zu wenig frei“.
+        from ragapp.llm import release_llm, vram_preflight, model_status
+        _ms_now = model_status()
+        if not _ms_now.get("resident"):
+            release_llm()
         _pf = vram_preflight()
         _vram_low = _pf.get("status") == "low"
         if _vram_low:
@@ -542,6 +645,18 @@ if prompt:
 
         # Tutor/Sokratisch: Faithfulness aus (Synthese), Streaming erlaubt
         _faith_for_call = False if _chat_mode != "strict" else check_faith_ui
+        _soc_topic = (st.session_state.get("socratic_topic")
+                      if _chat_mode == "sokratisch" else None)
+
+        _status_box = None if _vram_low else st.status(_wait_retrieve, expanded=True)
+
+        def _on_stage(name: str) -> None:
+            if _status_box is None:
+                return
+            if name == "generate":
+                _status_box.update(label=_wait_generate)
+            else:
+                _status_box.update(label=_wait_retrieve)
 
         # Schnell-Modus (Gegenprüfung AUS) / Tutor UND Quellen-Anzeige AN -> streamen
         if not _vram_low and _faith_for_call is False and show_sources:
@@ -552,13 +667,14 @@ if prompt:
                     check_faithfulness=_faith_for_call,
                     history=st.session_state.messages[:-1],
                     chat_mode=_chat_mode,
-                    include_notes=bool(st.session_state.get("chat_include_notes")))
+                    include_notes=bool(st.session_state.get("chat_include_notes")),
+                    socratic_topic=_soc_topic,
+                    on_stage=_on_stage)
             except Exception:  # noqa: BLE001 - Setup-Fehler -> blockierender Fallback
                 _stream, _holder = None, {}
             if _stream is not None:
                 try:
-                    with st.spinner(_spinner_text):
-                        st.write_stream(_stream)   # rendert Token für Token
+                    st.write_stream(_stream)   # rendert Token für Token
                     result = _holder or {}
                     _streamed = True
                 except Exception as exc:  # noqa: BLE001 - Stream-Fehler nie roh anzeigen
@@ -570,18 +686,23 @@ if prompt:
 
         # Nicht-Stream-Pfad (strenger Modus, Quellen aus, oder Streaming nicht möglich).
         if result is None:
-            with st.spinner(_spinner_text):
-                try:
-                    result = answer_query(prompt, subject=subject_filter,
-                                          use_reranker=use_reranker_ui,
-                                          check_faithfulness=_faith_for_call,
-                                          history=st.session_state.messages[:-1],
-                                          chat_mode=_chat_mode,
-                                          include_notes=bool(st.session_state.get("chat_include_notes")))
-                except Exception as exc:  # noqa: BLE001 - rohe Fehler nie roh anzeigen
-                    result = {"answer": _friendly_error(exc), "mode": "fallback",
-                              "sources": [], "total_time": 0}
+            _on_stage("retrieve")
+            try:
+                result = answer_query(prompt, subject=subject_filter,
+                                      use_reranker=use_reranker_ui,
+                                      check_faithfulness=_faith_for_call,
+                                      history=st.session_state.messages[:-1],
+                                      chat_mode=_chat_mode,
+                                      include_notes=bool(st.session_state.get("chat_include_notes")),
+                                      socratic_topic=_soc_topic)
+            except Exception as exc:  # noqa: BLE001 - rohe Fehler nie roh anzeigen
+                result = {"answer": _friendly_error(exc), "mode": "fallback",
+                          "sources": [], "total_time": 0}
 
+        if _status_box is not None:
+            _ok = (result or {}).get("mode") != "fallback"
+            _status_box.update(label="Fertig" if _ok else "Keine sichere Antwort",
+                               state="complete" if _ok else "error")
         st.session_state["_first_query_done"] = True
         _answer = result.get("answer", "")
         # Im Stream-Pfad ist die Antwort bereits gerendert (st.write_stream); sonst
@@ -603,6 +724,10 @@ if prompt:
             sources = result.get("sources", []) if show_sources else []
             if sources:
                 render_sources(sources, key_prefix="new")
+            if _chat_mode == "sokratisch":
+                _socratic_chips("new")
+            else:
+                _followup_chips("new")
 
     st.session_state.messages.append({
         "role": "assistant",
@@ -619,7 +744,9 @@ if prompt:
     # 15_🎧_Audio-Overview.py).
     if _active_session_id is None:
         _title = prompt.strip().splitlines()[0][:60] or "Neuer Chat"
-        if len(prompt.strip()) > 60:
+        if _chat_mode == "sokratisch" and st.session_state.get("socratic_topic"):
+            _title = st.session_state["socratic_topic"].strip()[:60] or _title
+        if len(prompt.strip()) > 60 and _title == prompt.strip()[:60]:
             _title += "…"
         _new_sid = manifest.create_chat_session(
             title=_title, subject=subject_filter, messages=st.session_state.messages)

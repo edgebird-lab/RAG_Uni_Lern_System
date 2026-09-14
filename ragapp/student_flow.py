@@ -1258,7 +1258,33 @@ def is_placeholder_subject(subject: Optional[str]) -> bool:
         return True
     if s.count("(") != s.count(")"):
         return True
+    if s.endswith(("(", "-", "–", "/", "&")):
+        return True
     return False
+
+
+def is_exam_fragment(exam: dict) -> bool:
+    """Importrest: Platzhalter-Kürzel ohne Klausurdatum."""
+    if exam.get("exam_date"):
+        return False
+    return is_placeholder_subject(exam.get("subject"))
+
+
+def list_import_remnant_exams() -> list[dict]:
+    """Klausur-Einträge, die vom Semesterimport als unvollständige Reste übrig sind."""
+    from ragapp import manifest
+    return [e for e in manifest.list_exams() if is_exam_fragment(e)]
+
+
+def purge_import_remnant_exams() -> int:
+    """Löscht nur Importreste (kein Datum, Platzhaltername). Echte Kurse bleiben."""
+    from ragapp import manifest
+    rows = list_import_remnant_exams()
+    for e in rows:
+        subj = (e.get("subject") or "").strip()
+        if subj:
+            manifest.delete_exam(subj)
+    return len(rows)
 
 
 def course_cockpit_bucket(snapshot: dict, *, has_cards: bool) -> str:
