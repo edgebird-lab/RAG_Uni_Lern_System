@@ -147,18 +147,14 @@ def mark_needs_card_harvest() -> None:
 
 
 def needs_card_harvest() -> bool:
-    """True, wenn Karten-Ernte noetig ist (Flag oder Fragen ohne Karten)."""
+    """True, wenn Fragen indexiert wurden, die noch nicht als Karten da sind.
+
+    Nur das persistente Flag: ``SUM(num_questions)`` ohne Chroma-Vektoren
+    (gelöschter Index, fehlgeschlagene Ernte) würde den Hinweis sonst nie
+    wieder weggehen lassen.
+    """
     from ragapp.config import settings
-    if bool(getattr(settings, "NEEDS_CARD_HARVEST", False)):
-        return True
-    try:
-        st = manifest.stats()
-        cards = manifest.review_counts().get("total", 0)
-        if int(st.get("questions") or 0) > 0 and int(cards) == 0:
-            return True
-    except Exception:  # noqa: BLE001
-        pass
-    return False
+    return bool(getattr(settings, "NEEDS_CARD_HARVEST", False))
 
 
 def generate_answers(subject: "str | None" = None, deck: "str | None" = None,
@@ -173,7 +169,7 @@ def generate_answers(subject: "str | None" = None, deck: "str | None" = None,
     from ragapp.hardware import probe_model
     from ragapp.ingestion.question_gen import generate_answer, QuestionGenError
 
-    if card_ids:
+    if card_ids is not None:
         todo = [c for c in manifest.get_cards_by_ids(card_ids)
                 if c.get("source") == "question" and not (c.get("answer") or "").strip()]
         if limit:
@@ -284,7 +280,8 @@ def create_study_set(doc_ids: list[str], *, progress=None,
     answers_n = 0
     if with_answers:
         _note("Antworten erzeugen …")
-        generate = generate_answers(progress=progress)
+        preview_ids = study_set_preview(doc_ids=ids).get("card_ids") or []
+        generate = generate_answers(card_ids=preview_ids, progress=progress)
         if generate.get("status") == "llm_error":
             kind = _study_set_abort(generate.get("error_msg"))
             return {

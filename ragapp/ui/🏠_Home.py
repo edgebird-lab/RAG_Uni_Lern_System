@@ -203,7 +203,7 @@ _theme = apply_page_style("home")
 try:
     import datetime as _dt
     from html import escape as _html_escape
-    from ragapp import planner
+    from ragapp import planner, manifest as _home_manifest
     from ragapp.config import SUBJECT_LABELS
 
     _snap = planner.today_snapshot()
@@ -400,7 +400,6 @@ if _snap:
             st.caption(f"Nächste Klausur-Priorität: **{_tp_subj}** "
                        f"({planner.humanize_days(_snap['days_to_exam'])}).")
 
-        from ragapp import manifest as _home_manifest
         from ragapp import student_flow as _sf
         _faecher = _home_manifest.study_subjects()
         _card_total = int((_home_manifest.review_counts() or {}).get("total") or 0)
@@ -476,7 +475,11 @@ if _snap:
                                "Zuerst Karteikarten anlegen.")
 
             _h2, _h3 = st.columns(2)
-            if _h2.button("⚡ Formel-Sprint", key="heute_sprint",
+            _sprint_cta = {
+                "Formeln": "⚡ Formel-Sprint",
+                "Definitionen": "⚡ Definitionen-Sprint",
+            }.get(_sprint_kind, "⚡ Sprint starten")
+            if _h2.button(_sprint_cta, key="heute_sprint",
                           use_container_width=True, disabled=not _sprint_ok,
                           help="Kurzer Drill der gewählten Formeln oder Definitionen."):
                 st.session_state["study_prefill"] = {
@@ -510,6 +513,7 @@ if _capture_flash:
         st.success(_capture_flash["message"])
 with st.expander("📥 Vorlesung einfangen", expanded=False):
             st.caption("Foto, Datei oder Notiz landet im Fach-Ordner und erscheint als Unterlage.")
+            from ragapp import manifest as _home_manifest
             _capture_subjects = sorted(
                 set(SUBJECT_LABELS)
                 | {e["subject"] for e in _home_manifest.list_exams()

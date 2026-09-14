@@ -90,6 +90,7 @@ def test_command_palette_shortcut_html_reagiert_auf_strg_oder_cmd_k():
     assert "ctrlKey" in html and "metaKey" in html
     assert "'k'" in html
     assert "ragFocusSearch" in html
+    assert "Überall suchen" in html
     # Regression: KEINE direkte Navigation (location.href=/location.assign)
     # aus dem sandboxed Iframe (siehe Docstring - wird vom Browser verweigert),
     # sondern ein echter Link-Klick (location.href darf als reiner LESE-Zugriff

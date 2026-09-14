@@ -299,13 +299,20 @@ with col_practice:
                 else:
                     _score = int(_score)
                     _rating = 2 if _score >= 75 else (1 if _score >= 40 else 0)
+                    _fehlt = _graded.get("fehlt")
+                    if isinstance(_fehlt, (list, tuple)):
+                        _fehlt_txt = " · ".join(
+                            str(x).strip() for x in _fehlt if str(x).strip())
+                    else:
+                        _fehlt_txt = str(_fehlt or "").strip()
                     manifest.log_practice_attempt(
                         pid, self_rating=_rating, typed_answer=_typed_answer,
                         score=_score, feedback=_graded.get("feedback"),
-                        fehlt=_graded.get("fehlt"))
+                        fehlt=_fehlt_txt or None)
                     st.session_state[_grade_key] = {
                         **_graded, "score": _score,
                     }
+                    st.session_state["_practice_session_done"] = True
                     if _score < 75:
                         from ragapp.student_flow import record_error, card_from_text
                         _cid = card_from_text(
@@ -319,8 +326,7 @@ with col_practice:
                             front=(_active.get("problem_text") or "")[:200],
                             detail=(
                                 f"Übung { _score } %"
-                                + (f" · {_graded.get('fehlt')}"
-                                   if _graded.get("fehlt") else "")
+                                + (f" · {_fehlt_txt}" if _fehlt_txt else "")
                             ))
 
             _grade = st.session_state.get(_grade_key)
@@ -329,7 +335,10 @@ with col_practice:
                 if _grade.get("feedback"):
                     st.info(_grade["feedback"])
                 if _grade.get("fehlt"):
-                    st.warning(f"Fehlt noch: {_grade['fehlt']}")
+                    _fehlt_show = _grade["fehlt"]
+                    if isinstance(_fehlt_show, (list, tuple)):
+                        _fehlt_show = " · ".join(str(x) for x in _fehlt_show if str(x).strip())
+                    st.warning(f"Fehlt noch: {_fehlt_show}")
 
             hcol, scol, rcol = st.columns(3)
             _n_hints = len(_active["hints"])

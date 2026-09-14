@@ -81,6 +81,14 @@ def test_attempt_speichert_rechenweg_teilpunkte_und_feedback(isolated_db):
     assert attempt["fehlt"] == "Einheit"
 
 
+def test_attempt_serialisiert_fehlt_liste(isolated_db):
+    pid = _make_problem()
+    manifest.log_practice_attempt(
+        pid, self_rating=1, score=40, fehlt=["Einheit", "Grenzen"])
+    attempt = manifest.list_practice_attempts(pid)[0]
+    assert attempt["fehlt"] == "Einheit · Grenzen"
+
+
 def test_best_score_bleibt_trotz_spaeterer_manueller_bewertung(isolated_db):
     pid = _make_problem()
     manifest.log_practice_attempt(pid, self_rating=2, score=85)

@@ -367,7 +367,7 @@ def generate_outline(
 
     out = []
     docs = [
-        d for d in (manifest.get_document(doc_id) for doc_id in doc_ids) if d
+        dict(d) for d in (manifest.get_document(doc_id) for doc_id in doc_ids) if d
     ]
     doc_by_label = {d["doc_id"]: d for d in docs}
     filename_counts = {

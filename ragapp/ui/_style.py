@@ -1088,7 +1088,9 @@ def _command_palette_shortcut_html() -> str:
       var tag = t && t.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || (t && t.isContentEditable)) { return; }
       e.preventDefault();
-      var input = doc.querySelector('input[aria-label*="Notizen, Chats und Zusammenfassungen"]');
+      var input = doc.querySelector('input[aria-label*="Überall suchen"]')
+        || doc.querySelector('input[aria-label*="Notizen, Chats"]')
+        || doc.querySelector('input[aria-label*="Notizen, Chats und Zusammenfassungen"]');
       if (input) {
         input.scrollIntoView({block: 'center', behavior: 'smooth'});
         input.focus();

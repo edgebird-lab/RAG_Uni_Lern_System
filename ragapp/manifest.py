@@ -3091,6 +3091,10 @@ def log_practice_attempt(problem_id: str, *, self_rating: int,
                          feedback: Optional[str] = None,
                          fehlt: Optional[str] = None) -> str:
     aid = uuid.uuid4().hex[:16]
+    if isinstance(fehlt, (list, tuple)):
+        fehlt = " · ".join(str(x).strip() for x in fehlt if str(x).strip()) or None
+    elif fehlt is not None:
+        fehlt = str(fehlt)
     with _connect() as conn:
         conn.execute(
             "INSERT INTO practice_attempts (attempt_id, problem_id, attempted_at, "

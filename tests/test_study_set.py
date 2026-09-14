@@ -77,6 +77,7 @@ def test_create_study_set_erzeugt_fragen_karten_antworten(isolated_db, monkeypat
 
     def _answers(**kwargs):
         calls.append("answers")
+        assert kwargs.get("card_ids") is not None
         return {"status": "ok", "filled": 3, "error_msg": None}
 
     monkeypatch.setattr("ragapp.ingestion.enrich.enrich_questions", _enrich)
@@ -146,4 +147,46 @@ def test_enrich_bindet_question_gen():
     assert callable(enrich.generate_questions)
     assert callable(enrich.generate_answer)
     assert issubclass(enrich.QuestionGenError, Exception)
+
+
+def test_generate_answers_leere_card_ids_ist_nichts(isolated_db):
+    manifest.upsert_review_items([{
+        "card_id": "q-open", "source": "question", "chroma_id": None,
+        "subject": "BWL", "topic": None,
+        "front": "Was ist X?", "back": "Chunk", "answer": "", "doc_id": "d1",
+    }])
+    out = study.generate_answers(card_ids=[])
+    assert out["status"] == "nothing_to_do"
+    assert out["filled"] == 0
+
+
+def test_needs_card_harvest_nur_ueber_flag(isolated_db, monkeypatch):
+    from ragapp.config import settings
+    monkeypatch.setattr(settings, "NEEDS_CARD_HARVEST", False, raising=False)
+    manifest.upsert_document(
+        doc_id="d1", content_hash="h", source_path="/d1.pdf",
+        filename="d1.pdf", subject="BWL", filetype="pdf",
+        num_chunks=3, num_questions=9, char_count=1000, status="ok")
+    assert study.needs_card_harvest() is False
+    monkeypatch.setattr(settings, "NEEDS_CARD_HARVEST", True, raising=False)
+    assert study.needs_card_harvest() is True
+
+
+def test_upsert_behaelt_ocr_partial_pages(isolated_db):
+    manifest.upsert_document(
+        doc_id="d1", content_hash="h", source_path="/d1.pdf",
+        filename="d1.pdf", subject="BWL", filetype="pdf",
+        num_chunks=3, num_questions=0, char_count=1000, status="ok",
+        ocr_partial_pages=4)
+    d = dict(manifest.get_document("d1"))
+    assert d["ocr_partial_pages"] == 4
+    manifest.upsert_document(
+        doc_id="d1", content_hash=d["content_hash"], source_path=d["source_path"],
+        filename=d["filename"], subject=d["subject"], filetype=d["filetype"],
+        num_chunks=d["num_chunks"], num_questions=(d["num_questions"] or 0) + 2,
+        char_count=d["char_count"], status=d["status"],
+        ocr_partial_pages=int(d.get("ocr_partial_pages") or 0),
+    )
+    assert dict(manifest.get_document("d1"))["ocr_partial_pages"] == 4
+    assert dict(manifest.get_document("d1"))["num_questions"] == 2
 

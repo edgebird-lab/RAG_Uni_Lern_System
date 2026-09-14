@@ -80,6 +80,14 @@ def _oral_row():
 def _clear_oral_session() -> None:
     st.session_state.pop("_oral_session_id", None)
     st.session_state.pop("_oral_last_index", None)
+    st.session_state.pop("_exam_history_view", None)
+
+
+def _oral_pts(val) -> int:
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return 50
 
 
 subjects = manifest.study_subjects()
@@ -171,6 +179,7 @@ def _render_oral_active(_oral: dict) -> None:
                 default=(_last.get("partial_points")
                          if _last.get("partial_points") is not None else 50),
                 key=f"oral_points_{_oral_sid}_{_last_idx}",
+                required=True,
             )
             if not _last.get("followups"):
                 if st.button(
@@ -187,6 +196,14 @@ def _render_oral_active(_oral: dict) -> None:
                             _oral_sid, int(_last_idx), _last["transcript"],
                             followup=_fu["followup"])
                         st.rerun()
+                if st.button(
+                        "Ohne Rückfrage weiter", key=f"oral_next_{_oral_sid}_{_last_idx}"):
+                    oral_exam.record_answer(
+                        _oral_sid, int(_last_idx), _last.get("transcript") or "",
+                        partial_points=_oral_pts(_oral_points))
+                    oral_exam.advance_session(_oral_sid, int(_last_idx))
+                    st.session_state.pop("_oral_last_index", None)
+                    st.rerun()
             else:
                 _fu_item = _last["followups"][-1]
                 st.markdown(f"**Rückfrage:** {_fu_item['question']}")
@@ -206,7 +223,7 @@ def _render_oral_active(_oral: dict) -> None:
                         oral_exam.record_answer(
                             _oral_sid, int(_last_idx),
                             _last["transcript"],
-                            partial_points=int(_oral_points))
+                            partial_points=_oral_pts(_oral_points))
                         oral_exam.record_followup_answer(
                             _oral_sid, int(_last_idx),
                             len(_last["followups"]) - 1,
@@ -215,14 +232,6 @@ def _render_oral_active(_oral: dict) -> None:
                             _oral_sid, int(_last_idx))
                         st.session_state.pop("_oral_last_index", None)
                         st.rerun()
-            if st.button(
-                    "Ohne Rückfrage weiter", key=f"oral_next_{_oral_sid}_{_last_idx}"):
-                oral_exam.record_answer(
-                    _oral_sid, int(_last_idx), _last.get("transcript") or "",
-                    partial_points=int(_oral_points))
-                oral_exam.advance_session(_oral_sid, int(_last_idx))
-                st.session_state.pop("_oral_last_index", None)
-                st.rerun()
 
     if st.button("Mündliche Sitzung abbrechen", key="oral_abort"):
         oral_exam.abort_session(_oral_sid)
@@ -285,11 +294,54 @@ def _render_hub_history() -> None:
             _label = f"🎙️ {_pct} · {_fach(row.get('subject'))} · {_when}"
         if st.button(_label, key=f"hub_hist_{row['kind']}_{row['id']}",
                      use_container_width=True):
-            st.session_state["exam_hub_mode"] = row["kind"]
-            if row.get("subject") and row["subject"] in subjects:
-                st.session_state["oral_subject"] = row["subject"]
-                st.session_state["exam_written_subjects"] = [row["subject"]]
+            st.session_state["_exam_history_view"] = {
+                "kind": row["kind"], "id": row["id"],
+            }
             st.rerun()
+
+
+def _fehlt_caption(val) -> str:
+    if isinstance(val, (list, tuple)):
+        return " · ".join(str(x) for x in val if str(x).strip())
+    return str(val or "").strip()
+
+
+def _render_written_history(attempt_id: str) -> None:
+    attempts = {a["attempt_id"]: a for a in manifest.list_exam_attempts(limit=40)}
+    att = attempts.get(attempt_id)
+    items = manifest.list_exam_attempt_items(attempt_id)
+    if not att:
+        st.warning("Dieser Versuch ist nicht mehr gespeichert.")
+        if st.button("← Zur Übersicht", key="hist_missing_back"):
+            st.session_state.pop("_exam_history_view", None)
+            st.rerun()
+        return
+    if st.button("← Zur Übersicht", key="hist_written_back"):
+        st.session_state.pop("_exam_history_view", None)
+        st.rerun()
+    with card("hist_ergebnis"):
+        st.subheader("📊 Gespeichertes Ergebnis")
+        m1, m2 = st.columns(2)
+        m1.metric("Gesamt", f'{att["total_pct"]} %')
+        m2.metric("Aufgaben", att.get("num_items") or len(items))
+        st.progress(min(1.0, (att.get("total_pct") or 0) / 100))
+        st.caption("Nur Ansicht – Karten werden nicht erneut bewertet.")
+    for i, it in enumerate(items, 1):
+        _sc = it.get("score")
+        _icon = "✅" if (_sc or 0) >= 75 else ("🟡" if (_sc or 0) >= 40 else "❌")
+        with st.expander(
+                f"{_icon} Aufgabe {i} · {_sc if _sc is not None else '—'} % · "
+                f"{_fach(it.get('subject') or '')}",
+                key=f"hist_item_{attempt_id}_{i}"):
+            st.markdown(f"**Frage:** {it.get('front') or ''}")
+            st.markdown(f"**Deine Antwort:** {it.get('typed') or '_(leer)_'}")
+            if it.get("feedback"):
+                st.info(it["feedback"])
+            _fc = _fehlt_caption(it.get("fehlt"))
+            if _fc:
+                st.caption("Fehlt: " + _fc)
+            with st.popover("Musterlösung"):
+                st.markdown(it.get("reference") or "—")
 
 
 _oral = _oral_row()
@@ -329,6 +381,21 @@ if _oral_active:
     with card("muendlich"):
         _render_oral_active(_oral)
     st.stop()
+
+_hist = st.session_state.get("_exam_history_view")
+if _hist and not _written_running:
+    if _hist.get("kind") == "oral":
+        _hist_oral = oral_exam.get_session(_hist.get("id") or "")
+        if _hist_oral:
+            if st.button("← Zur Übersicht", key="hist_back_oral"):
+                st.session_state.pop("_exam_history_view", None)
+                st.rerun()
+            _render_oral_result(_hist_oral)
+            st.stop()
+        st.session_state.pop("_exam_history_view", None)
+    else:
+        _render_written_history(_hist.get("id") or "")
+        st.stop()
 
 if not _written_running:
     with card("aufbau"):
@@ -389,10 +456,14 @@ if exam.get("done"):
     with card("ergebnis"):
         st.subheader("📊 Ergebnis")
         m1, m2, m3 = st.columns(3)
-        m1.metric("Gesamt", f'{res["total_pct"]} %')
+        m1.metric("Gesamt", f'{res["total_pct"]} %' if res.get("total_pct") is not None else "–")
         m2.metric("Aufgaben", len(res["items"]))
         m3.metric("Zeit", f'{res["used_min"]} Min.')
-        st.progress(min(1.0, res["total_pct"] / 100))
+        if res.get("total_pct") is None:
+            st.warning("Benotung nicht möglich – das Modell war nicht erreichbar. "
+                       "Karten wurden nicht umgeplant, das Ergebnis zählt nicht.")
+        else:
+            st.progress(min(1.0, res["total_pct"] / 100))
     st.divider()
     for i, it in enumerate(res["items"], 1):
         _sc = it.get("score")
@@ -404,7 +475,9 @@ if exam.get("done"):
             if it.get("feedback"):
                 st.info(it["feedback"])
             if it.get("fehlt"):
-                st.caption("Fehlt: " + " · ".join(it["fehlt"]))
+                _fc = _fehlt_caption(it.get("fehlt"))
+                if _fc:
+                    st.caption("Fehlt: " + _fc)
             with st.popover("Musterlösung"):
                 st.markdown(it.get("reference") or "—")
             # Bei einer schwachen Antwort direkt eine klaerende Notiz anlegen
@@ -433,7 +506,8 @@ if exam.get("done"):
         del st.session_state[EXAM]
         st.rerun()
     _wrong_ids = [it.get("card_id") for it in res["items"]
-                  if it.get("card_id") and (it.get("score") or 0) < 75]
+                  if it.get("card_id") and it.get("score") is not None
+                  and it["score"] < 75]
     if _w2.button("🎯 Nur Fehler wiederholen", use_container_width=True,
                   disabled=not _wrong_ids):
         _wrong_cards = [c for c in exam["cards"] if c.get("card_id") in set(_wrong_ids)]
@@ -475,29 +549,31 @@ def _auswerten():
         typed = exam["answers"].get(card["card_id"], "")
         ref = (card.get("answer") or card.get("back") or "")
         g = grading.grade_typed_answer(card.get("front", ""), ref, typed)
-        rating = _rating_from_score(g.get("score"))
-        study.rate_card(card, rating)   # Ergebnis fließt in die Wiederholungs-Planung
+        grade_ok = bool(g.get("ok")) and g.get("score") is not None
+        if grade_ok:
+            rating = _rating_from_score(g.get("score"))
+            study.rate_card(card, rating)
         items.append({"card_id": card.get("card_id"),
                       "front": card.get("front"), "subject": card.get("subject"),
                       "typed": typed, "reference": ref, "score": g.get("score"),
-                      "feedback": g.get("feedback"), "fehlt": g.get("fehlt"),
+                      "feedback": g.get("feedback") if grade_ok else (
+                          g.get("feedback") or "Benotung nicht möglich."),
+                      "fehlt": g.get("fehlt") if grade_ok else [],
                       "doc_id": card.get("doc_id"), "topic": card.get("topic")})
-        if (g.get("score") or 0) < 40:
+        if grade_ok and (g.get("score") or 0) < 40:
             from ragapp.student_flow import record_error
             record_error(source="exam", source_id=card.get("card_id"),
                          card=card, front=card.get("front"),
                          detail=f"Probeklausur {g.get('score')} %")
-        if g.get("score") is not None:
+        if grade_ok:
             scored.append(g["score"])
         prog.progress(j / len(exam["cards"]), text=f"Benotet {j}/{len(exam['cards'])} …")
-    total = round(sum(scored) / len(scored)) if scored else 0
+    total = round(sum(scored) / len(scored)) if scored else None
     exam["result"] = {"items": items, "total_pct": total,
                       "used_min": round((time.time() - exam["start"]) / 60)}
     exam["done"] = True
-    # Ergebnis dauerhaft festhalten (vorher nur in st.session_state, nach
-    # Verlassen der Seite komplett weg) - Grundlage der Errungenschaft
-    # "erste bestandene Probeklausur" (siehe ragapp/achievements.py).
-    manifest.log_exam_attempt(total, len(exam["cards"]), items=items)
+    if total is not None:
+        manifest.log_exam_attempt(total, len(exam["cards"]), items=items)
 
 
 # --------------------------------------------------------------------------- #

@@ -149,12 +149,18 @@ def enrich_questions(limit: Optional[int] = None,
                 continue
             d = manifest.get_document(did)
             if d:
+                d = dict(d)
                 manifest.upsert_document(
                     doc_id=did, content_hash=d["content_hash"], source_path=d["source_path"],
                     filename=d["filename"], subject=d["subject"], filetype=d["filetype"],
                     num_chunks=d["num_chunks"], num_questions=(d["num_questions"] or 0) + n,
                     char_count=d["char_count"], status=d["status"],
+                    ocr_partial_pages=int(d.get("ocr_partial_pages") or 0),
                 )
+
+        if total_q > 0:
+            from ragapp.study import mark_needs_card_harvest
+            mark_needs_card_harvest()
 
         status = "ok" if total_q > 0 else ("llm_error" if errors else "empty")
         return {"status": status, "processed": len(chunks), "questions": total_q,

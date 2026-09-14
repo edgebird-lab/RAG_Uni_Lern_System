@@ -221,8 +221,9 @@ if _counts["total"] > 0:
                   help="Fällige Wiederholungen inkl. Lern-/Relearn-Schritte.")
 
 # Persistenter Harvest-Hinweis (oben, mit Aktion – nicht nur unten in Verwaltung)
+_in_round = bool(st.session_state.get("_study_active"))
 _needs_harvest = study.needs_card_harvest() or st.session_state.pop("_needs_card_harvest", None)
-if _needs_harvest:
+if _needs_harvest and not _in_round:
     _nh1, _nh2 = st.columns([3, 1])
     _nh1.info("Neue Fragen wurden indexiert. Übernimm sie jetzt als Karteikarten.")
     if _nh2.button("🔄 Karten aktualisieren", type="primary", key="top_harvest",
@@ -240,7 +241,7 @@ if _needs_harvest:
             st.rerun()
 
 _offen_global = manifest.count_cards(source="question", only_unanswered=True)
-if _offen_global > 0:
+if _offen_global > 0 and not _in_round:
     _aw1, _aw2 = st.columns([3, 1])
     _aw1.warning(
         f"**{_offen_global} Karte(n) ohne Musterlösung** – beim Üben siehst du sonst nur "
@@ -1006,6 +1007,9 @@ else:
 })();
 </script>
 """, height=0)
+
+if st.session_state.get(ACTIVE):
+    st.stop()
 
 st.divider()
 
