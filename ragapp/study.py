@@ -31,6 +31,14 @@ from ragapp.retrieval.vectorstore import get_vectorstore
 # Bewertungen
 NICHT, HALB, GEWUSST = 0, 1, 2
 
+
+def is_heading_echo_card(card: dict) -> bool:
+    """Generierte Karte, deren Frage nur die Chunk-Überschrift nachspricht."""
+    if (card.get("source") or "") != "question":
+        return False
+    from ragapp.ingestion.question_gen import is_heading_echo
+    return is_heading_echo(card.get("front") or "", card.get("back") or "")
+
 _ANSWER_MARKERS = ("ERKLÄRUNG (Vorgehen):", "ERKLÄRUNG:", "ERKLAERUNG (Vorgehen):",
                    "ERKLAERUNG:", "ANTWORT:")
 
@@ -111,14 +119,17 @@ def harvest_cards(subject: "str | None" = None, max_per_chunk: "int | None" = No
                 continue
         back = (parents.get(pid, {}).get("document", "") or "").strip()
         if frage and back:
-            per_parent[pid] = per_parent.get(pid, 0) + 1
-            cards.append({
+            drafted = {
                 "card_id": cid, "source": "question", "chroma_id": cid,
                 "subject": meta.get("subject"), "topic": _topic(meta),
                 "front": frage, "back": back,
                 "answer": (meta.get("answer") or "").strip() or None,
                 "doc_id": meta.get("doc_id"),
-            })
+            }
+            if is_heading_echo_card(drafted):
+                continue
+            per_parent[pid] = per_parent.get(pid, 0) + 1
+            cards.append(drafted)
 
     if doc_ids:
         _wanted = set(doc_ids)
@@ -316,6 +327,7 @@ def study_set_preview(doc_ids: "list[str] | None" = None,
     if doc_ids:
         wanted = set(doc_ids)
         cards = [c for c in cards if c.get("doc_id") in wanted]
+    cards = [c for c in cards if not is_heading_echo_card(c)]
     unanswered = [
         c for c in cards
         if c.get("source") == "question" and not (c.get("answer") or "").strip()

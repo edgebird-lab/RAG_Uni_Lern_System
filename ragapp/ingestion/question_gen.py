@@ -70,7 +70,7 @@ def _chunk_heading(chunk: str) -> str:
     return first.lstrip("#").strip()
 
 
-def _is_heading_echo(question: str, chunk: str) -> bool:
+def is_heading_echo(question: str, chunk: str) -> bool:
     """True, wenn die Frage nur die Überschrift umformuliert ('Was ist X?')."""
     heading = _chunk_heading(chunk)
     hn = _normalize_question_text(heading)
@@ -188,7 +188,7 @@ def generate_questions(chunk_text: str, n: int | None = None, model: str | None 
         if isinstance(q, str):
             q = q.strip()
             key = q.lower()
-            if q and key not in seen and _is_frage(q) and not _is_heading_echo(q, chunk_text):
+            if q and key not in seen and _is_frage(q) and not is_heading_echo(q, chunk_text):
                 seen.add(key)
                 out.append(q)
     return out[:n]

@@ -28,6 +28,8 @@ _FORMULA_WORD_RE = re.compile(
     r"differential|gradient)\b")
 
 _HEADING_RE = re.compile(r"^#{1,3}\s+(.+)$", re.M)
+# Fehlerheft nur für harte Lücken – gleiche Schwelle wie Probeklausur/mündlich.
+HARD_GAP_SCORE = 40
 _DEF_RE = re.compile(
     r"^\s*(?:\*\*|__)?([^*_\n:]{2,80})(?:\*\*|__)?\s*[:–—-]\s+(.+)$", re.M)
 _SENTENCE_RE = re.compile(r"[^.!?\n]+[.!?]?")
@@ -235,7 +237,7 @@ def apply_oral_score(card_id: Optional[str], partial_points: int, *,
     else:
         rating = NICHT
     rate_card(cards[0], rating)
-    if rating <= NICHT:
+    if is_hard_gap(rating=rating):
         record_error(
             source="oral", card=cards[0], card_id=card_id,
             subject=subject or cards[0].get("subject"),
@@ -515,6 +517,25 @@ def _tonight_block(subject: Optional[str], title: str) -> Optional[str]:
         summary="Direkt nach der Vorlesung Stoff sichern.", est_minutes=15)
     return manifest.append_plan_block(
         plan["plan_id"], section_id=sid, planned_date=today, planned_min=15)
+
+
+def is_hard_gap(*, score: Optional[int] = None, rating: Optional[int] = None) -> bool:
+    """Fehlerheft nur für harte Lücken: unter 40 % oder 'Nicht gewusst'.
+
+    Teilweise gelöste Übungen (40–74 %) und 'Teilweise'-Selbsteinschätzung
+    bleiben im normalen FSRS, ohne das Heft zu füllen.
+    """
+    if score is not None:
+        try:
+            return int(score) < HARD_GAP_SCORE
+        except (TypeError, ValueError):
+            return False
+    if rating is not None:
+        try:
+            return int(rating) <= 0
+        except (TypeError, ValueError):
+            return False
+    return False
 
 
 def record_error(*, source: str, source_id: Optional[str] = None,

@@ -765,8 +765,10 @@ else:
                     st.session_state[REVEAL] = True
                     st.rerun()
             else:
-                st.caption("Für diese Karte ließ sich kein Lückentext bilden – decke normal auf.")
-                if st.button("👁️ Antwort zeigen", type="primary", use_container_width=True):
+                st.warning("Für diese Karte ließ sich kein Lückentext bilden. "
+                           "Die Karte wird klassisch aufgedeckt – das ist kein Fehler.")
+                if st.button("👁️ Antwort zeigen", type="primary", use_container_width=True,
+                             key="cloze_fallback_reveal"):
                     st.session_state[REVEAL] = True
                     st.rerun()
         elif _mode == "mcq":
@@ -787,8 +789,10 @@ else:
                     st.session_state[REVEAL] = True
                     st.rerun()
             else:
-                st.caption("Konnte keine Optionen erzeugen – decke normal auf.")
-                if st.button("👁️ Antwort zeigen", type="primary", use_container_width=True):
+                st.warning("Konnte keine Multiple-Choice-Optionen erzeugen. "
+                           "Die Karte wird klassisch aufgedeckt – das ist kein Fehler.")
+                if st.button("👁️ Antwort zeigen", type="primary", use_container_width=True,
+                             key="mcq_fallback_reveal"):
                     st.session_state[REVEAL] = True
                     st.rerun()
         else:  # reveal (klassisch, mit Selbst-Konfidenz/JOL)
@@ -826,7 +830,7 @@ else:
                     st.caption("Noch nicht genannt: " + " · ".join(g["fehlt"]))
                 _suggest = g.get("suggested_rating")
             else:
-                st.caption("Automatische Benotung war nicht möglich – schätze selbst ein.")
+                st.warning("Automatische Benotung war nicht möglich – schätze selbst ein.")
             with st.expander("Deine Antwort", expanded=False):
                 st.write(st.session_state.get("_typed_ans") or "—")
             st.divider()

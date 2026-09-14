@@ -330,8 +330,8 @@ with col_practice:
                         **_graded, "score": _score,
                     }
                     st.session_state["_practice_session_done"] = True
-                    if _score < 75:
-                        from ragapp.student_flow import record_error, card_from_text
+                    from ragapp.student_flow import is_hard_gap, record_error, card_from_text
+                    if is_hard_gap(score=_score):
                         _cid = card_from_text(
                             (_active.get("problem_text") or "")[:200],
                             (_reference or "Siehe Lösungsweg.")[:800],
@@ -400,25 +400,18 @@ with col_practice:
                 manifest.log_practice_attempt(
                     pid, self_rating=rating,
                     typed_answer=st.session_state.get(_answer_key) or None)
-                if rating <= 1:
-                    from ragapp.student_flow import record_error, card_from_text
-                    cid = card_from_text(
-                        (_active.get("problem_text") or "")[:200],
-                        (_active.get("final_answer") or "Siehe Lösungsweg.")[:800],
-                        source="practice", subject=_active.get("subject"),
-                        topic=_active.get("topic"))
+                from ragapp.student_flow import is_hard_gap, record_error, card_from_text
+                cid = card_from_text(
+                    (_active.get("problem_text") or "")[:200],
+                    (_active.get("final_answer") or "Siehe Lösungsweg.")[:800],
+                    source="practice", subject=_active.get("subject"),
+                    topic=_active.get("topic"))
+                if is_hard_gap(rating=rating):
                     record_error(
                         source="practice", source_id=pid, card_id=cid,
                         subject=_active.get("subject"),
                         front=(_active.get("problem_text") or "")[:200],
                         detail="Übung nicht vollständig gelöst")
-                else:
-                    from ragapp.student_flow import card_from_text
-                    card_from_text(
-                        (_active.get("problem_text") or "")[:200],
-                        (_active.get("final_answer") or "Siehe Lösungsweg.")[:800],
-                        source="practice", subject=_active.get("subject"),
-                        topic=_active.get("topic"))
                 for k in (_hint_key, _step_key):
                     st.session_state[k] = 0
                 st.session_state.pop(_answer_key, None)

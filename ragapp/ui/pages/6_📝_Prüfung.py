@@ -456,19 +456,28 @@ if exam.get("done"):
     with card("ergebnis"):
         st.subheader("📊 Ergebnis")
         m1, m2, m3 = st.columns(3)
-        m1.metric("Gesamt", f'{res["total_pct"]} %' if res.get("total_pct") is not None else "–")
-        m2.metric("Aufgaben", len(res["items"]))
+        _partial = bool(res.get("partial"))
+        _n_items = len(res["items"])
+        _graded = res.get("graded") or 0
+        if _partial:
+            m1.metric("Teilwertung", f'{res["total_pct"]} %'
+                      if res.get("total_pct") is not None else "–")
+            m2.metric("Bewertet", f"{_graded}/{_n_items}")
+        else:
+            m1.metric("Gesamt", f'{res["total_pct"]} %'
+                      if res.get("total_pct") is not None else "–")
+            m2.metric("Aufgaben", _n_items)
         m3.metric("Zeit", f'{res["used_min"]} Min.')
         if res.get("total_pct") is None:
             st.warning("Benotung nicht möglich – das Modell war nicht erreichbar. "
                        "Karten wurden nicht umgeplant, das Ergebnis zählt nicht.")
+        elif _partial:
+            st.warning(
+                f"Nur {_graded} von {_n_items} Aufgaben konnten bewertet werden. "
+                "Die Prozentzahl ist **kein Klausurergebnis**, sondern nur der "
+                "Schnitt der benoteten Aufgaben – der Versuch wird nicht gespeichert.")
         else:
             st.progress(min(1.0, res["total_pct"] / 100))
-            if res.get("partial"):
-                st.warning(
-                    f"Nur {res.get('graded') or 0} von {len(res['items'])} Aufgaben "
-                    "konnten bewertet werden. Die Prozentzahl gilt nur für die "
-                    "benoteten Aufgaben und zählt nicht als Klausurergebnis.")
     st.divider()
     for i, it in enumerate(res["items"], 1):
         _sc = it.get("score")
@@ -551,6 +560,7 @@ def _auswerten():
     prog = st.progress(0.0, text="Die KI benotet deine Antworten …")
     from ragapp import grading
     from ragapp.llm import llm_task
+    from ragapp.student_flow import is_hard_gap, record_error
     with llm_task():
         for j, card in enumerate(exam["cards"], 1):
             typed = exam["answers"].get(card["card_id"], "")
@@ -567,8 +577,7 @@ def _auswerten():
                               g.get("feedback") or "Benotung nicht möglich."),
                           "fehlt": g.get("fehlt") if grade_ok else [],
                           "doc_id": card.get("doc_id"), "topic": card.get("topic")})
-            if grade_ok and (g.get("score") or 0) < 40:
-                from ragapp.student_flow import record_error
+            if grade_ok and is_hard_gap(score=g.get("score")):
                 record_error(source="exam", source_id=card.get("card_id"),
                              card=card, front=card.get("front"),
                              detail=f"Probeklausur {g.get('score')} %")

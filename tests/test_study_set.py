@@ -141,6 +141,30 @@ def test_study_set_preview_mit_fixture_karten(isolated_db):
     assert other["topics"] == ["Anderes"]
 
 
+def test_study_set_preview_filtert_heading_echo(isolated_db):
+    manifest.upsert_review_items([
+        {"card_id": "echo", "source": "question", "chroma_id": "echo",
+         "subject": "BWL", "topic": "DB",
+         "front": "Was ist Deckungsbeitrag?",
+         "back": "# Deckungsbeitrag\n\nErlös minus variable Kosten.",
+         "answer": "", "doc_id": "d1"},
+        {"card_id": "ok", "source": "question", "chroma_id": "ok",
+         "subject": "BWL", "topic": "DB",
+         "front": "Wie unterscheidet sich der Deckungsbeitrag vom Gewinn?",
+         "back": "# Deckungsbeitrag\n\nErlös minus variable Kosten.",
+         "answer": "DB ignoriert Fixkosten.", "doc_id": "d1"},
+        {"card_id": "qa", "source": "exam_qa", "chroma_id": "qa",
+         "subject": "BWL", "topic": "DB",
+         "front": "Was ist Deckungsbeitrag?",
+         "back": "Erlös minus variable Kosten.",
+         "answer": "Erlös minus variable Kosten.", "doc_id": "d1"},
+    ])
+    prev = study.study_set_preview(doc_ids=["d1"])
+    assert prev["cards"] == 2
+    assert set(prev["card_ids"]) == {"ok", "qa"}
+    assert "echo" not in prev["card_ids"]
+
+
 def test_enrich_bindet_question_gen():
     """Live-Test: Lernset-Erstellen stürzte mit NameError auf generate_questions ab."""
     from ragapp.ingestion import enrich

@@ -80,6 +80,17 @@ def test_fehlerheft_open_and_resolve(isolated_db):
     assert manifest.count_open_errors() == 1
 
 
+def test_is_hard_gap_nur_unter_40_oder_nicht_gewusst():
+    assert student_flow.is_hard_gap(score=0)
+    assert student_flow.is_hard_gap(score=39)
+    assert not student_flow.is_hard_gap(score=40)
+    assert not student_flow.is_hard_gap(score=74)
+    assert not student_flow.is_hard_gap(score=75)
+    assert student_flow.is_hard_gap(rating=study.NICHT)
+    assert not student_flow.is_hard_gap(rating=study.HALB)
+    assert not student_flow.is_hard_gap(rating=study.GEWUSST)
+
+
 def test_sicher_und_falsch_markiert_overconfidence_im_fehlerheft(isolated_db):
     cid = student_flow.card_from_text(
         "Was ist X?", "X ist Y.", source="note", subject="BWL")
