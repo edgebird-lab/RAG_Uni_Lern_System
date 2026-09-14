@@ -37,6 +37,41 @@ def _priority(chunk: dict) -> tuple:
     return (0 if is_summary else 1, -len(chunk["document"]))
 
 
+def coalesce_short_chunks(chunks: list[dict], min_chars: int) -> list[dict]:
+    """Zieht Mini-Abschnitte desselben Dokuments zusammen, bis sie fragentauglich sind.
+
+    Markdown-Header-Splitting erzeugt oft 80–180-Zeichen-Chunks (Definition,
+    Formel). Die sind lernbar, einzeln aber unter einer hart kodierten
+    200-Zeichen-Schwelle – Lernset blieb dann leer. Zusammenziehen in
+    Dateireihenfolge, nicht über Dokumentgrenzen.
+    """
+    ordered = sorted(
+        chunks,
+        key=lambda c: (str(c.get("meta", {}).get("doc_id") or ""), str(c.get("id") or "")),
+    )
+    out: list[dict] = []
+    for ch in ordered:
+        doc_id = (ch.get("meta") or {}).get("doc_id")
+        text = ch.get("document") or ""
+        if (
+            out
+            and (out[-1].get("meta") or {}).get("doc_id") == doc_id
+            and len(out[-1].get("document") or "") < min_chars
+        ):
+            prev = out[-1]
+            merged = dict(prev)
+            merged["document"] = (prev.get("document") or "").rstrip() + "\n\n" + text
+            merged["meta"] = dict(prev.get("meta") or {})
+            out[-1] = merged
+        else:
+            out.append({
+                "id": ch.get("id"),
+                "document": text,
+                "meta": dict(ch.get("meta") or {}),
+            })
+    return [c for c in out if len(c.get("document") or "") >= min_chars]
+
+
 def _existing_question_parents() -> set:
     """parent_ids, für die schon Fragen existieren (Skip -> resumierbar)."""
     col = get_vectorstore()._col
@@ -65,7 +100,8 @@ def enrich_questions(limit: Optional[int] = None,
     if doc_ids:
         _wanted = set(doc_ids)
         chunks = [c for c in chunks if c["meta"].get("doc_id") in _wanted]
-    chunks = [c for c in chunks if len(c["document"]) >= max(settings.MIN_CHUNK_CHARS, 200)]
+    min_chars = int(getattr(settings, "MIN_CHUNK_CHARS", 120) or 120)
+    chunks = coalesce_short_chunks(chunks, min_chars)
 
     already = _existing_question_parents()
     chunks = [c for c in chunks if c["id"] not in already]
@@ -77,19 +113,20 @@ def enrich_questions(limit: Optional[int] = None,
         return {"status": "nothing_to_do", "processed": 0, "questions": 0,
                 "errors": 0, "error_msg": None, "per_doc": {}}
 
-    # Vorab-Check: laedt das schnelle Modell ueberhaupt? Sonst liefe man ~20 s/Chunk
-    # ins Leere und bekaeme am Ende faelschlich "0 = Erfolg".
-    ok, msg = probe_model(settings.LLM_MODEL_FAST)
-    if not ok:
-        return {"status": "llm_error", "processed": 0, "questions": 0, "errors": 0,
-                "error_msg": f"Modell '{settings.LLM_MODEL_FAST}' laeuft nicht: {msg}",
-                "per_doc": {}}
-
+    # Erst Platz schaffen (ohne ein schon geladenes Zielmodell zu killen),
+    # dann erst den Intel-IPEX-Ping. Andersherum: probe lädt, require_vram
+    # entlädt, GPU-Speicher ist noch belegt → falscher VRAM-Abbruch.
     try:
         require_vram(settings.LLM_MODEL_FAST)
     except VramLowError as exc:
         return {"status": "llm_error", "processed": 0, "questions": 0, "errors": 0,
                 "error_msg": str(exc), "per_doc": {}}
+
+    ok, msg = probe_model(settings.LLM_MODEL_FAST)
+    if not ok:
+        return {"status": "llm_error", "processed": 0, "questions": 0, "errors": 0,
+                "error_msg": f"Modell '{settings.LLM_MODEL_FAST}' laeuft nicht: {msg}",
+                "per_doc": {}}
 
     total_q = 0
     errors = 0

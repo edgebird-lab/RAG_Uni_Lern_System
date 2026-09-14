@@ -180,17 +180,17 @@ def generate_answers(subject: "str | None" = None, deck: "str | None" = None,
         return {"status": "nothing_to_do", "processed": 0, "filled": 0,
                 "errors": 0, "error_msg": None}
 
-    ok, msg = probe_model(settings.LLM_MODEL_FAST)
-    if not ok:
-        return {"status": "llm_error", "processed": 0, "filled": 0, "errors": 0,
-                "error_msg": f"Modell '{settings.LLM_MODEL_FAST}' laeuft nicht: {msg}"}
-
     from ragapp.llm import require_vram, release_llm, VramLowError
     try:
         require_vram(settings.LLM_MODEL_FAST)
     except VramLowError as exc:
         return {"status": "llm_error", "processed": 0, "filled": 0, "errors": 0,
                 "error_msg": str(exc)}
+
+    ok, msg = probe_model(settings.LLM_MODEL_FAST)
+    if not ok:
+        return {"status": "llm_error", "processed": 0, "filled": 0, "errors": 0,
+                "error_msg": f"Modell '{settings.LLM_MODEL_FAST}' laeuft nicht: {msg}"}
 
     filled = errors = ungrounded = 0
     error_msg = None

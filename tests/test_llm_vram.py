@@ -17,6 +17,7 @@ def test_vram_low_message_nennt_freie_und_benoetigte_gb():
 
 def test_require_vram_wirft_wenn_preflight_low_ist(monkeypatch):
     released = []
+    monkeypatch.setattr(llm, "_model_resident", lambda model=None: False)
     monkeypatch.setattr(llm, "release_llm", lambda: released.append(1) or 0)
     monkeypatch.setattr(llm, "vram_preflight", lambda model=None: {
         "status": "low", "free_gb": 2.0, "need_gb": 18.0, "model": "grosses-modell"})
@@ -27,10 +28,22 @@ def test_require_vram_wirft_wenn_preflight_low_ist(monkeypatch):
 
 
 def test_require_vram_ok_wenn_genug_frei(monkeypatch):
+    monkeypatch.setattr(llm, "_model_resident", lambda model=None: False)
     monkeypatch.setattr(llm, "release_llm", lambda: 0)
     monkeypatch.setattr(llm, "vram_preflight", lambda model=None: {
         "status": "ok", "free_gb": 20.0, "need_gb": 8.0, "model": "x"})
     pf = llm.require_vram("x")
+    assert pf["status"] == "ok"
+
+
+def test_require_vram_entlaedt_nicht_wenn_zielmodell_schon_resident(monkeypatch):
+    released: list[int] = []
+    monkeypatch.setattr(llm, "_model_resident", lambda model=None: True)
+    monkeypatch.setattr(llm, "release_llm", lambda: released.append(1) or 0)
+    monkeypatch.setattr(llm, "vram_preflight", lambda model=None: {
+        "status": "ok", "resident": True, "model": "x"})
+    pf = llm.require_vram("x")
+    assert released == []
     assert pf["status"] == "ok"
 
 

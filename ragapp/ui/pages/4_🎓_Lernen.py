@@ -101,7 +101,8 @@ def _render_lernset_pfad() -> None:
                  disabled=not picked,
                  key="lernset_go", use_container_width=True):
         with st.status("Lernset wird erzeugt …", expanded=True) as s:
-            out = study.create_study_set(picked, progress=lambda m: s.update(label=m))
+            out = study.create_study_set(
+                picked, n_per_chunk=1, progress=lambda m: s.update(label=m))
             s.update(label="Fertig" if out["status"] == "ok" else "Abgebrochen",
                      state="complete" if out["status"] == "ok" else "error")
         st.session_state["_lernset_result"] = out

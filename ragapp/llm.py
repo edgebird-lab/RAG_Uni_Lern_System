@@ -572,11 +572,18 @@ def require_vram(model: str | None = None) -> dict:
 
     Wirft ``VramLowError`` mit konkreter GB-Angabe, statt das Modell in den
     Ueberlauf zu zwingen (beobachtet: Uebungsaufgabe liess das Autoren-Modell
-    Minuten liegen, Chat/Semesterplan luden obendrauf -> OOM)."""
+    Minuten liegen, Chat/Semesterplan luden obendrauf -> OOM).
+
+    Ist das *Zielmodell* schon resident (z. B. nach ``probe_model`` oder dem
+    letzten Chat), wird es nicht erst entladen: Intel-GPUs geben den Speicher
+    verzögert frei, und der anschließende Preflight würde sonst fälschlich
+    ``low`` melden (Live-Test: Chat ok, Lernset sofort „9.9 GB frei“).
+    """
     model = model or settings.LLM_MODEL
-    # Messung nur auf wirklich freiem Speicher: was die letzte Aufgabe noch
-    # haelt, zaehlt nicht als "verfuegbar".
-    release_llm()
+    if not _model_resident(model):
+        # Messung nur auf wirklich freiem Speicher: was die letzte Aufgabe
+        # noch haelt, zaehlt nicht als "verfuegbar".
+        release_llm()
     pf = vram_preflight(model)
     if pf.get("status") == "low":
         raise VramLowError(vram_low_message(pf))
