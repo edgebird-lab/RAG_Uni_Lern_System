@@ -29,7 +29,9 @@ import streamlit as st
 _icon_png = _p.parents[2] / "assets" / "icon.png"
 _PAGE_ICON = str(_icon_png) if _icon_png.is_file() else "🎓"
 
-st.set_page_config(page_title="RAG-Lernsystem", page_icon=_PAGE_ICON, layout="wide")
+st.set_page_config(
+    page_title="RAG-Lernsystem", page_icon=_PAGE_ICON, layout="wide",
+    initial_sidebar_state="collapsed")
 
 # Schwere Importe (torch/chromadb) im Hintergrund vorwärmen -> spätere
 # Seitenwechsel öffnen sofort statt mit weißem Bildschirm, UND Embedding+Reranker
@@ -122,15 +124,19 @@ _components.html(
         function banner(inner) {
           var old = pdoc.getElementById('rag-pwa'); if (old) old.remove();
           var b = pdoc.createElement('div'); b.id = 'rag-pwa';
-          b.style.cssText = 'position:fixed;left:12px;right:12px;bottom:14px;margin:0 auto;'
+          b.style.cssText = 'position:fixed;left:12px;right:12px;'
+            + 'bottom:max(14px,env(safe-area-inset-bottom));margin:0 auto;'
             + 'max-width:520px;z-index:2147483647;background:#12455a;color:#fff;border-radius:14px;'
             + 'padding:12px 14px;box-shadow:0 10px 34px rgba(0,0,0,.4);font-family:system-ui,'
             + '-apple-system,sans-serif;font-size:14px;line-height:1.35;display:flex;'
             + 'align-items:center;gap:10px;';
           b.innerHTML = inner;
           var x = pdoc.createElement('button'); x.textContent = '\\u2715';
+          x.type = 'button';
+          x.setAttribute('aria-label', 'Installationshinweis schließen');
+          x.title = 'Schließen';
           x.style.cssText = 'margin-left:auto;background:transparent;border:0;color:#bcd7df;'
-            + 'font-size:17px;cursor:pointer;flex:none;';
+            + 'font-size:17px;cursor:pointer;flex:none;min-width:44px;min-height:44px;';
           x.onclick = function () { b.remove(); };
           b.appendChild(x);
           pdoc.body.appendChild(b); return b;
@@ -230,13 +236,12 @@ _target = {p["key"]: p["target"] for p in PAGE_REGISTRY}
 _hero_l, _hero_r = st.columns([2.4, 1.2])
 with _hero_l:
     render_hero_title("Willkommen zurück", accent=_theme["accent"])
-    st.caption("Was willst du heute tun?")
+    st.caption("Was steht heute an?")
 with _hero_r:
-    st.markdown('<div class="rag-mascot-hero-unit">', unsafe_allow_html=True)
-    speech_bubble_mascot(_mood_text, icon=_mood_icon)
-    render_mascot(_theme["accent"], size=140, pose=_mood_pose,
-                  animation=_mood_anim, prop=_mood_prop)
-    st.markdown("</div>", unsafe_allow_html=True)
+    with st.container(key="mascot_hero"):
+        speech_bubble_mascot(_mood_text, icon=_mood_icon)
+        render_mascot(_theme["accent"], size=140, pose=_mood_pose,
+                      animation=_mood_anim, prop=_mood_prop)
 
 if _newly_unlocked:
     st.balloons()
@@ -262,8 +267,11 @@ if _snap:
     _today = _dt.date.today()
 
     with card("heute"):
-        st.markdown(f"#### 🌞 Heute · {_WOCHENTAGE[_today.weekday()]}, "
-                    f"{_today.strftime('%d.%m.%Y')}")
+        st.markdown("#### 🌞 Heute")
+        st.markdown(
+            f'<p class="rag-heute-date">{_WOCHENTAGE[_today.weekday()]}, '
+            f'{_today.strftime("%d.%m.%Y")}</p>',
+            unsafe_allow_html=True)
 
         if _snap["cram_active"] and _snap["next_exam"]:
             _cram_subj = _html_escape(SUBJECT_LABELS.get(
@@ -607,13 +615,13 @@ with card("suche"):
                     _zpath = _PROJECT_ROOT / "docs" / _r["id"]
                     if _zpath.is_file():
                         _zc2.download_button(
-                            "⬇️", _zpath.read_bytes(), file_name=_r["id"],
+                            "Download", _zpath.read_bytes(), file_name=_r["id"],
                             mime="text/markdown", key=f"gsearch_zsf_{_r['id']}",
                             help="Zusammenfassung herunterladen")
 
 # Bibliothek-Stats nach hinten (Expander)
 from ragapp.ui._loading import skeleton
-with skeleton("Wird geladen ..."):
+with skeleton("Wird geladen …"):
     from ragapp import manifest
 
 try:
@@ -634,7 +642,7 @@ _missions = _daily_missions()
 _goal = _home_analytics.daily_goal_status()
 _kind_labels = {"reviews": "Reviews", "minutes": "Minuten", "plan_blocks": "Planblöcke"}
 with card("missionen"):
-    st.markdown("#### Heute")
+    st.markdown("#### Nächste Schritte")
     _pick = st.segmented_control(
         "Tagesziel",
         options=list(_kind_labels.keys()),
@@ -647,14 +655,18 @@ with card("missionen"):
         st.rerun()
     if not _goal.get("applicable", True):
         st.caption(
-            "Heute ist kein Planblock vorgesehen. Nur erledigte Reviews, Minuten "
-            "oder Blöcke zählen – nicht das Öffnen.")
+            "Heute ist kein Planblock vorgesehen. Du kannst trotzdem frei lernen.")
     else:
+        _goal_done = int(_goal["done_today"])
+        _goal_target = max(1, int(_goal["goal"]))
+        _goal_name = _kind_labels.get(_goal.get("kind"), "Reviews")
+        st.progress(
+            min(1.0, _goal_done / _goal_target),
+            text=f"{_goal_done} von {_goal_target} {_goal_name} erledigt")
         st.caption(
-            f"{_goal['done_today']}/{_goal['goal']} "
-            f"{_kind_labels.get(_goal.get('kind'), 'Reviews')} "
-            f"· Ampel {_goal['ampel']}. Nur erledigte Reviews/Minuten/Blöcke "
-            "zählen – nicht das Öffnen.")
+            "Tagesziel geschafft."
+            if _goal.get("goal_reached")
+            else f"Noch {max(0, _goal_target - _goal_done)} {_goal_name}.")
     if _missions:
         for _m in _missions:
             if st.button(
@@ -676,7 +688,7 @@ with card("missionen"):
     else:
         st.caption("Keine Missionen – erst Karten oder einen Lernplan anlegen.")
 
-st.markdown("#### Ziele")
+st.markdown("#### Direkt zu")
 _pin_cols = st.columns(3)
 for _i, _cat in enumerate(GOAL_CATEGORIES):
     with _pin_cols[_i % 3]:

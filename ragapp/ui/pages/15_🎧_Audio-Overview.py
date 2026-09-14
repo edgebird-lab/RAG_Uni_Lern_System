@@ -43,18 +43,11 @@ page_boot("🎧 Audio-Overview", page_title="Audio-Overview", icon="🎧", layou
 
 from ragapp.ui._style import card
 
-st.markdown("""
-<style>
-.block-container {padding-top: 2rem; max-width: 1000px;}
-h1 {font-weight: 750; letter-spacing:-0.5px;}
-</style>
-""", unsafe_allow_html=True)
-
 st.caption("Lässt deine Dokumente als gesprochenes Erklär-Skript zusammenfassen und vertont "
            "es mit deiner eigenen (geklonten) Stimme - keine generische KI-Stimme. Skripte "
            "lassen sich auch selbst schreiben oder im Nachgang bearbeiten.")
 
-with skeleton("Audio-Overview wird geladen ..."):
+with skeleton("Audio-Overview wird geladen …"):
     from ragapp import manifest, audio_overview, audiobook
     from ragapp.config import settings, SUBJECT_LABELS, PROJECT_ROOT, AUDIO_DIR
     from ragapp.llm import list_installed_models
@@ -177,7 +170,7 @@ with st.expander(_pron_label, key="pron_manage_expander"):
             _new_repl = _pc2.text_input(
                 "Ersetzung", value=_replacement, key=f"pron_edit_{_word}",
                 label_visibility="collapsed")
-            if _pc3.button("💾", key=f"pron_save_{_word}", help="Änderung speichern"):
+            if _pc3.button("Speichern", key=f"pron_save_{_word}", help="Änderung speichern"):
                 _clean_repl = (_new_repl or "").strip()
                 if _clean_repl:
                     manifest.upsert_pronunciation_fix(_word, _clean_repl)
@@ -185,7 +178,7 @@ with st.expander(_pron_label, key="pron_manage_expander"):
                     st.rerun()
                 else:
                     st.warning("Ersetzung darf nicht leer sein.")
-            if _pc4.button("🗑️", key=f"pron_del_{_word}", help="Regel löschen"):
+            if _pc4.button("Löschen", key=f"pron_del_{_word}", help="Regel löschen"):
                 manifest.delete_pronunciation_fix(_word)
                 st.rerun()
         st.divider()
@@ -247,11 +240,11 @@ if _ov_by_id:
             for _idx, _oid in enumerate(_order):
                 _oc1, _oc2, _oc3 = st.columns([7, 1, 1])
                 _oc1.write(f"{_idx + 1}. {_fmt_ov_option(_oid)}")
-                if _oc2.button("⬆️", key=f"book_up_{_oid}", disabled=_idx == 0,
+                if _oc2.button("Hoch", key=f"book_up_{_oid}", disabled=_idx == 0,
                               help="Nach oben"):
                     _order[_idx - 1], _order[_idx] = _order[_idx], _order[_idx - 1]
                     st.rerun()
-                if _oc3.button("⬇️", key=f"book_down_{_oid}",
+                if _oc3.button("Runter", key=f"book_down_{_oid}",
                               disabled=_idx == len(_order) - 1, help="Nach unten"):
                     _order[_idx + 1], _order[_idx] = _order[_idx], _order[_idx + 1]
                     st.rerun()

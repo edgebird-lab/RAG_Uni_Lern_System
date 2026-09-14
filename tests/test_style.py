@@ -21,6 +21,9 @@ from ragapp.ui._style import (
     _hero_title_html,
     _technical_override_css,
     _theme_toggle_html,
+    _i18n_patch_html,
+    _BASE_CSS,
+    _FONT_FACE_CSS,
     celebration_effects_html,
     combo_pulse_html,
     page_title,
@@ -267,3 +270,50 @@ def test_theme_toggle_html_nutzt_parent_matchmedia_und_parent_timer():
     assert "parent.matchMedia" in html
     assert "parent.setInterval" in html
     assert "rag-theme-switch" in html
+
+
+def test_theme_toggle_meldet_dunkelmodus_an_screenreader():
+    html = _theme_toggle_html()
+    assert "aria-pressed" in html
+    assert "aria-label" in html
+
+
+def test_basis_css_hat_fokus_kontrast_und_reduced_motion():
+    assert ":focus-visible" in _BASE_CSS
+    assert "prefers-reduced-motion" in _BASE_CSS
+    assert "color-scheme:light" in _BASE_CSS
+    assert "touch-action:manipulation" in _BASE_CSS
+    assert "env(safe-area-inset-top)" in _BASE_CSS
+
+
+def test_ziffern_und_handy_hero_bleiben_lesbar():
+    assert "overflow-wrap: anywhere" not in _FONT_FACE_CSS
+    assert "lining-nums proportional-nums" not in _FONT_FACE_CSS
+    assert "font-variant-numeric: normal" in _FONT_FACE_CSS
+    assert "font-variant-emoji: text" in _FONT_FACE_CSS
+    assert "html, body { font-variant-emoji: emoji; }" not in _FONT_FACE_CSS
+    assert "st-key-mascot_hero" in _BASE_CSS
+    assert "rag-heute-date" in _BASE_CSS
+    _BASE_CSS.format(accent="#c43b58", soft="#f6d5dc")
+
+
+def test_i18n_patch_uebersetzt_englische_widget_reste():
+    html = _i18n_patch_html()
+    assert "Choose options" in html
+    assert "Auswählen" in html
+    assert "Datei hierher ziehen" in html
+
+
+def test_seitenstart_klappt_die_sidebar_zu():
+    import inspect
+    from ragapp.ui._loading import page_boot
+    assert 'initial_sidebar_state="collapsed"' in inspect.getsource(page_boot)
+
+
+def test_hamburger_zeigt_seitentitel_statt_gruppennamen():
+    import inspect
+    from ragapp.ui._style import render_hamburger_nav
+    src = inspect.getsource(render_hamburger_nav)
+    assert 'shown = "Heute" if key == "home" else page["title"]' in src
+    assert '_p["key"] in HIDDEN_PAGE_KEYS or _p["key"] in HAMBURGER_KEYS' in src
+    assert "Schnellzugriff" in src

@@ -27,8 +27,6 @@ from ragapp.ui._style import card
 
 st.markdown("""
 <style>
-.block-container {padding-top: 2rem; max-width: 1150px;}
-h1 {font-weight: 750; letter-spacing:-0.5px;}
 div[class*="st-key-mm_hit_"],
 div.stElementContainer[class*="st-key-mm_hit_"] {
   display:none !important;
@@ -36,11 +34,9 @@ div.stElementContainer[class*="st-key-mm_hit_"] {
 </style>
 """, unsafe_allow_html=True)
 
-st.caption("Quellengetreuer Themenbaum aus deinen indexierten Dokumenten - ordnet und "
-           "gruppiert nur, was im Inhaltsverzeichnis bereits steht, erfindet keine "
-           "neuen Themen.")
+st.caption("Themen aus deinen Unterlagen als Baum – nur vorhandener Stoff, keine erfundenen Äste.")
 
-with skeleton("Mindmap wird geladen ..."):
+with skeleton("Mindmap wird geladen …"):
     from ragapp import manifest, mindmap, mindmap_render
     from ragapp.config import settings, SUBJECT_LABELS
     from ragapp.ui._colors import subject_color

@@ -27,18 +27,14 @@ from ragapp.ui._style import card
 
 st.markdown("""
 <style>
-.block-container {padding-top: 2rem; max-width: 1150px;}
-h1 {font-weight: 750; letter-spacing:-0.5px;}
 .pa-item-title {font-weight:650; font-size:.9rem;}
 .pa-item-meta {font-size:.75rem; opacity:.7;}
 </style>
 """, unsafe_allow_html=True)
 
-st.caption("Mehrschrittige Übungen mit Musterlösung aus deinen Dokumenten: "
-           "rechnen, begründen/beweisen oder anwenden – auch in Fächern ohne Formeln. "
-           "Progressive Hinweise statt sofortiger Lösung.")
+st.caption("Rechenweg eintippen, Teilpunkte erhalten, fehlende Schritte nachlesen.")
 
-with skeleton("Übungsaufgaben werden geladen ..."):
+with skeleton("Übungsaufgaben werden geladen …"):
     from ragapp import manifest, practice_gen
     from ragapp.config import settings, SUBJECT_LABELS
 

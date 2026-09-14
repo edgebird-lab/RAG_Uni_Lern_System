@@ -46,12 +46,7 @@ _flash = st.session_state.pop("_syllabus_flash", None)
 if _flash:
     st.success(_flash)
 
-st.caption(
-    "Semester einrichten: Modulhandbuch importieren. Diese Seite füllt **nicht** "
-    "die Karteikarten, sondern deinen Semester-Rahmen: Klausurtermine und ECTS auf "
-    "**📈 Fortschritt**, Vorlesungszeiten auf **🗂️ Kurse & Stundenplan**. "
-    "Du prüfst den Vorschlag, BEVOR etwas gespeichert wird."
-)
+st.caption("Modulhandbuch prüfen und übernehmen: Klausurtermine, ECTS und Vorlesungszeiten.")
 
 
 def _model_picker(key: str) -> "str | None":

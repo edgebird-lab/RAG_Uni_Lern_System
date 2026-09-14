@@ -32,15 +32,13 @@ from ragapp.ui._style import card
 
 st.markdown("""
 <style>
-.block-container {padding-top: 2rem; max-width: 950px;}
-h1 {font-weight: 750; letter-spacing:-0.5px;}
+.block-container {max-width: 950px;}
 </style>
 """, unsafe_allow_html=True)
 
-st.caption("Pomodoro-Timer und freier Zeittracker – zeichnet echte Lernzeit je Fach auf. "
-           "Komplett offline, kein Modell nötig.")
+st.caption("Pomodoro oder freie Stoppuhr – echte Lernzeit je Fach, ohne Modell.")
 
-with skeleton("Lernzeit wird geladen ..."):
+with skeleton("Lernzeit wird geladen …"):
     import pandas as pd
     from ragapp import manifest
     from ragapp.config import SUBJECT_LABELS

@@ -31,7 +31,6 @@ from ragapp.ui._style import card
 # --------------------------------------------------------------------------- #
 st.markdown("""
 <style>
-.block-container {padding-top: 2rem; max-width: 1100px;}
 .stChatMessage {border-radius: 14px;}
 .source-card {
     background: linear-gradient(135deg, #f6f8fc 0%, #eef2fb 100%);
@@ -49,7 +48,7 @@ h1 {font-weight: 750; letter-spacing:-0.5px;}
 </style>
 """, unsafe_allow_html=True)
 
-with skeleton("Evaluation wird geladen ..."):
+with skeleton("Evaluation wird geladen …"):
     import pandas as pd
     from ragapp.config import settings
     from ragapp import manifest

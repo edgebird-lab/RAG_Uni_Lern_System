@@ -34,19 +34,15 @@ from ragapp.ui._style import card
 
 st.markdown("""
 <style>
-.block-container {padding-top: 2rem; max-width: 1150px;}
-h1 {font-weight: 750; letter-spacing:-0.5px;}
 .notiz-item {padding:8px 10px; border-radius:8px; margin-bottom:4px; cursor:pointer;}
 .notiz-item-title {font-weight:650; font-size:.9rem;}
 .notiz-item-meta {font-size:.75rem; opacity:.7;}
 </style>
 """, unsafe_allow_html=True)
 
-st.caption("Deine eigenen Gedanken, Fragen und Merksätze – im Unterschied zu allem "
-           "anderen in dieser App NICHT KI-generiert. Optional an ein Fach, ein "
-           "Dokument oder eine Sammlung geheftet.")
+st.caption("Eigene Gedanken und Merksätze – optional an Fach oder Dokument geheftet.")
 
-with skeleton("Notizen werden geladen ..."):
+with skeleton("Notizen werden geladen …"):
     from ragapp import manifest
     from ragapp.config import SUBJECT_LABELS
 

@@ -25,13 +25,6 @@ page_boot("🎤 Vortrag", page_title="Vortrag", icon="🎤", layout="wide",
 
 from ragapp.ui._style import card
 
-st.markdown("""
-<style>
-.block-container {padding-top: 2rem; max-width: 1000px;}
-h1 {font-weight: 750; letter-spacing:-0.5px;}
-</style>
-""", unsafe_allow_html=True)
-
 st.caption("Erzeugt einen Marp-Vortrag aus deinen Unterlagen, optional mit "
            "wissenschaftlichen Quellen (SearXNG, Opt-in), vertont ihn mit deiner "
            "Stimme und exportiert Markdown / Audio / optional MP4.")

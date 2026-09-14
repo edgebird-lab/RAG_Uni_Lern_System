@@ -32,7 +32,6 @@ from ragapp.ui._style import card
 # --------------------------------------------------------------------------- #
 st.markdown("""
 <style>
-.block-container {padding-top: 2rem; max-width: 1100px;}
 .stChatMessage {border-radius: 14px;}
 .source-card {
     background: linear-gradient(135deg, #f6f8fc 0%, #eef2fb 100%);
@@ -64,7 +63,7 @@ div[data-testid="stSlider"] [data-testid="stWidgetLabel"] {
 # kein weißer Bildschirm beim Seitenwechsel). Die Importe binden trotz des
 # with-Blocks modulweit, alle späteren Verwendungen funktionieren unverändert.
 # --------------------------------------------------------------------------- #
-with skeleton("Einstellungen wird geladen ..."):
+with skeleton("Einstellungen werden geladen …"):
     from ragapp.config import (
         settings, RUNTIME_CONFIG_FILE, Settings, UI_RESTART_FILE, UI_MODE_FILE,
     )

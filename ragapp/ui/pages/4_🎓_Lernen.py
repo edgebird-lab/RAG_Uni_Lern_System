@@ -32,19 +32,16 @@ from ragapp.ui._style import card
 # kommt jetzt zentral aus ragapp.ui._theme.apply_theme().
 st.markdown("""
 <style>
-.block-container {padding-top: 2rem; max-width: 900px;}
-h1 {font-weight:750; letter-spacing:-0.5px;}
+.block-container {max-width: 900px;}
 </style>
 """, unsafe_allow_html=True)
 
 
-st.caption("Karteikarten aus deinen eigenen Unterlagen – wie bei Anki: Stapel wählen, "
-           "**Jetzt lernen**, FSRS plant die Wiederholungen. Kein Rätselraten vor jeder "
-           "Sitzung, welches Limit was bedeutet.")
+st.caption("Stapel wählen und lernen. Fällige Karten kommen von selbst wieder.")
 
 # Schwere Importe/Datenabfragen unter kleinem Ladehinweis; die import-Statements
 # binden im Modulscope, daher funktionieren alle spaeteren Verwendungen unveraendert.
-with skeleton("Lernen wird geladen ..."):
+with skeleton("Karteikarten werden geladen …"):
     import pandas as pd
     from ragapp import manifest, study
     from ragapp.config import settings, SUBJECT_LABELS
@@ -1053,14 +1050,14 @@ if _active_tab == "🗂️ Stapel verwalten":
                     manifest.dissolve_deck(_d)
                     st.success(f"Stapel „{_d}“ aufgelöst.")
                     st.rerun()
-                if _dc3.button("🗑️", key=f"delete_{_dk_subj}_{_d}",
+                if _dc3.button("Löschen", key=f"delete_{_dk_subj}_{_d}",
                                use_container_width=True,
                                help="Stapel samt Karten löschen."):
                     manifest.delete_deck(_d)
                     st.success(f"Stapel „{_d}“ gelöscht.")
                     st.rerun()
                 with _dc4:
-                    with st.popover("✏️"):
+                    with st.popover("Umbenennen"):
                         _rn = st.text_input("Neuer Name", value=_d,
                                             key=f"rn_in_{_dk_subj}_{_d}")
                         if st.button("Umbenennen", key=f"rn_btn_{_dk_subj}_{_d}"):

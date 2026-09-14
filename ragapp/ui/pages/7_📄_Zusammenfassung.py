@@ -39,9 +39,7 @@ def _fach(code: str) -> str:
     return SUBJECT_LABELS.get(code, code)
 
 
-st.caption("Erzeugt aus einem indexierten Dokument oder einem ganzen Fach eine "
-           "strukturierte, klausurtaugliche Zusammenfassung – gegroundet, es wird "
-           "nur der Quellinhalt verwendet.")
+st.caption("Fasst ein Dokument oder Fach in deinen Worten zusammen – nur aus dem Stoff, ohne Extra-Fakten.")
 
 docs = manifest.list_documents()
 if not docs:

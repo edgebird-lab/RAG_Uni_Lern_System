@@ -211,7 +211,13 @@ h1, h2, h3, h4, h5, h6 {
    unterstuetzt, sonst folgenlos ignoriert) - behebt die groebste
    Inkonsistenz, OHNE die Emoji-Identitaet der App aufzugeben oder einen
    zusaetzlichen Font-Download (der die Offline-Faehigkeit gefaehrden wuerde). */
-html, body { font-variant-emoji: emoji; }
+.rag-heute-date, [data-testid="stCaptionContainer"],
+[data-testid="stMetricValue"], input, textarea {
+  font-variant-emoji: text;
+}
+.rag-heute-chip, .rag-bubble, .rag-bubble-mascot {
+  font-variant-emoji: emoji;
+}
 /* Streamlit-Kennzahlen (st.metric): Default-Schriftgroesse (~2.25rem) + unsere
    etwas breitere Body-Schrift (Nunito) + Streamlits text-overflow:ellipsis
    schneiden in engen Spalten (4er-Karten auf Lernen/Home/Fortschritt) Werte
@@ -226,7 +232,10 @@ html, body { font-variant-emoji: emoji; }
   overflow: visible !important;
   text-overflow: clip !important;
   white-space: nowrap !important;
-  font-variant-numeric: tabular-nums !important;
+  overflow-wrap: normal !important;
+  word-break: keep-all !important;
+  font-variant-numeric: normal !important;
+  font-feature-settings: normal !important;
   max-width: none !important;
 }
 [data-testid="stMetricLabel"],
@@ -245,8 +254,15 @@ div[data-testid="metric-container"],
    Umbruch wirken Datumsangaben abgehakt oder gequetscht. */
 h2, h3, h4, h5, h6 {
   letter-spacing: -0.02em;
-  overflow-wrap: anywhere;
-  font-variant-numeric: tabular-nums;
+  overflow-wrap: break-word;
+}
+/* Nunito-Subset hat keine echten OpenType-Zahlenfeatures. `tabular-nums` /
+   `lining-nums` werden dann mit ~doppelter Ziffernbreite nachgebildet
+   ("14.09.2026" wirkt wie "1 4 . 0 9 . 2 0 2 6"). Deshalb bewusst aus. */
+html, body, .stApp, [data-testid="stCaptionContainer"],
+[data-testid="stMarkdownContainer"], [data-testid="stWidgetLabel"] {
+  font-variant-numeric: normal;
+  font-feature-settings: normal;
 }
 /* Streamlits Icon-Glyphen (Sidebar-Pfeil, Expander-Chevron, Button-Icons wie
    "keyboard_double_arrow_right"/"expand_more") sind KEIN Text, sondern
@@ -333,16 +349,53 @@ html.rag-dark div[class*="st-key-card_"] {{
 # --------------------------------------------------------------------------- #
 _BASE_CSS = """
 <style>
+/* Ruhiger, zugänglicher Grundrahmen: breite Dashboards nutzen den Platz,
+   Text bleibt gut umbrechbar und native Controls kennen den aktiven Modus. */
+html {{ color-scheme:light; overflow-x:hidden; }}
+html.rag-dark {{ color-scheme:dark; }}
+body, .stApp {{ overflow-x:hidden; }}
+.block-container {{
+  position:relative; z-index:1;
+  max-width:1180px;
+  padding-top:2rem !important;
+  padding-left:clamp(1rem, 3vw, 3rem) !important;
+  padding-right:clamp(1rem, 3vw, 3rem) !important;
+  animation:ragFadeIn .45s ease-out both;
+}}
+h1, h2, h3, h4 {{ text-wrap:balance; }}
+p, li, [data-testid="stCaptionContainer"] {{ text-wrap:pretty; }}
+[data-testid="stCaptionContainer"] {{
+  color:#606778 !important; line-height:1.45 !important;
+}}
+html.rag-dark [data-testid="stCaptionContainer"] {{
+  color:#aebdd1 !important;
+}}
+button, a, input, textarea, select, summary {{
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:rgba(49,70,110,.14);
+}}
+button:focus-visible, a:focus-visible, input:focus-visible,
+textarea:focus-visible, select:focus-visible, summary:focus-visible,
+[role="button"]:focus-visible, [role="tab"]:focus-visible {{
+  outline:3px solid #244f7a !important;
+  outline-offset:3px !important;
+  box-shadow:0 0 0 5px rgba(255,255,255,.92) !important;
+}}
+html.rag-dark button:focus-visible, html.rag-dark a:focus-visible,
+html.rag-dark input:focus-visible, html.rag-dark textarea:focus-visible,
+html.rag-dark select:focus-visible, html.rag-dark summary:focus-visible,
+html.rag-dark [role="button"]:focus-visible,
+html.rag-dark [role="tab"]:focus-visible {{
+  outline-color:#9bc9f2 !important;
+  box-shadow:0 0 0 5px rgba(10,25,48,.94) !important;
+}}
+
 /* Native Streamlit-Seitenliste aus - ersetzt durch Hamburger + Home-Kacheln. */
 [data-testid="stSidebarNav"] {{display:none;}}
 
 @keyframes ragFadeIn {{
   from {{opacity:0; transform:translateY(6px);}}
   to   {{opacity:1; transform:translateY(0);}}
-}}
-.block-container {{
-  position:relative; z-index:1;
-  animation:ragFadeIn .45s ease-out both;
 }}
 
 /* Seiten-Hintergrund: weicher Farbverlauf statt reinem Weiss, je Seite im
@@ -362,21 +415,22 @@ _BASE_CSS = """
 }}
 h1 {{
   font-weight:800 !important; letter-spacing:-0.5px;
-  background:linear-gradient(90deg, {accent} 0%, {accent} 55%, {soft} 100%);
-  -webkit-background-clip:text; background-clip:text; color:transparent !important;
-  display:inline-block; padding-bottom:2px;
-  border-bottom:4px solid {soft}; margin-bottom:.3rem !important;
+  color:#2b2036 !important;
+  display:inline-block; max-width:100%; padding-bottom:2px;
+  border-bottom:4px solid {accent}; margin-bottom:.3rem !important;
   animation:ragTitleFly .5s cubic-bezier(.22,1,.36,1) both;
 }}
+html.rag-dark h1 {{ color:#e7edf5 !important; }}
 
 /* Optionale "Hero"-Ueberschrift (siehe render_hero_title()): Buchstabe-fuer-
    Buchstabe-Einflug statt Gradient (Gradient-Text-Clip wuerde pro <span>
    neu ansetzen und in Streifen zerfallen - daher hier stattdessen Vollton). */
 .rag-hero-title {{
   font-weight:800 !important; letter-spacing:-0.5px;
-  border-bottom:4px solid {soft}; padding-bottom:2px; margin-bottom:.3rem !important;
-  color:{accent} !important;
+  border-bottom:4px solid {accent}; padding-bottom:2px; margin-bottom:.3rem !important;
+  color:#c43b58 !important;
 }}
+html.rag-dark .rag-hero-title {{ color:{accent} !important; }}
 /* Wort-Wrapper (siehe render_hero_title()-Docstring): macht ein ganzes Wort
    umbruch-atomar, waehrend zwischen Woertern weiterhin normal umgebrochen
    werden darf - behebt den "Willkommen zurü/ck"-Mitten-im-Wort-Umbruch bei
@@ -393,7 +447,9 @@ h1 {{
    (das ist ohnehin schon unter 700px ausgeblendet). */
 @media (max-width: 480px) {{
   .rag-hero-title {{font-size:1.9rem !important;}}
-  .rag-mascot svg {{width:120px !important; height:auto !important;}}
+  .rag-hero-title .rag-hero-letter {{
+    animation:none !important; opacity:1 !important; transform:none !important;
+  }}
 }}
 @keyframes ragLetterIn {{
   from {{opacity:0; transform:translateY(10px) scale(.85);}}
@@ -441,6 +497,13 @@ html.rag-dark .rag-bubble::after {{background:#0f2440; border-color:rgba(231,237
 }}
 html.rag-dark .rag-heute-chip {{background:#132b4d; border-color:{accent}66; color:#e7edf5;}}
 .rag-heute-row {{font-size:.88rem; opacity:.85; margin:.15rem 0;}}
+.rag-heute-date {{
+  margin:.15rem 0 .45rem; color:#606778; font-size:.9rem; line-height:1.4;
+  font-variant-numeric:normal; font-feature-settings:normal;
+  font-variant-emoji:text;
+  letter-spacing:0; white-space:nowrap; overflow-wrap:normal; word-break:keep-all;
+}}
+html.rag-dark .rag-heute-date {{ color:#aebdd1; }}
 
 /* Lernmaskottchen (siehe ragapp.ui._mascot) - Grundgeruest + Bewegungs-
    Varianten (float/wave/run/shake) plus Augen, Props und Sparkles. */
@@ -584,6 +647,21 @@ html.rag-dark .rag-heute-schedule li {{border-bottom-color:rgba(231,237,245,.08)
   transform:translateY(0);
   box-shadow:0 1px 3px rgba(0,0,0,.08);
 }}
+.stButton > button:disabled, .stDownloadButton > button:disabled,
+.stFormSubmitButton > button:disabled {{
+  transform:none !important; box-shadow:none !important; opacity:.58;
+}}
+button[kind="primary"], button[kind="primaryFormSubmit"],
+[data-testid="stBaseButton-primary"],
+[data-testid="stBaseButton-primaryFormSubmit"] {{
+  background:#b83250 !important; border-color:#b83250 !important;
+  color:#ffffff !important; font-weight:750 !important;
+}}
+button[kind="primary"]:hover, button[kind="primaryFormSubmit"]:hover,
+[data-testid="stBaseButton-primary"]:hover,
+[data-testid="stBaseButton-primaryFormSubmit"]:hover {{
+  background:#982a43 !important; border-color:#982a43 !important;
+}}
 html.rag-dark .stButton > button:hover, html.rag-dark .stDownloadButton > button:hover,
 html.rag-dark .stFormSubmitButton > button:hover {{
   box-shadow:0 3px 10px rgba(0,0,0,.35);
@@ -595,6 +673,10 @@ html.rag-dark .stFormSubmitButton > button:hover {{
    dem Desktop bleibt die kompaktere Groesse, dort tippt niemand mit dem
    Finger). */
 @media (max-width: 480px) {{
+  .block-container {{
+    padding-top:3.5rem !important;
+    padding-left:1rem !important; padding-right:1rem !important;
+  }}
   .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {{
     min-height:44px;
   }}
@@ -603,6 +685,18 @@ html.rag-dark .stFormSubmitButton > button:hover {{
      vor (kein .stButton, sondern ein eigenes Streamlit-Element). */
   [data-testid="stChatInputSubmitButton"] {{
     min-width:44px !important; min-height:44px !important;
+  }}
+  /* Streamlit wickelt benachbarte markdown-Divs nicht zu einem Parent -
+     deshalb haengt das Hero-Maskottchen in einem benannten Container. */
+  div[class*="st-key-mascot_hero"],
+  .rag-mascot-hero-unit {{display:none !important;}}
+  .rag-hero-title {{
+    display:block !important; width:100% !important; max-width:100% !important;
+    font-size:1.7rem !important; line-height:1.08 !important;
+    overflow:visible !important;
+  }}
+  .rag-hero-title .rag-hero-letter {{
+    animation:none !important; opacity:1 !important; transform:none !important;
   }}
 }}
 
@@ -666,8 +760,9 @@ div[class*="st-key-tile_"] button p {{
    faengt sonst JEDEN Klick ab, obwohl visuell nichts zu sehen ist) - daher
    bewusst der maximal moegliche CSS-z-index statt nur "hoch genug fuer jetzt". */
 #rag-theme-switch {{
-  position:fixed; top:14px; right:18px; z-index:2147483647;
-  width:42px; height:42px; border-radius:50%;
+  position:fixed; top:max(14px, env(safe-area-inset-top));
+  right:max(18px, env(safe-area-inset-right)); z-index:2147483647;
+  width:44px; height:44px; border-radius:50%;
   border:1px solid {soft}; background:#ffffff; cursor:pointer;
   font-size:1.15rem; line-height:1; display:flex; align-items:center; justify-content:center;
   box-shadow:0 2px 10px rgba(0,0,0,.10);
@@ -718,6 +813,14 @@ html.rag-dark .rag-hero-title {{color:{accent} !important;}}
 
 @media (prefers-reduced-motion: reduce) {{
   .block-container, .rag-doodle, h1, .rag-hero-title span {{animation:none !important;}}
+  .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button,
+  div[class*="st-key-tile_"] button, #rag-theme-switch {{
+    transition:none !important;
+  }}
+  .stButton > button:hover, .stDownloadButton > button:hover,
+  .stFormSubmitButton > button:hover, div[class*="st-key-tile_"] button:hover {{
+    transform:none !important;
+  }}
 }}
 </style>
 """
@@ -752,6 +855,9 @@ def _transition_html(accent: str, soft: str) -> str:
     font-size:2.4rem; opacity:0; transition:opacity .25s ease .05s;
   }}
   #rag-elevator.rag-show .spark {{opacity:1;}}
+  @media (prefers-reduced-motion: reduce) {{
+    #rag-elevator {{ display:none !important; }}
+  }}
 </style>
 <script>
 (function() {{
@@ -843,6 +949,7 @@ def _theme_toggle_html() -> str:
     if (!btn) {
       btn = doc.createElement('button');
       btn.setAttribute('aria-label', 'Darstellung wechseln');
+      btn.setAttribute('aria-pressed', effective(readSaved()) === 'dark' ? 'true' : 'false');
       doc.body.appendChild(btn);
     }
     btn.id = 'rag-theme-switch';
@@ -850,6 +957,7 @@ def _theme_toggle_html() -> str:
     btn.inert = false;
     btn.textContent = label(effective(readSaved()));
     btn.title = title(effective(readSaved()));
+    btn.setAttribute('aria-pressed', effective(readSaved()) === 'dark' ? 'true' : 'false');
 
     // Jeder Inject ersetzt den Handler. Nicht einmalig auf document delegieren:
     // der alte Iframe-Listener stirbt, ein Flag auf dem Parent wuerde Rebinds
@@ -862,6 +970,7 @@ def _theme_toggle_html() -> str:
       apply(next);
       btn.textContent = label(next);
       btn.title = title(next);
+      btn.setAttribute('aria-pressed', next === 'dark' ? 'true' : 'false');
     };
 
     // Streamlit setzt bei Navigation "inert" auf direkte body-Kinder. Der
@@ -1031,10 +1140,20 @@ def _i18n_patch_html() -> str:
         var instr = dz.querySelector('[data-testid="stFileUploaderDropzoneInstructions"]');
         if (instr) {
           Array.from(instr.querySelectorAll('span')).forEach(function(span) {
-            if (span.textContent.indexOf('per file') !== -1) {
-              span.textContent = span.textContent.replace('per file', 'pro Datei');
+            var t = span.textContent;
+            if (t.indexOf('Drag and drop') !== -1) {
+              span.textContent = 'Datei hierher ziehen';
+            } else if (t.indexOf('Limit') !== -1 || t.indexOf('per file') !== -1) {
+              span.textContent = t.replace('Limit', 'Grenze').replace('per file', 'pro Datei');
             }
           });
+        }
+      });
+      doc.querySelectorAll('p, span, div').forEach(function(el) {
+        if (el.children.length) { return; }
+        var t = (el.textContent || '').trim();
+        if (t === 'Choose options' || t === 'Choose an option') {
+          el.textContent = 'Auswählen …';
         }
       });
     }
@@ -1073,13 +1192,14 @@ def render_hamburger_nav(current_page_key: str) -> None:
     Navigation der App gehoert deshalb in den normalen Seiteninhalt (oben,
     vor dem Titel) - dort ist sie auf jedem Geraet ohne Umweg erreichbar."""
     with st.popover("☰ Menü", use_container_width=False):
-        st.caption("Kurzwahl")
+        st.caption("Schnellzugriff")
         for cat, key in zip(GOAL_CATEGORIES, HAMBURGER_KEYS, strict=True):
             page = _PAGE_BY_KEY.get(key)
             if not page:
                 continue
             is_here = key == current_page_key
-            label = f"{page['icon']} {cat}" + ("  ·  hier" if is_here else "")
+            shown = "Heute" if key == "home" else page["title"]
+            label = f"{page['icon']} {shown}" + ("  ·  hier" if is_here else "")
             if st.button(label, key=f"hamburger_{key}", use_container_width=True,
                         disabled=is_here):
                 _go_to(page)
@@ -1095,7 +1215,7 @@ def render_hamburger_nav(current_page_key: str) -> None:
             for _p in PAGE_REGISTRY:
                 if _p["category"] != cat:
                     continue
-                if _p["key"] in HIDDEN_PAGE_KEYS:
+                if _p["key"] in HIDDEN_PAGE_KEYS or _p["key"] in HAMBURGER_KEYS:
                     continue
                 is_here = _p["key"] == current_page_key
                 label = f"{_p['icon']} {_p['title']}" + ("  ·  hier" if is_here else "")
@@ -1130,13 +1250,11 @@ def render_nav_tile(page_key: str, *, title: str | None = None,
 
 
 def render_goal_tile(category: str) -> None:
-    """Home-Kachel fuer eine Zielgruppe: Label ist der Gruppenname, Ziel die
-    Hub-Seite aus GOAL_HUB_KEYS (Heute -> Lernplan, weil Home keine
-    Selbst-Kachel hat)."""
+    """Home-Kachel mit einem konkreten Ziel statt abstraktem Gruppennamen."""
     hub = GOAL_HUB_KEYS[category]
     page_key = "lernplan" if hub == "home" else hub
     page = _PAGE_BY_KEY[page_key]
-    render_nav_tile(page_key, title=category, subtitle=page["subtitle"])
+    render_nav_tile(page_key, title=page["title"], subtitle=page["subtitle"])
 
 
 def card(key: str):

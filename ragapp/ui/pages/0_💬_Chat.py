@@ -86,7 +86,7 @@ _LERN_SPRUECHE = [
 # Seitenspezifische ragapp-Importe erst JETZT - unter einem Ladehinweis, damit beim
 # ersten (kalten) Laden ein Spinner statt eines weissen Bereichs erscheint. Der
 # import im with-Block bindet modulweit -> alle spaeteren Verwendungen unveraendert.
-with skeleton("Chat wird geladen ..."):
+with skeleton("Chat wird geladen …"):
     from ragapp.config import settings, SUBJECT_LABELS, PROJECT_ROOT
     from ragapp import manifest
 
@@ -161,7 +161,7 @@ with st.sidebar:
         _mc1, _mc2 = st.columns(2)
         if _mc1.button("▶️ Jetzt laden", use_container_width=True,
                        disabled=not _mst["reachable"] or _mst["resident"]):
-            with st.spinner("Modell wird geladen ..."):
+            with st.spinner("Modell wird geladen …"):
                 try:
                     warm_llm()
                     st.rerun()

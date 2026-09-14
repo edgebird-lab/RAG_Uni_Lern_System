@@ -18,24 +18,15 @@ for _anc in _p.parents:
 import streamlit as st
 
 from ragapp.ui._loading import page_boot, skeleton
-page_boot("🗃️ Dokumentenmanager", page_title="Dokumentenmanager", icon="🗃️", layout="wide",
+page_boot("🗃️ Dokumente", page_title="Dokumente", icon="🗃️", layout="wide",
          accent="dokumente")
 
 from ragapp.ui._style import card
 
-st.markdown("""
-<style>
-.block-container {padding-top: 2rem; max-width: 1250px;}
-h1 {font-weight: 750; letter-spacing:-0.5px;}
-</style>
-""", unsafe_allow_html=True)
+st.caption(
+    "Unterlagen nach Fach ordnen, ansehen und für Chat oder Karteikarten nutzen.")
 
-st.caption("Ordner = Fächer. Lade Dokumente direkt in ein Fach, sieh sie an "
-           "(inkl. Seitenzahl), lösche sie hier. Auch archivierte (nicht im RAG) "
-           "Dokumente tauchen auf. Ein Lernset erzeugst du unter **🎓 Karteikarten**: "
-           "Dokumente wählen → Lernset erstellen → Vorschau → Jetzt lernen.")
-
-with skeleton("Dokumentenmanager wird geladen ..."):
+with skeleton("Dokumente werden geladen …"):
     import pandas as pd
     from ragapp import manifest
     from ragapp.config import SUBJECT_LABELS, PROJECT_ROOT
@@ -613,17 +604,17 @@ with tab_kacheln:
                     _fpath = PROJECT_ROOT / (d.get("source_path") or "")
                     _dl_prep_key = f"docmgr_dlprep_{d['doc_id']}"
                     if not _fpath.is_file():
-                        _b2.button("⬇️", disabled=True, key=f"docmgr_dlx_{d['doc_id']}",
+                        _b2.button("Download", disabled=True, key=f"docmgr_dlx_{d['doc_id']}",
                                   use_container_width=True, help="Originaldatei fehlt")
                     elif st.session_state.get(_dl_prep_key):
                         # Erst JETZT werden die Datei-Bytes gelesen (gecacht) -
                         # nicht schon beim blossen Anzeigen der Kachel.
                         _b2.download_button(
-                            "💾", data=_read_file_bytes(str(_fpath), d.get("updated_at") or 0),
+                            "Download", data=_read_file_bytes(str(_fpath), d.get("updated_at") or 0),
                             file_name=d["filename"], key=f"docmgr_dl_{d['doc_id']}",
                             use_container_width=True, help="Jetzt herunterladen")
                     else:
-                        if _b2.button("⬇️", key=f"docmgr_dlbtn_{d['doc_id']}",
+                        if _b2.button("Download", key=f"docmgr_dlbtn_{d['doc_id']}",
                                      use_container_width=True, help="Herunterladen vorbereiten"):
                             st.session_state[_dl_prep_key] = True
                             st.rerun()

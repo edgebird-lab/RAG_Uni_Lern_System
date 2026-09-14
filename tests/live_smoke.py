@@ -64,6 +64,9 @@ def main() -> int:
         text=True,
     )
     errors: list[str] = []
+    screenshot_dir = os.environ.get("RAG_SMOKE_SCREENSHOT_DIR")
+    if screenshot_dir:
+        Path(screenshot_dir).mkdir(parents=True, exist_ok=True)
     try:
         _wait_for_server(proc)
         with sync_playwright() as playwright:
@@ -86,7 +89,32 @@ def main() -> int:
                 body = page.locator("body").inner_text()
                 if "Traceback (most recent call last)" in body:
                     raise AssertionError(f"Streamlit-Traceback auf {path}")
+                if screenshot_dir:
+                    skel = page.locator(".rag-skel")
+                    if skel.count() > 0:
+                        skel.first.wait_for(state="detached", timeout=30_000)
+                    page.wait_for_timeout(700)
+                    name = path.strip("/").replace("/", "_") or "Home"
+                    page.screenshot(
+                        path=str(Path(screenshot_dir) / f"desktop-{name}.png"),
+                        full_page=True)
                 print(f"OK {path} -> {expected}", flush=True)
+            if screenshot_dir:
+                mobile = browser.new_page(
+                    viewport={"width": 390, "height": 844},
+                    device_scale_factor=1)
+                mobile.goto(
+                    f"{BASE}/?k=ci-live-smoke",
+                    wait_until="domcontentloaded")
+                mobile.locator('[data-testid="stApp"]').wait_for(timeout=30_000)
+                skel = mobile.locator(".rag-skel")
+                if skel.count() > 0:
+                    skel.first.wait_for(state="detached", timeout=30_000)
+                mobile.wait_for_timeout(700)
+                mobile.screenshot(
+                    path=str(Path(screenshot_dir) / "mobile-Home.png"),
+                    full_page=True)
+                mobile.close()
             browser.close()
         fatal = [
             error for error in errors

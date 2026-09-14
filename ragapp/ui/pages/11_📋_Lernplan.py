@@ -27,8 +27,6 @@ from ragapp.ui._style import card
 
 st.markdown("""
 <style>
-.block-container {padding-top: 2rem; max-width: 1150px;}
-h1 {font-weight: 750; letter-spacing:-0.5px;}
 .splan-badge {display:inline-block; padding:2px 12px; border-radius:999px;
   font-size:.78rem; font-weight:650; letter-spacing:.2px;}
 .splan-topic-card {border-radius:10px; padding:10px 12px; margin-bottom:8px;}
@@ -46,12 +44,10 @@ html.rag-dark .splan-tl-seg {background:rgba(148,163,184,.2);}
 </style>
 """, unsafe_allow_html=True)
 
-st.caption("KI-Gliederung aus deinen Dokumenten + ein realistischer, auf Tage "
-           "verteilter Lernplan – Zeitschätzungen sind formelbasiert aus "
-           "Forschung zu Lesetempo & Lernrate, nicht geraten "
-           "(Herleitung: docs/LERNPLAN_FORSCHUNG.md).")
+st.caption("Themen aus deinen Unterlagen auf Tage verteilen – mit Zeitbudget "
+           "und Ruhetagen, ohne den bisherigen Fortschritt zu verlieren.")
 
-with skeleton("Lernplan wird geladen ..."):
+with skeleton("Lernplan wird geladen …"):
     import html as _html
     import pandas as pd
     from ragapp import manifest, study_plan, planner
@@ -678,7 +674,7 @@ with card("zeitplan"):
                                 "block_id": bl["block_id"],
                             }
                             st.switch_page("pages/10_⏱️_Lernzeit.py")
-                        if bcol4.button("🎴", key=f"splan_cards_{bl['block_id']}",
+                        if bcol4.button("Karten", key=f"splan_cards_{bl['block_id']}",
                                         help="Karten zu diesem Stoffabschnitt"):
                             st.session_state["study_prefill"] = {
                                 "subject": _plan.get("subject"), "limit": 12,
@@ -686,7 +682,7 @@ with card("zeitplan"):
                                 "topics": [title],
                             }
                             st.switch_page("pages/4_🎓_Lernen.py")
-                        if bcol5.button("🧮", key=f"splan_prac_{bl['block_id']}",
+                        if bcol5.button("Übung", key=f"splan_prac_{bl['block_id']}",
                                         help="Eine Übung zu diesem Stoffabschnitt"):
                             st.session_state["practice_prefill"] = {
                                 "subject": _plan.get("subject"),
@@ -694,7 +690,7 @@ with card("zeitplan"):
                                 "topic": title,
                             }
                             st.switch_page("pages/13_🧮_Übungsaufgaben.py")
-                        if bcol6.button("📄", key=f"splan_docs_{bl['block_id']}",
+                        if bcol6.button("Stoff", key=f"splan_docs_{bl['block_id']}",
                                         help="Zugehörige Unterlagen öffnen"):
                             st.session_state["doc_folder"] = _plan.get("subject")
                             st.session_state["doc_focus_ids"] = source_doc_ids

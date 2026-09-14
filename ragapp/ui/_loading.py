@@ -41,7 +41,9 @@ def page_boot(title: str, *, page_title: "str | None" = None,
             from ragapp import analytics
         ...  # restlicher Seiteninhalt
     """
-    st.set_page_config(page_title=page_title or title, page_icon=icon, layout=layout)
+    st.set_page_config(
+        page_title=page_title or title, page_icon=icon, layout=layout,
+        initial_sidebar_state="collapsed")
     # PIN-Gate + Theme werden bewusst hier importiert (leichtgewichtig), damit die
     # Seiten-Kopfzeile ohne vorherige schwere Importe rendern kann.
     from ragapp.ui._auth import require_pin

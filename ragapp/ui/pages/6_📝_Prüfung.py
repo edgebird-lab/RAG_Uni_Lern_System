@@ -28,10 +28,10 @@ page_boot("📝 Probeklausur", page_title="Probeklausur", icon="📝", layout="w
 
 from ragapp.ui._style import card
 
-st.markdown("<style>.block-container{padding-top:2rem;max-width:900px;}"
-            "h1{font-weight:750;letter-spacing:-.5px;}</style>", unsafe_allow_html=True)
+st.markdown("<style>.block-container{max-width:900px;}</style>",
+            unsafe_allow_html=True)
 
-with skeleton("Probeklausur wird geladen ..."):
+with skeleton("Probeklausur wird geladen …"):
     from ragapp import manifest, study, planner
     from ragapp.config import settings, SUBJECT_LABELS
 
@@ -61,8 +61,7 @@ def _fair_exam_selection(per_subject, n: int, seed: int = 0) -> list[dict]:
     return picked
 
 
-st.caption("Getimte Simulation unter echten Bedingungen – ohne Zwischenfeedback. Am Ende "
-           "benotet die KI alle Antworten und plant schwache Themen sofort neu ein.")
+st.caption("Wie in der Klausur: Zeitlimit, keine Zwischentipps, Bewertung erst am Ende.")
 
 EXAM = "_exam"        # aktive Probeklausur (dict: cards, answers, start, limit)
 

@@ -66,6 +66,7 @@ _THEME_CSS = """
 @media (prefers-reduced-motion: reduce) {
   .karte {animation:none !important;}
 }
+.stButton > button { white-space:normal; overflow-wrap:anywhere; }
 
 /* --- Flaeche / Grundgeruest ---------------------------------------------- */
 html.rag-dark .stApp, html.rag-dark [data-testid="stAppViewContainer"],
@@ -150,8 +151,8 @@ html.rag-dark [data-testid="stBaseButton-primary"], html.rag-dark [data-testid="
        Blau-Violett (#4A45C4), das nichts mit der sonstigen Korall-/Rosa-
        Markenfarbe der App zu tun hatte und im Dark Mode wie ein Fremdkoerper
        wirkte. */
-    background-color:#FF4B4B !important; color:#ffffff !important;
-    border-color:#FF4B4B !important;}
+    background-color:#c43b58 !important; color:#ffffff !important;
+    border-color:#c43b58 !important;}
 
 /* --- Dokumenten-/Quellen-Viewer (eigene HTML-Bausteine) ------------------ */
 html.rag-dark .source-card{background:linear-gradient(135deg,#0f2440 0%,#0a1930 100%) !important;

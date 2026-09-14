@@ -27,17 +27,9 @@ page_boot("🗂️ Kurse & Stundenplan", page_title="Kurse & Stundenplan", icon=
 
 from ragapp.ui._style import card
 
-st.markdown("""
-<style>
-.block-container {padding-top: 2rem; max-width: 1150px;}
-h1 {font-weight: 750; letter-spacing:-0.5px;}
-</style>
-""", unsafe_allow_html=True)
+st.caption("Fächer, nächste Aktion, Stundenplan und Aufgaben – alles an einem Ort.")
 
-st.caption("Kurse mit nächster Aktion, Stundenplan und Aufgaben – "
-           "organisatorisch, unabhängig von RAG/Chat. Komplett offline, ohne Modell.")
-
-with skeleton("Kurse & Stundenplan werden geladen ..."):
+with skeleton("Kurse & Stundenplan werden geladen …"):
     import pandas as pd
     from ragapp import manifest, planner
     from ragapp.config import SUBJECT_LABELS
@@ -199,7 +191,14 @@ _kurs_faecher = list(dict.fromkeys(
 ))
 st.subheader("Kurse")
 if not _kurs_faecher:
-    st.caption("Noch keine Fächer. Importiere den Semesterplan oder lege Unterlagen an.")
+    from ragapp.ui._style import empty_state
+    empty_state(
+        "Noch keine Fächer. Importiere das Modulhandbuch oder lege Unterlagen an.",
+        cta_label="Semester einrichten",
+        page_key="semesterplan",
+        icon="📚",
+        key="org_empty_semester",
+    )
 else:
     _act_label = {
         "lernen": "Jetzt lernen",

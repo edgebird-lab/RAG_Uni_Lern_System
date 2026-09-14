@@ -30,14 +30,7 @@ from ragapp.ui._style import card, theme_for
 from ragapp.ui import _charts
 _theme = theme_for("fortschritt")
 
-st.markdown("""
-<style>
-.block-container {padding-top: 2rem; max-width: 1050px;}
-h1 {font-weight: 750; letter-spacing:-0.5px;}
-</style>
-""", unsafe_allow_html=True)
-
-with skeleton("Fortschritt wird geladen ..."):
+with skeleton("Fortschritt wird geladen …"):
     import pandas as pd
     from ragapp import analytics, planner, manifest, backup, study_plan, sync as _sync
     from ragapp import achievements as _achievements
@@ -56,8 +49,7 @@ def _fmt_min(m: int) -> str:
     return f"{h} Std {r} Min" if r else f"{h} Std"
 
 
-st.caption("Dein objektiver Lernstand aus den echten Wiederholungen – damit du "
-           "knappe Zeit auf die schwachen, klausurrelevanten Themen lenkst.")
+st.caption("Was sitzt, was wackelt, und wie bereit du für die nächste Klausur bist.")
 
 # --------------------------------------------------------------------------- #
 # Fach-Filter
@@ -470,7 +462,7 @@ if _sektion == "Daten":
                 for _a_subj in _archived:
                     _rc1, _rc2 = st.columns([3, 1])
                     _rc1.markdown(f"📦 {_fach(_a_subj)}")
-                    if _rc2.button("↩️", key=f"unarchive_{_a_subj}", help="Reaktivieren"):
+                    if _rc2.button("Zurück", key=f"unarchive_{_a_subj}", help="Reaktivieren"):
                         _n_un = manifest.unarchive_subject(_a_subj)
                         st.success(f"{_fach(_a_subj)} reaktiviert ({_n_un} Karte(n)).")
                         st.rerun()
