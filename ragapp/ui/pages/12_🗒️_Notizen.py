@@ -30,13 +30,13 @@ import streamlit as st
 from ragapp.ui._loading import page_boot, skeleton
 page_boot("🗒️ Notizen", page_title="Notizen", icon="🗒️", layout="wide", accent="notizen")
 
-from ragapp.ui._style import card
+from ragapp.ui._style import card, delete_button
 
 st.markdown("""
 <style>
 .notiz-item {padding:8px 10px; border-radius:8px; margin-bottom:4px; cursor:pointer;}
 .notiz-item-title {font-weight:650; font-size:.9rem;}
-.notiz-item-meta {font-size:.75rem; opacity:.7;}
+.notiz-item-meta {font-size:.75rem;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -350,8 +350,11 @@ with col_editor:
                     pinned=_m_pinned)
                 st.success("Gespeichert.")
                 st.rerun()
-            if bc2.button("🗑️ Löschen", use_container_width=True):
-                manifest.delete_note(_nid)
+            with bc2:
+                if delete_button("🗑️ Löschen", token=f"note:{_nid}",
+                                 body="Diese Notiz wirklich löschen?",
+                                 key=f"notiz_del_{_nid}"):
+                    manifest.delete_note(_nid)
                 st.session_state["_notiz_pending_choice"] = None
                 st.success("Notiz gelöscht.")
                 st.rerun()

@@ -62,7 +62,7 @@ PAGE_REGISTRY: list[dict] = [
      "target": "pages/14_🧠_Mindmap.py", "category": "Lernen"},
     {"key": "zusammenfassung", "icon": "📄", "title": "Zusammenfassung", "subtitle": "Grounded auf den Stoff",
      "target": "pages/7_📄_Zusammenfassung.py", "category": "Lernen"},
-    {"key": "audio", "icon": "🎧", "title": "Audio-Overview", "subtitle": "Vorgelesen mit deiner Stimme",
+    {"key": "audio", "icon": "🎧", "title": "Audio-Übersicht", "subtitle": "Vorgelesen mit deiner Stimme",
      "target": "pages/15_🎧_Audio-Overview.py", "category": "Lernen"},
     {"key": "vortrag", "icon": "🎤", "title": "Vortrag", "subtitle": "Marp-Folien + Lernvideo",
      "target": "pages/17_🎤_Vortrag.py", "category": "Lernen"},
@@ -319,22 +319,22 @@ def _technical_override_css(soft: str) -> str:
     return f"""
 <style>
 [data-testid="stAppViewContainer"] {{
-  background:#f6f6f7 !important; background-attachment:fixed !important;
+  background:#f4f6fa !important; background-attachment:fixed !important;
 }}
-html.rag-dark [data-testid="stAppViewContainer"] {{background:#12141a !important;}}
+html.rag-dark [data-testid="stAppViewContainer"] {{background:#0c1a30 !important;}}
 h1 {{
   background:none !important; -webkit-background-clip:unset !important;
-  background-clip:unset !important; color:#3a3a42 !important;
+  background-clip:unset !important; color:#2b2036 !important;
   border-bottom-color:{soft} !important;
 }}
-html.rag-dark h1 {{color:#dcdde2 !important;}}
+html.rag-dark h1 {{color:#e7edf5 !important;}}
 div[class*="st-key-card_"] {{
   background:#ffffff !important;
-  border:1px solid rgba(43,32,54,.14) !important; border-radius:10px !important;
+  border:1px solid rgba(43,32,54,.14) !important; border-radius:12px !important;
   box-shadow:0 1px 3px rgba(0,0,0,.05) !important;
 }}
 html.rag-dark div[class*="st-key-card_"] {{
-  background:#191c24 !important; border-color:#2c303a !important;
+  background:#0f2440 !important; border-color:rgba(231,237,245,.16) !important;
   box-shadow:0 1px 3px rgba(0,0,0,.25) !important;
 }}
 </style>
@@ -369,6 +369,33 @@ p, li, [data-testid="stCaptionContainer"] {{ text-wrap:pretty; }}
 }}
 html.rag-dark [data-testid="stCaptionContainer"] {{
   color:#aebdd1 !important;
+}}
+/* Gedämpfte Meta-Zeilen (Zeitleiste, Stundenplan, Listen): eine Token-Farbe
+   statt Opacity-Stapeln, Mindestgröße 12px – sonst fällt „Heute“/Uhrzeit
+   unter WCAG-AA und wirkt auf dem Handy wie Deko. */
+.splan-tl-label, .rag-tt-timeaxis, .rag-tt-hour,
+.pa-item-meta, .notiz-item-meta, .splan-topic-meta,
+.source-meta, .small {{
+  color:#5b6b85 !important; font-size:12px !important; opacity:1 !important;
+}}
+html.rag-dark .splan-tl-label, html.rag-dark .rag-tt-timeaxis,
+html.rag-dark .rag-tt-hour, html.rag-dark .pa-item-meta,
+html.rag-dark .notiz-item-meta, html.rag-dark .splan-topic-meta,
+html.rag-dark .source-meta, html.rag-dark .small {{
+  color:#93a8c4 !important;
+}}
+.splan-tl-seg.splan-tl-today .splan-tl-label,
+.rag-tt-header.rag-tt-today {{
+  color:#1d4ed8 !important; font-weight:700;
+}}
+.rag-tt-today-tag {{
+  display:inline-block; margin-left:4px; font-size:10px; font-weight:700;
+  letter-spacing:.02em; text-transform:uppercase; color:#1d4ed8;
+}}
+html.rag-dark .splan-tl-seg.splan-tl-today .splan-tl-label,
+html.rag-dark .rag-tt-header.rag-tt-today,
+html.rag-dark .rag-tt-today-tag {{
+  color:#93c5fd !important;
 }}
 button, a, input, textarea, select, summary {{
   touch-action:manipulation;
@@ -1171,8 +1198,8 @@ def _i18n_patch_html() -> str:
 
 # --------------------------------------------------------------------------- #
 # Hamburger-Kurzwahl: die fünf Zielgruppen (GOAL_HUB_KEYS), darunter alle
-# uebrigen Seiten nach Kategorie. Ergaenzt die Sidebar nicht - require_pin()'s
-# "Zweites Fenster"/"App beenden"-Buttons bleiben unangetastet (siehe _auth.py).
+# uebrigen Seiten nach Kategorie. Beenden und zweites Fenster liegen zusaetzlich
+# im Menue (nicht nur in der auf dem Handy unsichtbaren Sidebar).
 # --------------------------------------------------------------------------- #
 def render_hamburger_nav(current_page_key: str) -> None:
     """Kurzwahl der fünf Zielgruppen (HAMBURGER_KEYS) PLUS - darunter,
@@ -1222,6 +1249,11 @@ def render_hamburger_nav(current_page_key: str) -> None:
                 if st.button(label, key=f"hamburger_all_{_p['key']}",
                             use_container_width=True, disabled=is_here):
                     _go_to(_p)
+
+        st.divider()
+        st.caption("Sitzung")
+        from ragapp.ui._auth import render_session_controls
+        render_session_controls(key_suffix="hamburger")
 
 
 def _go_to(page: dict) -> None:
@@ -1337,6 +1369,52 @@ def page_title(page_key: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Loeschen mit Bestaetigung: gleicher Dialog auf allen Seiten (Dokumentenmanager
+# behält seinen Spezial-Dialog mit Bibliothek/Index/Karten-Häkchen).
+# --------------------------------------------------------------------------- #
+_DELETE_PENDING = "_rag_delete_pending"
+_DELETE_CONFIRMED = "_rag_delete_confirmed"
+
+
+def _dismiss_shared_delete() -> None:
+    st.session_state.pop(_DELETE_PENDING, None)
+
+
+@st.dialog("🗑️ Wirklich löschen?", width="small", on_dismiss=_dismiss_shared_delete)
+def _shared_delete_dialog(token: str, body: str) -> None:
+    st.markdown(body)
+    c1, c2 = st.columns(2)
+    if c1.button("Abbrechen", use_container_width=True, key=f"_rag_del_cancel_{token}"):
+        st.session_state.pop(_DELETE_PENDING, None)
+        st.rerun()
+    if c2.button("Jetzt löschen", type="primary", use_container_width=True,
+                 key=f"_rag_del_go_{token}"):
+        st.session_state[_DELETE_CONFIRMED] = token
+        st.session_state.pop(_DELETE_PENDING, None)
+        st.rerun()
+
+
+def _open_pending_delete_dialog() -> None:
+    pending = st.session_state.get(_DELETE_PENDING)
+    if isinstance(pending, dict) and pending.get("token"):
+        _shared_delete_dialog(
+            str(pending["token"]), pending.get("body") or "Wirklich löschen?")
+
+
+def delete_button(label: str, *, token: str, body: str, key: str, **btn_kwargs) -> bool:
+    """Lösch-Button mit Bestätigungsdialog. Gibt True zurück, nachdem bestätigt."""
+    if st.session_state.get(_DELETE_CONFIRMED) == token:
+        st.session_state.pop(_DELETE_CONFIRMED, None)
+        return True
+    kwargs = dict(btn_kwargs)
+    kwargs.setdefault("use_container_width", True)
+    if st.button(label, key=key, **kwargs):
+        st.session_state[_DELETE_PENDING] = {"token": token, "body": body}
+        st.rerun()
+    return False
+
+
+# --------------------------------------------------------------------------- #
 # Haupt-Einstiegspunkt: von page_boot() fuer jede normale Seite aufgerufen,
 # und direkt von der Home-Seite (🏠_Home.py), die ihre Boot-Sequenz aus
 # Prozess-Start-Gruenden (Prewarm/Watchdog/Backup/PWA-Banner) manuell macht.
@@ -1363,8 +1441,12 @@ def apply_page_style(page_key: str, *, show_nav: bool = True) -> dict:
     # bei jedem Widget-Rerun innerhalb derselben Seite - siehe _transition_html
     # Docstring-Kommentar oben).
     if st.session_state.get("_rag_last_page") != page_key:
+        st.session_state.pop(_DELETE_PENDING, None)
+        st.session_state.pop(_DELETE_CONFIRMED, None)
         st.session_state["_rag_last_page"] = page_key
         components.html(_transition_html(accent, soft), height=0)
+
+    _open_pending_delete_dialog()
 
     if show_nav:
         render_hamburger_nav(page_key)

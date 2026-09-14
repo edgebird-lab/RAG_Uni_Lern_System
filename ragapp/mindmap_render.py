@@ -141,7 +141,8 @@ def render_svg(graph: dict, layout: dict, *, base_color: str = "#4A45C4",
     width, height = layout["width"], layout["height"]
 
     parts = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width:.0f} {height:.0f}" '
-            f'width="{width:.0f}" height="{height:.0f}" font-family="sans-serif">']
+            f'width="{width:.0f}" height="{height:.0f}" font-family="sans-serif" '
+            f'role="img" aria-label="Mindmap">']
 
     for nid, parent_id in parent_of.items():
         child_l, parent_l = lnodes[nid], lnodes[parent_id]

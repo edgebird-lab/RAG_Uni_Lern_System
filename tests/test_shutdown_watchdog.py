@@ -5,7 +5,7 @@ import inspect
 import time
 
 from ragapp.ui import _shutdown_watchdog as watchdog
-from ragapp.ui._auth import _quit_button
+from ragapp.ui._auth import _quit_button, render_session_controls
 
 
 def test_write_shutdown_sentinel_legt_datei_an(tmp_path, monkeypatch):
@@ -39,6 +39,8 @@ def test_request_quit_schreibt_sentinel_ohne_auf_tcp_zu_warten(tmp_path, monkeyp
 
 
 def test_quit_button_beendet_ueber_request_quit_nicht_tab_close():
-    src = inspect.getsource(_quit_button)
+    src = inspect.getsource(render_session_controls)
     assert "request_quit" in src
     assert "arm_shutdown_on_tab_close" not in src
+    wrapper = inspect.getsource(_quit_button)
+    assert "render_session_controls" in wrapper

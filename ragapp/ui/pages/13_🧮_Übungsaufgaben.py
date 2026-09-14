@@ -23,12 +23,12 @@ from ragapp.ui._loading import page_boot, skeleton
 page_boot("🧮 Übungsaufgaben", page_title="Übungsaufgaben", icon="🧮", layout="wide",
          accent="uebungsaufgaben")
 
-from ragapp.ui._style import card
+from ragapp.ui._style import card, delete_button
 
 st.markdown("""
 <style>
 .pa-item-title {font-weight:650; font-size:.9rem;}
-.pa-item-meta {font-size:.75rem; opacity:.7;}
+.pa-item-meta {font-size:.75rem;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -407,7 +407,9 @@ with col_practice:
                     for a in _attempts)
                 st.caption(f"Bisher {len(_attempts)}x geübt (neueste zuerst): {_hist}")
 
-            if st.button("🗑️ Aufgabe löschen", key=f"practice_delete_{pid}"):
+            if delete_button("🗑️ Aufgabe löschen", token=f"practice:{pid}",
+                             body="Diese Übungsaufgabe wirklich löschen?",
+                             key=f"practice_delete_{pid}"):
                 manifest.delete_practice_problem(pid)
                 st.session_state["_practice_pending_choice"] = None
                 st.success("Aufgabe gelöscht.")

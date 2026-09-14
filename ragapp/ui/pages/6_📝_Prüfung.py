@@ -211,7 +211,14 @@ with st.expander("🎙️ Mündliche Prüfung", expanded=False):
             st.rerun()
 
 if not subjects:
-    st.info("Noch keine Karteikarten vorhanden – erstelle sie zuerst auf **🎓 Karteikarten**.")
+    from ragapp.ui._style import empty_state, page_title as _pt
+    empty_state(
+        "Noch keine Karteikarten – erstelle sie zuerst unter Karteikarten.",
+        cta_label=f"Zu {_pt('lernen')}",
+        page_key="lernen",
+        icon="🎓",
+        key="pruefung_empty_lernen",
+    )
     st.stop()
 
 # --------------------------------------------------------------------------- #

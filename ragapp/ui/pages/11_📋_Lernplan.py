@@ -23,7 +23,7 @@ import streamlit as st
 from ragapp.ui._loading import page_boot, skeleton
 page_boot("📋 Lernplan", page_title="Lernplan", icon="📋", layout="wide", accent="lernplan")
 
-from ragapp.ui._style import card
+from ragapp.ui._style import card, delete_button
 
 st.markdown("""
 <style>
@@ -31,7 +31,7 @@ st.markdown("""
   font-size:.78rem; font-weight:650; letter-spacing:.2px;}
 .splan-topic-card {border-radius:10px; padding:10px 12px; margin-bottom:8px;}
 .splan-topic-title {font-weight:700; font-size:.92rem; margin-bottom:2px;}
-.splan-topic-meta {font-size:.78rem; opacity:.85;}
+.splan-topic-meta {font-size:.78rem;}
 .splan-tl-wrap {overflow-x:auto; padding:6px 2px 20px 2px;}
 .splan-tl-row {display:flex; gap:4px; align-items:flex-end; height:56px; min-width:min-content;}
 .splan-tl-seg {position:relative; flex:0 0 26px; height:100%; background:rgba(148,163,184,.16);
@@ -39,7 +39,7 @@ st.markdown("""
 .splan-tl-seg.splan-tl-today {box-shadow:0 0 0 2px #2563eb;}
 .splan-tl-fill {width:100%;}
 .splan-tl-label {position:absolute; bottom:-18px; left:0; right:0; text-align:center;
-  font-size:9.5px; color:#94a3b8; white-space:nowrap;}
+  font-size:12px; white-space:nowrap;}
 html.rag-dark .splan-tl-seg {background:rgba(148,163,184,.2);}
 </style>
 """, unsafe_allow_html=True)
@@ -433,7 +433,9 @@ with st.expander("⚙️ Einstellungen & Löschen", key=f"splan_settings_expande
             rest_weekdays=sorted(_edit_rest_days))
         st.success("Gespeichert.")
         st.rerun()
-    if st.button("🗑️ Plan löschen", key=f"splan_delete_{_active_plan_id}"):
+    if delete_button("🗑️ Plan löschen", token=f"plan:{_active_plan_id}",
+                     body=f"Lernplan **{_plan.get('title') or 'ohne Titel'}** wirklich löschen?",
+                     key=f"splan_delete_{_active_plan_id}"):
         manifest.delete_study_plan(_active_plan_id)
         st.success("Plan gelöscht.")
         st.rerun()
@@ -620,7 +622,7 @@ with card("zeitplan"):
                 pct = round(100 * done / total) if total else 0
                 is_today = " splan-tl-today" if day == today_iso else ""
                 fill = "#16a34a" if pct == 100 else color
-                label = day[5:].replace("-", ".")
+                label = "Heute" if day == today_iso else day[5:].replace("-", ".")
                 segs.append(
                     f"<div class='splan-tl-seg{is_today}' "
                     f"title='{day}: {_fmt_min(done)} / {_fmt_min(total)}'>"

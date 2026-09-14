@@ -142,3 +142,23 @@ def test_neue_gliederung_verknuepft_erledigten_block_ueber_quelle(isolated_db):
     rows = manifest.list_plan_blocks(pid)
     assert len(rows) == 1
     assert rows[0]["done"] == 1
+    assert manifest.list_plan_sections(pid)[0]["done"] == 1
+
+
+def test_letzten_block_abhaken_setzt_abschnitt_erledigt(isolated_db):
+    pid = manifest.create_study_plan(
+        title="Plan", subject="BWL", doc_ids=["d1"], deadline=None,
+        daily_minutes=30)
+    manifest.replace_plan_sections(pid, [{"title": "Kapitel", "est_minutes": 50}])
+    sid = manifest.list_plan_sections(pid)[0]["section_id"]
+    manifest.replace_plan_blocks(pid, [
+        {"section_id": sid, "planned_date": "2026-09-01", "planned_min": 25},
+        {"section_id": sid, "planned_date": "2026-09-02", "planned_min": 25},
+    ])
+    blocks = manifest.list_plan_blocks(pid)
+    manifest.set_block_done(blocks[0]["block_id"], True, via="manual")
+    assert manifest.list_plan_sections(pid)[0]["done"] == 0
+    manifest.set_block_done(blocks[1]["block_id"], True, via="manual")
+    assert manifest.list_plan_sections(pid)[0]["done"] == 1
+    manifest.set_block_done(blocks[1]["block_id"], False)
+    assert manifest.list_plan_sections(pid)[0]["done"] == 0

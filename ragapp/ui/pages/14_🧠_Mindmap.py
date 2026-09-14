@@ -23,7 +23,7 @@ import streamlit.components.v1 as components
 from ragapp.ui._loading import page_boot, skeleton
 page_boot("🧠 Mindmap", page_title="Mindmap", icon="🧠", layout="wide", accent="mindmap")
 
-from ragapp.ui._style import card
+from ragapp.ui._style import card, delete_button
 
 st.markdown("""
 <style>
@@ -150,8 +150,14 @@ _all_docs = [dict(d) for d in manifest.list_documents()
 _subjects_with_docs = sorted({d["subject"] for d in _all_docs if d["subject"]})
 
 if not _subjects_with_docs:
-    st.info("Noch keine indexierten Dokumente (im RAG) vorhanden. Gehe zu "
-            "**📥 Ingestion**, um welche hinzuzufügen.")
+    from ragapp.ui._style import empty_state, page_title as _pt
+    empty_state(
+        "Noch keine indexierten Dokumente. Lade Dateien unter Dokumente hoch.",
+        cta_label=f"Zu {_pt('dokumente')}",
+        page_key="dokumente",
+        icon="📥",
+        key="mm_empty_dokumente",
+    )
     st.stop()
 
 _plan_colors = manifest.subject_colors_map()
@@ -261,7 +267,9 @@ with card("viewer"):
             st.session_state[_pending_key] = {
                 "graph": _new_graph, "warning": _regen_warning, "model": _regen_model}
             st.rerun()
-        if st.button("🗑️ Mindmap löschen", key=f"mm_delete_{_active_id}"):
+        if delete_button("🗑️ Mindmap löschen", token=f"mm:{_active_id}",
+                         body=f"Mindmap **{_active.get('title') or 'ohne Titel'}** wirklich löschen?",
+                         key=f"mm_delete_{_active_id}"):
             manifest.delete_mindmap(_active_id)
             st.session_state["_mm_pending_choice"] = None
             st.success("Mindmap gelöscht.")
@@ -468,8 +476,10 @@ with card("chat"):
     _chat_key = f"mm_chat_messages_{_active_id}"
     st.session_state.setdefault(_chat_key, [])
 
-    if st.session_state[_chat_key] and st.button(
-            "🗑️ Chat-Verlauf löschen", key=f"mm_chat_clear_{_active_id}"):
+    if st.session_state[_chat_key] and delete_button(
+            "🗑️ Chat-Verlauf löschen", token=f"mmchat:{_active_id}",
+            body="Den Chat-Verlauf dieser Mindmap wirklich leeren?",
+            key=f"mm_chat_clear_{_active_id}"):
         st.session_state[_chat_key] = []
         st.rerun()
 

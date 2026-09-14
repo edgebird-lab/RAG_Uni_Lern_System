@@ -25,7 +25,7 @@ from ragapp.ui._loading import page_boot, skeleton
 page_boot("🗂️ Kurse & Stundenplan", page_title="Kurse & Stundenplan", icon="🗂️", layout="wide",
          accent="organisation")
 
-from ragapp.ui._style import card
+from ragapp.ui._style import card, delete_button
 
 st.caption("Fächer, nächste Aktion, Stundenplan und Aufgaben – alles an einem Ort.")
 
@@ -129,7 +129,10 @@ def _render_week_grid(slots: list, colors: dict, ordered_subjects: list, today_w
                 f"{room}</div>"
             )
         _today_cls = " rag-tt-today" if wd == today_wd else ""
-        headers.append(f"<div class='rag-tt-header{_today_cls}'>{_WOCHENTAGE[wd][:2]}</div>")
+        headers.append(
+            f"<div class='rag-tt-header{_today_cls}'>{_WOCHENTAGE[wd][:2]}"
+            + (" <span class='rag-tt-today-tag'>heute</span>" if wd == today_wd else "")
+            + "</div>")
         columns.append(
             f"<div class='rag-tt-daycol{_today_cls}' style='height:{total_h}px'>"
             f"{gridlines}{blocks}</div>"
@@ -143,8 +146,8 @@ def _render_week_grid(slots: list, colors: dict, ordered_subjects: list, today_w
 .rag-tt-corner {{ }}
 .rag-tt-header {{ text-align:center; font-weight:650; font-size:13px; padding-bottom:6px;
   color:#475569; }}
-.rag-tt-header.rag-tt-today {{ color:#2563eb; }}
-.rag-tt-timeaxis {{ position:relative; font-size:11px; color:#94a3b8; }}
+.rag-tt-header.rag-tt-today {{ color:#1d4ed8; }}
+.rag-tt-timeaxis {{ position:relative; font-size:12px; }}
 .rag-tt-hour {{ position:absolute; right:6px; transform:translateY(-50%); white-space:nowrap; }}
 .rag-tt-daycol {{ position:relative; background:rgba(148,163,184,0.06);
   border-radius:6px; border:1px solid rgba(148,163,184,0.18); }}
@@ -311,23 +314,19 @@ with card("heute"):
         st.caption(f"Noch **{_ev['evenings']} Abend(e)** à {_ev.get('minutes_per_evening', 45)} Min "
                    "bis zur nächsten Klausur.")
 
-    with st.expander("Klausurtermine hier pflegen", expanded=not manifest.list_exams()):
+    with st.expander("Klausurtermine", expanded=not manifest.list_exams()):
         _exams_now = manifest.list_exams()
         if _exams_now:
             for _ex in _exams_now:
                 _title = _ex.get("notiz") or _fach(_ex["subject"])
                 st.write(f"• {_title}: {_ex.get('exam_date') or 'kein Datum'}"
                          + (f" · {_ex['ects']:g} ECTS" if _ex.get("ects") else ""))
-        _ex_subj = st.selectbox("Fach", _known_subjects, key="orga_exam_subj",
-                                format_func=_fach)
-        _ex_date = st.date_input("Klausurdatum", key="orga_exam_date")
-        if st.button("Termin speichern", key="orga_exam_save"):
-            manifest.upsert_exam(_ex_subj, exam_date=_ex_date.isoformat() if _ex_date else None)
-            st.success("Gespeichert – gilt auch auf Fortschritt.")
-            st.rerun()
-        if st.button("Termin entfernen", key="orga_exam_del"):
-            manifest.delete_exam(_ex_subj)
-            st.rerun()
+        else:
+            st.caption("Noch keine Klausurtermine.")
+        st.caption("Termine setzt und ändert du unter **Fortschritt** – hier nur die Übersicht.")
+        if st.button("Auf Fortschritt bearbeiten", key="orga_exam_goto",
+                     use_container_width=True):
+            st.switch_page("pages/5_📈_Fortschritt.py")
 
     if _today_classes:
         st.markdown("Nach der Vorlesung: Stoff auf der Startseite unter **Vorlesung einfangen** sichern.")
@@ -463,7 +462,10 @@ with card("stundenplan"):
             st.success(f"{_n} Termin(e) aktualisiert.")
             st.rerun()
         _tt_del = [row["_id"] for _, row in _tt_edited.iterrows() if row["🗑️"]]
-        if ttb2.button(f"🗑️ Ausgewählte löschen ({len(_tt_del)})", disabled=not _tt_del, key="tt_del"):
+        if delete_button(f"🗑️ Ausgewählte löschen ({len(_tt_del)})",
+                         token="orga:tt",
+                         body=f"**{len(_tt_del)}** Stundenplan-Termin(e) wirklich löschen?",
+                         key="tt_del", disabled=not _tt_del):
             for sid in _tt_del:
                 manifest.delete_timetable_slot(sid)
             st.success(f"{len(_tt_del)} Termin(e) gelöscht.")
@@ -555,7 +557,10 @@ with card("aufgaben"):
             st.success(f"{_n} Aufgabe(n) aktualisiert.")
             st.rerun()
         _task_del = [row["_id"] for _, row in _task_edited.iterrows() if row["🗑️"]]
-        if tb2.button(f"🗑️ Ausgewählte löschen ({len(_task_del)})", disabled=not _task_del, key="task_del"):
+        if delete_button(f"🗑️ Ausgewählte löschen ({len(_task_del)})",
+                         token="orga:tasks",
+                         body=f"**{len(_task_del)}** Aufgabe(n) wirklich löschen?",
+                         key="task_del", disabled=not _task_del):
             for tid in _task_del:
                 manifest.delete_task(tid)
             st.success(f"{len(_task_del)} Aufgabe(n) gelöscht.")

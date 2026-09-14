@@ -19,7 +19,7 @@ for _anc in _p.parents:
 import streamlit as st
 
 from ragapp.ui._loading import page_boot, skeleton
-page_boot("📄 Zusammenfassung schreiben", page_title="Zusammenfassung",
+page_boot("📄 Zusammenfassung", page_title="Zusammenfassung",
           icon="📄", layout="wide", accent="zusammenfassung")
 
 from ragapp.ui._style import card
@@ -43,7 +43,14 @@ st.caption("Fasst ein Dokument oder Fach in deinen Worten zusammen – nur aus d
 
 docs = manifest.list_documents()
 if not docs:
-    st.info("Noch keine Dokumente indexiert – lege zuerst welche unter **🗃️ Dokumente** an.")
+    from ragapp.ui._style import empty_state, page_title as _pt
+    empty_state(
+        "Noch keine Dokumente indexiert – lege zuerst welche unter Dokumente an.",
+        cta_label=f"Zu {_pt('dokumente')}",
+        page_key="dokumente",
+        icon="📥",
+        key="zus_empty_dokumente",
+    )
     st.stop()
 
 subjects = sorted({d["subject"] for d in docs if d["subject"]})
@@ -137,7 +144,7 @@ if st.session_state.get("_zus_md"):
                 subject=st.session_state.get("zus_prefill_subject"),
                 source="summary")
             st.success(f"{len(_ids)} Karte(n) angelegt.")
-        if _z2.button("🎧 Als Audio-Overview", use_container_width=True):
+        if _z2.button("🎧 Als Audio-Übersicht", use_container_width=True):
             st.session_state["audio_prefill_script"] = st.session_state["_zus_md"]
             st.switch_page("pages/15_🎧_Audio-Overview.py")
         st.divider()

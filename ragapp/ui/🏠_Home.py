@@ -640,7 +640,7 @@ from ragapp import analytics as _home_analytics
 from ragapp.student_flow import daily_missions as _daily_missions
 _missions = _daily_missions()
 _goal = _home_analytics.daily_goal_status()
-_kind_labels = {"reviews": "Reviews", "minutes": "Minuten", "plan_blocks": "Planblöcke"}
+_kind_labels = {"reviews": "Wiederholungen", "minutes": "Minuten", "plan_blocks": "Planblöcke"}
 with card("missionen"):
     st.markdown("#### Nächste Schritte")
     _pick = st.segmented_control(
@@ -659,7 +659,7 @@ with card("missionen"):
     else:
         _goal_done = int(_goal["done_today"])
         _goal_target = max(1, int(_goal["goal"]))
-        _goal_name = _kind_labels.get(_goal.get("kind"), "Reviews")
+        _goal_name = _kind_labels.get(_goal.get("kind"), "Wiederholungen")
         st.progress(
             min(1.0, _goal_done / _goal_target),
             text=f"{_goal_done} von {_goal_target} {_goal_name} erledigt")

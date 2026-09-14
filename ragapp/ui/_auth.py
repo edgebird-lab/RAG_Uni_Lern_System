@@ -341,58 +341,59 @@ _ABSCHIED_SPRUECHE = [
 ]
 
 
+def render_session_controls(*, key_suffix: str = "sidebar") -> None:
+    """Zweites Fenster + Beenden. ``key_suffix`` hält Sidebar und Hamburger getrennt."""
+    import os as _os
+    if _os.environ.get("RAG_LOCAL_TOKEN"):
+        if st.button("🖥️ Zweites Fenster öffnen", use_container_width=True,
+                     key=f"rag_open_window_{key_suffix}",
+                     help="Öffnet die App in einem zweiten Fenster – ideal für einen "
+                          "zweiten Bildschirm. Beide Fenster teilen sich denselben "
+                          "Server und dasselbe KI-Modell."):
+            try:
+                OPEN_WINDOW_FILE.write_text("1", encoding="utf-8")
+                st.toast("Zweites Fenster wird geöffnet …")
+            except Exception:  # noqa: BLE001
+                pass
+    if st.button("⏻ App beenden", use_container_width=True,
+                 key=f"rag_quit_{key_suffix}",
+                 help="Stoppt die Oberfläche UND das lokale KI-Modell (Ollama), "
+                      "damit im Hintergrund nichts weiterläuft und dein System "
+                      "nicht belastet wird."):
+        _best_effort_stop_ollama()
+        try:
+            from ragapp.ui._shutdown_watchdog import request_quit
+            request_quit()
+        except Exception:  # noqa: BLE001
+            pass
+        st.session_state["_shutting_down"] = True
+
+
+def _render_shutdown_screen() -> None:
+    if not st.session_state.get("_shutting_down"):
+        return
+    if not st.session_state.get("_bye_done"):
+        st.session_state["_bye_done"] = True
+        try:
+            st.balloons()
+        except Exception:  # noqa: BLE001
+            pass
+    if "_bye_spruch" not in st.session_state:
+        st.session_state["_bye_spruch"] = random.choice(_ABSCHIED_SPRUECHE)
+    st.markdown("## 👋 Bis bald – und gut gemacht!")
+    st.info(f"💬 _{st.session_state['_bye_spruch']}_")
+    st.success(
+        "**Fertig für heute:**\n\n"
+        "🧠 Das lokale KI-Modell (Ollama) wurde **entladen** – dein "
+        "**Grafikspeicher (VRAM) ist wieder frei**.\n\n"
+        "🔋 Es läuft keine KI-Berechnung mehr, dein System wird nicht belastet.")
+    st.markdown("### 🪟 Du kannst dieses Fenster/Tab jetzt schließen.")
+    st.caption("Die App fährt in wenigen Sekunden komplett herunter – "
+               "auch wenn das Fenster noch offen bleibt.")
+    st.stop()
+
+
 def _quit_button() -> None:
     with st.sidebar:
-        # Zweites Fenster (z. B. fuer einen zweiten Bildschirm) - nur sinnvoll, wenn
-        # die App ueber den Starter (ragapp.desktop) laeuft, der den Wunsch mitliest.
-        import os as _os
-        if _os.environ.get("RAG_LOCAL_TOKEN"):
-            if st.button("🖥️ Zweites Fenster öffnen", use_container_width=True,
-                         help="Öffnet die App in einem zweiten Fenster – ideal für einen "
-                              "zweiten Bildschirm. Beide Fenster teilen sich denselben "
-                              "Server und dasselbe KI-Modell."):
-                try:
-                    OPEN_WINDOW_FILE.write_text("1", encoding="utf-8")
-                    st.toast("Zweites Fenster wird geöffnet …")
-                except Exception:  # noqa: BLE001
-                    pass
-        if st.button("⏻ App beenden", use_container_width=True,
-                     help="Stoppt die Oberfläche UND das lokale KI-Modell (Ollama), "
-                          "damit im Hintergrund nichts weiterläuft und dein System "
-                          "nicht belastet wird."):
-            # 1) Grosses KI-Modell SOFORT entladen -> Grafikspeicher (VRAM) frei.
-            _best_effort_stop_ollama()
-            # 2) Server nach kurzer Frist wirklich stoppen (Sentinel + os._exit).
-            #    Nicht auf "Tab geschlossen / keine TCP-Verbindung mehr" warten:
-            #    andere lokale Verbindungen (z. B. IDE-Vorschau) wuerden den
-            #    Prozess sonst nie beenden, obwohl der Nutzer Beenden geklickt
-            #    und das Fenster geschlossen hat.
-            try:
-                from ragapp.ui._shutdown_watchdog import request_quit
-                request_quit()
-            except Exception:  # noqa: BLE001
-                pass
-            st.session_state["_shutting_down"] = True
-
-    if st.session_state.get("_shutting_down"):
-        # Kleine, einmalige Feier-Animation zum Abschied.
-        if not st.session_state.get("_bye_done"):
-            st.session_state["_bye_done"] = True
-            try:
-                st.balloons()
-            except Exception:  # noqa: BLE001
-                pass
-        # Spruch einmal fest waehlen (nicht bei jedem Rerun neu).
-        if "_bye_spruch" not in st.session_state:
-            st.session_state["_bye_spruch"] = random.choice(_ABSCHIED_SPRUECHE)
-        st.markdown("## 👋 Bis bald – und gut gemacht!")
-        st.info(f"💬 _{st.session_state['_bye_spruch']}_")
-        st.success(
-            "**Fertig für heute:**\n\n"
-            "🧠 Das lokale KI-Modell (Ollama) wurde **entladen** – dein "
-            "**Grafikspeicher (VRAM) ist wieder frei**.\n\n"
-            "🔋 Es läuft keine KI-Berechnung mehr, dein System wird nicht belastet.")
-        st.markdown("### 🪟 Du kannst dieses Fenster/Tab jetzt schließen.")
-        st.caption("Die App fährt in wenigen Sekunden komplett herunter – "
-                   "auch wenn das Fenster noch offen bleibt.")
-        st.stop()
+        render_session_controls(key_suffix="sidebar")
+    _render_shutdown_screen()

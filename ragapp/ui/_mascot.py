@@ -323,8 +323,11 @@ def _pupil_tracking_html() -> str:
 <script>
 (function() {
   try {
-    var doc = window.parent.document;
+    var parent = window.parent;
+    var doc = parent.document;
     if (doc.__ragPupilBound) { return; }
+    var reduce = parent.matchMedia && parent.matchMedia('(prefers-reduced-motion: reduce)');
+    if (reduce && reduce.matches) { return; }
     doc.__ragPupilBound = true;
     var MAXR = 3.2;
     doc.addEventListener('mousemove', function(e) {

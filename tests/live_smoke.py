@@ -20,6 +20,8 @@ PORT = int(os.environ.get("RAG_SMOKE_PORT", "8511"))
 BASE = f"http://127.0.0.1:{PORT}"
 PAGES = [
     ("/", "Heute"),
+    ("/Chat", "Chat"),
+    ("/Lernen", "Karteikarten"),
     ("/Organisation", "Kurse"),
     ("/Dokumentenmanager", "Kurs-Inbox"),
     ("/Semesterplan", "Semester einrichten"),

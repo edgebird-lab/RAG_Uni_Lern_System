@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from ragapp.ui._mascot import mascot_svg, pose_for, home_mood, POSES, _MOUTHS, _PROPS
+from ragapp.ui._mascot import mascot_svg, pose_for, home_mood, POSES, _MOUTHS, _PROPS, _pupil_tracking_html
 
 
 def _inner_svg(html: str) -> str:
@@ -98,3 +98,9 @@ def test_mascot_svg_prop_hat_ragm_prop_klasse():
     html = mascot_svg("#FF8FA3", prop="book")
     assert 'class="ragm-prop"' in html
     assert "ragm-body" in html
+
+
+def test_pupillen_folgen_nicht_bei_reduced_motion():
+    html = _pupil_tracking_html()
+    assert "prefers-reduced-motion" in html
+    assert "mousemove" in html

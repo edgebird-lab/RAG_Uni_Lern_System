@@ -28,7 +28,7 @@ import streamlit as st
 from ragapp.ui._loading import page_boot, skeleton
 page_boot("⏱️ Lernzeit", page_title="Lernzeit", icon="⏱️", layout="wide", accent="lernzeit")
 
-from ragapp.ui._style import card
+from ragapp.ui._style import card, delete_button
 
 st.markdown("""
 <style>
@@ -330,7 +330,11 @@ with card("verlauf"):
             },
         )
         _del_ids = [row["_id"] for _, row in _sess_edited.iterrows() if row["🗑️"]]
-        if st.button(f"🗑️ Ausgewählte löschen ({len(_del_ids)})", disabled=not _del_ids):
+        if delete_button(
+                f"🗑️ Ausgewählte löschen ({len(_del_ids)})",
+                token="lernzeit:sessions",
+                body=f"**{len(_del_ids)}** Zeiteintrag/Zeiteinträge wirklich löschen?",
+                key="study_sessions_del", disabled=not _del_ids):
             for sid in _del_ids:
                 manifest.delete_study_session(sid)
             st.success(f"{len(_del_ids)} Eintrag/Einträge gelöscht.")

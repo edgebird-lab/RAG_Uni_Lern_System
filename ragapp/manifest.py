@@ -2452,6 +2452,9 @@ def replace_plan_sections(plan_id: str, sections: list[dict]) -> None:
                 sid = exact or uuid.uuid4().hex[:16]
             unused_old.discard(sid)
             item["section_id"] = sid
+            old = old_by_id.get(sid)
+            if old and old.get("done"):
+                item["done"] = True
             assigned.append(item)
 
         # Auch bei komplett neu formulierter KI-Gliederung bleiben alte Blöcke
@@ -2478,6 +2481,19 @@ def replace_plan_sections(plan_id: str, sections: list[dict]) -> None:
                     "UPDATE study_plan_blocks SET section_id=? "
                     "WHERE plan_id=? AND section_id=?",
                     (new_id, plan_id, old_id))
+
+        # Auch wenn die neue Gliederung neue IDs vergibt, bleibt „erledigt“
+        # am Abschnitt, der die alten Quellen/den Titel übernommen hat.
+        for old in old_rows:
+            if not old.get("done"):
+                continue
+            target = remap.get(old["section_id"])
+            if not target:
+                continue
+            for item in assigned:
+                if item["section_id"] == target:
+                    item["done"] = True
+                    break
 
         conn.execute("DELETE FROM study_plan_sections WHERE plan_id=?", (plan_id,))
         for i, s in enumerate(assigned):
@@ -2611,6 +2627,16 @@ def set_block_done(block_id: str, done: bool, via: Optional[str] = None) -> None
     with _connect() as conn:
         conn.execute("UPDATE study_plan_blocks SET done=?, done_via=? WHERE block_id=?",
                      (1 if done else 0, via if done else None, block_id))
+        row = conn.execute(
+            "SELECT section_id FROM study_plan_blocks WHERE block_id=?",
+            (block_id,)).fetchone()
+        sid = row["section_id"] if row else None
+        if sid:
+            open_n = conn.execute(
+                "SELECT COUNT(*) AS n FROM study_plan_blocks "
+                "WHERE section_id=? AND done=0", (sid,)).fetchone()["n"]
+            conn.execute("UPDATE study_plan_sections SET done=? WHERE section_id=?",
+                         (1 if open_n == 0 else 0, sid))
 
 
 def get_plan_block(block_id: str) -> Optional[dict]:

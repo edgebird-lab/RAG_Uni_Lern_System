@@ -153,6 +153,7 @@ def test_ingestion_heisst_import_lernen_heisst_karteikarten():
     assert "Karteikarten" in page_title("lernen")
     assert "Dokumente" in page_title("dokumente")
     assert "Semester einrichten" in page_title("semesterplan")
+    assert "Audio-Übersicht" in page_title("audio")
 
 
 def test_ingestion_ist_im_studenten_alltag_versteckt():
@@ -283,7 +284,9 @@ def test_basis_css_hat_fokus_kontrast_und_reduced_motion():
     assert "prefers-reduced-motion" in _BASE_CSS
     assert "color-scheme:light" in _BASE_CSS
     assert "touch-action:manipulation" in _BASE_CSS
-    assert "env(safe-area-inset-top)" in _BASE_CSS
+    assert "splan-tl-label" in _BASE_CSS
+    assert "notiz-item-meta" in _BASE_CSS
+    assert "rag-tt-today-tag" in _BASE_CSS
 
 
 def test_ziffern_und_handy_hero_bleiben_lesbar():
@@ -317,3 +320,16 @@ def test_hamburger_zeigt_seitentitel_statt_gruppennamen():
     assert 'shown = "Heute" if key == "home" else page["title"]' in src
     assert '_p["key"] in HIDDEN_PAGE_KEYS or _p["key"] in HAMBURGER_KEYS' in src
     assert "Schnellzugriff" in src
+    assert "render_session_controls" in src
+    assert "Sitzung" in src
+
+
+def test_delete_button_oeffnet_gemeinsamen_dialog():
+    import inspect
+    from ragapp.ui import _style
+    assert _style._DELETE_PENDING == "_rag_delete_pending"
+    src = inspect.getsource(_style.delete_button)
+    assert "_DELETE_PENDING" in src
+    dialog = inspect.getsource(_style._shared_delete_dialog)
+    assert "Jetzt löschen" in dialog
+    assert "Abbrechen" in dialog

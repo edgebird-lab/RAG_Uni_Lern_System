@@ -66,8 +66,16 @@ def _uid(prefix: str) -> str:
     return f"{prefix}{_UID}"
 
 
+def _labelled_figure(inner: str, *, aria_label: str) -> str:
+    return (
+        f'<div style="width:100%;color:inherit;" role="img" '
+        f'aria-label="{html.escape(aria_label)}">{inner}</div>'
+    )
+
+
 def line_chart(labels: list, values: list, *, color: str = "#61C9A8",
-                height: int = 220, area: bool = True, value_suffix: str = "") -> str:
+                height: int = 220, area: bool = True, value_suffix: str = "",
+                aria_label: str | None = None) -> str:
     """Weiche Linie + runde Punktmarker + sanfter Verlaufs-Fuellbereich,
     responsiv (``width:100%`` via viewBox). ``area=False`` liefert eine reine
     Linie ohne Fuellung (fuer Vergleichs-/Sekundaerkurven).
@@ -81,7 +89,11 @@ def line_chart(labels: list, values: list, *, color: str = "#61C9A8",
     values = [v for _, v in pairs]
     n = len(values)
     if n == 0:
-        return f'<div style="height:{height}px;display:flex;align-items:center;justify-content:center;opacity:.5;font-size:.85rem;">Noch keine Daten</div>'
+        return _labelled_figure(
+            f'<div style="height:{height}px;display:flex;align-items:center;'
+            f'justify-content:center;color:#5b6b85;font-size:.85rem;">Noch keine Daten</div>',
+            aria_label=aria_label or "Liniendiagramm ohne Daten",
+        )
 
     vw, pad_l, pad_r, pad_t, pad_b = 640, 8, 8, 14, 26
     plot_w, plot_h = vw - pad_l - pad_r, height - pad_t - pad_b
@@ -117,7 +129,7 @@ def line_chart(labels: list, values: list, *, color: str = "#61C9A8",
     label_idx = _pick_label_indices(n)
     labels_html = "".join(
         f'<text x="{pts[i][0]:.1f}" y="{height - 6}" text-anchor="middle" '
-        f'font-size="11" fill="currentColor" opacity=".55">{html.escape(str(labels[i]))}</text>'
+        f'font-size="11" fill="currentColor" opacity=".85">{html.escape(str(labels[i]))}</text>'
         for i in sorted(label_idx)
     )
     dots_html = "".join(
@@ -126,10 +138,10 @@ def line_chart(labels: list, values: list, *, color: str = "#61C9A8",
         for i, (x, y) in enumerate(pts)
     )
 
-    return f"""
-<div style="width:100%;color:inherit;">
+    caption = aria_label or "Liniendiagramm"
+    return _labelled_figure(f"""
 <svg viewBox="0 0 {vw} {height}" width="100%" height="{height}" preserveAspectRatio="none"
-     style="display:block;overflow:visible;">
+     style="display:block;overflow:visible;" aria-hidden="true">
   {gridlines}
   {fill_html}
   <path d="{path_d}" fill="none" stroke="{color}" stroke-width="3.2"
@@ -137,12 +149,12 @@ def line_chart(labels: list, values: list, *, color: str = "#61C9A8",
   {dots_html}
   {labels_html}
 </svg>
-</div>
-"""
+""", aria_label=caption)
 
 
 def bar_chart(labels: list, values: list, *, color: str = "#61C9A8", height: int = 220,
-              horizontal: bool = False, value_suffix: str = "") -> str:
+              horizontal: bool = False, value_suffix: str = "",
+              aria_label: str | None = None) -> str:
     """Abgerundete Balken in Pastell - vertikal (Standard) oder horizontal
     (fuer Kategorien-Vergleiche wie "Mastery je Fach"). Responsiv. ``None``-
     Werte werden als 0 gezeichnet (ein Balken der Hoehe 0 ist fuer Zaehlwerte
@@ -151,10 +163,13 @@ def bar_chart(labels: list, values: list, *, color: str = "#61C9A8", height: int
     values = [0 if v is None else v for v in values]
     n = len(values)
     if n == 0:
-        return f'<div style="height:{height}px;display:flex;align-items:center;justify-content:center;opacity:.5;font-size:.85rem;">Noch keine Daten</div>'
+        return _labelled_figure(
+            f'<div style="height:{height}px;display:flex;align-items:center;'
+            f'justify-content:center;color:#5b6b85;font-size:.85rem;">Noch keine Daten</div>',
+            aria_label=aria_label or "Balkendiagramm ohne Daten",
+        )
 
     vmax = max(values, default=0) or 1.0
-    uid = _uid("ragbar")
 
     if horizontal:
         vw = 640
@@ -171,15 +186,13 @@ def bar_chart(labels: list, values: list, *, color: str = "#61C9A8", height: int
                 f'<rect x="{pad_l}" y="{y:.1f}" width="{w:.1f}" height="{row_h:.1f}" rx="{min(9, row_h/2):.1f}" '
                 f'fill="{color}"/>'
                 f'<text x="{pad_l + w + 8:.1f}" y="{y + row_h / 2 + 4:.1f}" font-size="12" '
-                f'fill="currentColor" opacity=".7">{v:g}{value_suffix}</text>'
+                f'fill="currentColor" opacity=".85">{v:g}{value_suffix}</text>'
             )
         total_h = 6 + n * (row_h + row_h_gap)
-        return f"""
-<div style="width:100%;color:inherit;">
+        return _labelled_figure(f"""
 <svg viewBox="0 0 {vw} {total_h:.0f}" width="100%" height="{total_h:.0f}" preserveAspectRatio="none"
-     style="display:block;overflow:visible;">{''.join(bars)}</svg>
-</div>
-"""
+     style="display:block;overflow:visible;" aria-hidden="true">{''.join(bars)}</svg>
+""", aria_label=aria_label or "Balkendiagramm")
 
     vw, pad_l, pad_r, pad_t, pad_b = 640, 8, 8, 10, 26
     plot_w, plot_h = vw - pad_l - pad_r, height - pad_t - pad_b
@@ -199,14 +212,12 @@ def bar_chart(labels: list, values: list, *, color: str = "#61C9A8", height: int
         if i in label_idx:
             bars.append(
                 f'<text x="{x + bw/2:.1f}" y="{height - 6}" text-anchor="middle" font-size="11" '
-                f'fill="currentColor" opacity=".55">{html.escape(str(labels[i]))}</text>'
+                f'fill="currentColor" opacity=".85">{html.escape(str(labels[i]))}</text>'
             )
-    return f"""
-<div style="width:100%;color:inherit;" id="{uid}">
+    return _labelled_figure(f"""
 <svg viewBox="0 0 {vw} {height}" width="100%" height="{height}" preserveAspectRatio="none"
-     style="display:block;overflow:visible;">{''.join(bars)}</svg>
-</div>
-"""
+     style="display:block;overflow:visible;" aria-hidden="true">{''.join(bars)}</svg>
+""", aria_label=aria_label or "Balkendiagramm")
 
 
 def sparkline(values: list, *, color: str = "#61C9A8", height: int = 32) -> str:
@@ -235,7 +246,8 @@ def sparkline(values: list, *, color: str = "#61C9A8", height: int = 32) -> str:
             f'rx="{min(4, bw / 2):.1f}" fill="{color}" opacity=".85"/>')
     return f"""
 <svg viewBox="0 0 {vw} {height}" width="100%" height="{height}" preserveAspectRatio="none"
-     style="display:block;overflow:visible;">{''.join(bars)}</svg>
+     style="display:block;overflow:visible;" role="img" aria-label="Sparkline">
+{''.join(bars)}</svg>
 """
 
 
@@ -253,7 +265,7 @@ def progress_bar(pct: float, *, color: str = "#61C9A8", track: str = "#00000014"
     fill_w = max(height, vw * frac)  # Mindestbreite = Balkenhoehe, sonst wirkt 1% wie ein Punkt-Bug
     return f"""
 <svg viewBox="0 0 {vw} {height}" width="100%" height="{height}" preserveAspectRatio="none"
-     style="display:block;overflow:visible;">
+     style="display:block;overflow:visible;" role="img" aria-label="Fortschritt {frac * 100:.0f} Prozent">
   <rect x="0" y="0" width="{vw}" height="{height}" rx="{r:.1f}" fill="{track}"/>
   <rect x="0" y="0" width="{fill_w:.1f}" height="{height}" rx="{r:.1f}" fill="{color}"/>
 </svg>

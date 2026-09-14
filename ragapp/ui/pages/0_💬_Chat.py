@@ -25,10 +25,10 @@ import streamlit as st
 import streamlit.components.v1 as _components
 
 from ragapp.ui._loading import page_boot, skeleton
-page_boot("Frag deine Zusammenfassungen", page_title="Chat", icon="💬",
+page_boot("💬 Chat", page_title="Chat", icon="💬",
           layout="wide", accent="chat")
 
-from ragapp.ui._style import card
+from ragapp.ui._style import card, delete_button
 
 # --------------------------------------------------------------------------- #
 # Styling - Rest kommt zentral aus apply_theme()/apply_page_style(); hier nur
@@ -91,87 +91,69 @@ with skeleton("Chat wird geladen …"):
     from ragapp import manifest
 
 # --------------------------------------------------------------------------- #
-# Sidebar
+# Chat wählen (Hauptspalte, nicht Sidebar – auf dem Handy sonst unsichtbar)
 # --------------------------------------------------------------------------- #
-with st.sidebar:
-    st.markdown("### 🎓 Lern-Assistent")
+_chat_sessions = manifest.list_chat_sessions()
+_sess_by_id = {s["session_id"]: s for s in _chat_sessions}
+
+if "_chat_pending_choice" in st.session_state:
+    st.session_state["chat_session_choice"] = st.session_state.pop("_chat_pending_choice")
+elif st.session_state.get("chat_session_choice") not in ([None] + list(_sess_by_id.keys())):
+    st.session_state["chat_session_choice"] = None
+
+def _fmt_session_option(sid: "str | None") -> str:
+    if sid is None:
+        return "➕ Neuer Chat"
+    s = _sess_by_id.get(sid)
+    return s["title"] if s else "(gelöscht)"
+
+st.selectbox("Chat wählen", [None] + list(_sess_by_id.keys()),
+            format_func=_fmt_session_option, key="chat_session_choice")
+_active_session_id = st.session_state.get("chat_session_choice")
+
+# Verlauf nur bei einer ECHTEN Auswahländerung neu laden (nicht bei jedem
+# Rerun waehrend einer laufenden Antwort) - _chat_loaded_session_id merkt
+# sich, welche Sitzung zuletzt in st.session_state.messages geladen wurde.
+if st.session_state.get("_chat_loaded_session_id", "__unset__") != _active_session_id:
+    st.session_state["_chat_loaded_session_id"] = _active_session_id
+    _sess = _sess_by_id.get(_active_session_id) if _active_session_id else None
+    st.session_state.messages = list(_sess["messages"]) if _sess else []
+    if _sess and _sess.get("subject"):
+        st.session_state["chat_subject_filter"] = _sess["subject"]
+
+with st.expander("⚙️ Chat & Filter", expanded=False):
     st.caption(f"Modell: `{settings.LLM_MODEL}` · Embedding: `{settings.EMBED_MODEL}`")
-
-    # --------------------------------------------------------------------- #
-    # Chat-Sitzung wählen: der Verlauf wird jetzt dauerhaft gespeichert (siehe
-    # manifest.chat_sessions) statt nur in st.session_state.messages zu leben,
-    # das bei jedem App-Neustart/Tab-Schließen verloren ging. Gleiches
-    # "Liste/Auswählen/Neu"-Muster wie bei Mindmap/Audio-Overview.
-    # --------------------------------------------------------------------- #
-    _chat_sessions = manifest.list_chat_sessions()
-    _sess_by_id = {s["session_id"]: s for s in _chat_sessions}
-
-    if "_chat_pending_choice" in st.session_state:
-        st.session_state["chat_session_choice"] = st.session_state.pop("_chat_pending_choice")
-    elif st.session_state.get("chat_session_choice") not in ([None] + list(_sess_by_id.keys())):
-        st.session_state["chat_session_choice"] = None
-
-    def _fmt_session_option(sid: "str | None") -> str:
-        if sid is None:
-            return "➕ Neuer Chat"
-        s = _sess_by_id.get(sid)
-        return s["title"] if s else "(gelöscht)"
-
-    st.selectbox("Chat wählen", [None] + list(_sess_by_id.keys()),
-                format_func=_fmt_session_option, key="chat_session_choice")
-    _active_session_id = st.session_state.get("chat_session_choice")
-
-    # Verlauf nur bei einer ECHTEN Auswahländerung neu laden (nicht bei jedem
-    # Rerun waehrend einer laufenden Antwort) - _chat_loaded_session_id merkt
-    # sich, welche Sitzung zuletzt in st.session_state.messages geladen wurde.
-    if st.session_state.get("_chat_loaded_session_id", "__unset__") != _active_session_id:
-        st.session_state["_chat_loaded_session_id"] = _active_session_id
-        _sess = _sess_by_id.get(_active_session_id) if _active_session_id else None
-        st.session_state.messages = list(_sess["messages"]) if _sess else []
-        if _sess and _sess.get("subject"):
-            st.session_state["chat_subject_filter"] = _sess["subject"]
-
     if _active_session_id is not None:
-        with st.expander("⚙️ Chat verwalten", key="chat_manage_expander"):
-            _new_title = st.text_input(
-                "Titel", value=_sess_by_id.get(_active_session_id, {}).get("title", ""),
-                key=f"chat_title_{_active_session_id}")
-            if st.button("💾 Titel speichern", key=f"chat_save_title_{_active_session_id}"):
-                manifest.update_chat_session(_active_session_id, title=_new_title)
-                st.rerun()
-            if st.button("🗑️ Diesen Chat löschen", key=f"chat_delete_{_active_session_id}"):
-                manifest.delete_chat_session(_active_session_id)
-                st.session_state["_chat_pending_choice"] = None
-                st.rerun()
-    st.divider()
-
-    # Modell-Status: selbst entscheiden, wann das Antwort-LLM laedt/entladen wird,
-    # statt das nur passiv geschehen zu lassen. Rein informativ + zwei Buttons -
-    # kein automatisches Verhalten wird dadurch veraendert.
-    with st.expander("🔌 Modell-Status", expanded=False):
-        from ragapp.llm import model_status, warm_llm
-        _mst = model_status()
-        if not _mst["reachable"]:
-            st.caption("⚠️ Ollama nicht erreichbar.")
-        elif _mst["resident"]:
-            st.caption(f"🟢 `{_mst['model']}` ist geladen (belegt RAM/VRAM).")
-        else:
-            st.caption(f"⚪ `{_mst['model']}` ist nicht geladen (laedt bei der "
-                       "naechsten Frage automatisch).")
-        _mc1, _mc2 = st.columns(2)
-        if _mc1.button("▶️ Jetzt laden", use_container_width=True,
-                       disabled=not _mst["reachable"] or _mst["resident"]):
-            with st.spinner("Modell wird geladen …"):
-                try:
-                    warm_llm()
-                    st.rerun()
-                except Exception as exc:  # noqa: BLE001
-                    st.error(str(exc))
-        if _mc2.button("⏹️ Jetzt entladen", use_container_width=True,
-                       disabled=not _mst["reachable"] or not _mst["resident"]):
-            from ragapp.scripts.stop_ollama_standby import unload_resident_models
-            unload_resident_models(settings.OLLAMA_BASE_URL)
+        _new_title = st.text_input(
+            "Titel", value=_sess_by_id.get(_active_session_id, {}).get("title", ""),
+            key=f"chat_title_{_active_session_id}")
+        if st.button("💾 Titel speichern", key=f"chat_save_title_{_active_session_id}"):
+            manifest.update_chat_session(_active_session_id, title=_new_title)
             st.rerun()
+
+    from ragapp.llm import model_status, warm_llm
+    _mst = model_status()
+    if not _mst["reachable"]:
+        st.caption("⚠️ Ollama nicht erreichbar.")
+    elif _mst["resident"]:
+        st.caption(f"🟢 `{_mst['model']}` ist geladen (belegt RAM/VRAM).")
+    else:
+        st.caption(f"⚪ `{_mst['model']}` ist nicht geladen (lädt bei der "
+                   "nächsten Frage automatisch).")
+    _mc1, _mc2 = st.columns(2)
+    if _mc1.button("▶️ Jetzt laden", use_container_width=True,
+                   disabled=not _mst["reachable"] or _mst["resident"]):
+        with st.spinner("Modell wird geladen …"):
+            try:
+                warm_llm()
+                st.rerun()
+            except Exception as exc:  # noqa: BLE001
+                st.error(str(exc))
+    if _mc2.button("⏹️ Jetzt entladen", use_container_width=True,
+                   disabled=not _mst["reachable"] or not _mst["resident"]):
+        from ragapp.scripts.stop_ollama_standby import unload_resident_models
+        unload_resident_models(settings.OLLAMA_BASE_URL)
+        st.rerun()
 
     stats = manifest.stats()
     c1, c2 = st.columns(2)
@@ -180,7 +162,6 @@ with st.sidebar:
     c1.metric("Fragen", stats["questions"])
     c2.metric("Fächer", stats["subjects"])
 
-    st.divider()
     subjects = sorted({d["subject"] for d in manifest.list_documents()})
     subject_options = ["Alle Fächer"] + subjects
     chosen = st.selectbox("Fach filtern", subject_options, key="chat_subject_filter",
@@ -199,9 +180,6 @@ with st.sidebar:
         key="chat_include_notes",
         help="Hängt passende Mitschriften als Extra-Kontext an – nicht als nummerierte Quelle.")
 
-    # Zwei getrennte Tempo-/Genauigkeits-Schalter (pro Anfrage, überschreiben die
-    # globalen Einstellungen nur für die aktuelle Sitzung). Beides AUS = schnellste
-    # Antworten. Startwert = die gespeicherte globale Einstellung.
     st.caption("⚡ Tempo ↔ Genauigkeit")
     use_reranker_ui = st.toggle(
         "🎯 Feine Nachsortierung", value=bool(settings.USE_RERANKER), key="ui_reranker",
@@ -231,14 +209,22 @@ with st.sidebar:
                  "🧭 Sokratischer Dialog": "sokratisch"}[_mode_choice]
 
     show_sources = st.toggle("Quellen anzeigen", value=True)
-    st.divider()
-    if st.button("🗑️ Verlauf löschen", use_container_width=True):
+
+    _del_label = ("🗑️ Diesen Chat löschen" if _active_session_id
+                  else "🗑️ Verlauf leeren")
+    _del_body = (
+        f"Chat **{_sess_by_id.get(_active_session_id, {}).get('title', 'ohne Titel')}** "
+        "und den gespeicherten Verlauf wirklich löschen?"
+        if _active_session_id else
+        "Den aktuellen, noch nicht gespeicherten Verlauf wirklich leeren?"
+    )
+    if delete_button(_del_label, token=f"chat:{_active_session_id or 'new'}",
+                     body=_del_body, key="chat_delete"):
         if _active_session_id is not None:
             manifest.delete_chat_session(_active_session_id)
         st.session_state.messages = []
         st.session_state["_chat_pending_choice"] = None
         st.rerun()
-    st.caption("Weitere Bereiche über ☰ Menü oder die Startseite.")
 
 
 if stats["chunks"] == 0:

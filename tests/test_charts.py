@@ -9,6 +9,8 @@ def test_line_chart_rendert_svg_mit_pfad_und_punkten():
     assert "<svg" in svg
     assert "<path" in svg
     assert svg.count("<circle") == 3
+    assert 'role="img"' in svg
+    assert "aria-label" in svg
 
 
 def test_line_chart_none_werte_werden_herausgefiltert_nicht_als_null_geplottet():

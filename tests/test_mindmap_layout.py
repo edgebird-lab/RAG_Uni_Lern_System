@@ -102,6 +102,8 @@ def test_render_svg_erzeugt_gueltiges_svg_mit_allen_titeln():
     svg = render_svg(graph, layout_tree(graph))
     assert svg.startswith("<svg")
     assert svg.endswith("</svg>")
+    assert 'role="img"' in svg
+    assert 'aria-label="Mindmap"' in svg
     for title in ("Algorithmen", "Sortieren", "Graphen", "QuickSort", "MergeSort", "DFS"):
         assert title in svg
 

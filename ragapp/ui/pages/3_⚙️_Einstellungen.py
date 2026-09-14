@@ -1,5 +1,5 @@
 """
-RAG-Lernsystem: Seite „Einstellungen (Tuning)" (Streamlit)
+RAG-Lernsystem: Seite „Einstellungen" (Streamlit)
 ===========================================================
 Zentrale Stellschrauben des Systems bequem tunen und persistent in
 ``data/config.json`` speichern. Nach dem Ändern in der Evaluation messen, ob
@@ -22,7 +22,7 @@ import streamlit as st
 
 from ragapp.ui._loading import page_boot, skeleton
 
-page_boot("⚙️ Einstellungen (Tuning)", page_title="Einstellungen (Tuning)",
+page_boot("⚙️ Einstellungen", page_title="Einstellungen",
           icon="⚙️", layout="wide", accent="einstellungen")
 
 from ragapp.ui._style import card

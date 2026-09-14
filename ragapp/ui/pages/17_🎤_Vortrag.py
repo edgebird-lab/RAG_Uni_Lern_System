@@ -23,7 +23,7 @@ from ragapp.ui._loading import page_boot, skeleton
 page_boot("🎤 Vortrag", page_title="Vortrag", icon="🎤", layout="wide",
           accent="vortrag")
 
-from ragapp.ui._style import card
+from ragapp.ui._style import card, delete_button
 
 st.caption("Erzeugt einen Marp-Vortrag aus deinen Unterlagen, optional mit "
            "wissenschaftlichen Quellen (SearXNG, Opt-in), vertont ihn mit deiner "
@@ -90,7 +90,14 @@ _active_id = st.session_state.get("talk_choice")
 if _active_id is None:
     st.markdown("##### Neuen Vortrag anlegen")
     if not _subjects_with_docs:
-        st.info("Noch keine indexierten Dokumente vorhanden. Gehe zu **🗃️ Dokumente**.")
+        from ragapp.ui._style import empty_state, page_title as _pt
+        empty_state(
+            "Noch keine indexierten Dokumente. Lade Dateien unter Dokumente hoch.",
+            cta_label=f"Zu {_pt('dokumente')}",
+            page_key="dokumente",
+            icon="📥",
+            key="talk_empty_dokumente",
+        )
         st.stop()
 
     _draft = st.session_state.get("_talk_draft")
@@ -320,10 +327,13 @@ with card("talk_head"):
         except (talk.TalkError, audio_overview.AudioOverviewError) as exc:
             st.error(str(exc))
 
-    if b3.button("🗑️ Löschen", key="talk_delete"):
-        manifest.delete_talk(_active_id)
-        st.session_state["_talk_pending_choice"] = None
-        st.rerun()
+    with b3:
+        if delete_button("🗑️ Löschen", token=f"talk:{_active_id}",
+                         body=f"Vortrag **{_active.get('title') or 'ohne Titel'}** wirklich löschen?",
+                         key="talk_delete"):
+            manifest.delete_talk(_active_id)
+            st.session_state["_talk_pending_choice"] = None
+            st.rerun()
 
 # Downloads & Video
 st.markdown("##### Export")

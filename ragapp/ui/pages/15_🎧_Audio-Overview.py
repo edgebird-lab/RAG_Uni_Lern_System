@@ -38,16 +38,16 @@ for _anc in _p.parents:
 import streamlit as st
 
 from ragapp.ui._loading import page_boot, skeleton
-page_boot("🎧 Audio-Overview", page_title="Audio-Overview", icon="🎧", layout="wide",
+page_boot("🎧 Audio-Übersicht", page_title="Audio-Übersicht", icon="🎧", layout="wide",
          accent="audio")
 
-from ragapp.ui._style import card
+from ragapp.ui._style import card, delete_button
 
 st.caption("Lässt deine Dokumente als gesprochenes Erklär-Skript zusammenfassen und vertont "
            "es mit deiner eigenen (geklonten) Stimme - keine generische KI-Stimme. Skripte "
            "lassen sich auch selbst schreiben oder im Nachgang bearbeiten.")
 
-with skeleton("Audio-Overview wird geladen …"):
+with skeleton("Audio-Übersicht wird geladen …"):
     from ragapp import manifest, audio_overview, audiobook
     from ragapp.config import settings, SUBJECT_LABELS, PROJECT_ROOT, AUDIO_DIR
     from ragapp.llm import list_installed_models
@@ -128,12 +128,12 @@ elif st.session_state.get("audio_choice") not in ([None] + list(_ov_by_id.keys()
 
 def _fmt_ov_option(oid: "str | None") -> str:
     if oid is None:
-        return "➕ Neues Audio-Overview"
+        return "➕ Neue Audio-Übersicht"
     o = _ov_by_id.get(oid)
     return f"{o['title']}  ·  {_fach(o['subject'])}" if o else "(gelöscht)"
 
 
-st.selectbox("Audio-Overview wählen", [None] + list(_ov_by_id.keys()),
+st.selectbox("Audio-Übersicht wählen", [None] + list(_ov_by_id.keys()),
             format_func=_fmt_ov_option, key="audio_choice")
 _active_id = st.session_state.get("audio_choice")
 
@@ -289,7 +289,7 @@ if _active_id is None:
     if _pref_script:
         st.session_state["audio_create_mode"] = "✍️ Eigenes Skript schreiben"
         st.session_state["audio_manual_script"] = _pref_script
-    st.markdown("##### Neues Audio-Overview anlegen")
+    st.markdown("##### Neue Audio-Übersicht anlegen")
     if st.button("🎯 Nur schwaches Fach vorlesen", key="audio_weak"):
         from ragapp.student_flow import weak_subject
         _ws = weak_subject()
@@ -579,7 +579,9 @@ with card("player"):
                 st.warning("Titel darf nicht leer sein.")
 
     with st.expander("🗑️ Löschen"):
-        if st.button("Audio-Overview löschen", key=f"audio_delete_{_active_id}"):
+        if delete_button("Audio-Übersicht löschen", token=f"audio:{_active_id}",
+                         body=f"Audio **{_active.get('title') or 'ohne Titel'}** wirklich löschen?",
+                         key=f"audio_delete_{_active_id}"):
             manifest.delete_audio_overview(_active_id)
             st.session_state["_audio_pending_choice"] = None
             st.success("Gelöscht.")

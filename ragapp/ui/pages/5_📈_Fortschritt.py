@@ -26,7 +26,7 @@ from ragapp.ui._loading import page_boot, skeleton
 page_boot("📈 Fortschritt", page_title="Fortschritt", icon="📈", layout="wide",
          accent="fortschritt")
 
-from ragapp.ui._style import card, theme_for
+from ragapp.ui._style import card, theme_for, delete_button
 from ragapp.ui import _charts
 _theme = theme_for("fortschritt")
 
@@ -380,18 +380,18 @@ if _sektion == "Klausurstatus":
                     value=float(existing.get("note") or 0.0), step=0.1,
                     help="0,0 = noch keine Note eingetragen. Fließt ECTS-gewichtet in "
                          "den Notenschnitt unten ein.")
-                s1, s2 = st.columns(2)
-                save = s1.form_submit_button("💾 Termin speichern", use_container_width=True)
-                clear = s2.form_submit_button("🗑️ Termin entfernen", use_container_width=True)
+                save = st.form_submit_button("💾 Termin speichern", use_container_width=True)
                 if save:
                     manifest.upsert_exam(ex_subject, exam_date=ex_date.isoformat() if ex_date else None,
                                          ects=ex_ects or None, gewicht=ex_weight, note=ex_note or None)
                     st.success(f"Termin für {_fach(ex_subject)} gespeichert.")
                     st.rerun()
-                if clear:
-                    manifest.delete_exam(ex_subject)
-                    st.info(f"Termin für {_fach(ex_subject)} entfernt.")
-                    st.rerun()
+            if delete_button("🗑️ Termin entfernen", token=f"exam:{ex_subject}",
+                             body=f"Klausurtermin für **{_fach(ex_subject)}** wirklich entfernen?",
+                             key="ex_clear"):
+                manifest.delete_exam(ex_subject)
+                st.info(f"Termin für {_fach(ex_subject)} entfernt.")
+                st.rerun()
 
         prios = planner.all_priorities()
         if prios:

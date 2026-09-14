@@ -26,7 +26,7 @@ from ragapp.ui._loading import page_boot, skeleton
 # damit beim Seitenwechsel kein weisser Bildschirm entsteht.
 page_boot("🎓 Karteikarten", page_title="Karteikarten", icon="🎓", layout="wide", accent="lernen")
 
-from ragapp.ui._style import card
+from ragapp.ui._style import card, delete_button
 
 # Nur noch das seiten-spezifische Layout; die Karteikarten-Optik (hell + dunkel)
 # kommt jetzt zentral aus ragapp.ui._theme.apply_theme().
@@ -123,7 +123,7 @@ def _render_lernset_pfad() -> None:
     )
     for ex in prev.get("examples") or []:
         st.markdown(f"- {ex.get('front') or ''}")
-    if st.button("Jetzt lernen", type="primary", key="lernset_now",
+    if st.button("Dieses Lernset lernen", key="lernset_now",
                  use_container_width=True):
         st.session_state["study_prefill"] = {
             "source": "lernset", "limit": 16, "mode": "reveal",
@@ -278,50 +278,63 @@ def _start_study(karten: list, mode: str) -> None:
     st.session_state["_study_mode"] = mode
 
 
-_prefill = st.session_state.pop("study_prefill", None)
+_prefill = st.session_state.get("study_prefill")
 if _prefill and not st.session_state.get(ACTIVE):
-    from ragapp import student_flow as _sf
+    _src = _prefill.get("source") or _prefill.get("mode") or "Sitzung"
+    _subj_txt = _fach_label(_prefill["subject"]) if _prefill.get("subject") else "alle Fächer"
     _lim = int(_prefill.get("limit") or 16)
-    if _prefill.get("source") == "fehlerheft" or _prefill.get("deck") == "Fehlerheft":
-        _pk = _sf.fehlerheft_cards(limit=_lim, subject=_prefill.get("subject"))
-    elif _prefill.get("sprint") or _prefill.get("mode") == "sprint":
-        _pk = _sf.sprint_cards(
-            subject=_prefill.get("subject"), limit=_lim,
-            decks=_prefill.get("decks"),
-            prefer=_prefill.get("prefer") or "auto")
-        st.session_state["_study_sprint"] = True
-        st.session_state["_study_sprint_prefer"] = _prefill.get("prefer") or "auto"
-    elif _prefill.get("doc_ids"):
-        _pk = manifest.find_cards(
-            subject=_prefill.get("subject"),
-            doc_ids=_prefill.get("doc_ids"),
-            topics=_prefill.get("topics") or None,
-            limit=_lim,
-        )
-        # Abschnittstitel und Karten-Themen sind nicht immer wortgleich. Der
-        # konkrete Dokumentbezug bleibt dann der verlässliche Scope.
-        if not _pk and _prefill.get("topics"):
-            _pk = manifest.find_cards(
-                subject=_prefill.get("subject"),
-                doc_ids=_prefill.get("doc_ids"),
-                limit=_lim,
-            )
-    else:
-        _pk = _sf.today_session_cards(
-            subject=_prefill.get("subject"), limit=_lim,
-            cram=bool(_prefill.get("cram")), deck=_prefill.get("deck"),
-            sprint=bool(_prefill.get("sprint")),
-            preferred_card_ids=_prefill.get("card_ids"))
-        if _prefill.get("mode") == "sprint":
-            st.session_state["_study_sprint"] = True
-    _pmode = _prefill.get("mode") or "reveal"
-    if _pmode == "sprint":
-        _pmode = "reveal"
-    if _pk:
-        _start_study(_pk, _pmode if _pmode in ("reveal", "type", "cloze", "mcq") else "reveal")
-        st.rerun()
-    else:
-        st.info("Keine passenden Karten für diesen Start – wähle unten einen Stapel.")
+    with st.container(border=True):
+        st.markdown("##### Sitzung vorbereitet")
+        st.caption(f"{_src} · {_subj_txt} · bis zu {_lim} Karten. "
+                   "Startest du jetzt, oder wählst du unten selbst einen Stapel?")
+        _pf1, _pf2 = st.columns(2)
+        if _pf1.button("▶️ Jetzt starten", type="primary", key="prefill_go",
+                       use_container_width=True):
+            _prefill = st.session_state.pop("study_prefill", {}) or {}
+            from ragapp import student_flow as _sf
+            _lim = int(_prefill.get("limit") or 16)
+            if _prefill.get("source") == "fehlerheft" or _prefill.get("deck") == "Fehlerheft":
+                _pk = _sf.fehlerheft_cards(limit=_lim, subject=_prefill.get("subject"))
+            elif _prefill.get("sprint") or _prefill.get("mode") == "sprint":
+                _pk = _sf.sprint_cards(
+                    subject=_prefill.get("subject"), limit=_lim,
+                    decks=_prefill.get("decks"),
+                    prefer=_prefill.get("prefer") or "auto")
+                st.session_state["_study_sprint"] = True
+                st.session_state["_study_sprint_prefer"] = _prefill.get("prefer") or "auto"
+            elif _prefill.get("doc_ids"):
+                _pk = manifest.find_cards(
+                    subject=_prefill.get("subject"),
+                    doc_ids=_prefill.get("doc_ids"),
+                    topics=_prefill.get("topics") or None,
+                    limit=_lim,
+                )
+                if not _pk and _prefill.get("topics"):
+                    _pk = manifest.find_cards(
+                        subject=_prefill.get("subject"),
+                        doc_ids=_prefill.get("doc_ids"),
+                        limit=_lim,
+                    )
+            else:
+                _pk = _sf.today_session_cards(
+                    subject=_prefill.get("subject"), limit=_lim,
+                    cram=bool(_prefill.get("cram")), deck=_prefill.get("deck"),
+                    sprint=bool(_prefill.get("sprint")),
+                    preferred_card_ids=_prefill.get("card_ids"))
+                if _prefill.get("mode") == "sprint":
+                    st.session_state["_study_sprint"] = True
+            _pmode = _prefill.get("mode") or "reveal"
+            if _pmode == "sprint":
+                _pmode = "reveal"
+            if _pk:
+                _start_study(_pk, _pmode if _pmode in ("reveal", "type", "cloze", "mcq") else "reveal")
+                st.rerun()
+            else:
+                st.info("Keine passenden Karten für diesen Start – wähle unten einen Stapel.")
+        if _pf2.button("Stapel selbst wählen", key="prefill_skip",
+                       use_container_width=True):
+            st.session_state.pop("study_prefill", None)
+            st.rerun()
 
 
 if not st.session_state.get(ACTIVE):
@@ -1050,12 +1063,13 @@ if _active_tab == "🗂️ Stapel verwalten":
                     manifest.dissolve_deck(_d)
                     st.success(f"Stapel „{_d}“ aufgelöst.")
                     st.rerun()
-                if _dc3.button("Löschen", key=f"delete_{_dk_subj}_{_d}",
-                               use_container_width=True,
-                               help="Stapel samt Karten löschen."):
-                    manifest.delete_deck(_d)
-                    st.success(f"Stapel „{_d}“ gelöscht.")
-                    st.rerun()
+                with _dc3:
+                    if delete_button("Löschen", token=f"deck:{_dk_subj}:{_d}",
+                                     body=f"Stapel **{_d}** samt Karten wirklich löschen?",
+                                     key=f"delete_{_dk_subj}_{_d}"):
+                        manifest.delete_deck(_d)
+                        st.success(f"Stapel „{_d}“ gelöscht.")
+                        st.rerun()
                 with _dc4:
                     with st.popover("Umbenennen"):
                         _rn = st.text_input("Neuer Name", value=_d,
@@ -1505,7 +1519,9 @@ if _active_tab == "📋 Bearbeiten & Löschen":
 
         _also_chroma = _b2.checkbox("beim Löschen auch aus Suchindex", key="mv_delchroma",
                                     help="Entfernt die Frage zusätzlich aus dem Katalog/Suchindex.")
-        if _b2.button("🗑️ Auswahl löschen", use_container_width=True, disabled=not _sel):
+        if delete_button("🗑️ Auswahl löschen", token="cards:sel",
+                         body=f"**{len(_sel)}** ausgewählte Karte(n) wirklich löschen?",
+                         key="mv_del_sel", disabled=not _sel):
             _chroma = manifest.delete_card_ids(_sel)
             if _also_chroma and _chroma:
                 try:
@@ -1528,9 +1544,11 @@ if _active_tab == "📋 Bearbeiten & Löschen":
             help="Unabhängig von der Zeilen-Anzeige. Der Filter bleibt danach stehen.")
         if not _wipe_scope:
             st.caption("Ohne Fach- oder Dokumentfilter betrifft das **alle** Karteikarten.")
-        if st.button(f"🗑️ Alle {_mv_total} im Filter löschen", type="secondary",
-                     use_container_width=True, disabled=not _wipe_all_ok or _mv_total == 0,
-                     key="mv_wipe_all"):
+        if delete_button(f"🗑️ Alle {_mv_total} im Filter löschen",
+                         token="cards:wipe",
+                         body=f"Wirklich **alle {_mv_total}** Karten {_wipe_where} löschen?",
+                         key="mv_wipe_all", type="secondary",
+                         disabled=not _wipe_all_ok or _mv_total == 0):
             _wipe_ids = manifest.list_card_ids_matching(**_mv_wipe_kw)
             _chroma = manifest.delete_card_ids(_wipe_ids)
             if _also_chroma and _chroma:
