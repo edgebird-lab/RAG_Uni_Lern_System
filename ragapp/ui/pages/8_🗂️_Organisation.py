@@ -209,64 +209,69 @@ else:
         "Unterlagen": "Unterlagen öffnen",
         "Prüfung": "Prüfung",
     }
-    for _subj in _kurs_faecher:
-        _ks = _sf.course_snapshot(_subj)
+
+    def _render_kurs(_subj: str, _ks: dict, *, quiet: bool = False) -> None:
         with card(f"kurs_{_subj}"):
-            st.markdown(f"**{_fach(_subj)}**")
+            st.markdown(
+                f'<p class="rag-kurs-title">{_fach(_subj)}</p>',
+                unsafe_allow_html=True)
             _c1, _c2, _c3, _c4 = st.columns(4)
             _c1.metric("Termin", planner.humanize_days(_ks["days_to_exam"])
                        if _ks["days_to_exam"] is not None else "–")
-            _c2.metric("Unterlagen", _ks["doc_count"])
-            _c3.metric("Bereitschaft", f'{_ks["readiness_pct"]} %')
-            _c4.metric("Fällig", _ks["due_cards"])
-            if _ks.get("coverage_pct") is not None:
-                st.caption(
-                    f"Bereitschaft kombiniert Behalten "
-                    f"({_ks['retention_pct']} %) und Lernzielabdeckung "
-                    f"({_ks['coverage_pct']} %).")
-            if _ks["weak_topics"]:
-                st.caption("Lücken – Klick öffnet Karten zu dem Thema:")
-                _wcols = st.columns(min(3, len(_ks["weak_topics"][:3])))
-                for _wi, _w in enumerate(_ks["weak_topics"][:3]):
-                    _wlabel = f'{_w["topic"] or "ohne Thema"} ({_w["mastery_pct"]} %)'
-                    if _wcols[_wi].button(
-                            _wlabel, key=f"org_weak_{_subj}_{_wi}",
-                            use_container_width=True):
-                        st.session_state["study_prefill"] = {
-                            "source": "weak_topic", "limit": 16, "mode": "reveal",
-                            "subject": _subj,
-                            "topics": [_w["topic"]] if _w.get("topic") else [],
-                        }
-                        st.switch_page("pages/4_🎓_Lernen.py")
-            from ragapp import coverage as _cov
-            _cov_rows = _cov.coverage_for_subject(_subj)
-            if _cov_rows:
-                st.caption("Abdeckung der Lernziele")
-                for _row in _cov_rows:
-                    _act = _cov.coverage_start_action(_row)
-                    _g1, _g2 = st.columns([3, 1])
-                    _g1.write(f"· {_row['status']}: {_row['text'][:90]}")
-                    if _act["kind"] and _g2.button(
-                            _act["label"], key=f"cov_{_subj}_{_row['goal_id']}"):
-                        if _act["kind"] == "dokument":
-                            st.session_state["doc_folder"] = _subj
-                            st.switch_page("pages/9_🗃️_Dokumentenmanager.py")
-                        elif _act["kind"] == "lernset":
-                            st.session_state["lernset_docs_prefill"] = _row.get("doc_ids") or []
-                            st.switch_page("pages/4_🎓_Lernen.py")
-                        elif _act["kind"] == "uebung":
-                            st.session_state["practice_prefill"] = {
-                                "subject": _subj, "topic": _row["text"][:80]}
-                            st.switch_page("pages/13_🧮_Übungsaufgaben.py")
-                        else:
+            _c2.metric("Unterlagen", _ks["doc_count"] or "–")
+            _c3.metric("Bereitschaft",
+                       "–" if quiet or not _ks["doc_count"] else f'{_ks["readiness_pct"]} %')
+            _c4.metric("Fällig", _ks["due_cards"] or "–")
+            if not quiet:
+                if _ks.get("coverage_pct") is not None:
+                    st.caption(
+                        f"Bereitschaft kombiniert Behalten "
+                        f"({_ks['retention_pct']} %) und Lernzielabdeckung "
+                        f"({_ks['coverage_pct']} %).")
+                if _ks["weak_topics"]:
+                    st.caption("Lücken – Klick öffnet Karten zu dem Thema:")
+                    _wcols = st.columns(min(3, len(_ks["weak_topics"][:3])))
+                    for _wi, _w in enumerate(_ks["weak_topics"][:3]):
+                        _wlabel = f'{_w["topic"] or "ohne Thema"} ({_w["mastery_pct"]} %)'
+                        if _wcols[_wi].button(
+                                _wlabel, key=f"org_weak_{_subj}_{_wi}",
+                                use_container_width=True):
                             st.session_state["study_prefill"] = {
-                                "source": "coverage", "limit": 16, "mode": "reveal",
+                                "source": "weak_topic", "limit": 16, "mode": "reveal",
                                 "subject": _subj,
-                                "card_ids": _row.get("card_ids") or [],
+                                "topics": [_w["topic"]] if _w.get("topic") else [],
                             }
                             st.switch_page("pages/4_🎓_Lernen.py")
+                from ragapp import coverage as _cov
+                _cov_rows = _cov.coverage_for_subject(_subj)
+                if _cov_rows:
+                    st.caption("Abdeckung der Lernziele")
+                    for _row in _cov_rows:
+                        _act = _cov.coverage_start_action(_row)
+                        _g1, _g2 = st.columns([3, 1])
+                        _g1.write(f"· {_row['status']}: {_row['text'][:90]}")
+                        if _act["kind"] and _g2.button(
+                                _act["label"], key=f"cov_{_subj}_{_row['goal_id']}"):
+                            if _act["kind"] == "dokument":
+                                st.session_state["doc_folder"] = _subj
+                                st.switch_page("pages/9_🗃️_Dokumentenmanager.py")
+                            elif _act["kind"] == "lernset":
+                                st.session_state["lernset_docs_prefill"] = _row.get("doc_ids") or []
+                                st.switch_page("pages/4_🎓_Lernen.py")
+                            elif _act["kind"] == "uebung":
+                                st.session_state["practice_prefill"] = {
+                                    "subject": _subj, "topic": _row["text"][:80]}
+                                st.switch_page("pages/13_🧮_Übungsaufgaben.py")
+                            else:
+                                st.session_state["study_prefill"] = {
+                                    "source": "coverage", "limit": 16, "mode": "reveal",
+                                    "subject": _subj,
+                                    "card_ids": _row.get("card_ids") or [],
+                                }
+                                st.switch_page("pages/4_🎓_Lernen.py")
             _act = _ks["next_action"]
-            if st.button(_act_label.get(_act, "Weiter"), type="primary",
+            if st.button(_act_label.get(_act, "Weiter"),
+                         type="secondary" if quiet else "primary",
                          key=f"kurs_act_{_subj}", use_container_width=True):
                 if _act == "lernen":
                     st.session_state["study_prefill"] = {
@@ -289,6 +294,23 @@ else:
                     st.switch_page("pages/9_🗃️_Dokumentenmanager.py")
                 else:
                     st.switch_page("pages/6_📝_Prüfung.py")
+
+    _kurs_voll = []
+    _kurs_leer = []
+    for _subj in _kurs_faecher:
+        _ks = _sf.course_snapshot(_subj)
+        if _ks["doc_count"] or _ks["due_cards"]:
+            _kurs_voll.append((_subj, _ks))
+        else:
+            _kurs_leer.append((_subj, _ks))
+    for _subj, _ks in _kurs_voll:
+        _render_kurs(_subj, _ks)
+    if _kurs_leer:
+        with st.expander(
+                f"Weitere Fächer aus Import ({len(_kurs_leer)})", expanded=False):
+            st.caption("Noch ohne Unterlagen oder Karten – Namen aus dem Semesterimport.")
+            for _subj, _ks in _kurs_leer:
+                _render_kurs(_subj, _ks, quiet=True)
 
 # --------------------------------------------------------------------------- #
 # Wochen-Dashboard

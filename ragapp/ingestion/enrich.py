@@ -24,6 +24,9 @@ from ragapp.retrieval.vectorstore import get_vectorstore
 from ragapp.retrieval.embeddings import get_embedder
 from ragapp.llm import require_vram, release_llm, VramLowError
 from ragapp.hardware import probe_model
+from ragapp.ingestion.question_gen import (
+    QuestionGenError, generate_answer, generate_questions,
+)
 
 _SUMMARY_HINTS = ("zusammenfassung", "kompakt", "spickzettel", "klausur")
 

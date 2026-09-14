@@ -35,7 +35,7 @@ st.markdown("""
 st.caption("Rechenweg eintippen, Teilpunkte erhalten, fehlende Schritte nachlesen.")
 
 with skeleton("Übungsaufgaben werden geladen …"):
-    from ragapp import manifest, practice_gen
+    from ragapp import manifest, practice_gen, student_flow
     from ragapp.config import settings, SUBJECT_LABELS
 
 _KIND_LABEL = {
@@ -226,9 +226,10 @@ with col_list:
         else:
             with st.container(height=480):
                 for p in _problems:
-                    _label = _KIND_LABEL.get(p["kind"], p["kind"]) + " · " + (
-                        p["topic"] or (p["problem_text"][:40] + "…"
-                                      if len(p["problem_text"]) > 40 else p["problem_text"]))
+                    _snip = (student_flow.plain_study_snippet(p.get("topic"))
+                             or student_flow.plain_study_snippet(p.get("problem_text")))
+                    _kind = _KIND_LABEL.get(p["kind"], p["kind"])
+                    _label = _kind + (f" · {_snip}" if _snip else "")
                     _meta = _fach(p["subject"])
                     _active = st.session_state.get("practice_choice") == p["problem_id"]
                     _prefix = "▶️ " if _active else _practice_badge(p)

@@ -812,7 +812,9 @@ def backfill_failed_index_jobs() -> int:
         for j in manifest.list_index_retry_jobs(include_done=True, limit=5000)
     }
     added = 0
-    for doc in manifest.list_documents():
+    # list_documents() liefert sqlite3.Row – die haben kein .get().
+    for raw in manifest.list_documents():
+        doc = dict(raw)
         if doc.get("status") != "error" or not doc.get("use_rag"):
             continue
         key = (doc.get("source_path"), doc.get("subject") or "")
@@ -1236,3 +1238,20 @@ def course_snapshot(subject: str) -> dict:
         "next_lecture": next_lec,
         "next_action": action,
     }
+
+
+def plain_study_snippet(text: Optional[str], *, limit: int = 42) -> str:
+    """Kürzt Aufgabentext für Buttons: kein KaTeX, kein Umbruch mitten in $...$."""
+    raw = (text or "").strip()
+    if not raw:
+        return ""
+    raw = re.sub(r"\$\$[\s\S]*?\$\$", " ", raw)
+    raw = re.sub(r"\$[^$]*\$", " ", raw)
+    raw = re.sub(r"\\\[[\s\S]*?\\\]", " ", raw)
+    raw = re.sub(r"\\\([\s\S]*?\\\)", " ", raw)
+    raw = re.sub(r"[_*]{1,2}", "", raw)
+    raw = re.sub(r"\s+", " ", raw).strip()
+    if len(raw) > limit:
+        return raw[:limit].rstrip() + "…"
+    return raw
+

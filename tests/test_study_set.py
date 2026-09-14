@@ -138,3 +138,12 @@ def test_study_set_preview_mit_fixture_karten(isolated_db):
     other = study.study_set_preview(doc_ids=["d2"])
     assert other["cards"] == 1
     assert other["topics"] == ["Anderes"]
+
+
+def test_enrich_bindet_question_gen():
+    """Live-Test: Lernset-Erstellen stürzte mit NameError auf generate_questions ab."""
+    from ragapp.ingestion import enrich
+    assert callable(enrich.generate_questions)
+    assert callable(enrich.generate_answer)
+    assert issubclass(enrich.QuestionGenError, Exception)
+

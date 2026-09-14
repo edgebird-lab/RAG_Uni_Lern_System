@@ -96,7 +96,9 @@ def _render_lernset_pfad() -> None:
         format_func=lambda i: labels.get(i, i),
         key="lernset_docs",
     )
-    if st.button("Lernset erstellen", type="primary", disabled=not picked,
+    if st.button("Lernset erstellen",
+                 type="secondary" if _needs_harvest else "primary",
+                 disabled=not picked,
                  key="lernset_go", use_container_width=True):
         with st.status("Lernset wird erzeugt …", expanded=True) as s:
             out = study.create_study_set(picked, progress=lambda m: s.update(label=m))
@@ -610,9 +612,14 @@ if not st.session_state.get(ACTIVE):
         else:
             _cap = _ch_fc.get("total", 0) if _cram else max(1, _ch_faellig)
             _maxr = int(max(1, min(_cap, _srs_max)))
-            anzahl = st.slider(
-                "Karten in dieser Challenge", min_value=1, max_value=_maxr,
-                value=int(min(20, _maxr)), key="ch_anzahl")
+            # Streamlit verbietet min_value == max_value (Live-Test nach kurzer Runde).
+            if _maxr < 2:
+                anzahl = 1
+                st.caption("Nur eine Karte in dieser Auswahl.")
+            else:
+                anzahl = st.slider(
+                    "Karten in dieser Challenge", min_value=1, max_value=_maxr,
+                    value=int(min(20, _maxr)), key="ch_anzahl")
             if st.button(
                 f"▶️ Challenge starten ({anzahl}"
                 + (" · 🔥 Cram" if _cram else "") + ")",

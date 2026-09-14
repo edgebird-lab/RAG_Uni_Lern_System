@@ -313,6 +313,25 @@ def test_seitenstart_klappt_die_sidebar_zu():
     assert 'initial_sidebar_state="collapsed"' in inspect.getsource(page_boot)
 
 
+def test_hero_buchstaben_starten_lesbar_und_disabled_ist_grau():
+    assert "opacity:1" in _BASE_CSS
+    assert "@keyframes ragLetterIn" in _BASE_CSS
+    assert "transform:translateY(8px)" in _BASE_CSS
+    assert "h1.rag-hero-title" in _BASE_CSS
+    assert "animation:none !important; opacity:1 !important;" in _BASE_CSS
+    assert "animation:ragLetterIn" in _BASE_CSS
+    assert "background:#e8e4df" in _BASE_CSS
+    assert '[data-testid="stPopoverBody"]' in _BASE_CSS
+    assert "max-height:min(80vh, 560px)" in _BASE_CSS
+    assert ".rag-nav-here" in _BASE_CSS
+    assert ".rag-kurs-title" in _BASE_CSS
+    assert "overflow-wrap:anywhere" in _BASE_CSS
+    reduced = _BASE_CSS.split("@media (prefers-reduced-motion: reduce)")
+    assert len(reduced) >= 2
+    assert ".rag-hero-title .rag-hero-letter" in reduced[-1]
+    assert "opacity:1 !important" in reduced[-1]
+
+
 def test_hamburger_zeigt_seitentitel_statt_gruppennamen():
     import inspect
     from ragapp.ui._style import render_hamburger_nav
@@ -322,6 +341,9 @@ def test_hamburger_zeigt_seitentitel_statt_gruppennamen():
     assert "Schnellzugriff" in src
     assert "render_session_controls" in src
     assert "Sitzung" in src
+    assert "rag-nav-here" in src
+    assert "disabled=True" not in src
+    assert "· hier" in src
 
 
 def test_delete_button_oeffnet_gemeinsamen_dialog():

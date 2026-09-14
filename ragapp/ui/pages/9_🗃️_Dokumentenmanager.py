@@ -249,8 +249,15 @@ def _view_doc_dialog(d: dict) -> None:
             st.warning("Seite konnte nicht gerendert werden.")
     else:
         full = _docviewer.load_full_text(path)
-        st.text_area("Inhalt", value=full or "(kein Text extrahierbar)", height=380,
-                    disabled=True, key=f"docmgr_full_{d['doc_id']}")
+        _ft = (d.get("filetype") or path.suffix.lstrip(".") or "").lower()
+        if _ft in {"md", "markdown"}:
+            if full:
+                st.markdown(full)
+            else:
+                st.caption("Kein Text extrahierbar.")
+        else:
+            st.text_area("Inhalt", value=full or "(kein Text extrahierbar)", height=380,
+                        disabled=True, key=f"docmgr_full_{d['doc_id']}")
 
     st.divider()
     st.markdown("##### 🏷️ Kategorien")

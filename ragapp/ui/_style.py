@@ -452,18 +452,28 @@ html.rag-dark h1 {{ color:#e7edf5 !important; }}
 /* Optionale "Hero"-Ueberschrift (siehe render_hero_title()): Buchstabe-fuer-
    Buchstabe-Einflug statt Gradient (Gradient-Text-Clip wuerde pro <span>
    neu ansetzen und in Streifen zerfallen - daher hier stattdessen Vollton). */
-.rag-hero-title {{
+h1.rag-hero-title, .rag-hero-title {{
   font-weight:800 !important; letter-spacing:-0.5px;
   border-bottom:4px solid {accent}; padding-bottom:2px; margin-bottom:.3rem !important;
-  color:#c43b58 !important;
+  color:#2b2036 !important; -webkit-text-fill-color:#2b2036 !important;
+  background:none !important; -webkit-background-clip:unset !important;
+  background-clip:unset !important;
+  animation:none !important; opacity:1 !important;
 }}
-html.rag-dark .rag-hero-title {{ color:{accent} !important; }}
+html.rag-dark h1.rag-hero-title, html.rag-dark .rag-hero-title {{
+  color:#e7edf5 !important; -webkit-text-fill-color:#e7edf5 !important;
+}}
 /* Wort-Wrapper (siehe render_hero_title()-Docstring): macht ein ganzes Wort
    umbruch-atomar, waehrend zwischen Woertern weiterhin normal umgebrochen
    werden darf - behebt den "Willkommen zurü/ck"-Mitten-im-Wort-Umbruch bei
    schmalen (Handy-)Breiten. */
 .rag-hero-word {{display:inline-block; white-space:nowrap;}}
-.rag-hero-title .rag-hero-letter {{display:inline-block; opacity:0; animation:ragLetterIn .45s ease forwards;}}
+/* opacity bleibt 1 (Erstframe lesbar). Animation nur Transform; Delay darf
+   Buchstaben nicht unsichtbar lassen (Live-Test: Desktop-Titel war weiss). */
+.rag-hero-title .rag-hero-letter {{
+  display:inline-block; opacity:1;
+  animation:ragLetterIn .45s ease both;
+}}
 /* Auf Home verbraucht die Kombination aus grosser Hero-Ueberschrift + grossem
    Maskottchen bei Handy-Breite sehr viel Platz, bevor ueberhaupt etwas
    Nuetzliches (Suche, Kacheln) sichtbar wird (Live-Test bei 390px zeigte:
@@ -479,8 +489,8 @@ html.rag-dark .rag-hero-title {{ color:{accent} !important; }}
   }}
 }}
 @keyframes ragLetterIn {{
-  from {{opacity:0; transform:translateY(10px) scale(.85);}}
-  to   {{opacity:1; transform:translateY(0) scale(1);}}
+  from {{transform:translateY(8px) scale(.96);}}
+  to   {{transform:translateY(0) scale(1);}}
 }}
 
 /* Wiederverwendbare "weiche Karte" fuer Inhalts-Gruppen auf einzelnen Seiten
@@ -675,8 +685,16 @@ html.rag-dark .rag-heute-schedule li {{border-bottom-color:rgba(231,237,245,.08)
   box-shadow:0 1px 3px rgba(0,0,0,.08);
 }}
 .stButton > button:disabled, .stDownloadButton > button:disabled,
-.stFormSubmitButton > button:disabled {{
-  transform:none !important; box-shadow:none !important; opacity:.58;
+.stFormSubmitButton > button:disabled,
+button[kind="primary"]:disabled, [data-testid="stBaseButton-primary"]:disabled {{
+  transform:none !important; box-shadow:none !important; opacity:1 !important;
+  background:#e8e4df !important; border-color:#ddd8d2 !important;
+  color:#6b6570 !important;
+}}
+html.rag-dark .stButton > button:disabled,
+html.rag-dark button[kind="primary"]:disabled,
+html.rag-dark [data-testid="stBaseButton-primary"]:disabled {{
+  background:#2a3a52 !important; border-color:#3a4d68 !important; color:#9aa8bb !important;
 }}
 button[kind="primary"], button[kind="primaryFormSubmit"],
 [data-testid="stBaseButton-primary"],
@@ -774,9 +792,26 @@ div[class*="st-key-tile_"] button p {{
   font-size:1rem !important; line-height:1.3;
 }}
 
-/* Hamburger-Popover (st.popover) freundlicher rund statt eckig-technisch. */
+/* Hamburger-Popover (st.popover) freundlicher rund statt eckig-technisch.
+   Inhalt scrollbar, sonst schneidet Mobile die unteren Einträge ab. */
 [data-testid="stPopover"] button {{
   border-radius:14px !important;
+}}
+[data-testid="stPopoverBody"],
+div[data-baseweb="popover"] [data-testid="stVerticalBlock"] {{
+  max-height:min(80vh, 560px); overflow-y:auto;
+}}
+@media (max-width: 700px) {{
+  [data-testid="stPopover"] {{ width:100%; }}
+}}
+.rag-nav-here {{
+  display:block; padding:.45rem .75rem; margin:.12rem 0; border-radius:12px;
+  background:{soft}; color:#2b2036; font-weight:650;
+  border:2px solid {accent};
+}}
+html.rag-dark .rag-nav-here {{ color:#e7edf5; background:#132b4d; }}
+.rag-kurs-title {{
+  font-weight:700; margin:0 0 .35rem; overflow-wrap:anywhere; line-height:1.3;
 }}
 
 /* Dark-Mode-Umschalter (siehe _theme_toggle_html()) - schwebender runder
@@ -836,10 +871,13 @@ html.rag-dark div[class*="st-key-card_"] {{
   border-color:#2a4a72 !important;
   box-shadow:0 3px 0 rgba(0,0,0,.25), 0 2px 14px rgba(0,0,0,.3) !important;
 }}
-html.rag-dark .rag-hero-title {{color:{accent} !important;}}
+html.rag-dark .rag-hero-title {{color:#e7edf5 !important;}}
 
 @media (prefers-reduced-motion: reduce) {{
-  .block-container, .rag-doodle, h1, .rag-hero-title span {{animation:none !important;}}
+  .block-container, .rag-doodle, h1, .rag-hero-title span,
+  .rag-hero-title .rag-hero-letter {{
+    animation:none !important; opacity:1 !important; transform:none !important;
+  }}
   .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button,
   div[class*="st-key-tile_"] button, #rag-theme-switch {{
     transition:none !important;
@@ -1226,9 +1264,12 @@ def render_hamburger_nav(current_page_key: str) -> None:
                 continue
             is_here = key == current_page_key
             shown = "Heute" if key == "home" else page["title"]
-            label = f"{page['icon']} {shown}" + ("  ·  hier" if is_here else "")
-            if st.button(label, key=f"hamburger_{key}", use_container_width=True,
-                        disabled=is_here):
+            if is_here:
+                st.markdown(
+                    f'<div class="rag-nav-here">{page["icon"]} {shown} · hier</div>',
+                    unsafe_allow_html=True)
+            elif st.button(f"{page['icon']} {shown}", key=f"hamburger_{key}",
+                           use_container_width=True):
                 _go_to(page)
 
         st.divider()
@@ -1245,9 +1286,13 @@ def render_hamburger_nav(current_page_key: str) -> None:
                 if _p["key"] in HIDDEN_PAGE_KEYS or _p["key"] in HAMBURGER_KEYS:
                     continue
                 is_here = _p["key"] == current_page_key
-                label = f"{_p['icon']} {_p['title']}" + ("  ·  hier" if is_here else "")
-                if st.button(label, key=f"hamburger_all_{_p['key']}",
-                            use_container_width=True, disabled=is_here):
+                if is_here:
+                    st.markdown(
+                        f'<div class="rag-nav-here">{_p["icon"]} {_p["title"]} · hier</div>',
+                        unsafe_allow_html=True)
+                elif st.button(f"{_p['icon']} {_p['title']}",
+                               key=f"hamburger_all_{_p['key']}",
+                               use_container_width=True):
                     _go_to(_p)
 
         st.divider()

@@ -15,6 +15,13 @@ import time
 from playwright.sync_api import sync_playwright
 
 
+def _has_streamlit_traceback(text: str) -> bool:
+    """Streamlit zeigt Exceptions als 'Traceback:\\nFile \"...', nicht als CPython-Header."""
+    if "Traceback (most recent call last)" in text:
+        return True
+    return "Traceback:" in text and 'File "' in text
+
+
 ROOT = Path(__file__).resolve().parents[1]
 PORT = int(os.environ.get("RAG_SMOKE_PORT", "8511"))
 BASE = f"http://127.0.0.1:{PORT}"
@@ -89,7 +96,7 @@ def main() -> int:
                 page.get_by_text(expected, exact=False).first.wait_for(
                     state="visible", timeout=30_000)
                 body = page.locator("body").inner_text()
-                if "Traceback (most recent call last)" in body:
+                if _has_streamlit_traceback(body):
                     raise AssertionError(f"Streamlit-Traceback auf {path}")
                 if path == "/Lernen" and "Prüfungsphase" in body:
                     raise AssertionError(

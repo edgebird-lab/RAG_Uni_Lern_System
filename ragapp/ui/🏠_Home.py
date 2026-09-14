@@ -403,6 +403,7 @@ if _snap:
         from ragapp import manifest as _home_manifest
         from ragapp import student_flow as _sf
         _faecher = _home_manifest.study_subjects()
+        _card_total = int((_home_manifest.review_counts() or {}).get("total") or 0)
         _sprint_choices = ["Alle Fächer"] + _faecher
         if "home_sprint_subject" not in st.session_state:
             _pref = _tp.get("subject")
@@ -411,15 +412,20 @@ if _snap:
         elif st.session_state.get("home_sprint_subject") not in _sprint_choices:
             st.session_state["home_sprint_subject"] = "Alle Fächer"
 
-        if st.button("▶ Heute starten (bis zu 16 Karten)", type="primary",
-                      key="heute_start", use_container_width=True):
-            st.session_state["study_prefill"] = {
-                "source": "heute", "limit": 16, "mode": "reveal",
-                "subject": (_snap.get("next_exam") or {}).get("subject")
-                or (_tp.get("subject")),
-                "cram": bool(_snap.get("cram_active")),
-            }
-            st.switch_page(_target["lernen"])
+        if _card_total > 0:
+            if st.button("▶ Heute starten (bis zu 16 Karten)", type="primary",
+                          key="heute_start", use_container_width=True):
+                st.session_state["study_prefill"] = {
+                    "source": "heute", "limit": 16, "mode": "reveal",
+                    "subject": (_snap.get("next_exam") or {}).get("subject")
+                    or (_tp.get("subject")),
+                    "cram": bool(_snap.get("cram_active")),
+                }
+                st.switch_page(_target["lernen"])
+        elif _needs_harvest:
+            st.caption("Noch keine Karteikarten – zuerst das Lernset übernehmen.")
+        else:
+            st.caption("Noch keine Karteikarten – unter Karteikarten ein Lernset anlegen.")
 
         with st.expander("Sprint und Fehlerheft", expanded=False):
             _sp1, _sp2 = st.columns([2, 3])
@@ -488,8 +494,8 @@ if _snap:
         if _needs_harvest:
             st.warning("📇 Neue Fragen sind indexiert, aber noch **nicht als Karteikarten** "
                        "übernommen.")
-            if st.button("Lernset öffnen", key="heute_harvest",
-                         use_container_width=True):
+            if st.button("Lernset öffnen", type="primary" if _card_total == 0 else "secondary",
+                         key="heute_harvest", use_container_width=True):
                 st.switch_page(_target["lernen"])
         elif _snap["overdue_tasks"] or _snap["due_today_tasks"]:
             if st.button("🗂️ Aufgaben ansehen", key="heute_tasks",

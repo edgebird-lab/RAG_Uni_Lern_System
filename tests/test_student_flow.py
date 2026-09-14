@@ -422,6 +422,25 @@ def test_scan_inbox_fehlerdatei_bleibt_im_kurs_sichtbar(
     assert len(manifest.list_index_retry_jobs()) == 1
 
 
+def test_backfill_failed_index_jobs_liest_sqlite_rows(isolated_db):
+    """Live-Test: Dokumente-Seite rief .get() auf sqlite3.Row und stürzte ab."""
+    manifest.upsert_document(
+        doc_id="err-1", content_hash="h", source_path="quellen/BWL/alt.md",
+        filename="alt.md", subject="BWL", filetype="md",
+        num_chunks=0, num_questions=0, char_count=12, status="error",
+        use_rag=True)
+    manifest.upsert_document(
+        doc_id="ok-1", content_hash="h2", source_path="quellen/BWL/ok.md",
+        filename="ok.md", subject="BWL", filetype="md",
+        num_chunks=3, num_questions=0, char_count=40, status="ok",
+        use_rag=True)
+    assert student_flow.backfill_failed_index_jobs() == 1
+    jobs = manifest.list_index_retry_jobs()
+    assert len(jobs) == 1
+    assert jobs[0]["source_path"] == "quellen/BWL/alt.md"
+    assert student_flow.backfill_failed_index_jobs() == 0
+
+
 def test_index_retry_queue_ist_idempotent_und_wird_erfolgreich_abgebaut(
         isolated_db, tmp_path, monkeypatch):
     source = tmp_path / "skript.txt"
@@ -652,3 +671,18 @@ def test_oral_weak_card_ids_skips_passed_and_missing():
         ]
     })
     assert ids == ["b"]
+
+
+def test_plain_study_snippet_strips_math_and_markdown():
+    snip = student_flow.plain_study_snippet("Ableitung von $x^2$ und **fertig**")
+    assert "$" not in snip
+    assert "**" not in snip
+    assert "Ableitung von" in snip
+    assert "fertig" in snip
+    block = student_flow.plain_study_snippet(r"Start $$\int_0^1 x\,dx$$ Ende")
+    assert "Start" in block and "Ende" in block
+    assert "int" not in block
+    assert student_flow.plain_study_snippet("") == ""
+    long = student_flow.plain_study_snippet("a" * 80, limit=42)
+    assert long.endswith("…")
+    assert len(long) == 43
