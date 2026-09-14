@@ -363,3 +363,45 @@ def test_mark_tight_nums_wickelt_ziffern_in_span():
     assert mark_tight_nums("15 Karten fällig") == (
         '<span class="rag-num">15</span> Karten fällig')
     assert ".rag-num" in _FONT_FACE_CSS
+
+
+def test_sidebar_chevron_und_theme_switch_nehmen_sich_nicht_ins_gehege():
+    assert "[data-testid=\"collapsedControl\"]" in _BASE_CSS
+    assert "stSidebarCollapsedControl" in _BASE_CSS
+    assert "stExpandSidebarButton" in _BASE_CSS
+    assert "stCollapseSidebarButton" in _BASE_CSS
+    assert ".rag-page-lede" in _BASE_CSS
+    assert "padding-right:3.25rem" in _BASE_CSS
+    assert "calc(100% - 3.6rem)" in _BASE_CSS
+    css = _BASE_CSS.format(accent="#c43b58", soft="#f6d5dc")
+    assert "stSidebarCollapsedControl" in css
+
+
+def test_home_heute_starten_steht_vor_den_chips():
+    from pathlib import Path
+    src = Path("ragapp/ui/🏠_Home.py").read_text(encoding="utf-8")
+    assert 'st.button("▶ Heute starten"' in src
+    assert "Mehr heute" not in src
+    assert src.index('key="heute_start"') < src.index("rag-heute-chips")
+    assert "Karten fällig" not in src
+
+
+def test_lernen_zeigt_stapel_vor_der_lernset_fabrik():
+    from pathlib import Path
+    src = Path("ragapp/ui/pages/4_🎓_Lernen.py").read_text(encoding="utf-8")
+    assert 'with card("lernset")' not in src
+    assert 'st.subheader("Stapel")' in src
+    assert src.index('_go1.button("▶️ Jetzt lernen"') < src.index(
+        '"Lernset erstellen",\n            expanded=bool(st.session_state.get("_lernset_result"))')
+    assert "Stapel ankreuzen" in src
+    assert "Bestand ·" in src
+    assert "heading: bool = True" in src
+
+
+def test_chat_leerer_verlauf_scrollt_nicht_zur_eingabe():
+    from pathlib import Path
+    src = Path("ragapp/ui/pages/0_💬_Chat.py").read_text(encoding="utf-8")
+    assert "rag-page-lede" in src
+    assert "scrollIntoView" in src
+    assert "stChatInput" in src
+    assert "stChatMessage" in src

@@ -92,6 +92,8 @@ def test_home_mood_line_nennt_faellige_karten():
     icon, text = home_mood_line({"due_cards": 3})
     assert icon == "🎴"
     assert "3" in text
+    assert "fällig" in text
+    assert "Karten fällig" not in text
 
 
 def test_chat_mood_warten_ist_fokussiert_mit_birne():

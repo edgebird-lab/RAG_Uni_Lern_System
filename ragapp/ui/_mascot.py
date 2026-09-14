@@ -147,7 +147,7 @@ def home_mood_line(snapshot: "dict | None", *, celebrate: bool = False,
         return ("⏰", "Klausur nah – jede Wiederholung zählt jetzt.")
     if snapshot and snapshot.get("due_cards"):
         n = int(snapshot["due_cards"])
-        return ("🎴", f"{n} Karte{'n' if n != 1 else ''} fällig – bereit zum Lernen?")
+        return ("🎴", f"{n} fällig – bereit zum Lernen?")
     if snapshot and (snapshot.get("overdue_tasks") or snapshot.get("due_today_tasks")):
         return ("✅", "Aufgaben warten heute – schauen wir in Kurse & Stundenplan.")
     if snapshot and (snapshot.get("study_min_today") or 0) > 0:

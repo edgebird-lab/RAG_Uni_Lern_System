@@ -26,7 +26,7 @@ from ragapp.ui._loading import page_boot, skeleton
 # damit beim Seitenwechsel kein weisser Bildschirm entsteht.
 page_boot("🎓 Karteikarten", page_title="Karteikarten", icon="🎓", layout="wide", accent="lernen")
 
-from ragapp.ui._style import block_done_banner, card, delete_button
+from ragapp.ui._style import block_done_banner, delete_button
 
 # Nur noch das seiten-spezifische Layout; die Karteikarten-Optik (hell + dunkel)
 # kommt jetzt zentral aus ragapp.ui._theme.apply_theme().
@@ -36,8 +36,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-
-st.caption("Stapel wählen und lernen. Fällige Karten kommen von selbst wieder.")
 
 # Schwere Importe/Datenabfragen unter kleinem Ladehinweis; die import-Statements
 # binden im Modulscope, daher funktionieren alle spaeteren Verwendungen unveraendert.
@@ -64,12 +62,13 @@ _mv_flash = st.session_state.pop("_mv_flash", None)
 if _mv_flash:
     st.success(_mv_flash)
 
-def _render_lernset_pfad() -> None:
+def _render_lernset_pfad(*, heading: bool = True) -> None:
     """Standardweg: Dokumente wählen → Lernset erstellen → Vorschau → Jetzt lernen."""
     from ragapp.ui._style import empty_state, page_title as _pt
 
     docs = [dict(r) for r in manifest.list_documents()]
-    st.markdown("##### Lernset erstellen")
+    if heading:
+        st.markdown("##### Lernset erstellen")
     st.caption("Wähle Unterlagen, erzeuge in einem Schritt Fragen und Karten, "
                "prüfe die Vorschau und starte die erste Runde.")
     if not docs:
@@ -201,16 +200,19 @@ def _render_karten_erstellen() -> None:
     _ingest_ui.render_exam_catalog()
 
 
-# Kopfzeile mit Zahlen (Anki-Queues) – erst wenn Karten da sind.
+# Bestand kompakt – die nächste Tat ist Stapel + Jetzt lernen, nicht vier Kacheln.
 if _counts["total"] > 0:
     _bd_all = manifest.due_breakdown()
     _rest_neu_all = manifest.remaining_new_quota()
     _new_show = (_bd_all["due_new"] if _rest_neu_all is None
                  else min(_bd_all["due_new"], _rest_neu_all))
-    with card("kopfzeile"):
+    _due_now = manifest.effective_due_count()
+    with st.expander(
+            f"Bestand · {_counts['total']} Karten · {_due_now} fällig",
+            expanded=False):
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Karten gesamt", _counts["total"])
-        c2.metric("Jetzt fällig", manifest.effective_due_count(),
+        c2.metric("Jetzt fällig", _due_now,
                  help="Lernen + Wiederholen + neue Karten bis zum Tageskontingent "
                       "(Einstellungen → Neue Karten pro Tag).")
         c3.metric("Neu heute", _new_show,
@@ -221,43 +223,9 @@ if _counts["total"] > 0:
         c4.metric("Wiederholen", _bd_all["due_review"] + _bd_all["due_learning"],
                   help="Fällige Wiederholungen inkl. Lern-/Relearn-Schritte.")
 
-# Persistenter Harvest-Hinweis (oben, mit Aktion – nicht nur unten in Verwaltung)
 _in_round = bool(st.session_state.get("_study_active"))
 _needs_harvest = study.needs_card_harvest() or st.session_state.pop("_needs_card_harvest", None)
-if _needs_harvest and not _in_round:
-    _nh1, _nh2 = st.columns([3, 1])
-    _nh1.info("Neue Fragen wurden indexiert. Übernimm sie jetzt als Karteikarten.")
-    if _nh2.button("🔄 Karten aktualisieren", type="primary", key="top_harvest",
-                   use_container_width=True):
-        with st.status("Aktualisiere …", expanded=True) as s:
-            res = study.harvest_cards(progress=lambda m: s.update(label=m))
-            s.update(label="Aktualisierung fertig", state="complete")
-        if res["gefunden"] == 0:
-            st.warning("Kein Fragenmaterial gefunden.")
-        elif res["neu"] == 0:
-            st.info("Alles aktuell – keine neuen Karten.")
-            st.rerun()
-        else:
-            st.success(f"➕ {res['neu']} neue Karten hinzugefügt.")
-            st.rerun()
-
 _offen_global = manifest.count_cards(source="question", only_unanswered=True)
-if _offen_global > 0 and not _in_round:
-    _aw1, _aw2 = st.columns([3, 1])
-    _aw1.warning(
-        f"**{_offen_global} Karte(n) ohne Musterlösung** – beim Üben siehst du sonst nur "
-        "den Originaltext. Erzeuge Antworten unter **⚙️ Karten verwalten**.")
-    if _aw2.button("🤖 Antworten erzeugen", key="quick_ans", use_container_width=True):
-        with st.status("Erzeuge Musterlösungen …", expanded=True) as s:
-            ares = study.generate_answers(
-                limit=min(20, _offen_global),
-                progress=lambda m: s.update(label=m))
-            s.update(label="Fertig", state="complete")
-        if ares.get("filled"):
-            st.success(f"✅ {ares['filled']} Musterlösung(en) erzeugt.")
-            st.rerun()
-        elif ares.get("status") == "llm_error":
-            st.error(f"❌ Modellfehler: {ares.get('error_msg', '')}")
 
 st.divider()
 
@@ -324,41 +292,14 @@ if _prefill and not st.session_state.get(ACTIVE):
 
 if not st.session_state.get(ACTIVE):
     block_done_banner(state_key="_study_from_block_id", key_prefix="study")
-    _err_open = manifest.list_errors(limit=8)
-    if _err_open:
-        with st.expander(
-                f"📒 Fehlerheft ({manifest.count_open_errors()} offen)",
-                expanded=False):
-            st.caption("Offene Lücken – üben oder als erledigt abhaken.")
-            for _err in _err_open:
-                _e1, _e2, _e3 = st.columns([3.2, 1, 1])
-                _e1.write((_err.get("front") or _err.get("detail") or "Eintrag")[:90])
-                if _e2.button("Üben", key=f"err_practice_{_err['error_id']}",
-                              use_container_width=True):
-                    st.session_state["study_prefill"] = {
-                        "source": "fehlerheft", "deck": "Fehlerheft",
-                        "mode": "reveal", "limit": 15,
-                        "subject": _err.get("subject"),
-                        "card_ids": (
-                            [_err["card_id"]] if _err.get("card_id") else []),
-                    }
-                    st.rerun()
-                if _e3.button("Erledigt", key=f"err_done_{_err['error_id']}",
-                              use_container_width=True):
-                    manifest.resolve_error(_err["error_id"])
-                    st.rerun()
 
 
 if not st.session_state.get(ACTIVE):
     if _counts["total"] == 0:
         _render_lernset_pfad()
         st.stop()
-    with card("lernset"):
-        _render_lernset_pfad()
     st.subheader("Stapel")
-    st.caption("Wie bei Anki: Stapel ankreuzen und **Jetzt lernen** – fällige "
-               "Wiederholungen zuerst, dann neue Karten bis zum Tageskontingent. "
-               "Einstellungen (Neue/Tag) unter ⚙️.")
+    st.caption("Fach wählen, **Jetzt lernen**. Stapel nur ankreuzen, wenn nicht alle.")
 
     _faecher = manifest.study_subjects()
     _subj_pick = st.selectbox(
@@ -376,7 +317,8 @@ if not st.session_state.get(ACTIVE):
             st.info(f"🗓️ Klausur **{_fach_label(subj)}**: {planner.humanize_days(_dte)} "
                     f"({_ex['exam_date']}) · Bereitschaft **{_rd} %**")
 
-    # Stapel-Zeilen mit Checkboxen (persistente Auswahl in session_state)
+    # Auswahl aus dem letzten Lauf (Default: alle). Tabelle erst NACH der
+    # Hauptaktion, damit „Jetzt lernen“ auf dem Handy im ersten Screen liegt.
     _ov_rows = manifest.deck_overview(subject=subj, only_flashcard=True)
     _deck_keys: list[str] = []
     for _o in _ov_rows:
@@ -386,44 +328,7 @@ if not st.session_state.get(ACTIVE):
     if _sel_key not in st.session_state:
         st.session_state[_sel_key] = set(_deck_keys)
 
-    _sa1, _sa2 = st.columns(2)
-    if _sa1.button("Alle Stapel", key="deck_sel_all", use_container_width=True):
-        st.session_state[_sel_key] = set(_deck_keys)
-        for _dk in _deck_keys:
-            st.session_state[f"deck_cb_{subj or 'all'}_{_dk}"] = True
-        st.rerun()
-    if _sa2.button("Keine Stapel", key="deck_sel_none", use_container_width=True):
-        st.session_state[_sel_key] = set()
-        for _dk in _deck_keys:
-            st.session_state[f"deck_cb_{subj or 'all'}_{_dk}"] = False
-        st.rerun()
-
-    _selected: list[str] = []
-    if not _ov_rows:
-        st.info("Keine Karten in dieser Auswahl.")
-    else:
-        _h1, _h2, _h3, _h4, _h5 = st.columns([0.5, 3.5, 1, 1, 1])
-        _h1.caption("")
-        _h2.caption("Stapel")
-        _h3.caption("Neu")
-        _h4.caption("Lernen")
-        _h5.caption("Wiederholen")
-        for _o in _ov_rows:
-            _dk = "__none__" if not _o.get("deck") else str(_o["deck"])
-            _label = "— ohne Stapel —" if _dk == "__none__" else _dk
-            _c1, _c2, _c3, _c4, _c5 = st.columns([0.5, 3.5, 1, 1, 1])
-            _checked = _c1.checkbox(
-                "✓", key=f"deck_cb_{subj or 'all'}_{_dk}",
-                value=_dk in st.session_state[_sel_key],
-                label_visibility="collapsed")
-            if _checked:
-                _selected.append(_dk)
-            _c2.markdown(f"**{_label}** · {_o['total']} Karten")
-            _c3.write(str(_o["new"]))
-            _c4.write(str(_o["learning"]))
-            _c5.write(str(_o["review"]))
-        st.session_state[_sel_key] = set(_selected)
-
+    _selected = [k for k in _deck_keys if k in st.session_state[_sel_key]]
     decks = _selected if _selected else None
     # Leere Auswahl = bewusst nichts lernen (nicht "alle")
     if _ov_rows and not _selected:
@@ -443,7 +348,7 @@ if not st.session_state.get(ACTIVE):
 
     _npd = int(getattr(settings, "SRS_NEW_PER_DAY", 20))
     _npd_txt = "unbegrenzt" if _npd <= 0 else str(_npd)
-    st.info(
+    st.caption(
         f"Heute **{_breakdown.get('due_review', 0)}** Wiederholungen · "
         f"**{_breakdown.get('due_learning', 0)}** in Lernen · "
         f"noch **{_new_eff}** von {_npd_txt} neuen"
@@ -451,11 +356,10 @@ if not st.session_state.get(ACTIVE):
         + "."
     )
 
-    _mode_lbl = st.radio(
+    _mode_lbl = st.selectbox(
         "Übungsmodus",
         _MODE_LABELS,
-        horizontal=True,
-        key="study_mode_pref",
+        key="study_mode_choice",
         help="**Aufdecken**: klassisch. **Tippen & benoten**: KI-Teilpunkte. "
              "**Lückentext** / **Multiple Choice**: andere Abfrageformen.")
 
@@ -514,6 +418,112 @@ if not st.session_state.get(ACTIVE):
             st.rerun()
         else:
             st.info("Fehlerheft ist leer – gut so.")
+
+    if _needs_harvest and not _in_round:
+        _nh1, _nh2 = st.columns([3, 1])
+        _nh1.info("Neue Fragen wurden indexiert. Übernimm sie jetzt als Karteikarten.")
+        if _nh2.button("🔄 Karten aktualisieren", type="primary", key="top_harvest",
+                       use_container_width=True):
+            with st.status("Aktualisiere …", expanded=True) as s:
+                res = study.harvest_cards(progress=lambda m: s.update(label=m))
+                s.update(label="Aktualisierung fertig", state="complete")
+            if res["gefunden"] == 0:
+                st.warning("Kein Fragenmaterial gefunden.")
+            elif res["neu"] == 0:
+                st.info("Alles aktuell – keine neuen Karten.")
+                st.rerun()
+            else:
+                st.success(f"➕ {res['neu']} neue Karten hinzugefügt.")
+                st.rerun()
+
+    if _offen_global > 0 and not _in_round:
+        _aw1, _aw2 = st.columns([3, 1])
+        _aw1.warning(
+            f"**{_offen_global} Karte(n) ohne Musterlösung** – beim Üben siehst du sonst nur "
+            "den Originaltext. Erzeuge Antworten unter **⚙️ Karten verwalten**.")
+        if _aw2.button("🤖 Antworten erzeugen", key="quick_ans", use_container_width=True):
+            with st.status("Erzeuge Musterlösungen …", expanded=True) as s:
+                ares = study.generate_answers(
+                    limit=min(20, _offen_global),
+                    progress=lambda m: s.update(label=m))
+                s.update(label="Fertig", state="complete")
+            if ares.get("filled"):
+                st.success(f"✅ {ares['filled']} Musterlösung(en) erzeugt.")
+                st.rerun()
+            elif ares.get("status") == "llm_error":
+                st.error(f"❌ Modellfehler: {ares.get('error_msg', '')}")
+
+    _err_open = manifest.list_errors(limit=8)
+    if _err_open:
+        with st.expander(
+                f"📒 Fehlerheft ({manifest.count_open_errors()} offen)",
+                expanded=False):
+            st.caption("Offene Lücken – üben oder als erledigt abhaken.")
+            for _err in _err_open:
+                _e1, _e2, _e3 = st.columns([3.2, 1, 1])
+                _e1.write((_err.get("front") or _err.get("detail") or "Eintrag")[:90])
+                if _e2.button("Üben", key=f"err_practice_{_err['error_id']}",
+                              use_container_width=True):
+                    st.session_state["study_prefill"] = {
+                        "source": "fehlerheft", "deck": "Fehlerheft",
+                        "mode": "reveal", "limit": 15,
+                        "subject": _err.get("subject"),
+                        "card_ids": (
+                            [_err["card_id"]] if _err.get("card_id") else []),
+                    }
+                    st.rerun()
+                if _e3.button("Erledigt", key=f"err_done_{_err['error_id']}",
+                              use_container_width=True):
+                    manifest.resolve_error(_err["error_id"])
+                    st.rerun()
+
+    with st.expander(
+            (f"Stapel ankreuzen · {len(_selected)} von {len(_deck_keys)}"
+             if _deck_keys else "Stapel ankreuzen"),
+            expanded=False):
+        if not _ov_rows:
+            st.info("Keine Karten in dieser Auswahl.")
+        else:
+            _sa1, _sa2 = st.columns(2)
+            if _sa1.button("Alle Stapel", key="deck_sel_all",
+                           use_container_width=True):
+                st.session_state[_sel_key] = set(_deck_keys)
+                for _dk in _deck_keys:
+                    st.session_state[f"deck_cb_{subj or 'all'}_{_dk}"] = True
+                st.rerun()
+            if _sa2.button("Keine Stapel", key="deck_sel_none",
+                           use_container_width=True):
+                st.session_state[_sel_key] = set()
+                for _dk in _deck_keys:
+                    st.session_state[f"deck_cb_{subj or 'all'}_{_dk}"] = False
+                st.rerun()
+            _picked: list[str] = []
+            _h1, _h2, _h3, _h4, _h5 = st.columns([0.5, 3.5, 1, 1, 1])
+            _h1.caption("")
+            _h2.caption("Stapel")
+            _h3.caption("Neu")
+            _h4.caption("Lernen")
+            _h5.caption("Wiederholen")
+            for _o in _ov_rows:
+                _dk = "__none__" if not _o.get("deck") else str(_o["deck"])
+                _label = "— ohne Stapel —" if _dk == "__none__" else _dk
+                _c1, _c2, _c3, _c4, _c5 = st.columns([0.5, 3.5, 1, 1, 1])
+                _checked = _c1.checkbox(
+                    "✓", key=f"deck_cb_{subj or 'all'}_{_dk}",
+                    value=_dk in st.session_state[_sel_key],
+                    label_visibility="collapsed")
+                if _checked:
+                    _picked.append(_dk)
+                _c2.markdown(f"**{_label}** · {_o['total']} Karten")
+                _c3.write(str(_o["new"]))
+                _c4.write(str(_o["learning"]))
+                _c5.write(str(_o["review"]))
+            st.session_state[_sel_key] = set(_picked)
+
+    with st.expander(
+            "Lernset erstellen",
+            expanded=bool(st.session_state.get("_lernset_result"))):
+        _render_lernset_pfad(heading=False)
 
     # --- Karten ankreuzen (dauerhaft use_flashcard) ---
     with st.expander("Karten fürs Lernen ankreuzen", expanded=False):
@@ -1041,7 +1051,7 @@ _active_tab = st.segmented_control(
 )
 
 if _active_tab == "🌾 Karten erstellen":
-    st.caption("Standardweg oben: Dokumente wählen → Lernset erstellen → Vorschau. "
+    st.caption("Neues Lernset: oben unter **Lernset erstellen**. "
                "Fragen anreichern, manuelles Ernten und Klausurkatalog bleiben "
                "im Expertenmodus.")
     with st.expander("Expertenmodus", expanded=False):

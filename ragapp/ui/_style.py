@@ -428,6 +428,24 @@ html.rag-dark [role="tab"]:focus-visible {{
 
 /* Native Streamlit-Seitenliste aus - ersetzt durch Hamburger + Home-Kacheln. */
 [data-testid="stSidebarNav"] {{display:none;}}
+/* Zusammengeklappte Sidebar laesst sonst einen >>Chevron oben links stehen,
+   obwohl die Seitenliste aus ist – zweites, totes Menue neben ☰. */
+[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="stExpandSidebarButton"],
+[data-testid="stCollapseSidebarButton"] {{
+  display:none !important; visibility:hidden !important;
+  pointer-events:none !important; width:0 !important; height:0 !important;
+}}
+/* Platz rechts fuer den fixierten Hell/Dunkel-Knopf, damit Titel und
+   Seiten-Lead (z. B. Chat-Hinweis) nicht darunter laufen. */
+.rag-page-lede {{
+  display:block; max-width:42rem; margin:.15rem 0 .55rem;
+}}
+@media (max-width: 700px) {{
+  h1 {{padding-right:3.25rem !important;}}
+  .rag-page-lede {{max-width:calc(100% - 3.6rem);}}
+}}
 
 @keyframes ragFadeIn {{
   from {{opacity:0; transform:translateY(6px);}}
@@ -740,6 +758,12 @@ html.rag-dark .stFormSubmitButton > button:hover {{
     padding-top:3.5rem !important;
     padding-left:1rem !important; padding-right:1rem !important;
   }}
+  h1, [data-testid="stHeading"] h1 {{
+    font-size:1.7rem !important; line-height:1.15 !important;
+    padding-right:.35rem !important;
+    hyphens:none !important; -webkit-hyphens:none !important;
+  }}
+  [data-testid="stHeaderActionElements"] {{display:none !important;}}
   .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {{
     min-height:44px;
   }}

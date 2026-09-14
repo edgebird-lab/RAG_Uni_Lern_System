@@ -67,9 +67,9 @@ iframe[height="0"] {
 """, unsafe_allow_html=True)
 
 st.markdown(
-    "<span class='small'>Antworten kommen <b>ausschließlich</b> aus deinen "
+    "<p class='rag-page-lede small'>Antworten kommen <b>ausschließlich</b> aus deinen "
     "Unterlagen. Weiß das System etwas nicht, nennt es dir ehrlich die am besten "
-    "passenden Dokumente, <b>ohne zu halluzinieren</b>.</span>",
+    "passenden Dokumente, <b>ohne zu halluzinieren</b>.</p>",
     unsafe_allow_html=True,
 )
 
@@ -662,6 +662,45 @@ if _chat_mode == "sokratisch":
                 if st.session_state.get("socratic_topic")
                 else "Oder tippe hier das Thema …")
 prompt = st.chat_input(_chat_ph)
+# Leerer Chat: oben bleiben (Beispiel-Fragen, Filter), nicht zur Eingabe springen.
+if (not st.session_state.messages
+        and not st.session_state.get("_pending_prompt")
+        and not prompt):
+    from ragapp.ui._mascot import _disable_host_iframe_js as _chat_disable_iframe
+    _components.html(
+        "<script>" + _chat_disable_iframe() + """
+        (function () {
+          try {
+            var win = window.parent, doc = win.document;
+            if (doc.querySelector('[data-testid="stChatMessage"]')) return;
+            function pinTop() {
+              try {
+                var ta = doc.querySelector('[data-testid="stChatInputTextArea"]')
+                  || doc.querySelector('[data-testid="stChatInput"] textarea');
+                if (ta && doc.activeElement === ta) ta.blur();
+                var menu = null;
+                var buttons = doc.querySelectorAll('button');
+                for (var i = 0; i < buttons.length; i++) {
+                  if ((buttons[i].innerText || '').indexOf('Menü') >= 0) {
+                    menu = buttons[i]; break;
+                  }
+                }
+                var target = menu || doc.querySelector('h1');
+                if (target) target.scrollIntoView({block: 'start', inline: 'nearest'});
+              } catch (e) {}
+            }
+            pinTop();
+            var n = 0;
+            var iv = win.setInterval(function () {
+              pinTop();
+              if (++n >= 8) win.clearInterval(iv);
+            }, 180);
+          } catch (e) {}
+        })();
+        </script>
+        """,
+        height=0,
+    )
 if st.session_state.pop("_socratic_boot", False):
     st.rerun()
 # Klick auf eine Beispiel-Frage (Onboarding) wirkt wie eine getippte Eingabe.

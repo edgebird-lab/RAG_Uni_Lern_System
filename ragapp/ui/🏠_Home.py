@@ -284,17 +284,34 @@ if _snap:
             st.error(f"🔥 Dein Streak von {_snap['streak']} Tag(en) reißt heute, "
                     "wenn du jetzt nicht noch kurz lernst.")
 
-        # Dringlichkeit zuerst; max. 4 Chips, Rest unter "Mehr"
+        _card_total = int((_home_manifest.review_counts() or {}).get("total") or 0)
+        if _card_total > 0:
+            if st.button("▶ Heute starten", type="primary",
+                          key="heute_start", use_container_width=True,
+                          help="Bis zu 16 Karten, fällige zuerst."):
+                st.session_state["study_prefill"] = {
+                    "source": "heute", "limit": 16, "mode": "reveal",
+                    "subject": (_snap.get("next_exam") or {}).get("subject")
+                    or ((_snap.get("top_priority") or {}).get("subject")),
+                    "cram": bool(_snap.get("cram_active")),
+                }
+                st.switch_page(_target["lernen"])
+        elif _needs_harvest:
+            st.caption("Noch keine Karteikarten – zuerst das Lernset übernehmen.")
+        else:
+            st.caption("Noch keine Karteikarten – unter Karteikarten ein Lernset anlegen.")
+
+        # Dringlichkeit zuerst; max. 3 kurze Chips, Rest steht in der Zeitleiste.
         _chips_priority: list[str] = []
         _chips_rest: list[str] = []
         if _snap["due_cards"]:
-            _chips_priority.append(f"🎴 {_snap['due_cards']} Karten fällig")
+            _chips_priority.append(f"🎴 {_snap['due_cards']} fällig")
         if _snap["leeches"]:
-            _chips_priority.append(f"🐛 {_snap['leeches']} Problemkarten")
+            _chips_priority.append(f"🐛 {_snap['leeches']} schwer")
         if _snap["overdue_tasks"]:
             _chips_priority.append(f"⚠️ {len(_snap['overdue_tasks'])} überfällig")
         if _snap["due_today_tasks"]:
-            _chips_priority.append(f"✅ {len(_snap['due_today_tasks'])} Aufgabe(n) heute")
+            _chips_priority.append(f"✅ {len(_snap['due_today_tasks'])} Aufgabe(n)")
         if _snap["next_exam"] and _snap["days_to_exam"] is not None:
             _ex_subj = _html_escape(SUBJECT_LABELS.get(
                 _snap["next_exam"]["subject"], _snap["next_exam"]["subject"]))
@@ -305,17 +322,11 @@ if _snap:
                 f"📝 {_ex_subj}: {planner.humanize_days(_snap['days_to_exam'])}{_abend}")
         if _snap["overdue_plan_blocks"]:
             _chips_rest.append(
-                f"📋 {len(_snap['overdue_plan_blocks'])} Lernplan-Block(e) im Rückstand")
+                f"📋 {len(_snap['overdue_plan_blocks'])} im Rückstand")
         if _snap["study_min_today"]:
-            _chips_rest.append(f"⏱️ {_snap['study_min_today']} Min heute gelernt")
+            _chips_rest.append(f"⏱️ {_snap['study_min_today']} Min")
 
-        _show = _chips_priority[:4]
-        _overflow = _chips_priority[4:] + _chips_rest
-        if len(_show) < 4 and _overflow:
-            _need = 4 - len(_show)
-            _show += _overflow[:_need]
-            _overflow = _overflow[_need:]
-
+        _show = (_chips_priority + _chips_rest)[:3]
         if _show:
             st.markdown(
                 '<div class="rag-heute-chips">'
@@ -325,16 +336,6 @@ if _snap:
                 + "</div>",
                 unsafe_allow_html=True,
             )
-            if _overflow:
-                with st.expander(f"Mehr heute ({len(_overflow)})", expanded=False):
-                    st.markdown(
-                        '<div class="rag-heute-chips">'
-                        + "".join(
-                            f'<span class="rag-heute-chip">{mark_tight_nums(_html_escape(c))}</span>'
-                            for c in _overflow)
-                        + "</div>",
-                        unsafe_allow_html=True,
-                    )
         else:
             st.caption("Für heute liegt nichts Dringendes an – gute Gelegenheit, "
                         "freiwillig etwas zu wiederholen.")
@@ -403,7 +404,6 @@ if _snap:
 
         from ragapp import student_flow as _sf
         _faecher = _home_manifest.study_subjects()
-        _card_total = int((_home_manifest.review_counts() or {}).get("total") or 0)
         _sprint_choices = ["Alle Fächer"] + _faecher
         if "home_sprint_subject" not in st.session_state:
             _pref = _tp.get("subject")
@@ -411,21 +411,6 @@ if _snap:
                 _pref if _pref in _faecher else "Alle Fächer")
         elif st.session_state.get("home_sprint_subject") not in _sprint_choices:
             st.session_state["home_sprint_subject"] = "Alle Fächer"
-
-        if _card_total > 0:
-            if st.button("▶ Heute starten (bis zu 16 Karten)", type="primary",
-                          key="heute_start", use_container_width=True):
-                st.session_state["study_prefill"] = {
-                    "source": "heute", "limit": 16, "mode": "reveal",
-                    "subject": (_snap.get("next_exam") or {}).get("subject")
-                    or (_tp.get("subject")),
-                    "cram": bool(_snap.get("cram_active")),
-                }
-                st.switch_page(_target["lernen"])
-        elif _needs_harvest:
-            st.caption("Noch keine Karteikarten – zuerst das Lernset übernehmen.")
-        else:
-            st.caption("Noch keine Karteikarten – unter Karteikarten ein Lernset anlegen.")
 
         with st.expander("Sprint und Fehlerheft", expanded=False):
             _sp1, _sp2 = st.columns([2, 3])
