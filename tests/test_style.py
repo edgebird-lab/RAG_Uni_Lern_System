@@ -422,8 +422,10 @@ def test_chat_leerer_verlauf_scrollt_nicht_zur_eingabe():
     assert "stChatMessage" in src
     assert "chat_onboarding_questions" in src
     assert "verstehen_prefill" in src
-    assert "Los geht" in src
+    assert 'key="verstehen_start"' in src
+    assert "▶ Start" in src
     assert "finish_verstehen_session" in src
+    assert "_start_socratic_dialog(_topic_now, boot=False)" in src
     _prefill = src.split("_verstehen_prefill = st.session_state.pop")[1].split(
         'if "_chat_pending_choice"')[0]
     assert "_pending_prompt" not in _prefill

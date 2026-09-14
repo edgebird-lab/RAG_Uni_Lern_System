@@ -570,7 +570,7 @@ def _socratic_topic_suggestions(subject: "str | None") -> list[str]:
     )
 
 
-def _start_socratic_dialog(topic: str) -> None:
+def _start_socratic_dialog(topic: str, *, boot: bool = True) -> None:
     from ragapp.graph.prompts import SOKRATISCH_START_USER
     topic = (topic or "").strip()
     if not topic:
@@ -581,7 +581,8 @@ def _start_socratic_dialog(topic: str) -> None:
     # Ein kurzer Rerun ohne LLM, damit die Startkarte weg ist, bevor die
     # Generierung die Seite lange blockiert (sonst bleiben die Picker-Widgets
     # während des Wartens sichtbar und deaktiviert).
-    st.session_state["_socratic_boot"] = True
+    if boot:
+        st.session_state["_socratic_boot"] = True
     st.rerun()
 
 
@@ -682,15 +683,13 @@ if _chat_mode == "sokratisch" and st.session_state.get("socratic_topic"):
         _pending = bool(st.session_state.get("_pending_prompt"))
         _end_clicked = False
         if not _has_msgs and not _pending:
-            _c_go, _c_end = st.columns(2)
-            with _c_go:
-                if st.button("Los geht’s", type="primary", key="verstehen_los",
-                             use_container_width=True):
-                    _start_socratic_dialog(_topic_now)
-            with _c_end:
-                _end_clicked = st.button(
-                    "Sitzung beenden – Notiz + Karten",
-                    key="verstehen_end", use_container_width=True)
+            if st.button("▶ Start", type="primary", key="verstehen_start",
+                         use_container_width=True,
+                         help="Startet den sokratischen Dialog zu diesem Thema."):
+                _start_socratic_dialog(_topic_now, boot=False)
+            _end_clicked = st.button(
+                "Sitzung beenden – Notiz + Karten",
+                key="verstehen_end", use_container_width=True)
         else:
             _end_clicked = st.button(
                 "Sitzung beenden – Notiz + Karten",
