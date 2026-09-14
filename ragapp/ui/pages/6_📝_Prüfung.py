@@ -464,6 +464,11 @@ if exam.get("done"):
                        "Karten wurden nicht umgeplant, das Ergebnis zählt nicht.")
         else:
             st.progress(min(1.0, res["total_pct"] / 100))
+            if res.get("partial"):
+                st.warning(
+                    f"Nur {res.get('graded') or 0} von {len(res['items'])} Aufgaben "
+                    "konnten bewertet werden. Die Prozentzahl gilt nur für die "
+                    "benoteten Aufgaben und zählt nicht als Klausurergebnis.")
     st.divider()
     for i, it in enumerate(res["items"], 1):
         _sc = it.get("score")
@@ -545,35 +550,39 @@ def _auswerten():
     scored = []
     prog = st.progress(0.0, text="Die KI benotet deine Antworten …")
     from ragapp import grading
-    for j, card in enumerate(exam["cards"], 1):
-        typed = exam["answers"].get(card["card_id"], "")
-        ref = (card.get("answer") or card.get("back") or "")
-        g = grading.grade_typed_answer(card.get("front", ""), ref, typed)
-        grade_ok = bool(g.get("ok")) and g.get("score") is not None
-        if grade_ok:
-            rating = _rating_from_score(g.get("score"))
-            study.rate_card(card, rating)
-        items.append({"card_id": card.get("card_id"),
-                      "front": card.get("front"), "subject": card.get("subject"),
-                      "typed": typed, "reference": ref, "score": g.get("score"),
-                      "feedback": g.get("feedback") if grade_ok else (
-                          g.get("feedback") or "Benotung nicht möglich."),
-                      "fehlt": g.get("fehlt") if grade_ok else [],
-                      "doc_id": card.get("doc_id"), "topic": card.get("topic")})
-        if grade_ok and (g.get("score") or 0) < 40:
-            from ragapp.student_flow import record_error
-            record_error(source="exam", source_id=card.get("card_id"),
-                         card=card, front=card.get("front"),
-                         detail=f"Probeklausur {g.get('score')} %")
-        if grade_ok:
-            scored.append(g["score"])
-        prog.progress(j / len(exam["cards"]), text=f"Benotet {j}/{len(exam['cards'])} …")
-    total = round(sum(scored) / len(scored)) if scored else None
-    exam["result"] = {"items": items, "total_pct": total,
+    from ragapp.llm import llm_task
+    with llm_task():
+        for j, card in enumerate(exam["cards"], 1):
+            typed = exam["answers"].get(card["card_id"], "")
+            ref = (card.get("answer") or card.get("back") or "")
+            g = grading.grade_typed_answer(card.get("front", ""), ref, typed)
+            grade_ok = bool(g.get("ok")) and g.get("score") is not None
+            if grade_ok:
+                rating = _rating_from_score(g.get("score"))
+                study.rate_card(card, rating)
+            items.append({"card_id": card.get("card_id"),
+                          "front": card.get("front"), "subject": card.get("subject"),
+                          "typed": typed, "reference": ref, "score": g.get("score"),
+                          "feedback": g.get("feedback") if grade_ok else (
+                              g.get("feedback") or "Benotung nicht möglich."),
+                          "fehlt": g.get("fehlt") if grade_ok else [],
+                          "doc_id": card.get("doc_id"), "topic": card.get("topic")})
+            if grade_ok and (g.get("score") or 0) < 40:
+                from ragapp.student_flow import record_error
+                record_error(source="exam", source_id=card.get("card_id"),
+                             card=card, front=card.get("front"),
+                             detail=f"Probeklausur {g.get('score')} %")
+            if grade_ok:
+                scored.append(g["score"])
+            prog.progress(j / len(exam["cards"]), text=f"Benotet {j}/{len(exam['cards'])} …")
+    agg = grading.aggregate_exam_scores(
+        [it.get("score") for it in items])
+    exam["result"] = {"items": items, "total_pct": agg["total_pct"],
+                      "graded": agg["graded"], "partial": agg["partial"],
                       "used_min": round((time.time() - exam["start"]) / 60)}
     exam["done"] = True
-    if total is not None:
-        manifest.log_exam_attempt(total, len(exam["cards"]), items=items)
+    if agg["total_pct"] is not None and not agg["partial"]:
+        manifest.log_exam_attempt(agg["total_pct"], len(exam["cards"]), items=items)
 
 
 # --------------------------------------------------------------------------- #

@@ -79,8 +79,11 @@ def grade_typed_answer(question: str, reference: str, student: str,
             data = get_llm(model or settings.LLM_MODEL).generate_json(
                 _GRADE_PROMPT.format(frage=q, referenz=ref[:3000], student=stu[:3000]),
                 system=_GRADE_SYSTEM, temperature=0.1)
-    except Exception:  # noqa: BLE001
-        return {"score": None, "fehlt": [], "feedback": "", "suggested_rating": _HALB, "ok": False}
+    except Exception as exc:  # noqa: BLE001
+        from ragapp.llm import diagnose_error
+        msg = diagnose_error(exc)
+        return {"score": None, "fehlt": [], "feedback": msg or str(exc),
+                "suggested_rating": _HALB, "ok": False}
     if not isinstance(data, dict):
         return {"score": None, "fehlt": [], "feedback": "", "suggested_rating": _HALB, "ok": False}
     try:
@@ -92,6 +95,23 @@ def grade_typed_answer(question: str, reference: str, student: str,
     feedback = str(data.get("feedback") or "").strip()
     return {"score": score, "fehlt": fehlt, "feedback": feedback,
             "suggested_rating": _rating_from(data.get("note"), score), "ok": True}
+
+
+def aggregate_exam_scores(scores: list) -> dict:
+    """Gesamtergebnis einer Probeklausur: Schnitt nur über benotete Aufgaben.
+
+    ``partial=True`` wenn mindestens eine Note fehlt – die UI darf dann kein
+    glattes Klausurergebnis aus der Restmenge als vollständige Note verkaufen.
+    """
+    numbered = [int(s) for s in scores if s is not None]
+    n = len(scores)
+    if not numbered:
+        return {"total_pct": None, "graded": 0, "partial": bool(n)}
+    return {
+        "total_pct": round(sum(numbered) / len(numbered)),
+        "graded": len(numbered),
+        "partial": len(numbered) < n,
+    }
 
 
 # --------------------------------------------------------------------------- #

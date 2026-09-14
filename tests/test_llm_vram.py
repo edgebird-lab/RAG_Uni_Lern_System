@@ -66,6 +66,18 @@ def test_llm_task_entlaedt_nach_erfolg(monkeypatch):
     assert calls == ["req", "work", "rel"]
 
 
+def test_llm_task_verschachtelt_entlaedt_nur_aussen(monkeypatch):
+    calls: list[str] = []
+    monkeypatch.setattr(llm, "require_vram", lambda model=None: calls.append("req") or {})
+    monkeypatch.setattr(llm, "release_llm", lambda: calls.append("rel") or 0)
+    with llm.llm_task("x"):
+        calls.append("outer")
+        with llm.llm_task("x"):
+            calls.append("inner")
+        calls.append("after-inner")
+    assert calls == ["req", "outer", "inner", "after-inner", "rel"]
+
+
 def test_diagnose_error_reicht_vram_low_unverändert_durch():
     err = llm.VramLowError("nur 2 GB frei")
     assert llm.diagnose_error(err) == "nur 2 GB frei"

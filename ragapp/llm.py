@@ -17,6 +17,7 @@ import json
 import re
 import time
 from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any, Iterator
 
 import ollama
@@ -590,17 +591,28 @@ def require_vram(model: str | None = None) -> dict:
     return pf
 
 
+_llm_task_depth: ContextVar[int] = ContextVar("llm_task_depth", default=0)
+
+
 @contextmanager
 def llm_task(model: str | None = None):
     """Kontext fuer eine abgeschlossene KI-Aufgabe: VRAM-Check, danach Entladen.
 
-    Mehrere LLM-Aufrufe INNERHALB des Blocks behalten das Modell (keep_alive),
-    nach dem Block ist der Grafikspeicher wieder frei – auch bei Fehlern."""
-    require_vram(model)
+    Mehrere LLM-Aufrufe INNERHALB des Blocks (auch verschachtelte ``llm_task``)
+    behalten das Modell. Ohne Verschachtelung lud die Probeklausur das Modell
+    nach Aufgabe 1 aus und Bewertung 2/3 lief in den VRAM-Abbruch (Live-Test:
+    100 % Gesamt aus einer Note, zwei Aufgaben mit — %).
+    """
+    depth = _llm_task_depth.get()
+    if depth == 0:
+        require_vram(model)
+    token = _llm_task_depth.set(depth + 1)
     try:
         yield
     finally:
-        release_llm()
+        _llm_task_depth.reset(token)
+        if depth == 0:
+            release_llm()
 
 
 # --------------------------------------------------------------------------- #
