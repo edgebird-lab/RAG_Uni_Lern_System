@@ -33,10 +33,27 @@ with skeleton("Zusammenfassung wird geladen …"):
     from ragapp.ingestion import summarize
     from ragapp.ingestion.summarize import SummaryStats
     from ragapp.ui._progress import progress_tracker
+    from ragapp.llm import list_installed_models
 
 
 def _fach(code: str) -> str:
     return SUBJECT_LABELS.get(code, code)
+
+
+def _model_picker(key: str) -> "str | None":
+    _author = settings.author_model()
+    _fast = settings.LLM_MODEL_FAST
+    _installed = list_installed_models() or []
+    _options = [f"🎯 Gründlich ({_author})", f"⚡ Schnell ({_fast})"] + sorted(
+        m for m in _installed if m not in (_author, _fast))
+    _choice = st.selectbox("Modell", _options, key=key,
+                           help="Gründlich nutzt das Autoren-Modell, Schnell das "
+                                "Antwort-Modell – analog zu Lernplan und Mindmap.")
+    if _choice.startswith("🎯 Gründlich"):
+        return None
+    if _choice.startswith("⚡ Schnell"):
+        return _fast
+    return _choice
 
 
 st.caption("Fasst ein Dokument oder Fach in deinen Worten zusammen – nur aus dem Stoff, ohne Extra-Fakten.")
@@ -73,8 +90,10 @@ with card("quelle"):
         st.warning("Fach-Modus fasst **alle** Chunks des Fachs abschnittsweise zusammen. "
                    "Bei vielen Dokumenten kann das längere Zeit dauern.")
 
-    model = (getattr(settings, "LLM_MODEL_AUTHOR", "") or settings.LLM_MODEL)
-    st.caption(f"Autoren-Modell: `{model}`. Das kann je nach Umfang etwas dauern.")
+    model = _model_picker("zus_model")
+    st.caption(
+        f"Modell: `{model or settings.author_model()}`. Das kann je nach Umfang etwas dauern."
+    )
 
     if st.button("📝 Zusammenfassung erzeugen", type="primary", use_container_width=True):
         _zus_bar = st.progress(0.0)
@@ -96,6 +115,7 @@ with card("quelle"):
         try:
             path = summarize.write_summary(
                 target, mode=mode, progress=_prog, stats_out=stats,
+                model=model,
             )
         except ValueError as exc:
             status.warning(str(exc))

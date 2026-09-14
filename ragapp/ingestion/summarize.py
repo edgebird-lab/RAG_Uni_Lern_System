@@ -32,7 +32,7 @@ _log = logging.getLogger(__name__)
 # Zeichenbudget je LLM-Abschnitt: klein genug fuer kohaerente Aufrufe,
 # gross genug fuer thematische Abschnitte. Token-Budget separat erhoeht.
 _SECTION_CHAR_BUDGET = 5000
-_MIN_SECTION_CHARS = 150          # zu kurze Abschnitte ueberspringen (wie exam_catalog)
+_MIN_SECTION_CHARS = 80           # kurze Definitionsabschnitte (Livetest/Mitschriften) nicht still überspringen
 _SUMMARY_NUM_PREDICT = 2560       # Freitext braucht mehr als LLM_NUM_PREDICT (1024)
 _SUMMARY_NUM_PREDICT_RETRY = 3072
 _PREFIX_RE = re.compile(r"^\[[^\]]{0,120}\]\n")   # entfernt den [header_path]-Prefix der Chunks
@@ -213,13 +213,15 @@ def write_summary(
     progress: Optional[Callable[[str], None]] = None,
     write_markdown: bool = True,
     stats_out: Optional[SummaryStats] = None,
+    model: Optional[str] = None,
 ) -> Path:
     """Erzeugt eine gegroundete, strukturierte Markdown-Zusammenfassung und
     schreibt sie nach docs/Zusammenfassung_<name>.md. Gibt den Pfad zurueck.
 
     Wirft ValueError, wenn zur Auswahl keine (ausreichenden) Chunks vorliegen
     oder kein Abschnitt erfolgreich zusammengefasst werden konnte.
-    Optional stats_out: wird mit Zaehlern befuellt (written/failed/…)."""
+    Optional stats_out: wird mit Zaehlern befuellt (written/failed/…).
+    ``model``: None = Autoren-Modell, sonst z. B. LLM_MODEL_FAST."""
     chunks, label = _source_chunks(doc_id_oder_subject, mode)
     if not chunks:
         raise ValueError(f"Keine indexierten Chunks fuer '{doc_id_oder_subject}' gefunden.")
@@ -227,20 +229,21 @@ def write_summary(
     sections = _sections_from_chunks(chunks)
     stats = stats_out if stats_out is not None else SummaryStats()
     stats.total_sections = len(sections)
+    used_model = (model or "").strip() or _author_model()
 
     if progress:
-        progress(f"{len(sections)} Abschnitte aus {len(chunks)} Chunks – Modell `{_author_model()}`")
+        progress(f"{len(sections)} Abschnitte aus {len(chunks)} Chunks – Modell `{used_model}`")
 
     out: list[str] = [
         f"# Zusammenfassung: {label}\n",
         f"*KI-generierte, gegroundete Zusammenfassung aus deinen indexierten "
-        f"Inhalten. Modell: `{_author_model()}`. Im Zweifel immer mit der "
+        f"Inhalten. Modell: `{used_model}`. Im Zweifel immer mit der "
         f"Originalquelle abgleichen.*\n",
     ]
 
     total = len(sections)
-    with llm_task(_author_model()):
-        llm = get_llm(_author_model())            # grosses Autoren-Modell
+    with llm_task(used_model):
+        llm = get_llm(used_model)
         for i, (title, body) in enumerate(sections, 1):
             if len(body) < _MIN_SECTION_CHARS:
                 stats.skipped_short += 1
