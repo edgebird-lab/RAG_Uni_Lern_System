@@ -1214,12 +1214,16 @@ def course_snapshot(subject: str) -> dict:
     ready = analytics.subject_readiness(subject)
     weak = analytics.mastery_by_topic(subject, limit=3)
     docs = [dict(d) for d in manifest.list_documents() if d["subject"] == subject]
+    indexed = [
+        d for d in docs
+        if d.get("use_rag") and int(d.get("num_chunks") or 0) > 0
+    ]
     slots = manifest.list_timetable(subject=subject)
     next_lec = _next_lecture(slots)
     plans = [p for p in manifest.list_study_plans()
              if p.get("subject") == subject and p.get("status") == "active"]
     action = recommend_course_action(
-        due_cards=due_cards, doc_count=len(docs),
+        due_cards=due_cards, doc_count=len(indexed),
         exam_days=days, has_plan=bool(plans))
     return {
         "subject": subject,
@@ -1238,6 +1242,29 @@ def course_snapshot(subject: str) -> dict:
         "next_lecture": next_lec,
         "next_action": action,
     }
+
+
+def is_inbox_subject(subject: Optional[str]) -> bool:
+    """Inbox ist Ablage, kein Kurs."""
+    return (subject or "").strip().lower() == "inbox"
+
+
+def course_cockpit_bucket(snapshot: dict, *, has_cards: bool) -> str:
+    """Kurskarte auf Organisation: ``active``, ``stoff``, ``import`` oder ``skip``.
+
+    Active = Karten, fällige Karten oder Klausur in den nächsten 14 Tagen.
+    Stoff = Unterlagen ohne Karten. Import = nur Name/Termin aus dem Semesterimport.
+    Inbox-Dokumente gehören nicht ins Kurs-Cockpit.
+    """
+    if is_inbox_subject(snapshot.get("subject")):
+        return "skip"
+    days = snapshot.get("days_to_exam")
+    exam_soon = days is not None and 0 <= int(days) <= 14
+    if has_cards or int(snapshot.get("due_cards") or 0) > 0 or exam_soon:
+        return "active"
+    if int(snapshot.get("doc_count") or 0) > 0:
+        return "stoff"
+    return "import"
 
 
 def plain_study_snippet(text: Optional[str], *, limit: int = 42) -> str:

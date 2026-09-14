@@ -1448,6 +1448,17 @@ def _open_pending_delete_dialog() -> None:
             str(pending["token"]), pending.get("body") or "Wirklich löschen?")
 
 
+def sticky_expander(label: str, *, key: str, expanded: bool = False, **kwargs):
+    """Expander, dessen Auf/Zu Streamlit über Reruns in ``session_state[key]`` hält.
+
+    Ab Streamlit 1.59 greift ``key=`` dafür nur noch mit ``on_change="rerun"``.
+    Ohne das klappt ein Formular-Expander beim ersten Widget-Rerun wieder zu,
+    und Prefills können ihn nicht programmatisch öffnen.
+    """
+    kwargs.setdefault("on_change", "rerun")
+    return st.expander(label, expanded=expanded, key=key, **kwargs)
+
+
 def delete_button(label: str, *, token: str, body: str, key: str, **btn_kwargs) -> bool:
     """Lösch-Button mit Bestätigungsdialog. Gibt True zurück, nachdem bestätigt."""
     if st.session_state.get(_DELETE_CONFIRMED) == token:

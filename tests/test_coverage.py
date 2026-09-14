@@ -58,6 +58,21 @@ def test_coverage_leiter_dokument_karte_uebung_sitzt(isolated_db, monkeypatch):
     assert cid in row["card_ids"]
 
 
+def test_coverage_karte_reicht_doc_id_aus_der_karte(isolated_db):
+    """Dateiname muss das Lernziel nicht enthalten – die Karte reicht."""
+    manifest.add_learning_goals("BWL", ["Testing-Effekt erklären können"])
+    manifest.upsert_document(
+        doc_id="d-x", content_hash="h", source_path="BWL/andere.pdf",
+        filename="andere.pdf", subject="BWL", filetype="pdf",
+        num_chunks=1, num_questions=0, char_count=10, status="ok")
+    student_flow.card_from_text(
+        "Was ist der Testing-Effekt?", "Abrufen statt nur lesen.",
+        subject="BWL", topic="Testing-Effekt", doc_id="d-x")
+    row = coverage.coverage_for_subject("BWL")[0]
+    assert row["status"] == "Karte"
+    assert "d-x" in row["doc_ids"]
+
+
 def test_coverage_start_action_fuer_luecken():
     assert coverage.coverage_start_action({"status": "fehlend"})["kind"] == "dokument"
     assert coverage.coverage_start_action({"status": "Dokument"})["kind"] == "lernset"

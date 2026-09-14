@@ -23,7 +23,7 @@ from ragapp.ui._loading import page_boot, skeleton
 page_boot("🧮 Übungsaufgaben", page_title="Übungsaufgaben", icon="🧮", layout="wide",
          accent="uebungsaufgaben")
 
-from ragapp.ui._style import block_done_banner, card, delete_button
+from ragapp.ui._style import block_done_banner, card, delete_button, sticky_expander
 
 st.markdown("""
 <style>
@@ -66,19 +66,35 @@ if not _subjects_with_docs:
     st.stop()
 
 # --------------------------------------------------------------------------- #
-# Prefill aus dem Lernplan ("🧮 Übungsaufgabe zu diesem Thema") - MUSS vor der
-# Instanziierung der betroffenen Widgets gesetzt werden (gleiches Muster wie
-# note_prefill/pomo_prefill).
+# Prefill aus Kurs/Lernplan ("Übung starten" / Plan-Block) - MUSS vor der
+# Instanziierung der betroffenen Widgets gesetzt werden.
 # --------------------------------------------------------------------------- #
 _prefill = st.session_state.pop("practice_prefill", None)
-if _prefill and _prefill.get("subject") in _subjects_with_docs:
-    st.session_state["practice_gen_subject"] = _prefill["subject"]
-    st.session_state["_practice_prefill_doc_ids"] = _prefill.get("doc_ids") or []
-    st.session_state["practice_gen_topic"] = _prefill.get("topic") or ""
-    st.session_state["_practice_gen_expanded"] = True
-    if _prefill.get("block_id"):
-        st.session_state["_practice_from_block_id"] = _prefill["block_id"]
-    st.info("🧮 Vorbelegt aus dem Lernplan – unten Art/Modell wählen und generieren.")
+if _prefill:
+    _psubj = _prefill.get("subject")
+    if _psubj in _subjects_with_docs:
+        st.session_state["practice_gen_subject"] = _psubj
+        st.session_state["practice_filter_subject"] = _psubj
+        st.session_state["_practice_prefill_doc_ids"] = _prefill.get("doc_ids") or []
+        st.session_state["_practice_prefill_all_docs"] = not (_prefill.get("doc_ids") or [])
+        st.session_state["practice_gen_topic"] = _prefill.get("topic") or ""
+        st.session_state["practice_gen_expander"] = True
+        _pids = [p for p in (_prefill.get("problem_ids") or []) if p]
+        if _pids:
+            st.session_state["practice_choice"] = _pids[0]
+        if _prefill.get("block_id"):
+            st.session_state["_practice_from_block_id"] = _prefill["block_id"]
+        _src = _prefill.get("source") or ""
+        if _src == "coverage":
+            st.info("🧮 Vorbelegt aus der Lernziel-Lücke – Thema und Fach stehen "
+                    "im Generator; vorhandene Aufgaben siehst du in der Liste.")
+        elif _src == "plan":
+            st.info("🧮 Vorbelegt aus dem Lernplan – unten Art/Modell wählen und generieren.")
+        else:
+            st.info("🧮 Fach und Thema sind vorbelegt – unten Art/Modell wählen und generieren.")
+    elif _psubj:
+        st.warning(f"Keine indexierten Unterlagen für {_fach(_psubj)} – "
+                   "zuerst ein Dokument anlegen, dann die Übung starten.")
 
 if st.session_state.get("_practice_session_done"):
     block_done_banner(state_key="_practice_from_block_id", key_prefix="practice")
@@ -89,25 +105,21 @@ if st.session_state.get("_practice_session_done"):
 # Neue Aufgabe generieren
 # --------------------------------------------------------------------------- #
 _existing_count = manifest.count_practice_problems()
-# key= haelt den Auf/Zu-Zustand fest - ohne key faellt der Expander sonst bei
-# JEDEM Rerun (auch nur durch die "Fach"-Auswahl DARIN) auf zugeklappt zurueck.
-# Das erzwungene Aufklappen beim Prefill aus dem Lernplan (siehe oben) muss
-# dafuer jetzt DIREKT in den Widget-Schluessel schreiben (gleiches "pending"-
-# Muster wie an anderen Stellen der App), statt nur den `expanded`-Parameter zu
-# setzen - der wird bei einem bereits belegten Schluessel sonst ignoriert.
-if st.session_state.pop("_practice_gen_expanded", False):
-    st.session_state["practice_gen_expander"] = True
-with st.expander("➕ Neue Übungsaufgabe generieren",
-                 expanded=not _existing_count, key="practice_gen_expander"):
+with sticky_expander("➕ Neue Übungsaufgabe generieren",
+                     key="practice_gen_expander",
+                     expanded=not _existing_count):
     gc1, gc2 = st.columns(2)
     with gc1:
         _g_subject = st.selectbox("Fach", _subjects_with_docs, format_func=_fach,
                                   key="practice_gen_subject")
     _subj_docs = {d["filename"]: d["doc_id"] for d in _all_docs if d["subject"] == _g_subject}
     _prefill_doc_ids = set(st.session_state.pop("_practice_prefill_doc_ids", []))
+    _prefill_all_docs = st.session_state.pop("_practice_prefill_all_docs", False)
     if _prefill_doc_ids:
         st.session_state["practice_gen_docs"] = [n for n, did in _subj_docs.items()
                                                   if did in _prefill_doc_ids]
+    elif _prefill_all_docs:
+        st.session_state["practice_gen_docs"] = list(_subj_docs.keys())
     with gc2:
         _g_doc_names = st.multiselect("Dokument(e)", list(_subj_docs.keys()),
                                       key="practice_gen_docs", placeholder="Auswählen …")

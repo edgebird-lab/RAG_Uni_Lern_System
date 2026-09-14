@@ -319,6 +319,38 @@ def test_course_snapshot_aggregiert_fach(isolated_db):
     assert snap["next_action"] == "Prüfung"
 
 
+def test_course_snapshot_ohne_index_empfiehlt_unterlagen_nicht_lernplan(isolated_db):
+    manifest.upsert_document(
+        doc_id="d-raw", content_hash="h", source_path="/raw.md",
+        filename="raw.md", subject="BWL", filetype="md",
+        num_chunks=0, num_questions=0, char_count=10, status="ok", use_rag=False)
+    snap = student_flow.course_snapshot("BWL")
+    assert snap["doc_count"] == 1
+    assert snap["next_action"] == "Unterlagen"
+
+
+def test_inbox_ist_kein_kurs_im_cockpit():
+    assert student_flow.is_inbox_subject("inbox")
+    assert student_flow.is_inbox_subject("Inbox")
+    assert not student_flow.is_inbox_subject("Livetest")
+    skip = student_flow.course_cockpit_bucket(
+        {"subject": "inbox", "due_cards": 0, "doc_count": 2, "days_to_exam": None},
+        has_cards=False)
+    assert skip == "skip"
+    assert student_flow.course_cockpit_bucket(
+        {"subject": "BWL", "due_cards": 3, "doc_count": 1, "days_to_exam": 21},
+        has_cards=True) == "active"
+    assert student_flow.course_cockpit_bucket(
+        {"subject": "Analysis", "due_cards": 0, "doc_count": 1, "days_to_exam": None},
+        has_cards=False) == "stoff"
+    assert student_flow.course_cockpit_bucket(
+        {"subject": "Leer", "due_cards": 0, "doc_count": 0, "days_to_exam": 45},
+        has_cards=False) == "import"
+    assert student_flow.course_cockpit_bucket(
+        {"subject": "Klausur-bald", "due_cards": 0, "doc_count": 0, "days_to_exam": 10},
+        has_cards=False) == "active"
+
+
 def test_course_snapshot_empfiehlt_unterlagen_ohne_docs(isolated_db):
     snap = student_flow.course_snapshot("Mathe")
     assert snap["doc_count"] == 0

@@ -25,7 +25,7 @@ from ragapp.ui._loading import page_boot, skeleton
 page_boot("🗂️ Kurse & Stundenplan", page_title="Kurse & Stundenplan", icon="🗂️", layout="wide",
          accent="organisation")
 
-from ragapp.ui._style import card, delete_button
+from ragapp.ui._style import card, delete_button, sticky_expander
 
 st.caption("Fächer, nächste Aktion, Stundenplan und Aufgaben – alles an einem Ort.")
 
@@ -173,24 +173,30 @@ html.rag-dark .rag-tt-header {{ color:#c7d6ea; }}
 """
 
 
+from ragapp import student_flow as _sf
+
 _known_subjects = sorted(
-    set(SUBJECT_LABELS.keys())
-    | {d["subject"] for d in manifest.list_documents() if d["subject"]}
-    | {t["subject"] for t in manifest.list_tasks() if t.get("subject")}
-    | {s["subject"] for s in manifest.list_timetable() if s.get("subject")}
-    | {e["subject"] for e in manifest.list_exams() if e.get("subject")}
+    s for s in (
+        set(SUBJECT_LABELS.keys())
+        | {d["subject"] for d in manifest.list_documents() if d["subject"]}
+        | {t["subject"] for t in manifest.list_tasks() if t.get("subject")}
+        | {s["subject"] for s in manifest.list_timetable() if s.get("subject")}
+        | {e["subject"] for e in manifest.list_exams() if e.get("subject")}
+    )
+    if s and not _sf.is_inbox_subject(s)
 )
 
 # --------------------------------------------------------------------------- #
 # Kurs-Cockpit: ein Fach, ein Blick, eine nächste Aktion (C2)
 # --------------------------------------------------------------------------- #
-from ragapp import student_flow as _sf
-
 _kurs_faecher = list(dict.fromkeys(
-    list(manifest.study_subjects())
-    + [e["subject"] for e in manifest.list_exams() if e.get("subject")]
-    + [s["subject"] for s in manifest.list_timetable() if s.get("subject")]
-    + [d["subject"] for d in manifest.list_documents() if d["subject"]]
+    subj for subj in (
+        list(manifest.study_subjects())
+        + [e["subject"] for e in manifest.list_exams() if e.get("subject")]
+        + [s["subject"] for s in manifest.list_timetable() if s.get("subject")]
+        + [d["subject"] for d in manifest.list_documents() if d["subject"]]
+    )
+    if subj and not _sf.is_inbox_subject(subj)
 ))
 st.subheader("Kurse")
 if not _kurs_faecher:
@@ -211,9 +217,10 @@ else:
     }
 
     def _render_kurs(_subj: str, _ks: dict, *, quiet: bool = False) -> None:
+        import html as _html
         with card(f"kurs_{_subj}"):
             st.markdown(
-                f'<p class="rag-kurs-title">{_fach(_subj)}</p>',
+                f'<p class="rag-kurs-title">{_html.escape(_fach(_subj))}</p>',
                 unsafe_allow_html=True)
             _c1, _c2, _c3, _c4 = st.columns(4)
             _c1.metric("Termin", planner.humanize_days(_ks["days_to_exam"])
@@ -260,7 +267,12 @@ else:
                                 st.switch_page("pages/4_🎓_Lernen.py")
                             elif _act["kind"] == "uebung":
                                 st.session_state["practice_prefill"] = {
-                                    "subject": _subj, "topic": _row["text"][:80]}
+                                    "source": "coverage",
+                                    "subject": _subj,
+                                    "topic": _row["text"][:80],
+                                    "doc_ids": _row.get("doc_ids") or [],
+                                    "problem_ids": _row.get("problem_ids") or [],
+                                }
                                 st.switch_page("pages/13_🧮_Übungsaufgaben.py")
                             else:
                                 st.session_state["study_prefill"] = {
@@ -285,6 +297,7 @@ else:
                         if d["subject"] == _subj
                     ]
                     st.session_state["splan_prefill"] = {
+                        "source": "kurs",
                         "subject": _subj, "doc_ids": _doc_ids,
                         "title": f"Lernplan {_fach(_subj)}",
                     }
@@ -295,21 +308,31 @@ else:
                 else:
                     st.switch_page("pages/6_📝_Prüfung.py")
 
-    _kurs_voll = []
-    _kurs_leer = []
+    _study_set = set(manifest.study_subjects())
+    _kurs_aktiv, _kurs_stoff, _kurs_import = [], [], []
     for _subj in _kurs_faecher:
         _ks = _sf.course_snapshot(_subj)
-        if _ks["doc_count"] or _ks["due_cards"]:
-            _kurs_voll.append((_subj, _ks))
-        else:
-            _kurs_leer.append((_subj, _ks))
-    for _subj, _ks in _kurs_voll:
+        _bucket = _sf.course_cockpit_bucket(_ks, has_cards=_subj in _study_set)
+        if _bucket == "active":
+            _kurs_aktiv.append((_subj, _ks))
+        elif _bucket == "stoff":
+            _kurs_stoff.append((_subj, _ks))
+        elif _bucket == "import":
+            _kurs_import.append((_subj, _ks))
+    for _subj, _ks in _kurs_aktiv:
         _render_kurs(_subj, _ks)
-    if _kurs_leer:
+    if _kurs_stoff:
         with st.expander(
-                f"Weitere Fächer aus Import ({len(_kurs_leer)})", expanded=False):
+                f"Fächer mit Unterlagen, noch ohne Karten ({len(_kurs_stoff)})",
+                expanded=False):
+            st.caption("Unterlagen liegen schon da – als Nächstes Karten oder einen Lernplan.")
+            for _subj, _ks in _kurs_stoff:
+                _render_kurs(_subj, _ks, quiet=True)
+    if _kurs_import:
+        with st.expander(
+                f"Weitere Fächer aus Import ({len(_kurs_import)})", expanded=False):
             st.caption("Noch ohne Unterlagen oder Karten – Namen aus dem Semesterimport.")
-            for _subj, _ks in _kurs_leer:
+            for _subj, _ks in _kurs_import:
                 _render_kurs(_subj, _ks, quiet=True)
 
 # --------------------------------------------------------------------------- #
@@ -385,11 +408,9 @@ st.divider()
 with card("stundenplan"):
     st.subheader("🗓️ Stundenplan")
 
-    # key= haelt den Auf/Zu-Zustand fest - ohne key faellt der Expander sonst bei
-    # JEDEM Rerun (auch nur durch die "Fach"-Auswahl DARIN) auf zugeklappt
-    # zurueck, bevor der Rest des Formulars ausgefuellt ist (gleiches Muster wie
-    # beim Ausspracheregeln-Expander in Audio-Overview behoben).
-    with st.expander("➕ Neuen Termin hinzufügen", key="tt_add_expander"):
+    # sticky_expander haelt Auf/Zu in session_state (Streamlit 1.59 braucht
+    # on_change="rerun", sonst klappt das Formular beim Fach-Wechsel zu).
+    with sticky_expander("➕ Neuen Termin hinzufügen", key="tt_add_expander"):
         tc1, tc2, tc3, tc4 = st.columns(4)
         with tc1:
             _tt_choice = st.selectbox("Fach", _known_subjects + ["(neues Fach …)"], key="tt_new_subject")
@@ -422,7 +443,7 @@ with card("stundenplan"):
         _tt_subjects = sorted({s["subject"] for s in _slots if s.get("subject")})
         _tt_colors = manifest.subject_colors_map()
 
-        with st.expander("🎨 Fach-Farben", key="tt_colors_expander"):
+        with sticky_expander("🎨 Fach-Farben", key="tt_colors_expander"):
             st.caption("Jedes Fach hat automatisch eine Farbe; hier lässt sie sich anpassen.")
             _color_cols = st.columns(4)
             _new_colors: dict = {}
@@ -486,7 +507,7 @@ st.divider()
 with card("aufgaben"):
     st.subheader("📝 Aufgaben & Hausaufgaben")
 
-    with st.expander("➕ Neue Aufgabe hinzufügen", key="task_add_expander"):
+    with sticky_expander("➕ Neue Aufgabe hinzufügen", key="task_add_expander"):
         ac1, ac2, ac3 = st.columns(3)
         with ac1:
             _task_title = st.text_input("Titel", key="task_new_title")

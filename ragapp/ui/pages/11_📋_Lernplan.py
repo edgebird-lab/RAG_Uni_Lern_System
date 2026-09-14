@@ -205,8 +205,16 @@ if _active_plan_id is None:
             _plan_prefill.get("title") or f"Lernplan {_fach(_plan_prefill['subject'])}")
         st.session_state["_splan_title_for_subject"] = _plan_prefill["subject"]
         st.session_state["_splan_prefill_doc_ids"] = _plan_prefill.get("doc_ids") or []
-        st.info(f"📋 Vorbelegt aus den Dauerpatzern: "
-               f"{len(_plan_prefill.get('doc_ids') or [])} Dokument(e) ausgewählt.")
+        _n_docs = len(_plan_prefill.get("doc_ids") or [])
+        if _plan_prefill.get("source") == "kurs":
+            st.info(f"📋 Vorbelegt aus dem Kurs: {_n_docs} Dokument(e) ausgewählt.")
+        else:
+            st.info(f"📋 Vorbelegt aus den Dauerpatzern: "
+                   f"{_n_docs} Dokument(e) ausgewählt.")
+    elif _plan_prefill and _plan_prefill.get("subject"):
+        st.warning(
+            f"Keine indexierten Unterlagen für {_fach(_plan_prefill['subject'])} – "
+            "zuerst unter Dokumente einlesen, dann den Lernplan anlegen.")
 
     st.markdown("##### Neuen Lernplan anlegen")
     nc1, nc2 = st.columns(2)

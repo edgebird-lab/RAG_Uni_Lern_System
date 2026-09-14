@@ -97,12 +97,15 @@ def coverage_for_subject(subject: str) -> list[dict]:
             status = "Dokument"
         else:
             status = "fehlend"
+        card_doc_ids = [c.get("doc_id") for c in hit_cards if c.get("doc_id")]
+        prob_doc_ids = [p.get("doc_id") for p in hit_probs if p.get("doc_id")]
         out.append({
             "goal_id": g["goal_id"],
             "subject": subject,
             "text": g["text"],
             "status": status,
-            "doc_ids": [d["doc_id"] for d in hit_docs],
+            "doc_ids": list(dict.fromkeys(
+                [d["doc_id"] for d in hit_docs] + card_doc_ids + prob_doc_ids)),
             "card_ids": [c["card_id"] for c in hit_cards],
             "problem_ids": [p["problem_id"] for p in hit_probs],
         })
