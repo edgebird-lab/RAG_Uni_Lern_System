@@ -559,7 +559,8 @@ def _unique_course_path(folder, name: str):
     return dest.with_name(f"{dest.stem}_{int(time.time())}{dest.suffix}")
 
 
-def _register_course_file(path, subject: str, *, status: str = "archived") -> str:
+def _register_course_file(path, subject: str, *, status: str = "archived",
+                          use_rag: bool = False) -> str:
     """Macht auch nicht indexierbare/Fallback-Dateien im Kurs-Cockpit sichtbar."""
     from ragapp.config import PROJECT_ROOT
     from ragapp.ingestion.dedup import doc_id_for
@@ -575,7 +576,7 @@ def _register_course_file(path, subject: str, *, status: str = "archived") -> st
             source_path=rel, filename=path.name, subject=subject,
             filetype=path.suffix.lstrip(".").lower() or "bin",
             num_chunks=0, num_questions=0, char_count=len(raw),
-            status=status, use_rag=False)
+            status=status, use_rag=use_rag)
     return doc_id
 
 
@@ -658,6 +659,9 @@ def retry_index_queue(*, job_ids: Optional[list[str]] = None,
             result["failed"] += 1
             result["errors"].append(f"{source.name}: {exc}")
         else:
+            if status in {"duplicate", "duplicate_chunks"} and job.get("doc_id"):
+                manifest.set_document_index_state(
+                    job["doc_id"], status="duplicate", use_rag=False)
             manifest.update_index_retry_job(
                 job["job_id"], status="done", attempts=attempts,
                 next_attempt_at=0, last_error=None)
@@ -715,7 +719,10 @@ def add_course_material(subject: str, *, text: Optional[str] = None,
             ingest = {"status": "error", "error": str(exc), "file": path.name}
         # ingest_file registriert Erfolgsfälle selbst. Bei Modell-/Indexfehlern
         # bleibt die Originaldatei trotzdem als ehrliche archivierte Unterlage.
-        doc_id = _register_course_file(path, code)
+        doc_id = _register_course_file(
+            path, code,
+            status="error" if ingest.get("status") == "error" else "archived",
+            use_rag=ingest.get("status") == "error")
         if ingest.get("status") == "error":
             enqueue_index_retry(
                 path, code, error=ingest.get("error") or "Indexierung fehlgeschlagen",
@@ -767,14 +774,20 @@ def scan_inbox_once(progress=None, *, subject: Optional[str] = None) -> dict:
                     _register_course_file(work, subject)
             else:
                 if subject:
-                    doc_id = _register_course_file(work, subject, status="error")
-                    enqueue_index_retry(
-                        work, subject, error=str(res.get("error") or res.get("status")),
-                        doc_id=doc_id)
+                    retryable = res.get("status") == "error"
+                    doc_id = _register_course_file(
+                        work, subject, status=str(res.get("status") or "error"),
+                        use_rag=retryable)
+                    if retryable:
+                        enqueue_index_retry(
+                            work, subject,
+                            error=str(res.get("error") or res.get("status")),
+                            doc_id=doc_id)
                 errors.append(f"{path.name}: {res.get('status')}")
         except Exception as exc:  # noqa: BLE001
             if subject:
-                doc_id = _register_course_file(work, subject, status="error")
+                doc_id = _register_course_file(
+                    work, subject, status="error", use_rag=True)
                 enqueue_index_retry(work, subject, error=str(exc), doc_id=doc_id)
             errors.append(f"{path.name}: {exc}")
     return {"scanned": len(files), "ok": ok, "errors": errors}

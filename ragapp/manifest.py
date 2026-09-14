@@ -838,6 +838,19 @@ def set_document_subject(doc_id: str, subject: str) -> None:
                      ((subject or "").strip() or None, time.time(), doc_id))
 
 
+def set_document_index_state(doc_id: str, *, status: str,
+                             use_rag: Optional[bool] = None) -> None:
+    sets = ["status=?", "updated_at=?"]
+    args: list[Any] = [status, time.time()]
+    if use_rag is not None:
+        sets.append("use_rag=?")
+        args.append(1 if use_rag else 0)
+    args.append(doc_id)
+    with _connect() as conn:
+        conn.execute(
+            f"UPDATE documents SET {','.join(sets)} WHERE doc_id=?", args)
+
+
 def enqueue_index_retry(*, source_path: str, subject: Optional[str],
                         doc_id: Optional[str] = None, use_rag: bool = True,
                         error: Optional[str] = None) -> str:

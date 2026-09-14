@@ -566,6 +566,11 @@ def ingest_directory(
             r = ingest_file(f, force=force, rebuild_bm25=False, progress=progress)
         except Exception as exc:  # pragma: no cover
             _log({"event": "ingest", "file": str(f), "status": "error", "error": str(exc)})
+            try:
+                from ragapp.student_flow import enqueue_index_retry
+                enqueue_index_retry(f, _subject_for(f), error=str(exc))
+            except Exception:  # noqa: BLE001
+                pass
             r = {"status": "error", "file": f.name, "error": str(exc)}
         st = r["status"]
         if st == "ok":

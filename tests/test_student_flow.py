@@ -380,6 +380,10 @@ def test_add_course_material_bleibt_bei_ingestion_fehler_sichtbar(
         "BWL", file_bytes=b"# Stoff", filename="stoff.md")
     assert out["status"] == "error"
     assert student_flow.course_snapshot("BWL")["doc_count"] == 1
+    doc = manifest.list_documents()[0]
+    assert doc["status"] == "error"
+    assert doc["use_rag"] == 1
+    assert len(manifest.list_index_retry_jobs()) == 1
 
 
 def test_scan_inbox_once_verschiebt_in_fachordner(isolated_db, tmp_path, monkeypatch):
@@ -414,6 +418,8 @@ def test_scan_inbox_fehlerdatei_bleibt_im_kurs_sichtbar(
     result = student_flow.scan_inbox_once(subject="Mathe")
     assert result["errors"]
     assert student_flow.course_snapshot("Mathe")["doc_count"] == 1
+    assert manifest.list_documents()[0]["status"] == "error"
+    assert len(manifest.list_index_retry_jobs()) == 1
 
 
 def test_index_retry_queue_ist_idempotent_und_wird_erfolgreich_abgebaut(

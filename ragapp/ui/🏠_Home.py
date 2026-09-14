@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import sys
 import pathlib
+import os
 
 # Projektwurzel auffindbar machen (damit 'ragapp' importierbar ist)
 _p = pathlib.Path(__file__).resolve()
@@ -36,7 +37,7 @@ st.set_page_config(page_title="RAG-Lernsystem", page_icon=_PAGE_ICON, layout="wi
 # zahlt. Per Einstellung abschaltbar (PREWARM_ON_START) - wer die Sitzung nur zum
 # Karteikarten-Lernen oeffnet, will dafuer gar kein Modell laden.
 from ragapp.config import settings
-if settings.PREWARM_ON_START:
+if settings.PREWARM_ON_START and os.environ.get("RAG_DISABLE_PREWARM") != "1":
     from ragapp.ui._loading import prewarm
     prewarm("ragapp.retrieval.embeddings",
             "ragapp.retrieval.vectorstore",

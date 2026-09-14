@@ -237,6 +237,7 @@ def _view_doc_dialog(d: dict) -> None:
     _pages = _ingest_ui.document_page_label(d)
     st.markdown(f"**{d['filename']}**  ·  Fach: {_fach(d['subject'])}"
                + f"  ·  {_pages}"
+               + ("  ·  🔴 Index ausstehend" if d.get("status") == "error" else "")
                + ("  ·  ⚪ archiviert (nicht im RAG)" if not d.get("use_rag", 1) else ""))
     path = PROJECT_ROOT / (d.get("source_path") or "")
     if not path.is_file():
@@ -405,7 +406,7 @@ with card("kurs_inbox"):
                     "error": _failed,
                     "message": (
                         f"Unterlage in {_fach(_inbox_subj)} abgelegt."
-                        + (" Indexierung fehlgeschlagen; sie ist archiviert und noch "
+                        + (" Indexierung fehlgeschlagen; sie ist vorgemerkt und noch "
                            "nicht im Chat durchsuchbar." if _failed else "")
                     ),
                 }
@@ -484,7 +485,9 @@ with card("filter"):
         _tag_filter = st.multiselect(
             "Kategorie", _tags_present, placeholder="Alle") if _tags_present else []
     with f3:
-        _rag_filter = st.selectbox("RAG-Status", ["Alle", "Nur im RAG", "Nur archiviert"])
+        _rag_filter = st.selectbox(
+            "RAG-Status",
+            ["Alle", "Nur im RAG", "Index ausstehend", "Nur archiviert"])
     with f4:
         _search = st.text_input("Suche (Dateiname)", placeholder="z. B. Klausur_2023 …")
     with f5:
@@ -499,6 +502,10 @@ def _matches(d: dict) -> bool:
         if not _dtags & set(_tag_filter):
             return False
     if _rag_filter == "Nur im RAG" and not d.get("use_rag", 1):
+        return False
+    if _rag_filter == "Nur im RAG" and d.get("status") == "error":
+        return False
+    if _rag_filter == "Index ausstehend" and d.get("status") != "error":
         return False
     if _rag_filter == "Nur archiviert" and d.get("use_rag", 1):
         return False
@@ -556,7 +563,12 @@ with tab_kacheln:
                             f"<div style='text-align:center;font-size:48px;"
                             f"padding:16px 0;'>{_icon}</div>", unsafe_allow_html=True)
                     st.caption(f"**{d['filename']}**")
-                    _badge = "🟢 im RAG" if d.get("use_rag", 1) else "⚪ archiviert"
+                    _badge = (
+                        "🔴 Index ausstehend"
+                        if d.get("status") == "error"
+                        else ("🟢 im RAG" if d.get("use_rag", 1)
+                              else "⚪ archiviert")
+                    )
                     st.caption(f"{_fach(d.get('subject'))} · {_ingest_ui.document_page_label(d)} · {_badge}")
                     if d.get("tags"):
                         st.caption(f"🏷️ {d['tags']}")
@@ -611,7 +623,10 @@ with tab_liste:
         _list_df = pd.DataFrame([{
             "✓": False, "Dateiname": d["filename"], "Fach": _fach(d.get("subject")),
             "Seiten": _ingest_ui.document_page_label(d),
-            "Im RAG": "🟢" if d.get("use_rag", 1) else "⚪",
+            "Im RAG": (
+                "🔴 ausstehend" if d.get("status") == "error"
+                else ("🟢" if d.get("use_rag", 1) else "⚪")
+            ),
             "Kategorien": d.get("tags") or "", "_id": d["doc_id"],
         } for d in _filtered])
         _list_edited = st.data_editor(

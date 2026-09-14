@@ -47,6 +47,8 @@ def main() -> int:
         **os.environ,
         "RAG_LOCAL_ONLY": "1",
         "RAG_LOCAL_TOKEN": "ci-live-smoke",
+        "RAG_DISABLE_PREWARM": "1",
+        "RAG_IDLE_SHUTDOWN": "0",
     }
     proc = subprocess.Popen(
         [

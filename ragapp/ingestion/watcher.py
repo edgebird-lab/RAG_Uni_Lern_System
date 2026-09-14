@@ -57,6 +57,12 @@ class _Handler(FileSystemEventHandler):
                       f"(Chunks: {res.get('chunks', 0)}, Fragen: {res.get('questions', 0)})")
             except Exception as exc:  # pragma: no cover
                 print(f"[watcher]   FEHLER bei {path.name}: {exc}")
+                try:
+                    from ragapp.student_flow import enqueue_index_retry
+                    enqueue_index_retry(path, None, error=str(exc))
+                    print("[watcher]   -> für erneute Indexierung vorgemerkt")
+                except Exception as queue_exc:  # noqa: BLE001
+                    print(f"[watcher]   -> Retry konnte nicht gespeichert werden: {queue_exc}")
 
 
 def watch(paths: list[Path] | None = None, poll_interval: float = 2.0) -> None:
