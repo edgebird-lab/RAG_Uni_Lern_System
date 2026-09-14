@@ -193,7 +193,7 @@ _components.html(
 from ragapp.ui._style import (apply_page_style, PAGE_REGISTRY, HOME_PIN_KEYS,
                                HIDDEN_PAGE_KEYS, GOAL_CATEGORIES, render_nav_tile,
                                render_goal_tile, render_hero_title, card,
-                               speech_bubble_mascot)
+                               speech_bubble_mascot, mark_tight_nums)
 from ragapp.ui._mascot import render_mascot, home_mood, home_mood_line
 _theme = apply_page_style("home")
 
@@ -303,8 +303,6 @@ if _snap:
                       if _ev.get("evenings") is not None else "")
             _chips_rest.append(
                 f"📝 {_ex_subj}: {planner.humanize_days(_snap['days_to_exam'])}{_abend}")
-        if _snap.get("open_errors"):
-            _chips_priority.append(f"📒 {_snap['open_errors']} im Fehlerheft")
         if _snap["overdue_plan_blocks"]:
             _chips_rest.append(
                 f"📋 {len(_snap['overdue_plan_blocks'])} Lernplan-Block(e) im Rückstand")
@@ -321,7 +319,9 @@ if _snap:
         if _show:
             st.markdown(
                 '<div class="rag-heute-chips">'
-                + "".join(f'<span class="rag-heute-chip">{c}</span>' for c in _show)
+                + "".join(
+                    f'<span class="rag-heute-chip">{mark_tight_nums(_html_escape(c))}</span>'
+                    for c in _show)
                 + "</div>",
                 unsafe_allow_html=True,
             )
@@ -329,8 +329,9 @@ if _snap:
                 with st.expander(f"Mehr heute ({len(_overflow)})", expanded=False):
                     st.markdown(
                         '<div class="rag-heute-chips">'
-                        + "".join(f'<span class="rag-heute-chip">{c}</span>'
-                                  for c in _overflow)
+                        + "".join(
+                            f'<span class="rag-heute-chip">{mark_tight_nums(_html_escape(c))}</span>'
+                            for c in _overflow)
                         + "</div>",
                         unsafe_allow_html=True,
                     )

@@ -35,6 +35,12 @@ def test_is_usable_topic_filtert_dateinamen_und_fachlabel():
     assert not is_usable_topic("Seite 7")
     assert not is_usable_topic("Folie 3")
     assert not is_usable_topic("Page 12")
+    from ragapp.graph.socratic import is_page_label
+    assert is_page_label("Seite 7")
+    assert is_page_label("Folie 3")
+    assert is_page_label("Page 12")
+    assert not is_page_label("Testing-Effekt")
+    assert not is_page_label("Seite zwei")
 
 
 def test_collect_nimmt_karten_themen_nicht_dateinamen():

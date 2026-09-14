@@ -73,6 +73,11 @@ def topic_from_front(front: str, *, subject: Optional[str] = None) -> str:
     return ""
 
 
+def is_page_label(label: str) -> bool:
+    """True für PDF-Platzhalter wie 'Seite 7' / 'Folie 3' – kein Stoffname."""
+    return bool(_PAGE_LABEL_RE.match((label or "").strip()))
+
+
 def is_usable_topic(label: str, *, subject: Optional[str] = None,
                     filename_stems: Optional[Iterable[str]] = None) -> bool:
     name = re.sub(r"\s+", " ", (label or "").strip())
@@ -81,7 +86,7 @@ def is_usable_topic(label: str, *, subject: Optional[str] = None,
     key = name.lower()
     if key in _GENERIC_LABELS:
         return False
-    if _PAGE_LABEL_RE.match(name):
+    if is_page_label(name):
         return False
     subj = (subject or "").strip().lower()
     if subj and (key == subj or key.startswith(subj + " ") or key.startswith(subj + "-")):

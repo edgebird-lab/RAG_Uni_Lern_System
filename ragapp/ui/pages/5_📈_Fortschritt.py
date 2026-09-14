@@ -278,7 +278,7 @@ if _sektion == "Klausurstatus":
         if _gaps:
             _g = _gaps[0]
             _ks2.metric("Nächste Lücke", (_g.get("topic") or "ohne Thema")[:40],
-                        delta=f'{_g["mastery_pct"]} % Mastery', delta_color="off",
+                        delta=f'{_g["mastery_pct"]} % sitzt', delta_color="off",
                         help="Schwächstes Thema in der Auswahl – dort lohnt die nächste Runde.")
         else:
             _ks2.metric("Nächste Lücke", "–",
@@ -312,7 +312,8 @@ if _sektion == "Klausurstatus":
                            + (f" · Klausur in {_dte} Tagen" if _dte and _dte > 0 else "")
                            + ".")
                 st.markdown(_charts.line_chart(
-                    [c["tag"] for c in _curve], [c["bereitschaft_pct"] for c in _curve],
+                    [_charts.german_day_label(c["tag"]) for c in _curve],
+                    [c["bereitschaft_pct"] for c in _curve],
                     color="#C08A2E", height=120, value_suffix=" %"),
                     unsafe_allow_html=True)
 
@@ -424,7 +425,7 @@ if _sektion == "Klausurstatus":
                 "Fach": _fach(p["subject"]),
                 "Klausur": planner.humanize_days(p["days_to_exam"]),
                 "Datum": p["exam_date"] or "–",
-                "Mastery %": p["mastery_pct"],
+                "Sitzt %": p["mastery_pct"],
                 "Gewicht": p["weight"],
                 "Priorität": p["priority"],
             } for p in prios])
@@ -503,7 +504,7 @@ if _sektion == "Analyse":
         with tcol1:
             st.subheader("📉 Treffer-Verlauf (30 Tage)")
             tr = analytics.retention_trend(30, subject)
-            _tage = [t["tag"] for t in tr]
+            _tage = [_charts.german_day_label(t["tag"]) for t in tr]
             st.markdown(_charts.line_chart(_tage, [t["treffer_pct"] for t in tr],
                                             color=_theme["accent"], height=200, value_suffix=" %"),
                         unsafe_allow_html=True)
@@ -514,7 +515,9 @@ if _sektion == "Analyse":
             st.subheader("📅 Fälligkeits-Prognose (14 Tage)")
             st.caption("Warnt vor Wiederholungs-Stau kurz vor der Klausur.")
             fc = analytics.due_forecast(14, subject)
-            st.markdown(_charts.bar_chart([f["tag"] for f in fc], [f["faellig"] for f in fc],
+            st.markdown(_charts.bar_chart(
+                [_charts.german_day_label(f["tag"]) for f in fc],
+                [f["faellig"] for f in fc],
                                            color="#C08A2E", height=340),
                         unsafe_allow_html=True)
 
@@ -522,8 +525,8 @@ if _sektion == "Analyse":
     # Mastery je Fach / Thema
     # --------------------------------------------------------------------------- #
     with card("mastery"):
-        st.subheader("🎯 Mastery")
-        st.caption("Mastery ist der Anteil sitzender Karten je Fach oder Thema.")
+        st.subheader("🎯 Sitzt je Fach / Thema")
+        st.caption("Anteil der Karten, die oft genug hintereinander gewusst wurden.")
         mcol1, mcol2 = st.columns([1, 1])
         with mcol1:
             st.caption("Anteil sitzender Karten je Fach")
@@ -538,11 +541,11 @@ if _sektion == "Analyse":
             st.caption(f"Schwächste Themen · {_fach(topic_subject)}")
             tp = analytics.mastery_by_topic(topic_subject, limit=12) if topic_subject else []
             if tp:
-                dftp = pd.DataFrame([{"Thema": (t["topic"] or "")[:48], "Mastery %": t["mastery_pct"],
+                dftp = pd.DataFrame([{"Thema": (t["topic"] or "")[:48], "Sitzt %": t["mastery_pct"],
                                       "Karten": t["cards"], "Patzer": t["lapses"]} for t in tp])
                 st.dataframe(dftp, use_container_width=True, hide_index=True,
-                             column_config={"Mastery %": st.column_config.ProgressColumn(
-                                 "Mastery %", min_value=0, max_value=100, format="%d %%")})
+                             column_config={"Sitzt %": st.column_config.ProgressColumn(
+                                 "Sitzt %", min_value=0, max_value=100, format="%d %%")})
             else:
                 st.caption("Noch keine Themendaten.")
 

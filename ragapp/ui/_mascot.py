@@ -228,8 +228,9 @@ def _corner_bubble_html(text: "str | None", icon: str = "") -> str:
     if not (text or "").strip():
         return ""
     label = f"{icon} {text}".strip() if icon else (text or "").strip()
+    tight = re.sub(r"(\d+)", r'<span class="rag-num">\1</span>', html_escape(label))
     return (f'<div class="rag-bubble-mascot rag-bubble-mascot-corner">'
-            f"{html_escape(label)}</div>")
+            f"{tight}</div>")
 
 
 def mascot_svg(accent: str, *, size: int = 200, ink: str = "#2b2036",

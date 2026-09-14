@@ -692,7 +692,7 @@ def daily_missions() -> list[dict]:
             "kind": "weak_topic",
             "title": f"Schwäche: {w.get('topic') or 'ohne Thema'}",
             "minutes": min(20, cap),
-            "reason": f"Mastery nur {w.get('mastery_pct', 0)} % – dort sitzt es noch nicht.",
+            "reason": f"Nur {w.get('mastery_pct', 0)} % sitzt – dort lohnt die nächste Runde.",
             "subject": subj,
             "topic": w.get("topic"),
             "card_ids": [c["card_id"] for c in weak_cards],

@@ -16,6 +16,17 @@ kein Netz, skaliert verlustfrei, faerbt sich mit der Seiten-Akzentfarbe.
 from __future__ import annotations
 
 import html
+import re
+
+_ISO_DAY_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
+
+
+def german_day_label(tag: str) -> str:
+    """``2026-09-14`` -> ``14.09.`` für Achsen; andere Labels unverändert."""
+    m = _ISO_DAY_RE.match((tag or "").strip())
+    if not m:
+        return tag or ""
+    return f"{m.group(3)}.{m.group(2)}."
 
 
 def _smooth_path(points: list[tuple[float, float]]) -> str:

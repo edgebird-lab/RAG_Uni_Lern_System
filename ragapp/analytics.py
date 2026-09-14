@@ -269,18 +269,32 @@ def subject_mastery(subject: str) -> float:
 
 
 def mastery_by_topic(subject: str, limit: int = 40) -> list[dict]:
-    """Pro Thema eines Fachs: Karten, Mastery %, Patzer - fuer die Themen-Heatmap."""
+    """Pro Thema eines Fachs: Karten, Sitzt-Anteil, Patzer - fuer die Themen-Heatmap.
+
+    PDF-Platzhalter ('Seite 7') werden ausgelassen – das sind keine Lernlücken.
+    """
+    from ragapp.graph.socratic import is_page_label
     tgt = _target_reps()
+    fetch = max(int(limit) * 4, int(limit))
     with _conn() as c:
         rows = c.execute(
             "SELECT COALESCE(topic,'(ohne Thema)') AS topic, COUNT(*) AS cards, "
             "SUM(CASE WHEN reps>=? THEN 1 ELSE 0 END) AS sitzt, SUM(lapses) AS lapses "
             "FROM review_items WHERE suspended=0 AND use_flashcard=1 AND subject=? "
             "GROUP BY COALESCE(topic,'(ohne Thema)') ORDER BY sitzt*1.0/COUNT(*) ASC, cards DESC "
-            "LIMIT ?", [tgt, subject, int(limit)]).fetchall()
-    return [{"topic": r["topic"], "cards": r["cards"], "lapses": r["lapses"] or 0,
-             "mastery_pct": round(100 * (r["sitzt"] or 0) / r["cards"]) if r["cards"] else 0}
-            for r in rows]
+            "LIMIT ?", [tgt, subject, fetch]).fetchall()
+    out: list[dict] = []
+    for r in rows:
+        topic = r["topic"]
+        if is_page_label(topic):
+            continue
+        out.append({
+            "topic": topic, "cards": r["cards"], "lapses": r["lapses"] or 0,
+            "mastery_pct": round(100 * (r["sitzt"] or 0) / r["cards"]) if r["cards"] else 0,
+        })
+        if len(out) >= int(limit):
+            break
+    return out
 
 
 def due_forecast(days: int = 14, subject: Optional[str] = None) -> list[dict]:

@@ -131,3 +131,21 @@ def test_jol_calibration_over_und_underconfidence(isolated_db):
     assert cal["underconfidence_n"] == 1
     all_cal = analytics.jol_calibration()
     assert all_cal["overconfidence_n"] == 2
+
+
+def test_mastery_by_topic_laesst_seitenzahlen_weg(isolated_db):
+    from ragapp import manifest
+    manifest._ensure_initialized()
+    with manifest._connect() as conn:
+        for topic, cid in (("Seite 3", "p1"), ("Seite 7", "p2"),
+                           ("Hashfunktionen", "ok")):
+            conn.execute(
+                "INSERT INTO review_items (card_id, subject, topic, front, back, "
+                "suspended, use_flashcard, reps, created_at) "
+                "VALUES (?,?,?,?,?,0,1,0,?)",
+                (cid, "Cybersecurity", topic, "F", "A", time.time()))
+    rows = analytics.mastery_by_topic("Cybersecurity", limit=5)
+    topics = [r["topic"] for r in rows]
+    assert "Hashfunktionen" in topics
+    assert "Seite 3" not in topics
+    assert "Seite 7" not in topics

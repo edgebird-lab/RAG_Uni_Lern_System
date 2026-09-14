@@ -145,9 +145,9 @@ def test_chat_mood_hinweis_chip_laesst_birne():
 
 def test_corner_bubble_html_escaped_and_empty_safe():
     from ragapp.ui._mascot import _corner_bubble_html
-    html = _corner_bubble_html("Ich schau in den Unterlagen …", "🔍")
-    assert "rag-bubble-mascot-corner" in html
-    assert "🔍" in html
+    html = _corner_bubble_html("15 Karten fällig", "🎴")
+    assert 'class="rag-num">15</span>' in html
+    assert "🎴" in html
     assert _corner_bubble_html(None) == ""
     assert "&lt;" in _corner_bubble_html("<script>x</script>")
 

@@ -19,6 +19,7 @@ Zielgruppen Heute, Kurse, Lernen, Werkzeuge, Fortschritt.
 """
 from __future__ import annotations
 
+import re
 from html import escape as html_escape
 
 import streamlit as st
@@ -216,7 +217,15 @@ h1, h2, h3, h4, h5, h6 {
   font-variant-emoji: text;
 }
 .rag-heute-chip, .rag-bubble, .rag-bubble-mascot {
-  font-variant-emoji: emoji;
+  font-variant-emoji: text;
+  font-variant-numeric: normal !important;
+  font-feature-settings: normal !important;
+  letter-spacing: 0 !important;
+}
+.rag-num {
+  letter-spacing: -0.08em;
+  font-variant-numeric: normal;
+  font-feature-settings: normal;
 }
 /* Streamlit-Kennzahlen (st.metric): Default-Schriftgroesse (~2.25rem) + unsere
    etwas breitere Body-Schrift (Nunito) + Streamlits text-overflow:ellipsis
@@ -531,6 +540,7 @@ html.rag-dark .rag-bubble::after {{background:#0f2440; border-color:rgba(231,237
 .rag-heute-chip {{
   font-size:.86rem; font-weight:600; padding:5px 12px; border-radius:999px;
   background:{soft}; border:1.5px solid {accent}55; color:#2b2036; white-space:nowrap;
+  font-variant-numeric:normal; font-feature-settings:normal; letter-spacing:0;
 }}
 html.rag-dark .rag-heute-chip {{background:#132b4d; border-color:{accent}66; color:#e7edf5;}}
 .rag-heute-row {{font-size:.88rem; opacity:.85; margin:.15rem 0;}}
@@ -1388,19 +1398,24 @@ def render_hero_title(text: str, *, accent: str | None = None) -> None:
     st.markdown(_hero_title_html(text), unsafe_allow_html=True)
 
 
+def mark_tight_nums(text: str) -> str:
+    """Ziffern in Chips/Sprechblasen eng setzen – Nunito splittet sonst '15' visuell."""
+    return re.sub(r"(\d+)", r'<span class="rag-num">\1</span>', text or "")
+
+
 def speech_bubble(text: str, *, icon: str = "💡") -> None:
     """Comic-Sprechblase fuer einen kurzen Tipp/Hinweis (siehe ``.rag-bubble``
     in _BASE_CSS) - dezenter als ``st.info()``, aber verspielter: Text wird
     NICHT als Markdown interpretiert (nur escaped), da hier ausschliesslich
     kurze, feste Hinweistexte reinsollen, keine Nutzereingaben."""
-    st.markdown(f'<div class="rag-bubble">{icon} {html_escape(text)}</div>',
+    st.markdown(f'<div class="rag-bubble">{icon} {mark_tight_nums(html_escape(text))}</div>',
                 unsafe_allow_html=True)
 
 
 def speech_bubble_mascot(text: str, *, icon: str = "👋") -> None:
     """Sprechblase direkt UEBER dem Maskottchen (Pfeil nach unten zur Figur)."""
     st.markdown(
-        f'<div class="rag-bubble-mascot">{icon} {html_escape(text)}</div>',
+        f'<div class="rag-bubble-mascot">{icon} {mark_tight_nums(html_escape(text))}</div>',
         unsafe_allow_html=True,
     )
 

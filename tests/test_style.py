@@ -26,6 +26,7 @@ from ragapp.ui._style import (
     _FONT_FACE_CSS,
     celebration_effects_html,
     combo_pulse_html,
+    mark_tight_nums,
     page_title,
     theme_for,
 )
@@ -356,3 +357,9 @@ def test_delete_button_oeffnet_gemeinsamen_dialog():
     dialog = inspect.getsource(_style._shared_delete_dialog)
     assert "Jetzt löschen" in dialog
     assert "Abbrechen" in dialog
+
+
+def test_mark_tight_nums_wickelt_ziffern_in_span():
+    assert mark_tight_nums("15 Karten fällig") == (
+        '<span class="rag-num">15</span> Karten fällig')
+    assert ".rag-num" in _FONT_FACE_CSS

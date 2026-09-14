@@ -131,3 +131,11 @@ def test_progress_bar_kappt_negative_werte_auf_null():
 def test_progress_bar_nutzt_uebergebene_farbe():
     svg = progress_bar(50.0, color="#FF0000")
     assert "#FF0000" in svg
+
+
+def test_german_day_label_formatiert_iso_nicht_andere_texte():
+    from ragapp.ui._charts import german_day_label
+    assert german_day_label("2026-09-14") == "14.09."
+    assert german_day_label("2026-01-02") == "02.01."
+    assert german_day_label("in 3 Wochen") == "in 3 Wochen"
+    assert german_day_label("") == ""
