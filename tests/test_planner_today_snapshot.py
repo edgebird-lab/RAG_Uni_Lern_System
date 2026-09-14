@@ -241,3 +241,12 @@ def test_repair_all_overdue_plans_liefert_vorschau_und_wendet_an(
     applied = student_flow.repair_all_overdue_plans(apply=True)
     assert applied["moved_blocks"] == 1
     assert manifest.list_overdue_plan_blocks(_iso(0)) == []
+
+
+def test_all_priorities_ueberspringt_importreste(isolated_db):
+    manifest.upsert_exam("31", ects=5)
+    manifest.upsert_exam("BWL", exam_date=_iso(10), ects=5)
+    prios = planner.all_priorities()
+    codes = [p["subject"] for p in prios]
+    assert "31" not in codes
+    assert "BWL" in codes
