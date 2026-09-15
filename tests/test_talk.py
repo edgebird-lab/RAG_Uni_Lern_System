@@ -230,6 +230,30 @@ def test_pack_youtube_slides_drops_agenda_and_cards_content():
     assert "## **Abruf hält.**" in mashed
 
 
+def test_sanitize_lead_eyebrow_and_glued_hr():
+    import re
+    from ragapp.talk import _sanitize_one_slide, pack_youtube_slides, validate_marp_markdown
+    lead = (
+        '<!-- _class: lead -->\n'
+        '<p class="eyebrow">Livetest</p>\n'
+        "# **Hook**\n"
+        "### Behauptung\n"
+    )
+    out = _sanitize_one_slide(lead)
+    assert re.search(r"</p>\s*\n\s*\n# \*\*Hook\*\*", out)
+    glued = (
+        "<!-- _class: accent -->\n\n"
+        "## **Aktiver Abruf verlängert das Behalten.---**\n"
+    )
+    clean = _sanitize_one_slide(glued)
+    assert "---" not in clean
+    assert "Behalten.**" in clean
+    packed = pack_youtube_slides(lead + "\n---\n\n" + glued)
+    assert "---**" not in packed
+    md = validate_marp_markdown("---\nmarp: true\n---\n\n" + lead)
+    assert re.search(r"</p>\s*\n\s*\n# \*\*Hook\*\*", md)
+
+
 def test_ensure_youtube_takeaway_adds_accent_before_sources():
     from ragapp.talk import (
         _ensure_youtube_takeaway,

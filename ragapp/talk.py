@@ -549,6 +549,12 @@ def validate_marp_markdown(md: str) -> str:
     n_slides = max(0, len(re.findall(r"(?m)^---\s*$", text)) - 1)
     if n_slides < 1 and "# " not in text and "## " not in text:
         raise TalkError("Keine erkennbaren Folien im Marp-Markdown.")
+    bodies = _iter_slide_bodies(text)
+    if bodies:
+        clean = _join_slide_chunks([_sanitize_one_slide(b) for b in bodies])
+        fm = re.match(r"^---\s*\n(.*?)\n---\s*\n?", text, re.DOTALL)
+        if fm:
+            text = f"---\n{fm.group(1)}\n---\n\n{clean}"
     return apply_talk_theme(text)
 
 
@@ -762,12 +768,12 @@ def pack_youtube_slides(slides: str) -> str:
             if cls == "agenda":
                 continue
             if cls in {"lead", "accent", "card", "sources"}:
-                chunks.append(piece)
+                chunks.append(_sanitize_one_slide(piece))
                 continue
             if cls == "accent" or "> " in piece or piece.strip().startswith(">"):
-                chunks.append(piece)
+                chunks.append(_sanitize_one_slide(piece))
                 continue
-            chunks.append(_force_youtube_card(piece))
+            chunks.append(_sanitize_one_slide(_force_youtube_card(piece)))
     return _join_slide_chunks(chunks)
 
 
@@ -798,6 +804,38 @@ def _ensure_youtube_takeaway(slides: str, script: str) -> str:
         return _join_slide_chunks(bodies)
     bodies.append(take)
     return _join_slide_chunks(bodies)
+
+
+_EYEBROW_P_RE = re.compile(
+    r"(<p\s+class=['\"]eyebrow['\"]>[\s\S]*?</p>)[ \t]*(#{1,3}\s)",
+    re.IGNORECASE,
+)
+_GLUED_HR_RE = re.compile(r"(?:\*{0,2})[ \t]*-{3,}[ \t]*(?:\*{0,2})[ \t]*$")
+
+
+def _sanitize_one_slide(body: str) -> str:
+    """Leerzeile nach Eyebrow-HTML, kein ``---`` am Titel kleben."""
+    text = (body or "").replace("\r\n", "\n")
+    text = _EYEBROW_P_RE.sub(r"\1\n\n\2", text)
+    text = re.sub(
+        r"(<p\s+class=['\"]eyebrow['\"]>[\s\S]*?</p>)[ \t]*\n(?=#{1,3}\s)",
+        r"\1\n\n",
+        text,
+        flags=re.I,
+    )
+    out: list[str] = []
+    for line in text.splitlines():
+        raw = line.rstrip()
+        if raw.strip() in {"---", "***", "___"}:
+            continue
+        cleaned = _GLUED_HR_RE.sub("", raw).rstrip()
+        if cleaned.count("**") % 2 == 1:
+            cleaned += "**"
+        if cleaned.strip():
+            out.append(cleaned)
+        elif raw.strip() == "":
+            out.append("")
+    return "\n".join(out).strip()
 
 
 def _iter_slide_bodies(slides: str) -> list[str]:
@@ -833,8 +871,8 @@ def clamp_slide_grammar(slides: str) -> str:
     chunks = _iter_slide_bodies(slides)
     if not chunks:
         return (slides or "").strip()
-    clamped = [_clamp_one_slide(c) for c in chunks]
-    return _join_slide_chunks([_promote_card_slide(c) for c in clamped])
+    clamped = [_promote_card_slide(_clamp_one_slide(_sanitize_one_slide(c))) for c in chunks]
+    return _join_slide_chunks(clamped)
 
 
 def _promote_card_slide(body: str) -> str:
