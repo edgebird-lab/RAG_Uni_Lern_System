@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
-CUE_VERSION = 6
+CUE_VERSION = 7
 VIDEO_WIDTH = 1280
 VIDEO_HEIGHT = 720
 
@@ -151,6 +151,14 @@ def _title_hold_s(slide_dur: float, n_bullets: int) -> float:
         return max(0.0, slide_dur)
     hold = slide_dur * _TITLE_HOLD_FRAC
     return min(_TITLE_HOLD_MAX, max(_TITLE_HOLD_MIN, hold), slide_dur * 0.45)
+
+
+def _slide_wants_caption(slide: dict[str, Any]) -> bool:
+    """Lower-Third nur Merksatz/Card, nicht jeder Satz."""
+    cls = str(slide.get("class_name") or "")
+    if cls in {"accent", "card"}:
+        return True
+    return bool(slide.get("punch")) and cls not in {"lead", "agenda", "sources"}
 
 
 def _caption_text(text: str) -> str:
@@ -425,15 +433,17 @@ def map_timeline_to_cues(marp_md: str, timeline: list[dict[str, Any]],
                     "slide": i,
                     "i": bi,
                 })
-        for sent in sents:
-            cap = _caption_text(str(sent.get("text") or ""))
-            if cap:
-                slide_events.append({
-                    "t": _round_t(float(sent.get("start_s") or start)),
-                    "type": "caption",
-                    "slide": i,
-                    "text": cap,
-                })
+        if _slide_wants_caption(slide):
+            for sent in sents:
+                cap = _caption_text(str(sent.get("text") or ""))
+                if cap:
+                    slide_events.append({
+                        "t": _round_t(float(sent.get("start_s") or start)),
+                        "type": "caption",
+                        "slide": i,
+                        "text": cap,
+                    })
+                    break
         _attach_motion_events(slide_events, slide, i, end_s=end)
         events.extend(slide_events)
         slides_out.append({

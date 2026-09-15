@@ -206,9 +206,7 @@ marp: true
     cues = map_timeline_to_cues(md, timeline)
     types = [e["type"] for e in cues["events"]]
     assert types[:2] == ["slide", "title"]
-    assert "caption" in types
-    cap = next(e for e in cues["events"] if e["type"] == "caption")
-    assert cap["text"] == "Hallo"
+    assert "caption" not in types
     assert cues["slides"][0]["bullets"] == []
 
 
@@ -405,16 +403,31 @@ def test_placeholder_cues_have_no_captions():
     assert all(e["type"] != "caption" for e in cues["events"])
 
 
-def test_timeline_captions_switch_and_shorten():
+def test_timeline_captions_only_on_merksatz():
     from ragapp.talk_cues import map_timeline_to_cues
-    md = "<!-- _class: content -->\n\n## A\n\n- x\n"
+    content = "<!-- _class: content -->\n\n## A\n\n- x\n"
     timeline = [
         {"index": 0, "text": "Kurzer Satz.", "start_s": 0.0, "duration_s": 1.0},
         {"index": 1, "text": " ".join(["Wort"] * 20), "start_s": 1.2, "duration_s": 1.0},
     ]
+    quiet = map_timeline_to_cues(content, timeline)
+    assert [e for e in quiet["events"] if e["type"] == "caption"] == []
+
+    accent = "<!-- _class: accent -->\n\n## Merksatz\n\n> Abrufen schlägt Nachlesen.\n"
+    cues = map_timeline_to_cues(accent, timeline)
+    caps = [e for e in cues["events"] if e["type"] == "caption"]
+    assert len(caps) == 1
+    assert caps[0]["text"] == "Kurzer Satz"
+
+
+def test_timeline_caption_shortens_long_merksatz():
+    from ragapp.talk_cues import map_timeline_to_cues
+    md = "<!-- _class: accent -->\n\n## Merksatz\n\n> Bleibt.\n"
+    timeline = [
+        {"index": 0, "text": " ".join(["Wort"] * 20), "start_s": 0.0, "duration_s": 1.0},
+    ]
     cues = map_timeline_to_cues(md, timeline)
     caps = [e for e in cues["events"] if e["type"] == "caption"]
-    assert caps[0]["text"] == "Kurzer Satz"
-    assert caps[1]["t"] == 1.2
-    assert caps[1]["text"].endswith("…")
-    assert len(caps[1]["text"]) <= 48
+    assert len(caps) == 1
+    assert caps[0]["text"].endswith("…")
+    assert len(caps[0]["text"]) <= 48
