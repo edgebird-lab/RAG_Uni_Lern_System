@@ -106,6 +106,55 @@ def test_attach_youtube_broll_fills_card(monkeypatch, tmp_path):
     assert "figures/broll_0.png" not in skipped
 
 
+def test_broll_queries_prefer_slide_titles_not_talk_title():
+    md = """\
+<!-- _class: lead -->
+
+# Vortrag Livetest
+
+---
+
+<!-- _class: card -->
+
+## **Testing-Effekt**
+
+---
+
+<!-- _class: card -->
+
+## **Spaced Repetition**
+
+---
+
+<!-- _class: accent -->
+
+## Merke dir das
+
+> x
+"""
+    qs = talk_broll.broll_queries(md, fallback="Vortrag Livetest")
+    assert qs[0] == "Testing-Effekt"
+    assert "Spaced Repetition" in qs
+    assert "Vortrag Livetest" not in qs
+    assert all("Merke dir das" not in q for q in qs)
+
+
+def test_attach_broll_searches_slide_keyword(monkeypatch, tmp_path):
+    seen: list[str] = []
+
+    def _dl(query, dest_dir, *, max_n=2):
+        seen.append(query)
+        return [{"rel": "figures/broll_0.png", "page": 0}] if query else []
+
+    monkeypatch.setattr(talk_broll, "download_broll", _dl)
+    md = "<!-- _class: card -->\n\n## **Testing-Effekt**\n"
+    out = talk_figures.attach_talk_figures(
+        md, [], dest_dir=tmp_path / "figures", broll=True,
+        broll_query="Vortrag Livetest", youtube=True)
+    assert seen[0] == "Testing-Effekt"
+    assert "figures/broll_0.png" in out
+
+
 def test_download_broll_writes_files_and_license(monkeypatch, tmp_path):
     hits = [
         SearxResult(

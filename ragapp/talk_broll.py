@@ -16,6 +16,39 @@ log = logging.getLogger(__name__)
 
 MAX_BROLL = 2
 MAX_BYTES = 2_500_000
+_GENERIC_QUERY = re.compile(
+    r"^(vortrag\b|livetest|kern|folie|titel)$", re.IGNORECASE)
+
+
+def broll_queries(marp_md: str, fallback: str = "") -> list[str]:
+    """Suchqueries aus kurzen Folientiteln, nicht aus „Vortrag …“."""
+    from ragapp.talk_cues import parse_slide_body, split_marp_slides
+    skip = {"lead", "agenda", "sources"}
+    out: list[str] = []
+    seen: set[str] = set()
+    for body in split_marp_slides(marp_md):
+        parsed = parse_slide_body(body)
+        if parsed["class_name"] in skip:
+            continue
+        title = " ".join((parsed.get("title") or "").split())
+        title = re.sub(r"[.!?]+$", "", title).strip()
+        if not title or len(title) < 4 or "merke dir das" in title.lower():
+            continue
+        if len(title.split()) > 4 or len(title) > 40:
+            continue
+        key = title.lower()
+        if key in seen or _GENERIC_QUERY.match(key):
+            continue
+        seen.add(key)
+        out.append(title)
+    fb = " ".join((fallback or "").split())
+    if fb and fb.lower() not in seen:
+        if not re.match(r"^vortrag\b", fb, re.I) and not _GENERIC_QUERY.match(fb):
+            out.append(fb)
+        elif not out:
+            out.append(fb)
+    return out[:4]
+
 
 
 def _ext_from(url: str, content_type: str) -> str:

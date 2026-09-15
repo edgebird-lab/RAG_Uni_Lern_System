@@ -222,12 +222,18 @@ def attach_talk_figures(marp_md: str, doc_ids: list[str], *, dest_dir: Path,
     try:
         figures = collect_talk_figures(doc_ids, dest_dir)
         if broll:
-            from ragapp.talk_broll import download_broll, slots_without_figure
+            from ragapp.talk_broll import broll_queries, download_broll, slots_without_figure
             need = max(0, slots_without_figure(
                 marp_md, allow_cards=bool(youtube)) - len(figures))
             if need:
-                figures.extend(download_broll(
-                    broll_query, dest_dir, max_n=min(2, need)))
+                want = min(2, need)
+                got: list[dict[str, Any]] = []
+                for query in broll_queries(marp_md, fallback=broll_query):
+                    if len(got) >= want:
+                        break
+                    got.extend(download_broll(
+                        query, dest_dir, max_n=want - len(got)))
+                figures.extend(got)
         return attach_figures_to_markdown(
             marp_md, figures, allow_cards=bool(youtube))
     except Exception as exc:  # noqa: BLE001
