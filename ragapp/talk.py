@@ -839,6 +839,29 @@ def _ensure_youtube_takeaway(slides: str, script: str) -> str:
     return _join_slide_chunks(bodies)
 
 
+def _ensure_youtube_lead(slides: str, *, title: str = "",
+                         subject: Optional[str] = None) -> str:
+    """Erste Folie ist immer Lead, kein Clickbait-Card."""
+    bodies = _iter_slide_bodies(slides)
+    heading = (title or "Vortrag").strip() or "Vortrag"
+    eyebrow = (subject or "").strip()
+    if bodies and _slide_class_name(bodies[0]) == "lead":
+        return slides
+    if bodies and _slide_class_name(bodies[0]) != "sources":
+        heading = _slide_heading(bodies[0]) or heading
+        m = re.search(r'<p class="eyebrow">([^<]*)</p>', bodies[0], re.I)
+        if m and m.group(1).strip():
+            eyebrow = m.group(1).strip()
+        sub = f'<p class="eyebrow">{eyebrow}</p>\n\n' if eyebrow else ""
+        bodies[0] = _sanitize_one_slide(
+            f"<!-- _class: lead -->\n\n{sub}# {heading}\n")
+        return _join_slide_chunks(bodies)
+    sub = f'<p class="eyebrow">{eyebrow}</p>\n\n' if eyebrow else ""
+    lead = _sanitize_one_slide(
+        f"<!-- _class: lead -->\n\n{sub}# {heading}\n")
+    return _join_slide_chunks([lead, *bodies])
+
+
 _EYEBROW_P_RE = re.compile(
     r"(<p\s+class=['\"]eyebrow['\"]>[\s\S]*?</p>)[ \t]*(#{1,3}\s)",
     re.IGNORECASE,
@@ -1321,6 +1344,7 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
         script = _join_talk_script(script_parts)
         if youtube_style:
             body = pack_youtube_slides(body)
+            body = _ensure_youtube_lead(body, title=title, subject=subject)
             body = _ensure_youtube_takeaway(body, script)
             body = clamp_slide_grammar(body)
         marp_md = validate_marp_markdown(

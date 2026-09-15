@@ -286,6 +286,28 @@ def test_ensure_youtube_takeaway_adds_accent_before_sources():
     assert "Abrufen schlägt Nachlesen." in opening
     src = Path("ragapp/talk.py").read_text(encoding="utf-8")
     assert "body = _ensure_youtube_takeaway(body, script)" in src
+    assert "body = _ensure_youtube_lead(body, title=title, subject=subject)" in src
+
+
+def test_ensure_youtube_lead_promotes_first_card():
+    from ragapp.talk import _ensure_youtube_lead, _slide_class_name, _iter_slide_bodies
+    body = (
+        "<!-- _class: card -->\n\n## **Power: Livetest**\n\n"
+        "---\n\n<!-- _class: card -->\n\n## **Testing-Effekt**\n"
+    )
+    out = _ensure_youtube_lead(body, title="Vortrag Livetest", subject="Livetest")
+    chunks = _iter_slide_bodies(out)
+    assert _slide_class_name(chunks[0]) == "lead"
+    assert "Power: Livetest" in chunks[0]
+    assert 'class="eyebrow"' in chunks[0]
+    assert "Livetest" in chunks[0]
+    assert _slide_class_name(chunks[1]) == "card"
+    already = (
+        '<!-- _class: lead -->\n\n<p class="eyebrow">Fach</p>\n\n# **Hook**\n\n'
+        "---\n\n<!-- _class: card -->\n\n## **X**\n"
+    )
+    kept = _ensure_youtube_lead(already, title="T", subject="Livetest")
+    assert kept == already
 
 
 def test_thematic_toc_filters_page_titles():
