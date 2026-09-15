@@ -63,13 +63,15 @@ def generate_script_funcs(load_functions, ragapp_dir):
         ]
         return load_functions(
             ragapp_dir / "audio_overview.py",
-            ["generate_overview_script", "_narrate_section", "_looks_truncated"],
+            ["generate_overview_script", "_narrate_section", "_looks_truncated",
+             "_split_section_body", "_split_oversize_para", "_hard_wrap"],
             {
                 "settings": settings,
                 "get_llm": lambda model=None: llm,
                 "_granular_sections": _fake_granular_sections_factory(sections),
                 "AudioOverviewError": RuntimeError,
                 "Optional": None,
+                "re": __import__("re"),
                 "llm_task": lambda model=None: __import__("contextlib").nullcontext(),
             },
             const_names=["_SECTION_SYSTEM", "_SECTION_PROMPT", "_SECTION_CHAR_BUDGET",
@@ -77,6 +79,16 @@ def generate_script_funcs(load_functions, ragapp_dir):
                         "_SECTION_NUM_PREDICT_RETRY", "_NO_CONTENT_MARKER"],
         )["generate_overview_script"]
     return _make
+
+
+@pytest.fixture
+def split_body_fn(load_functions, ragapp_dir):
+    return load_functions(
+        ragapp_dir / "audio_overview.py",
+        ["_split_section_body", "_split_oversize_para", "_hard_wrap"],
+        {"re": __import__("re")},
+        const_names=["_SECTION_CHAR_BUDGET"],
+    )["_split_section_body"]
 
 
 def test_skript_waechst_mit_anzahl_der_abschnitte(generate_script_funcs):
@@ -201,3 +213,48 @@ def test_generate_script_verwendet_autoren_modell_wenn_kein_modell_angegeben(
     script, warning = f(["doc1"], "DSA", model=None)
     assert warning is None
     assert "Text." in script
+
+
+def test_split_section_body_laesst_kurzen_text(split_body_fn):
+    assert split_body_fn("kurz genug") == ["kurz genug"]
+
+
+def test_split_section_body_teilt_an_absatzgrenzen(split_body_fn):
+    a = "Erster Absatz. " * 200   # ~3000
+    b = "Zweiter Absatz. " * 200
+    body = a + "\n\n" + b
+    assert len(body) > 4500
+    chunks = split_body_fn(body)
+    assert len(chunks) == 2
+    assert chunks[0].startswith("Erster Absatz.")
+    assert chunks[1].startswith("Zweiter Absatz.")
+    assert all(len(c) <= 4500 for c in chunks)
+
+
+def test_split_section_body_packt_kleine_absaetze_zusammen(split_body_fn):
+    assert split_body_fn("eins\n\nzwei") == ["eins\n\nzwei"]
+
+
+def test_split_section_body_zerlegt_riesenabsatz_an_saetzen(split_body_fn):
+    para = "Ein vollstaendiger Satz am Stueck. " * 200  # ~6800
+    chunks = split_body_fn(para)
+    assert len(chunks) >= 2
+    assert all(len(c) <= 4500 for c in chunks)
+    joined = " ".join(chunks)
+    assert "Ein vollstaendiger Satz am Stueck." in joined
+
+
+def test_langer_abschnitt_wird_in_mehrere_llm_aufrufe_geteilt(generate_script_funcs):
+    para1 = "Erster Absatz mit genug Inhalt zum Erklaeren. " * 80
+    para2 = "Zweiter Absatz mit genug Inhalt zum Erklaeren. " * 80
+    body = para1 + "\n\n" + para2
+    assert len(body) > 4500
+    llm = _FakeLLM(["Teil eins gesprochen.", "Teil zwei gesprochen."])
+    f = generate_script_funcs(llm=llm, sections=[("doc.pdf", "Lang", body)])
+    script, warning = f(["doc1"], "DSA")
+    assert "Teil eins gesprochen." in script
+    assert "Teil zwei gesprochen." in script
+    assert "Teil eins gesprochen.\n\nTeil zwei gesprochen." in script
+    assert warning is not None
+    assert "geteilt" in warning
+    assert llm._call_idx == 2

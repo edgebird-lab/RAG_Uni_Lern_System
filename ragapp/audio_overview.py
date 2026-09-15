@@ -115,6 +115,83 @@ _SECTION_NUM_PREDICT_RETRY = 1400
 _NO_CONTENT_MARKER = "(kein erklärbarer inhalt)"
 
 
+def _split_section_body(text: str, budget: int = _SECTION_CHAR_BUDGET) -> list[str]:
+    """Teilt langen Quelltext an Absatzgrenzen, damit nichts still unter
+    ``budget`` weggelassen wird. Ein einzelner Riesenabsatz wird an
+    Satzgrenzen (sonst hart) weiter zerlegt."""
+    raw = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not raw:
+        return []
+    if len(raw) <= budget:
+        return [raw]
+    paras = [p.strip() for p in re.split(r"\n{2,}", raw) if p.strip()]
+    chunks: list[str] = []
+    buf = ""
+
+    def flush() -> None:
+        nonlocal buf
+        if buf:
+            chunks.append(buf)
+            buf = ""
+
+    for para in paras:
+        if len(para) > budget:
+            flush()
+            chunks.extend(_split_oversize_para(para, budget))
+            continue
+        cand = f"{buf}\n\n{para}" if buf else para
+        if len(cand) > budget:
+            flush()
+            buf = para
+        else:
+            buf = cand
+    flush()
+    return chunks or [raw[:budget]]
+
+
+def _split_oversize_para(para: str, budget: int) -> list[str]:
+    parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", para) if p.strip()]
+    if not parts:
+        return _hard_wrap(para, budget)
+    out: list[str] = []
+    buf = ""
+    for part in parts:
+        if len(part) > budget:
+            if buf:
+                out.append(buf)
+                buf = ""
+            out.extend(_hard_wrap(part, budget))
+            continue
+        cand = f"{buf} {part}" if buf else part
+        if len(cand) > budget:
+            out.append(buf)
+            buf = part
+        else:
+            buf = cand
+    if buf:
+        out.append(buf)
+    return out
+
+
+def _hard_wrap(text: str, budget: int) -> list[str]:
+    if len(text) <= budget:
+        return [text]
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        end = min(i + budget, n)
+        if end < n:
+            cut = text.rfind(" ", i, end)
+            if cut > i + budget // 2:
+                end = cut
+        piece = text[i:end].strip()
+        if piece:
+            out.append(piece)
+        i = end if end > i else i + budget
+    return out or [text[:budget]]
+
+
 def _looks_truncated(text: str) -> bool:
     """Gleiche Heuristik wie ``summarize._looks_truncated`` (Antwort endet
     mitten im Satz) - hier dupliziert statt importiert, da summarize.py'
@@ -174,24 +251,30 @@ def generate_overview_script(doc_ids: list[str], subject: Optional[str],
         any_truncated = False
         total_len = 0
         hit_hard_cap = False
+        split_sections = 0
         for i, (label, title, body) in enumerate(granular):
             if len(body.strip()) < _MIN_SECTION_CHARS:
                 if on_progress:
                     on_progress(i + 1, total, title)
                 continue
-            try:
-                piece, truncated = _narrate_section(llm_obj, label, title, body)
-            except Exception:  # noqa: BLE001 - ein fehlgeschlagener Abschnitt darf den Rest nicht kippen
-                if on_progress:
-                    on_progress(i + 1, total, title)
-                continue
+            chunks = _split_section_body(body)
+            if len(chunks) > 1:
+                split_sections += 1
+            section_parts: list[str] = []
+            for chunk in chunks:
+                try:
+                    piece, truncated = _narrate_section(llm_obj, label, title, chunk)
+                except Exception:  # noqa: BLE001 - ein fehlgeschlagener Teil darf den Rest nicht kippen
+                    continue
+                any_truncated = any_truncated or truncated
+                if piece:
+                    section_parts.append(piece)
             if on_progress:
                 on_progress(i + 1, total, title)
-            any_truncated = any_truncated or truncated
-            if not piece:
+            if not section_parts:
                 continue
-            parts.append(piece)
-            total_len += len(piece)
+            parts.append("\n\n".join(section_parts))
+            total_len += sum(len(p) for p in section_parts)
             if total_len >= hard_cap:
                 hit_hard_cap = True
                 break
@@ -215,6 +298,14 @@ def generate_overview_script(doc_ids: list[str], subject: Optional[str],
                       "gekappt (sehr viele/lange Dokumente ausgewählt) - für vollständige "
                       "Abdeckung weniger Dokumente auf einmal wählen.")
             warning = f"{warning} {cap_msg}" if warning else cap_msg
+        if split_sections:
+            if split_sections == 1:
+                split_msg = ("Ein langer Quellabschnitt wurde in mehrere Teile geteilt, "
+                             "damit nichts unter den Tisch fällt.")
+            else:
+                split_msg = (f"{split_sections} lange Quellabschnitte wurden in mehrere "
+                             "Teile geteilt, damit nichts unter den Tisch fällt.")
+            warning = f"{warning} {split_msg}" if warning else split_msg
 
         return script, warning
 

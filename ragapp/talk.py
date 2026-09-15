@@ -718,6 +718,7 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
         hit_hard_cap = False
         hit_slide_cap = False
         skipped_invalid = 0
+        split_sections = 0
 
         toc, excerpts = _thematic_toc_and_excerpts(usable)
         open_slides, open_script, trunc = _llm_slides_script(
@@ -759,6 +760,7 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
             on_progress(step, steps_total, "Eröffnung")
 
         total_script = len(open_script)
+        from ragapp.audio_overview import _split_section_body
 
         for label, sec_title, body in usable:
             if total_script >= hard_cap:
@@ -777,30 +779,36 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
             if _BAD_AGENDA_TITLE_RE.match((sec_title or "").strip()):
                 words = re.findall(r"[A-Za-zÄÖÜäöüß]{4,}", body or "")
                 display_title = " ".join(words[:6]) or sec_title
-            prompt = _SECTION_PROMPT.format(
-                title=display_title, label=label, body=(body or "")[:_SECTION_CHAR_BUDGET])
-            try:
-                slides, script, trunc = _llm_slides_script(
-                    llm_obj, prompt, system=_SECTION_SYSTEM,
-                    body_chars=len(body or ""))
-            except Exception:  # noqa: BLE001
-                skipped_invalid += 1
-                step += 1
-                if on_progress:
-                    on_progress(step, steps_total, sec_title)
-                continue
-            any_truncated = any_truncated or trunc
+            body_chunks = _split_section_body(body or "", _SECTION_CHAR_BUDGET)
+            if len(body_chunks) > 1:
+                split_sections += 1
+            section_ok = False
+            for chunk in body_chunks:
+                prompt = _SECTION_PROMPT.format(
+                    title=display_title, label=label, body=chunk)
+                try:
+                    slides, script, trunc = _llm_slides_script(
+                        llm_obj, prompt, system=_SECTION_SYSTEM,
+                        body_chars=len(chunk))
+                except Exception:  # noqa: BLE001
+                    continue
+                any_truncated = any_truncated or trunc
+                if not slides and not script:
+                    continue
+                section_ok = True
+                if slides:
+                    slide_chunks.append(slides)
+                if script:
+                    script_parts.append(script)
+                    total_script += len(script)
             step += 1
             if on_progress:
                 on_progress(step, steps_total, sec_title)
-            if not slides and not script:
+            if not section_ok:
                 skipped_invalid += 1
-                continue
-            if slides:
-                slide_chunks.append(slides)
-            if script:
-                script_parts.append(script)
-                total_script += len(script)
+            if total_script >= hard_cap:
+                hit_hard_cap = True
+                break
 
         if sources and not hit_hard_cap:
             local_summary = " | ".join(
@@ -877,6 +885,14 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
         if skipped_invalid:
             warning_parts.append(
                 f"{skipped_invalid} Abschnitt(e) nach JSON-Kontrolle verworfen/übersprungen.")
+        if split_sections == 1:
+            warning_parts.append(
+                "Ein langer Quellabschnitt wurde in mehrere Teile geteilt, "
+                "damit nichts unter den Tisch fällt.")
+        elif split_sections > 1:
+            warning_parts.append(
+                f"{split_sections} lange Quellabschnitte wurden in mehrere Teile "
+                "geteilt, damit nichts unter den Tisch fällt.")
         warning_parts.append(
             f"{n_slides} Folien · {len(script)} Zeichen Skript "
             f"(~{max(1, len(script) // 1000)} Min. grob).")
