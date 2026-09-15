@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import html
 import io
+import re
 import zlib
 
 from ragapp import manifest
@@ -22,6 +23,7 @@ from ragapp.config import SUBJECT_LABELS
 
 _MODEL_ID = 1607392319          # feste ID: alle Karten teilen sich einen Kartentyp
 _DECK_ID_BASE = 1901810100
+_MATH_SPLIT = re.compile(r"(\$\$[\s\S]*?\$\$|\$[^$\n]+\$)")
 
 
 def _fach_label(code: str) -> str:
@@ -35,7 +37,20 @@ def _deck_id(name: str) -> int:
 
 
 def _card_html(text: str) -> str:
-    return html.escape(text or "").replace("\n", "<br>")
+    """HTML für Anki: Fließtext escaped, ``$...$`` bleibt MathJax (kein ``&lt;`` in Formeln)."""
+    from ragapp.student_flow import normalize_card_latex
+    s = normalize_card_latex(text)
+    out: list[str] = []
+    for part in _MATH_SPLIT.split(s):
+        if not part:
+            continue
+        math = part.startswith("$$") or (
+            part.startswith("$") and part.endswith("$") and len(part) >= 2)
+        if math:
+            out.append(part.replace("<", r" \lt ").replace(">", r" \gt "))
+        else:
+            out.append(html.escape(part).replace("\n", "<br>"))
+    return "".join(out)
 
 
 def build_apkg(subject: "str | None" = None, deck: "str | None" = None) -> "tuple[bytes, int]":
@@ -56,6 +71,7 @@ def build_apkg(subject: "str | None" = None, deck: "str | None" = None) -> "tupl
             "qfmt": "{{Front}}",
             "afmt": '{{FrontSide}}<hr id="answer">{{Back}}',
         }],
+        css=".card { font-family: arial; font-size: 20px; text-align: left; }",
     )
 
     decks: dict[str, "genanki.Deck"] = {}
