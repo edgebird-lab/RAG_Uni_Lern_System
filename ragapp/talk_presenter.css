@@ -1,0 +1,42 @@
+/* Suchbarer Vortrags-Presenter: Zustand nur ueber Klassen, keine Wall-Clock-Animationen. */
+body.talk-presenter-on .bespoke-marp-osc,
+body.talk-presenter-on .bespoke-marp-progress,
+body.talk-presenter-on [class*="bespoke-marp-osc"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+body.talk-presenter-on svg.bespoke-marp-slide:not(.talk-slide-on) {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: -1 !important;
+}
+
+body.talk-presenter-on svg.bespoke-marp-slide.talk-slide-on {
+  opacity: 1 !important;
+  z-index: 1 !important;
+  content-visibility: visible !important;
+}
+
+body.talk-presenter-on > section:not(.talk-slide-on) {
+  display: none !important;
+}
+
+.talk-title:not(.is-on),
+.talk-bullet:not(.is-on) {
+  opacity: 0;
+}
+
+.talk-title.is-on,
+.talk-bullet.is-on {
+  opacity: 1;
+}
+
+.talk-bullet:not(.is-on) {
+  transform: translateY(0.4em);
+}
+
+.talk-bullet.is-on {
+  transform: none;
+}
