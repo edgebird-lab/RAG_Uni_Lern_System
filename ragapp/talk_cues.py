@@ -482,15 +482,44 @@ def map_timeline_to_cues(marp_md: str, timeline: list[dict[str, Any]],
     }
 
 
-def _shot_label(text: str) -> str:
+def _shot_label(text: str, *, prefer: Optional[list[str]] = None) -> str:
     raw = " ".join((text or "").split())
-    words = re.findall(r"[A-Za-zÄÖÜäöüß0-9%]{3,}", raw)
-    if words:
-        word = max(words, key=len)
-        if len(word) >= 3:
-            return word[:28]
+    low = raw.lower()
+    for pref in prefer or []:
+        p = " ".join(str(pref or "").split()).strip()
+        if len(p) >= 3 and p.lower() in low:
+            return p[:28]
+    words = re.findall(r"[A-Za-zÄÖÜäöüß0-9%][A-Za-zÄÖÜäöüß0-9%\-]{2,}", raw)
+    scored: list[tuple[int, str]] = []
+    for word in words:
+        key = word.lower().strip("-")
+        if key in _SHOT_STOP or len(key) < 4:
+            continue
+        score = len(word)
+        if word[:1].isupper():
+            score += 8
+        if any(ch.isdigit() for ch in word):
+            score += 6
+        if "-" in word:
+            score += 4
+        scored.append((score, word.strip("-")))
+    if scored:
+        scored.sort(key=lambda row: (-row[0], -len(row[1])))
+        return scored[0][1][:28]
     short = _caption_text(raw)
     return (short or raw)[:28] or "·"
+
+
+_SHOT_STOP = frozenset({
+    "aber", "also", "auch", "beim", "beim", "bestehen", "bist", "dabei",
+    "damit", "dann", "dass", "dein", "deine", "deiner", "denn", "doch",
+    "durch", "eine", "einem", "einen", "einer", "einmal", "erst", "ganz",
+    "hast", "haben", "hier", "immer", "kann", "kannst", "kein", "keine",
+    "länger", "mehr", "muss", "musst", "nicht", "noch", "oder", "ohne",
+    "schon", "sein", "seine", "sich", "sind", "sonst", "über", "uns",
+    "unter", "versucht", "warum", "weil", "wenn", "werden", "wie", "wird",
+    "wiederholen", "wirklich", "wofür", "zählt", "zum", "zur",
+})
 
 
 def _shot_texts_for_slide(slide: dict[str, Any]) -> list[str]:
@@ -519,6 +548,22 @@ def _slide_index_at(cues: dict[str, Any], t: float) -> int:
     return idx
 
 
+def _prefer_shot_terms(cues: dict[str, Any], t: float) -> list[str]:
+    idx = _slide_index_at(cues, t)
+    for slide in cues.get("slides") or []:
+        if int(slide.get("index") or 0) != idx:
+            continue
+        terms: list[str] = []
+        for kw in slide.get("title_keywords") or []:
+            if kw:
+                terms.append(str(kw))
+        title = (slide.get("title") or "").strip()
+        if title and title not in terms:
+            terms.append(title)
+        return terms
+    return []
+
+
 def apply_youtube_shots(
     cues: dict[str, Any],
     timeline: Optional[list] = None,
@@ -532,7 +577,11 @@ def apply_youtube_shots(
         t = float(sent.get("start_s") or 0)
         if t - last < _SHOT_MIN_S:
             continue
-        candidates.append((t, _shot_label(str(sent.get("text") or "")), "word"))
+        candidates.append((
+            t,
+            _shot_label(str(sent.get("text") or ""), prefer=_prefer_shot_terms(cues, t)),
+            "word",
+        ))
         last = t
     if not candidates:
         for slide in cues.get("slides") or []:

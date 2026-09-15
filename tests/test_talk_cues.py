@@ -486,6 +486,18 @@ def test_youtube_shots_cut_every_few_seconds():
     assert all(g <= 5.1 for g in lead_gaps), lead_gaps
 
 
+def test_shot_label_skips_stopwords_prefers_keyword():
+    from ragapp.talk_cues import _shot_label
+    lab = _shot_label("Du nutzt den Testing-Effekt, um die Prüfung zu bestehen.")
+    assert lab.lower() != "bestehen"
+    assert "Testing" in lab or lab in {"Prüfung", "Testing-Effekt"}
+    pref = _shot_label(
+        "Du nutzt den Testing-Effekt, um die Prüfung zu bestehen.",
+        prefer=["Testing-Effekt"],
+    )
+    assert pref == "Testing-Effekt"
+
+
 def test_youtube_karaoke_words_from_timeline():
     from ragapp.talk_cues import load_talk_cues
     md = "<!-- _class: card -->\n\n## **Grounding**\n"
