@@ -106,6 +106,7 @@ def test_generate_script_erfolgsfall_haengt_abschnitte_zusammen(generate_script_
     assert warning is None
     assert "Erster Abschnitt Text." in script
     assert "Zweiter Abschnitt Text." in script
+    assert "Erster Abschnitt Text.\n\n\nZweiter Abschnitt Text." in script
 
 
 def test_generate_script_ruft_on_progress_je_abschnitt_auf_auch_bei_uebersprungenen(

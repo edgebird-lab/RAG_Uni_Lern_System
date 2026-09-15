@@ -526,6 +526,8 @@ class Settings:
     # zu verlassen - robuster als XTTS' Ansatz, der eine private Konstante im
     # Paket ueberschreiben musste.
     AUDIO_TTS_PAUSE_MS: int = 250
+    AUDIO_TTS_PARA_PAUSE_MS: int = 650
+    AUDIO_TTS_SECTION_PAUSE_MS: int = 900
     # Chatterbox-eigene Erzeugungsparameter (Bibliotheks-Standardwerte
     # uebernommen, siehe ChatterboxMultilingualTTS.generate) - in echten
     # Testlaeufen mit der eigenen Referenzstimme verifiziert, bewusst NICHT

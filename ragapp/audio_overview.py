@@ -202,7 +202,9 @@ def generate_overview_script(doc_ids: list[str], subject: Optional[str],
                 "erklärbarer Inhalt gefunden oder das Modell antwortete nicht). Prüfe "
                 "unter ⚙️ Einstellungen, ob ein Modell läuft, und versuche es erneut.")
 
-        script = "\n\n".join(parts)
+        # Drei Zeilenumbrueche = Abschnittspause in synthesize_speech
+        # (zwei waeren nur eine Absatzpause).
+        script = "\n\n\n".join(parts)
 
         warning: Optional[str] = None
         if any_truncated:
@@ -294,10 +296,41 @@ def _get_segmenter():
     return _segmenter_singleton
 
 
+def _split_spoken_units(text: str) -> list[tuple[str, str]]:
+    """Saetze plus Pause danach: ``sentence`` / ``paragraph`` / ``section`` / ``none``.
+
+    Absaetze sind ``\\n\\n``, Abschnittwechsel ``\\n\\n\\n`` oder mehr. pysbd
+    bleibt fuer Satzgrenzen (Abkuerzungen wie „Dr.“)."""
+    raw = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not raw:
+        return []
+    pieces = re.split(r"(\n{2,})", raw)
+    units: list[tuple[str, str]] = []
+    i = 0
+    while i < len(pieces):
+        block = pieces[i].strip()
+        delim = pieces[i + 1] if i + 1 < len(pieces) else ""
+        i += 2
+        if not block:
+            continue
+        sents = [s.strip() for s in _get_segmenter().segment(block) if s.strip()]
+        if not sents:
+            continue
+        gap = "none"
+        if delim:
+            gap = "section" if delim.count("\n") >= 3 else "paragraph"
+        for j, sent in enumerate(sents):
+            units.append((sent, "sentence" if j < len(sents) - 1 else gap))
+    if units:
+        last, _ = units[-1]
+        units[-1] = (last, "none")
+    return units
+
+
 def _split_sentences(text: str) -> list[str]:
     """Reine Logik (nutzt den bereits geladenen Segmenter) - eigene Funktion,
     damit sie unabhaengig vom pysbd-Objekt getestet werden kann."""
-    return [s.strip() for s in _get_segmenter().segment(text) if s.strip()]
+    return [s for s, _ in _split_spoken_units(text)]
 
 
 def _keep_case(replacement: str):
@@ -579,21 +612,29 @@ def suggest_pronunciations(text: str, *, model: Optional[str] = None) -> dict[st
     return out
 
 
-def _concat_with_pauses(chunks: list, pause_samples: int):
-    """Haengt die pro Satz erzeugten Audio-Tensoren zusammen und fuegt
-    dazwischen ECHTE Stille fester Laenge ein (WIR bestimmen die Pausenlaenge
-    direkt, statt uns wie bei XTTS auf eine modellinterne, nur per Hack
-    ueberschreibbare Konstante zu verlassen). Reine Tensor-Arithmetik (kein
-    Modell-Aufruf) - fuer Tests separat gehalten."""
+def _concat_with_pauses(chunks: list, pause_samples):
+    """Haengt die pro Satz erzeugten Audio-Tensoren zusammen. ``pause_samples``
+    ist eine feste Laenge (int, bisheriges Verhalten) oder eine Liste pro Luecke."""
     import torch
     if not chunks:
         raise AudioOverviewError("Keine Audio-Abschnitte erzeugt.")
-    if pause_samples <= 0 or len(chunks) == 1:
+    if len(chunks) == 1:
         return torch.cat(chunks, dim=-1)
-    pad = torch.zeros(1, pause_samples, dtype=chunks[0].dtype)
+    if isinstance(pause_samples, int):
+        if pause_samples <= 0:
+            return torch.cat(chunks, dim=-1)
+        gaps = [pause_samples] * (len(chunks) - 1)
+    else:
+        gaps = [int(g) for g in pause_samples]
+        if len(gaps) < len(chunks) - 1:
+            gaps.extend([0] * (len(chunks) - 1 - len(gaps)))
+        if all(g <= 0 for g in gaps):
+            return torch.cat(chunks, dim=-1)
     parts = [chunks[0]]
-    for chunk in chunks[1:]:
-        parts.append(pad)
+    dtype = chunks[0].dtype
+    for chunk, gap in zip(chunks[1:], gaps):
+        if gap > 0:
+            parts.append(torch.zeros(1, gap, dtype=dtype))
         parts.append(chunk)
     return torch.cat(parts, dim=-1)
 
@@ -654,9 +695,10 @@ def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
     VRAM da ist (siehe ``_prepare_vram_for_tts``) oder kein vertonbarer Text
     uebrig bleibt. ``on_progress`` (optional): siehe ``ProgressCallback`` -
     ein Aufruf je fertig vertontem Satz."""
-    sentences = _split_sentences(_apply_pronunciation_fixes(script_text))
-    if not sentences:
+    units = _split_spoken_units(_apply_pronunciation_fixes(script_text))
+    if not units:
         raise AudioOverviewError("Kein vertonbarer Text (nach Satzerkennung leer).")
+    sentences = [s for s, _ in units]
 
     ok, msg = _prepare_vram_for_tts()
     if not ok:
@@ -705,8 +747,17 @@ def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
     except Exception as exc:  # noqa: BLE001
         raise AudioOverviewError(f"Sprachsynthese fehlgeschlagen: {exc}") from exc
 
-    pause_samples = int(model.sr * settings.AUDIO_TTS_PAUSE_MS / 1000)
-    full_wav = _concat_with_pauses(chunks, pause_samples)
+    pause_ms = {
+        "sentence": int(settings.AUDIO_TTS_PAUSE_MS),
+        "paragraph": int(getattr(settings, "AUDIO_TTS_PARA_PAUSE_MS", 650) or 650),
+        "section": int(getattr(settings, "AUDIO_TTS_SECTION_PAUSE_MS", 900) or 900),
+        "none": 0,
+    }
+    gaps = [
+        int(model.sr * pause_ms.get(kind, pause_ms["sentence"]) / 1000)
+        for _, kind in units[:-1]
+    ]
+    full_wav = _concat_with_pauses(chunks, gaps)
     full_wav, sr_out = _loudnorm_or_same(full_wav, model.sr)
     torchaudio.save(str(output_path), full_wav, sr_out)
 

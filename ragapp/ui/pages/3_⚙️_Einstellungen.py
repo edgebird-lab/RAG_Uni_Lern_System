@@ -1123,6 +1123,21 @@ with st.form("einstellungen"):
                  "Stille selbst ein. Niedriger = zügigeres Vorlesen. "
                  "Technisch: AUDIO_TTS_PAUSE_MS")
     with a2:
+        neu["AUDIO_TTS_PARA_PAUSE_MS"] = st.slider(
+            "Pause zwischen Absätzen (ms)", min_value=200, max_value=1200,
+            value=int(getattr(settings, "AUDIO_TTS_PARA_PAUSE_MS", 650)), step=50,
+            key="cfg_AUDIO_TTS_PARA_PAUSE_MS",
+            help="Längere Luft nach einem Absatz (leere Zeile im Skript). "
+                 "Technisch: AUDIO_TTS_PARA_PAUSE_MS")
+    with a3:
+        neu["AUDIO_TTS_SECTION_PAUSE_MS"] = st.slider(
+            "Pause zwischen Abschnitten (ms)", min_value=400, max_value=1600,
+            value=int(getattr(settings, "AUDIO_TTS_SECTION_PAUSE_MS", 900)), step=50,
+            key="cfg_AUDIO_TTS_SECTION_PAUSE_MS",
+            help="Noch etwas länger nach einem Themenwechsel (zwei Leerzeilen). "
+                 "Technisch: AUDIO_TTS_SECTION_PAUSE_MS")
+    a4, a5, _a6 = st.columns(3)
+    with a4:
         neu["AUDIO_TTS_EXAGGERATION"] = st.slider(
             "Ausdrucksstärke", min_value=0.2, max_value=1.5,
             value=float(settings.AUDIO_TTS_EXAGGERATION), step=0.05,
@@ -1130,7 +1145,7 @@ with st.form("einstellungen"):
             help="Wie stark betont/emotional vorgelesen wird. Werte über 1.5 gelten "
                  "als anfälliger für Aussetzer. Technisch: AUDIO_TTS_EXAGGERATION "
                  "(Bibliotheks-Standard: 0.5)")
-    with a3:
+    with a5:
         neu["AUDIO_TTS_TEMPERATURE"] = st.slider(
             "Stabilität ↔ Ausdruck", min_value=0.3, max_value=1.2,
             value=float(settings.AUDIO_TTS_TEMPERATURE), step=0.05,

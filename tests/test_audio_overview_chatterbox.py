@@ -10,11 +10,12 @@ Ersatz für XTTS-v2 - siehe Moduldoc/config.py für die Begründung):
 - ``synthesize_speech``: ruft das Modell PRO SATZ auf, reicht die Chatterbox-
   Parameter durch, prüft VRAM/Text VOR dem teuren Modell-Laden.
 
-Isoliert geladen - ``_get_tts``/``_prepare_vram_for_tts``/``_split_sentences``
+Isoliert geladen - ``_get_tts``/``_prepare_vram_for_tts``/``_split_spoken_units``
 werden in den synthesize_speech-Tests gefaked (kein echtes Modell laden).
 torch/torchaudio/pysbd sind echte, leichte Importe (kein transformers/
 Chatterbox-Modell-Download nötig)."""
 import logging
+import re
 import types
 
 import pytest
@@ -46,15 +47,22 @@ def _fake_settings(**overrides):
 
 
 # --------------------------------------------------------------------------- #
-# _split_sentences
+# _split_sentences / _split_spoken_units
 # --------------------------------------------------------------------------- #
 
 @pytest.fixture
-def split_fn(load_functions, ragapp_dir):
+def split_fns(load_functions, ragapp_dir):
     return load_functions(
-        ragapp_dir / "audio_overview.py", ["_split_sentences", "_get_segmenter"], {},
+        ragapp_dir / "audio_overview.py",
+        ["_split_sentences", "_split_spoken_units", "_get_segmenter"],
+        {"re": re},
         const_names=["_segmenter_singleton"],
-    )["_split_sentences"]
+    )
+
+
+@pytest.fixture
+def split_fn(split_fns):
+    return split_fns["_split_sentences"]
 
 
 def test_split_sentences_trennt_an_satzgrenzen(split_fn):
@@ -72,6 +80,21 @@ def test_split_sentences_leerer_text_gibt_leere_liste(split_fn):
 
 def test_split_sentences_filtert_leere_stuecke(split_fn):
     assert split_fn("Satz eins.\n\n\nSatz zwei.") == ["Satz eins.", "Satz zwei."]
+
+
+def test_split_spoken_units_absatz_und_abschnitt(split_fns):
+    split_units = split_fns["_split_spoken_units"]
+    para = split_units("Erster Absatz.\n\nZweiter Absatz.")
+    assert para[0] == ("Erster Absatz.", "paragraph")
+    assert para[-1] == ("Zweiter Absatz.", "none")
+
+    section = split_units("Kapitel eins.\n\n\nKapitel zwei.")
+    assert section[0] == ("Kapitel eins.", "section")
+    assert section[-1] == ("Kapitel zwei.", "none")
+
+    two_sents = split_units("Satz eins. Satz zwei.")
+    assert two_sents[0][1] == "sentence"
+    assert two_sents[-1][1] == "none"
 
 
 # --------------------------------------------------------------------------- #
@@ -114,13 +137,24 @@ def test_concat_with_pauses_mehrere_stuecke_drei_pausen_zwei(concat_fn):
     assert out.shape == (1, 5 * 3 + 2 * 2)
 
 
+def test_concat_with_pauses_liste_unterschiedlicher_luecken(concat_fn):
+    out = concat_fn(
+        [torch.ones(1, 10), torch.ones(1, 10), torch.ones(1, 10)],
+        pause_samples=[2, 5],
+    )
+    assert out.shape == (1, 10 + 2 + 10 + 5 + 10)
+    assert torch.all(out[0, 10:12] == 0)
+    assert torch.all(out[0, 12:22] == 1)
+    assert torch.all(out[0, 22:27] == 0)
+
+
 # --------------------------------------------------------------------------- #
 # synthesize_speech
 # --------------------------------------------------------------------------- #
 
 @pytest.fixture
 def synth_env(load_functions, ragapp_dir, tmp_path):
-    def _make(*, settings_obj=None, vram_ok=True, sentences=None,
+    def _make(*, settings_obj=None, vram_ok=True, sentences=None, units=None,
               force_eos_once_for=None, force_eos_always_for=None):
         settings_obj = settings_obj or _fake_settings()
         sentences = sentences if sentences is not None else ["Satz eins.", "Satz zwei."]
@@ -131,6 +165,13 @@ def synth_env(load_functions, ragapp_dir, tmp_path):
         _already_forced: set = set()
         alignment_logger = logging.getLogger(
             "chatterbox.models.t3.inference.alignment_stream_analyzer")
+
+        def _fake_units(_text):
+            if units is not None:
+                return list(units)
+            if not sentences:
+                return []
+            return [(s, "sentence") for s in sentences[:-1]] + [(sentences[-1], "none")]
 
         class _FakeModel:
             sr = 24000
@@ -165,6 +206,7 @@ def synth_env(load_functions, ragapp_dir, tmp_path):
                 "_prepare_vram_for_tts": lambda: (vram_ok, "" if vram_ok else "kein VRAM"),
                 "_get_tts": lambda: _FakeModel(),
                 "_split_sentences": lambda text: sentences,
+                "_split_spoken_units": _fake_units,
                 "AudioOverviewError": RuntimeError,
                 "Optional": None,
                 "Path": __import__("pathlib").Path,
@@ -254,6 +296,42 @@ def test_synthesize_speech_ohne_on_progress_funktioniert_weiterhin(synth_env):
     out_path = env.tmp_path / "out.wav"
     env.synthesize_speech("Satz eins. Satz zwei.", "ref.wav", str(out_path))
     assert out_path.is_file()
+
+
+def test_synthesize_speech_laengere_pause_zwischen_absaetzen(synth_env):
+    env = synth_env(
+        sentences=["Eins.", "Zwei.", "Drei."],
+        units=[("Eins.", "sentence"), ("Zwei.", "paragraph"), ("Drei.", "none")],
+    )
+    captured = []
+    real_concat = env.synthesize_speech.__globals__["_concat_with_pauses"]
+
+    def _spy(chunks, pause_samples):
+        captured.append(list(pause_samples))
+        return real_concat(chunks, pause_samples)
+
+    env.synthesize_speech.__globals__["_concat_with_pauses"] = _spy
+    env.synthesize_speech("Eins. Zwei.", "ref.wav", str(env.tmp_path / "out.wav"))
+    assert captured[0] == [int(24000 * 250 / 1000), int(24000 * 650 / 1000)]
+
+
+def test_synthesize_speech_nutzt_absatzpause_aus_settings(synth_env):
+    settings_obj = _fake_settings(AUDIO_TTS_PARA_PAUSE_MS=1000, AUDIO_TTS_PAUSE_MS=0)
+    env = synth_env(
+        settings_obj=settings_obj,
+        sentences=["A.", "B."],
+        units=[("A.", "paragraph"), ("B.", "none")],
+    )
+    captured = []
+    real_concat = env.synthesize_speech.__globals__["_concat_with_pauses"]
+
+    def _spy(chunks, pause_samples):
+        captured.append(list(pause_samples))
+        return real_concat(chunks, pause_samples)
+
+    env.synthesize_speech.__globals__["_concat_with_pauses"] = _spy
+    env.synthesize_speech("A.\n\nB.", "ref.wav", str(env.tmp_path / "out.wav"))
+    assert captured[0] == [24000]
 
 
 def test_synthesize_speech_keine_saetze_wirft_error_vor_vram_check(synth_env):
