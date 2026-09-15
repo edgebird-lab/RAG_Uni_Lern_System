@@ -91,10 +91,27 @@ body.talk-presenter-on > section:not(.talk-slide-on) {
   opacity: 0;
 }
 
-.talk-figure-img {
-  display: block;
-  max-width: 100%;
-  transform-origin: 30% 40%;
+#talk-lower-third {
+  position: fixed;
+  left: 5%;
+  right: 16%;
+  bottom: 6%;
+  z-index: 40;
+  font-family: 'Source Sans 3', 'Segoe UI', sans-serif;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #fff7eb;
+  background: rgba(14, 61, 69, 0.88);
+  border-left: 6px solid #d96b4c;
+  border-radius: 0 10px 10px 0;
+  padding: 0.35em 0.8em;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#talk-lower-third.is-on {
+  opacity: 1;
 }
 
 .talk-bullet.is-current {

@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
-CUE_VERSION = 4
+CUE_VERSION = 5
 VIDEO_WIDTH = 1280
 VIDEO_HEIGHT = 720
 
@@ -30,6 +30,7 @@ _EVENT_ORDER = {
     "figure": 4,
     "bullet": 5,
     "keyword": 6,
+    "caption": 7,
 }
 
 
@@ -122,6 +123,15 @@ def _title_hold_s(slide_dur: float, n_bullets: int) -> float:
         return max(0.0, slide_dur)
     hold = slide_dur * _TITLE_HOLD_FRAC
     return min(_TITLE_HOLD_MAX, max(_TITLE_HOLD_MIN, hold), slide_dur * 0.45)
+
+
+def _caption_text(text: str) -> str:
+    t = " ".join((text or "").split())
+    if not t:
+        return ""
+    if len(t) <= 48:
+        return t.rstrip(" .")
+    return t[:45].rsplit(" ", 1)[0].rstrip(" .,;:") + "…"
 
 
 def _round_t(value: float) -> float:
@@ -344,6 +354,15 @@ def map_timeline_to_cues(marp_md: str, timeline: list[dict[str, Any]],
                     "type": "bullet",
                     "slide": i,
                     "i": bi,
+                })
+        for sent in sents:
+            cap = _caption_text(str(sent.get("text") or ""))
+            if cap:
+                slide_events.append({
+                    "t": _round_t(float(sent.get("start_s") or start)),
+                    "type": "caption",
+                    "slide": i,
+                    "text": cap,
                 })
         _attach_motion_events(slide_events, slide, i, end_s=end)
         events.extend(slide_events)

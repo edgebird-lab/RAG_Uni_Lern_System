@@ -299,3 +299,35 @@ marp: true
         late = page.locator(".talk-figure-img").evaluate("el => el.style.transform")
         assert scale_of(late) > scale_of(early)
         browser.close()
+
+
+def test_seek_lower_third_caption(tmp_path):
+    from playwright.sync_api import sync_playwright
+    from ragapp.talk_cues import map_timeline_to_cues
+
+    html_src = """<!DOCTYPE html><html><body>
+<section class="content"><h2>Kern</h2><ul><li>Punkt</li></ul></section>
+</body></html>"""
+    md = "<!-- _class: content -->\n\n## Kern\n\n- Punkt\n"
+    timeline = [
+        {"index": 0, "text": "Erstes Overlay.", "start_s": 0.0, "duration_s": 1.0},
+        {"index": 1, "text": "Zweites Overlay.", "start_s": 2.0, "duration_s": 1.0},
+    ]
+    cues = map_timeline_to_cues(md, timeline)
+    html = inject_talk_presenter(html_src, cues)
+    path = tmp_path / "cap.html"
+    path.write_text(html, encoding="utf-8")
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.goto(path.as_uri(), wait_until="load")
+        page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
+        page.evaluate("t => window.TalkPresenter.seek(t)", 0.2)
+        bar = page.locator("#talk-lower-third")
+        assert bar.count() == 1
+        assert "Erstes" in bar.inner_text()
+        assert bar.evaluate("el => el.classList.contains('is-on')")
+        page.evaluate("t => window.TalkPresenter.seek(t)", 2.1)
+        assert "Zweites" in bar.inner_text()
+        browser.close()

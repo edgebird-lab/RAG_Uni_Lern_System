@@ -136,6 +136,7 @@
       const figureStart = {};
       let punchOn = false;
       let punchStart = 0;
+      let caption = "";
       const events = this.cues.events || [];
       for (const ev of events) {
         if (ev.t > t + 1e-9) break;
@@ -149,6 +150,7 @@
           cols.clear();
           figures.clear();
           punchOn = false;
+          caption = "";
         } else if (ev.type === "title" && ev.slide === slide) {
           titleOn = true;
           titleStart = ev.t;
@@ -162,6 +164,8 @@
         } else if (ev.type === "keyword" && ev.slide === slide) {
           keywords.add(ev.i);
           if (keywordStart[ev.i] == null) keywordStart[ev.i] = ev.t;
+        } else if (ev.type === "caption" && ev.slide === slide) {
+          caption = String(ev.text || "");
         } else if (ev.type === "punch" && ev.slide === slide) {
           punchOn = true;
           punchStart = ev.t;
@@ -182,6 +186,7 @@
       return {
         slide, prevSlide, slideStart, titleOn, titleStart, letterFrac, fade, bullets,
         keywords, keywordStart, punchOn, punchStart, cols, figures, figureStart, kenBurns,
+        caption,
       };
     },
 
@@ -303,6 +308,15 @@
           }
         }
       });
+      let bar = document.getElementById("talk-lower-third");
+      if (!bar) {
+        bar = document.createElement("div");
+        bar.id = "talk-lower-third";
+        document.body.appendChild(bar);
+      }
+      const cap = (state.caption || "").trim();
+      bar.textContent = cap;
+      bar.classList.toggle("is-on", Boolean(cap));
     },
   };
 

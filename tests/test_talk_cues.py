@@ -69,7 +69,7 @@ def test_parse_slide_extracts_class_title_bullets():
 
 def test_build_talk_cues_placeholder_timing():
     cues = build_talk_cues(FIXTURE_MD, duration_s=12.0)
-    assert cues["version"] == 4
+    assert cues["version"] == 5
     assert cues["width"] == 1280
     assert cues["height"] == 720
     assert cues["duration_s"] == 12.0
@@ -191,7 +191,11 @@ marp: true
 """
     timeline = [{"index": 0, "text": "Hallo.", "start_s": 0.0, "duration_s": 2.0}]
     cues = map_timeline_to_cues(md, timeline)
-    assert [e["type"] for e in cues["events"]] == ["slide", "title"]
+    types = [e["type"] for e in cues["events"]]
+    assert types[:2] == ["slide", "title"]
+    assert "caption" in types
+    cap = next(e for e in cues["events"] if e["type"] == "caption")
+    assert cap["text"] == "Hallo"
     assert cues["slides"][0]["bullets"] == []
 
 
@@ -340,3 +344,24 @@ marp: true
     figs = [e for e in cues["events"] if e["type"] == "figure"]
     assert len(figs) == 1
     assert figs[0]["src"] == "figures/p1_5.png"
+
+
+def test_placeholder_cues_have_no_captions():
+    md = "<!-- _class: content -->\n\n## A\n\n- x\n"
+    cues = build_talk_cues(md, duration_s=4)
+    assert all(e["type"] != "caption" for e in cues["events"])
+
+
+def test_timeline_captions_switch_and_shorten():
+    from ragapp.talk_cues import map_timeline_to_cues
+    md = "<!-- _class: content -->\n\n## A\n\n- x\n"
+    timeline = [
+        {"index": 0, "text": "Kurzer Satz.", "start_s": 0.0, "duration_s": 1.0},
+        {"index": 1, "text": " ".join(["Wort"] * 20), "start_s": 1.2, "duration_s": 1.0},
+    ]
+    cues = map_timeline_to_cues(md, timeline)
+    caps = [e for e in cues["events"] if e["type"] == "caption"]
+    assert caps[0]["text"] == "Kurzer Satz"
+    assert caps[1]["t"] == 1.2
+    assert caps[1]["text"].endswith("…")
+    assert len(caps[1]["text"]) <= 48
