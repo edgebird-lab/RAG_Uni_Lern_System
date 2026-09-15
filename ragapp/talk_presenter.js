@@ -251,8 +251,9 @@
           shot = ev;
         }
       }
+      const yt = Boolean((this.cues || {}).youtube);
       const letterFrac = titleOn
-        ? Math.min(1, Math.max(0, (t - titleStart) / TITLE_LETTER_S))
+        ? (yt ? 1 : Math.min(1, Math.max(0, (t - titleStart) / TITLE_LETTER_S)))
         : 0;
       const fade = slide !== prevSlide && t < slideStart + SLIDE_FADE_S
         ? Math.min(1, Math.max(0, (t - slideStart) / SLIDE_FADE_S))
@@ -325,7 +326,11 @@
           const rule = title.querySelector(".talk-title-rule");
           if (rule) {
             const ruleFrac = isCurr && state.titleOn
-              ? this._frac(t, state.titleStart + TITLE_LETTER_S, TITLE_RULE_S)
+              ? this._frac(
+                t,
+                yt ? state.titleStart : state.titleStart + TITLE_LETTER_S,
+                TITLE_RULE_S,
+              )
               : 0;
             rule.classList.toggle("is-on", ruleFrac > 0);
             rule.style.width = `${Math.round(ruleFrac * 1000) / 10}%`;

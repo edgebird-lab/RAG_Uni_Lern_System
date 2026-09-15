@@ -581,3 +581,34 @@ def test_seek_youtube_karaoke_highlights_words(tmp_path):
         assert last_on >= first_on
         assert "Nachlesen" in kara.inner_text()
         browser.close()
+
+
+def test_seek_youtube_title_letters_on_immediately(tmp_path):
+    from playwright.sync_api import sync_playwright
+    from ragapp.talk_cues import load_talk_cues
+
+    md = "<!-- _class: card -->\n\n## **Testing-Effekt**\n"
+    html_src = """<!DOCTYPE html><html><body>
+<section class="card"><h2>Testing-Effekt</h2></section>
+</body></html>"""
+    timeline = [
+        {"index": 0, "text": "Abrufen schlägt Nachlesen.",
+         "start_s": 0.0, "duration_s": 3.0},
+    ]
+    cues = load_talk_cues(md, duration_s=4.0, timeline=timeline, youtube=True)
+    html = inject_talk_presenter(html_src, cues)
+    path = tmp_path / "yt_title.html"
+    path.write_text(html, encoding="utf-8")
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.goto(path.as_uri(), wait_until="load")
+        page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
+        page.evaluate("t => window.TalkPresenter.seek(t)", 0.05)
+        letters = page.locator("section.card .talk-letter")
+        assert letters.count() >= 8
+        assert page.locator("section.card .talk-letter.is-on").count() == letters.count()
+        assert "Testing-Effekt" in page.locator("section.card h2").inner_text()
+        browser.close()
+
