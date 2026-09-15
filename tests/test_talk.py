@@ -296,6 +296,9 @@ def test_mux_video_with_talk_audio_uses_loudnorm():
     assert "record_presenter_video" in src
     assert "Fallback Diashow" in src
     assert "_video_aac_args()" in src
+    assert talk.RECORD_FPS == 30
+    rec = Path("ragapp/marp_record.mjs").read_text(encoding="utf-8")
+    assert "Math.min(30" in rec
 
 
 def test_render_talk_video_falls_back_when_record_fails(isolated_db, tmp_path, monkeypatch):

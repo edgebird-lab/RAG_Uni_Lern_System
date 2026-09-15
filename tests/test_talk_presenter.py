@@ -181,9 +181,17 @@ def test_seek_title_letters_and_slide_fade(tmp_path):
         assert rule_w.endswith("%")
         assert float(rule_w[:-1]) > 0
 
-        page.evaluate("t => window.TalkPresenter.seek(t)", agenda["start_s"] + 0.1)
+        page.evaluate("t => window.TalkPresenter.seek(t)", agenda["start_s"] + 0.02)
         assert page.locator("section.agenda.talk-slide-on").count() == 1
-        assert page.locator("section.lead.talk-slide-prev").count() == 1
+        agenda_tx = page.locator("section.agenda").evaluate("el => el.style.transform")
+        lead_tx = page.locator("section.lead").evaluate("el => el.style.transform")
+        assert "translateX" not in (agenda_tx or "")
+        assert "translateX" not in (lead_tx or "")
+
+        page.evaluate("t => window.TalkPresenter.seek(t)", agenda["start_s"] + 0.12)
+        assert page.locator("section.agenda.talk-slide-on").count() == 1
+        assert page.locator("section.lead.talk-slide-prev").count() == 0
+        assert page.locator("section.lead.talk-slide-on").count() == 0
         assert page.locator("section.agenda .talk-bullet.is-on").count() == 0
         assert first_bullet_t > agenda["start_s"]
         browser.close()

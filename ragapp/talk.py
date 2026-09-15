@@ -1394,7 +1394,7 @@ def write_concat_list(slide_pngs: list[Path], per_slide_s: float,
     return list_path
 
 
-RECORD_FPS = 15
+RECORD_FPS = 30
 
 
 def record_presenter_video(

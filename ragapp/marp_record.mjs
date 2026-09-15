@@ -10,7 +10,7 @@ import puppeteer from "puppeteer-core";
 const htmlPath = process.argv[2];
 const chromePath = process.argv[3];
 const durationS = Math.max(0.2, Number(process.argv[4]) || 1);
-const fps = Math.max(1, Math.min(30, Number(process.argv[5]) || 15));
+const fps = Math.max(1, Math.min(30, Number(process.argv[5]) || 30));
 
 if (!htmlPath || !chromePath) {
   console.error("Usage: node marp_record.mjs <html> <chrome> <durationS> <fps>");
@@ -58,7 +58,7 @@ try {
       clip: { x: 0, y: 0, width: 1280, height: 720 },
     });
     process.stdout.write(buf);
-    if (i === 0 || i + 1 === frames || (i + 1) % 15 === 0) {
+    if (i === 0 || i + 1 === frames || (i + 1) % 30 === 0) {
       console.error(`FRAME ${i + 1}/${frames}`);
     }
   }

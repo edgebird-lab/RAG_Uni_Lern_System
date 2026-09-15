@@ -311,9 +311,10 @@ Aus gewählten Unterlagen entsteht ein **Marp-Markdown-Vortrag** plus separates
    Folien bleiben bewusst knapp (eine Idee, höchstens drei Zeilen, Mix aus
    Merksatz/Split/Inhalt). Abbildungen kommen zuerst aus den **hochgeladenen PDFs**.
 4. Export: Marp-`.md`, WAV, optional HTML/PDF (Marp-CLI, **statische** Folien)
-   und **MP4**. Das Video nimmt die Folien in Chrome auf (Punkte nacheinander,
-   Titel buchstabenweise, Keyword-Punch, Split-Spalten, Bild-Zoom, Unterzeile
-   aus der Vertonung) und legt die Stimme darunter. Ohne Timeline aus einer
+   und **MP4**. Das Video nimmt die Folien in Chrome mit **30 Bildern/s** auf
+   (harter Schnitt ohne Folien-Schub, Punkte nacheinander, Titel buchstabenweise,
+   Keyword-Punch, Split-Spalten, Bild-Zoom, Unterzeile aus der Vertonung) und
+   legt die Stimme darunter. Ohne Timeline aus einer
    frischen Vertonung sind die Zeiten nur gleichmäßig verteilt und die Unterzeile
    fehlt – dann einmal neu vertonen und das Video neu erzeugen. Scheitert die
    Aufnahme, entsteht wie früher eine PNG-Diashow.

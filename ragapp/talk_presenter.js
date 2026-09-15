@@ -4,7 +4,7 @@
  */
 (function () {
   const TITLE_LETTER_S = 0.4;
-  const SLIDE_FADE_S = 0.55;
+  const SLIDE_FADE_S = 0.08;
   const KEYWORD_PUNCH_S = 0.35;
   const MERKSATZ_S = 0.35;
   const TITLE_RULE_S = 0.35;
@@ -200,10 +200,10 @@
         root.classList.toggle("talk-slide-prev", isPrev);
         if (isCurr && state.fade < 1) {
           root.style.opacity = String(state.fade);
-          root.style.transform = `translateX(${(1 - state.fade) * 36}px)`;
+          root.style.transform = "none";
         } else if (isPrev) {
           root.style.opacity = String(1 - state.fade);
-          root.style.transform = `translateX(${-state.fade * 28}px)`;
+          root.style.transform = "none";
         } else if (isCurr) {
           root.style.opacity = "1";
           root.style.transform = "none";
