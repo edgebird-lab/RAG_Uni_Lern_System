@@ -66,3 +66,23 @@ def test_leere_loesungsliste_ist_false(check_cloze):
 
 def test_bzw_als_trenner(check_cloze):
     assert check_cloze("variabel bzw. fix", ["fix"]) is True
+
+
+def test_make_cloze_ueberspringt_latex_tokens(load_functions, ragapp_dir):
+    import re as _re
+    fns = load_functions(
+        ragapp_dir / "grading.py",
+        ["make_cloze"],
+        {"re": _re},
+        const_names=["_CLOZE_STOP"],
+    )
+    make_cloze = fns["make_cloze"]
+    only_tex = make_cloze(r"Die Ableitung ist $\frac{d}{dx} x^2$ also 2x hier.")
+    # Entweder kein Cloze, oder die Lücke ist nicht \frac
+    if only_tex is not None:
+        blanked, sols = only_tex
+        assert all(not s.startswith("\\") and "$" not in s for s in sols)
+    defi = make_cloze(
+        "Der Deckungsbeitrag ist Erlös minus variable Kosten in der Rechnung.")
+    assert defi is not None
+    assert "Deckungsbeitrag" in defi[1] or "variable" in defi[1] or "Kosten" in defi[1]

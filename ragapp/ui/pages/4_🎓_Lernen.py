@@ -780,51 +780,69 @@ else:
                 st.rerun()
         elif _mode == "cloze":
             from ragapp import grading
-            cz = st.session_state.get("_cloze")
-            if cz is None:
-                cz = grading.make_cloze(_ref) or ["", []]
-                st.session_state["_cloze"] = cz
-            if cz[1]:
-                _render_karte("🧩 " + cz[0], kind="cloze")
-                st.write("")
-                st.text_input("Fehlender Begriff", key="_cloze_in",
-                              placeholder="Wort in die Lücke …")
-                if st.button("🧩 Prüfen", type="primary", use_container_width=True):
-                    st.session_state["_cloze_ok"] = grading.check_cloze(
-                        st.session_state.get("_cloze_in", ""), cz[1])
+            from ragapp.student_flow import card_looks_like_formula as _is_form
+            if _is_form(karte):
+                st.info("Formelkarten eignen sich nicht für Lückentext – "
+                        "die Formel bleibt beim Aufdecken lesbar.")
+                if st.button("👁️ Antwort zeigen", type="primary", use_container_width=True,
+                             key="cloze_formula_reveal"):
                     st.session_state[REVEAL] = True
                     st.rerun()
             else:
-                st.warning("Für diese Karte ließ sich kein Lückentext bilden. "
-                           "Die Karte wird klassisch aufgedeckt – das ist kein Fehler.")
-                if st.button("👁️ Antwort zeigen", type="primary", use_container_width=True,
-                             key="cloze_fallback_reveal"):
-                    st.session_state[REVEAL] = True
-                    st.rerun()
+                cz = st.session_state.get("_cloze")
+                if cz is None:
+                    cz = grading.make_cloze(_ref) or ["", []]
+                    st.session_state["_cloze"] = cz
+                if cz[1]:
+                    _render_karte("🧩 " + cz[0], kind="cloze")
+                    st.write("")
+                    st.text_input("Fehlender Begriff", key="_cloze_in",
+                                  placeholder="Wort in die Lücke …")
+                    if st.button("🧩 Prüfen", type="primary", use_container_width=True):
+                        st.session_state["_cloze_ok"] = grading.check_cloze(
+                            st.session_state.get("_cloze_in", ""), cz[1])
+                        st.session_state[REVEAL] = True
+                        st.rerun()
+                else:
+                    st.warning("Für diese Karte ließ sich kein Lückentext bilden. "
+                               "Die Karte wird klassisch aufgedeckt – das ist kein Fehler.")
+                    if st.button("👁️ Antwort zeigen", type="primary", use_container_width=True,
+                                 key="cloze_fallback_reveal"):
+                        st.session_state[REVEAL] = True
+                        st.rerun()
         elif _mode == "mcq":
             from ragapp import grading
-            mcq = st.session_state.get("_mcq")
-            if mcq is None:
-                with st.spinner("Erzeuge Antwortoptionen …"):
-                    mcq = grading.generate_mcq(
-                        karte.get("front", ""), _ref,
-                        cache_key=karte.get("card_id")) or {}
-                st.session_state["_mcq"] = mcq
-            _opts = mcq.get("options") or []
-            if len(_opts) >= 2:
-                _sel = st.radio("Wähle die richtige Antwort:", _opts, index=None, key="_mcq_sel")
-                if st.button("🔤 Antwort prüfen", type="primary", use_container_width=True,
-                             disabled=_sel is None):
-                    st.session_state["_mcq_ok"] = (_sel == mcq.get("correct"))
+            from ragapp.student_flow import card_looks_like_formula as _is_form
+            if _is_form(karte):
+                st.info("Formelkarten eignen sich nicht für Multiple Choice – "
+                        "kein Modellaufruf, klassisch aufdecken.")
+                if st.button("👁️ Antwort zeigen", type="primary", use_container_width=True,
+                             key="mcq_formula_reveal"):
                     st.session_state[REVEAL] = True
                     st.rerun()
             else:
-                st.warning("Konnte keine Multiple-Choice-Optionen erzeugen. "
-                           "Die Karte wird klassisch aufgedeckt – das ist kein Fehler.")
-                if st.button("👁️ Antwort zeigen", type="primary", use_container_width=True,
-                             key="mcq_fallback_reveal"):
-                    st.session_state[REVEAL] = True
-                    st.rerun()
+                mcq = st.session_state.get("_mcq")
+                if mcq is None:
+                    with st.spinner("Erzeuge Antwortoptionen …"):
+                        mcq = grading.generate_mcq(
+                            karte.get("front", ""), _ref,
+                            cache_key=karte.get("card_id")) or {}
+                    st.session_state["_mcq"] = mcq
+                _opts = mcq.get("options") or []
+                if len(_opts) >= 2:
+                    _sel = st.radio("Wähle die richtige Antwort:", _opts, index=None, key="_mcq_sel")
+                    if st.button("🔤 Antwort prüfen", type="primary", use_container_width=True,
+                                 disabled=_sel is None):
+                        st.session_state["_mcq_ok"] = (_sel == mcq.get("correct"))
+                        st.session_state[REVEAL] = True
+                        st.rerun()
+                else:
+                    st.warning("Konnte keine Multiple-Choice-Optionen erzeugen. "
+                               "Die Karte wird klassisch aufgedeckt – das ist kein Fehler.")
+                    if st.button("👁️ Antwort zeigen", type="primary", use_container_width=True,
+                                 key="mcq_fallback_reveal"):
+                        st.session_state[REVEAL] = True
+                        st.rerun()
         else:  # reveal (klassisch, mit Selbst-Konfidenz/JOL)
             st.caption("Überlege (oder tippe für dich) die Antwort – dann aufdecken "
                        "(oder Enter im Feld unten).")

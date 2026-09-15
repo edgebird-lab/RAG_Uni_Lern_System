@@ -136,8 +136,16 @@ def make_cloze(text: str, max_blanks: int = 1) -> "tuple[str, list[str]] | None"
         sentence = text.strip()[:200]
     words = re.findall(r"[\wäöüÄÖÜß$\\{}]+", sentence)
     # Kandidaten: lange, inhaltstragende Woerter (Substantive sind im Dt. gross).
+    # LaTeX-Bruchstücke (\frac, $x^2$) sind keine Cloze-Lücken – die Karte
+    # fällt dann auf Aufdecken zurück.
+    def _token_ok(w: str) -> bool:
+        if w.startswith("\\") or w.startswith("$") or w.endswith("$"):
+            return False
+        if any(ch in w for ch in "{}[]^_"):
+            return False
+        return True
     cands = [w for w in words if len(w) >= 5 and w.lower() not in _CLOZE_STOP
-             and any(ch.isalpha() for ch in w)]
+             and any(ch.isalpha() for ch in w) and _token_ok(w)]
     cands.sort(key=lambda w: (w[0].isupper(), len(w)), reverse=True)
     if not cands:
         return None

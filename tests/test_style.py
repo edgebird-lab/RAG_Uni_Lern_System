@@ -423,6 +423,9 @@ def test_lernen_zeigt_stapel_vor_der_lernset_fabrik():
     assert "normalize_card_latex" in src
     assert 'kind="front"' in src
     assert "unsafe_allow_html=True)" not in src.split("Vorderseite")[1].split("st.write")[0]
+    assert 'key="cloze_formula_reveal"' in src
+    assert 'key="mcq_formula_reveal"' in src
+    assert "Formelkarten eignen sich nicht" in src
 
 
 def test_chat_leerer_verlauf_scrollt_nicht_zur_eingabe():
