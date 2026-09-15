@@ -2,8 +2,8 @@
 
 Baut aus Marp-Markdown eine suchbare Eventliste (Folie, Titel, Bullets).
 Zeiten sind Platzhalter, solange keine Satz-Timeline aus der Vertonung
-vorliegt: Audio-Dauer gleichmaessig auf Folien, innerhalb einer Folie
-haelt der Titel kurz, der Rest geht an die Listeneintraege.
+vorliegt: Audio-Dauer nach Foliengewicht (Lead/Cold-Open etwas laenger),
+innerhalb einer Folie haelt der Titel kurz, der Rest geht an die Listeneintraege.
 """
 from __future__ import annotations
 
@@ -17,6 +17,8 @@ VIDEO_HEIGHT = 720
 _TITLE_HOLD_FRAC = 0.18
 _TITLE_HOLD_MIN = 0.4
 _TITLE_HOLD_MAX = 1.2
+_LEAD_TIME_WEIGHT = 1.65
+_LEAD_SENTENCE_WANTS = 2
 _CLASS_RE = re.compile(r"<!--\s*_class:\s*([A-Za-z0-9_-]+)\s*-->")
 _HEADING_RE = re.compile(r"^(#{1,3})\s+(.+?)\s*$", re.MULTILINE)
 _LIST_RE = re.compile(r"^(?:[-*+]|\d+[.)])\s+(.+?)\s*$")
@@ -231,14 +233,20 @@ def build_talk_cues(marp_md: str, *, duration_s: float,
     if not bodies:
         bodies = ["<!-- _class: content -->\n\n# Vortrag"]
     n = len(bodies)
-    per = duration_s / n
+    parsed_all = [parse_slide_body(body) for body in bodies]
+    weights = [
+        _LEAD_TIME_WEIGHT if p.get("class_name") == "lead" else 1.0
+        for p in parsed_all
+    ]
+    total_w = sum(weights) or float(n)
     slides: list[dict[str, Any]] = []
     events: list[dict[str, Any]] = []
+    acc = 0.0
 
-    for i, body in enumerate(bodies):
-        parsed = parse_slide_body(body)
-        start = i * per
-        end = duration_s if i == n - 1 else (i + 1) * per
+    for i, parsed in enumerate(parsed_all):
+        start = acc
+        acc += duration_s * (weights[i] / total_w)
+        end = duration_s if i == n - 1 else acc
         slide_dur = max(0.05, end - start)
         bullets = parsed["bullets"]
         title = parsed["title"]
@@ -295,8 +303,13 @@ def _allocate_sentences(slides: list[dict[str, Any]],
     allocated: list[list[dict[str, Any]]] = [[] for _ in slides]
     if n == 0 or not sentences:
         return allocated
-    wants = [max(1, (1 if s.get("title") else 0) + len(s.get("bullets") or []))
-             for s in slides]
+    wants = []
+    for s in slides:
+        base = max(1, (1 if s.get("title") else 0) + len(s.get("bullets") or []))
+        if s.get("class_name") == "lead":
+            wants.append(max(base, _LEAD_SENTENCE_WANTS))
+        else:
+            wants.append(base)
     si = 0
     for sent in sentences:
         while si < n - 1 and len(allocated[si]) >= wants[si]:

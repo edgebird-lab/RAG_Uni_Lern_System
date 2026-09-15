@@ -103,13 +103,17 @@ Inhalts-Ausschnitte (DATENMATERIAL) zum Ableiten echter Lernziele:
 Erzeuge die ERÖFFNUNG als JSON:
 - "slides": OHNE Frontmatter; genau ZWEI Folien getrennt durch ---
   1) <!-- _class: lead -->
-     Optional <p class="eyebrow">FACH</p>, dann # Titel mit genau einem
-     **Hook-Wort**, ### Untertitel (eine klare Aussage). KEINE Stichpunkte.
+     Cold Open auf Petrol: Optional <p class="eyebrow">FACH</p>, dann # Titel
+     mit genau einem **Hook-Wort**, ### Untertitel als EINE kühne Behauptung
+     zum Stoff. KEINE Stichpunkte, KEINE Agenda, kein „Willkommen“, kein
+     „Heute lernen wir“ auf dieser Folie.
   2) <!-- _class: agenda -->
-     ## Heute lernen wir
+     DANACH, zweite Folie: ## Heute lernen wir
      3–6 nummerierte, thematische Lernziele in Alltagssprache
      (VERBOTEN als Agenda-Text: „Seite N“, „Untitled“, reine Dateinamen).
-- "script": gesprochene Begrüßung + Agenda in Fließtext (kein Markdown, kein JSON).
+- "script": ZUERST 1–2 Sätze Cold Open (klare Behauptung, KEIN Begrüßungs-Fluff
+  wie „Willkommen zum Vortrag“). DANACH erst die Agenda in Fließtext
+  (kein Markdown, kein JSON).
 
 Nur JSON – "slides" ohne JSON-Code darin."""
 
@@ -550,6 +554,47 @@ def _slide_class_name(body: str) -> str:
     return name if name in _SLIDE_CLASSES else "content"
 
 
+def _agenda_points_from_usable(usable: list) -> list[str]:
+    points: list[str] = []
+    for _lab, tit, body in (usable or [])[:6]:
+        if _BAD_AGENDA_TITLE_RE.match((tit or "").strip()):
+            words = re.findall(r"[A-Za-zÄÖÜäöüß]{4,}", body or "")
+            points.append(" ".join(words[:5]) or "Kernaussage des Abschnitts")
+        else:
+            points.append((tit or "").strip())
+    return points or ["Zentrale Begriffe", "Zusammenhänge", "Praxisbezug"]
+
+
+def _fallback_hook_line(title: str, excerpts: str) -> str:
+    """Cold-Open-Behauptung aus dem Stoff, sonst eine Abruf-These zum Titel."""
+    raw = re.sub(r"\s+", " ", excerpts or "").strip()
+    if raw:
+        sent = re.split(r"(?<=[.!?])\s+", raw, maxsplit=1)[0].strip().strip("\"'")
+        if 24 <= len(sent) <= 180 and not re.match(
+                r"^(willkommen|hallo|guten\s+(tag|morgen|abend))\b", sent, re.I):
+            return sent
+    tit = (title or "Der Stoff").strip()
+    return f"{tit} sitzt nur, wenn du ihn abrufen kannst."
+
+
+def _fallback_opening_slides(title: str, subject: Optional[str],
+                             agenda_points: list[str], hook: str) -> str:
+    subj_line = (
+        f'<p class="eyebrow">{subject or "Lernvortrag"}</p>\n\n' if subject else "")
+    agenda = "\n".join(f"{i}. {p}" for i, p in enumerate(agenda_points, 1))
+    return (
+        f"<!-- _class: lead -->\n\n{subj_line}# {title}\n\n"
+        f"### {hook}\n\n"
+        f"---\n\n<!-- _class: agenda -->\n\n## Heute lernen wir\n\n"
+        f"{agenda}"
+    )
+
+
+def _fallback_opening_script(title: str, hook: str, agenda_points: list[str]) -> str:
+    agenda = ", ".join(agenda_points[:4])
+    return f"{hook} Danach der Fahrplan zu {title}: {agenda}."
+
+
 def _iter_slide_bodies(slides: str) -> list[str]:
     text = _strip_frontmatter(str(slides or "")).strip()
     if not text:
@@ -830,29 +875,14 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
             body_chars=len(excerpts),
         )
         any_truncated = any_truncated or trunc
-        if not open_slides:
-            # Thematischer Fallback ohne „Seite N“
-            agenda_points = []
-            for _lab, tit, body in usable[:6]:
-                if _BAD_AGENDA_TITLE_RE.match((tit or "").strip()):
-                    words = re.findall(r"[A-Za-zÄÖÜäöüß]{4,}", body or "")
-                    agenda_points.append(" ".join(words[:5]) or "Kernaussage des Abschnitts")
-                else:
-                    agenda_points.append(tit.strip())
-            if not agenda_points:
-                agenda_points = ["Zentrale Begriffe", "Zusammenhänge", "Praxisbezug"]
-            subj_line = f'<p class="eyebrow">{subject or "Lernvortrag"}</p>\n\n' if subject else ""
-            open_slides = (
-                f"<!-- _class: lead -->\n\n{subj_line}# {title}\n\n"
-                f"### Was du heute mitnimmst\n\n"
-                f"---\n\n<!-- _class: agenda -->\n\n## Heute lernen wir\n\n"
-                + "\n".join(f"{i}. {p}" for i, p in enumerate(agenda_points, 1))
-            )
-        if not open_script:
-            open_script = (
-                f"Willkommen zum Vortrag „{title}“. Wir klären die zentralen Ideen "
-                "und gehen den Stoff Schritt für Schritt durch."
-            )
+        if not open_slides or not open_script:
+            agenda_points = _agenda_points_from_usable(usable)
+            hook = _fallback_hook_line(title, excerpts)
+            if not open_slides:
+                open_slides = _fallback_opening_slides(
+                    title, subject, agenda_points, hook)
+            if not open_script:
+                open_script = _fallback_opening_script(title, hook, agenda_points)
         slide_chunks.append(open_slides)
         script_parts.append(open_script)
         step += 1

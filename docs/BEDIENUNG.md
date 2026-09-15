@@ -309,7 +309,9 @@ Aus gewählten Unterlagen entsteht ein **Marp-Markdown-Vortrag** plus separates
    eigene Folien + ausführliches Sprecher-Skript; optionale SearXNG-Treffer einen
    eigenen „Zusatzwissen“-Lauf – kein einzelnes Riesen-JSON mehr.
    Folien bleiben bewusst knapp (eine Idee, höchstens drei Zeilen, Mix aus
-   Merksatz/Split/Inhalt). Abbildungen kommen zuerst aus den **hochgeladenen PDFs**.
+   Merksatz/Split/Inhalt). Der Vortrag beginnt mit einem **Cold Open**
+   (Behauptung auf der Lead-Folie), die Agenda kommt erst danach.
+   Abbildungen kommen zuerst aus den **hochgeladenen PDFs**.
 4. Export: Marp-`.md`, WAV, optional HTML/PDF (Marp-CLI, **statische** Folien)
    und **MP4**. Das Video nimmt die Folien in Chrome mit **30 Bildern/s** auf
    (harter Schnitt ohne Folien-Schub, Punkte nacheinander, Titel buchstabenweise,

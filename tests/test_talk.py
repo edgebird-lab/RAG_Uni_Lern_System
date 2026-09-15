@@ -152,6 +152,37 @@ def test_section_prompt_asks_for_sparse_slides():
     assert "**Keyword**" in _SECTION_PROMPT
     assert "KEINE Stichpunkte" in _OPENING_PROMPT
     assert "**Hook-Wort**" in _OPENING_PROMPT
+    assert "Cold Open" in _OPENING_PROMPT
+    assert "KEIN Begrüßungs-Fluff" in _OPENING_PROMPT
+    assert "ZUERST" in _OPENING_PROMPT
+
+
+def test_fallback_opening_is_cold_open_not_welcome():
+    from ragapp.talk import (
+        _fallback_hook_line,
+        _fallback_opening_script,
+        _fallback_opening_slides,
+    )
+    excerpt = (
+        "Grounding heißt: nur schreiben, was in der Unterlage steht. "
+        "Der Rest ist Spekulation."
+    )
+    hook = _fallback_hook_line("Livetest Grounding", excerpt)
+    assert hook.startswith("Grounding")
+    assert not hook.lower().startswith("willkommen")
+    slides = _fallback_opening_slides(
+        "Livetest Grounding", "Livetest",
+        ["Begriff klären", "Beispiel"], hook)
+    assert slides.strip().startswith("<!-- _class: lead -->")
+    assert "<!-- _class: agenda -->" in slides
+    assert slides.index("lead") < slides.index("agenda")
+    assert "Was du heute mitnimmst" not in slides
+    assert hook in slides
+    script = _fallback_opening_script(
+        "Livetest Grounding", hook, ["Begriff klären", "Beispiel"])
+    assert not script.lower().startswith("willkommen")
+    assert hook in script
+    assert "Fahrplan" in script
 
 
 def test_thematic_toc_filters_page_titles():

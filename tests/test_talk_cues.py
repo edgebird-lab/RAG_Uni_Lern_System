@@ -85,9 +85,11 @@ def test_build_talk_cues_placeholder_timing():
     types = [e["type"] for e in lead["events"]]
     assert types == ["slide", "title"]
     assert lead["start_s"] == 0.0
-    assert lead["end_s"] == 4.0
+    assert lead["end_s"] >= 5.0
+    assert lead["end_s"] == round(12.0 * 1.65 / 3.65, 3)
 
     agenda = cues["slides"][1]
+    assert agenda["start_s"] == lead["end_s"]
     assert [e["type"] for e in agenda["events"]] == [
         "slide", "title", "bullet", "bullet", "bullet"]
     bullets = [e for e in agenda["events"] if e["type"] == "bullet"]
@@ -197,6 +199,40 @@ marp: true
     cap = next(e for e in cues["events"] if e["type"] == "caption")
     assert cap["text"] == "Hallo"
     assert cues["slides"][0]["bullets"] == []
+
+
+def test_map_timeline_lead_holds_two_hook_sentences():
+    from ragapp.talk_cues import map_timeline_to_cues
+    md = """---
+marp: true
+---
+
+<!-- _class: lead -->
+
+# Hook
+
+---
+
+<!-- _class: agenda -->
+
+## Heute lernen wir
+
+1. Begriff
+2. Beispiel
+"""
+    timeline = [
+        {"index": 0, "text": "Behauptung eins.", "start_s": 0.0, "duration_s": 2.0},
+        {"index": 1, "text": "Behauptung zwei.", "start_s": 2.2, "duration_s": 2.0},
+        {"index": 2, "text": "Agenda startet.", "start_s": 4.5, "duration_s": 1.5},
+        {"index": 3, "text": "Zweiter Punkt.", "start_s": 6.2, "duration_s": 1.5},
+    ]
+    cues = map_timeline_to_cues(md, timeline)
+    lead, agenda = cues["slides"][0], cues["slides"][1]
+    assert lead["class_name"] == "lead"
+    assert lead["start_s"] == 0.0
+    assert lead["end_s"] == 4.5
+    assert agenda["start_s"] == 4.5
+    assert agenda["class_name"] == "agenda"
 
 
 def test_link_and_emphasis_stripped_from_bullets():
