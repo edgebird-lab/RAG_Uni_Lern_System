@@ -315,7 +315,8 @@ Aus gewählten Unterlagen entsteht ein **Marp-Markdown-Vortrag** plus separates
 4. Export: Marp-`.md`, WAV, optional HTML/PDF (Marp-CLI, **statische** Folien)
    und **MP4**. Das Video nimmt die Folien in Chrome mit **30 Bildern/s** auf
    (harter Schnitt ohne Folien-Schub, Punkte nacheinander, Titel buchstabenweise,
-   Keyword-Punch, Split-Spalten, Bild-Zoom, Unterzeile aus der Vertonung) und
+   Keyword-Punch, Split-Spalten, Bild-Zoom, Zahl-Count-up, Kapitel-Chip, Unterzeile
+   aus der Vertonung) und
    legt die Stimme darunter. Ohne Timeline aus einer
    frischen Vertonung sind die Zeiten nur gleichmäßig verteilt und die Unterzeile
    fehlt – dann einmal neu vertonen und das Video neu erzeugen. Scheitert die

@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
-CUE_VERSION = 5
+CUE_VERSION = 6
 VIDEO_WIDTH = 1280
 VIDEO_HEIGHT = 720
 
@@ -23,16 +23,20 @@ _CLASS_RE = re.compile(r"<!--\s*_class:\s*([A-Za-z0-9_-]+)\s*-->")
 _HEADING_RE = re.compile(r"^(#{1,3})\s+(.+?)\s*$", re.MULTILINE)
 _LIST_RE = re.compile(r"^(?:[-*+]|\d+[.)])\s+(.+?)\s*$")
 _EMPH_RE = re.compile(r"\*\*(.+?)\*\*|__(.+?)__")
+_COUNT_RE = re.compile(
+    r"(?P<num>\d+(?:[.,]\d+)?)(?P<suf>\s*%|\s*Prozent)?"
+)
 _IMG_RE = re.compile(r"!\[(.*?)\]\(([^)]+)\)")
 _EVENT_ORDER = {
     "slide": 0,
     "title": 1,
     "punch": 2,
-    "col": 3,
-    "figure": 4,
-    "bullet": 5,
-    "keyword": 6,
-    "caption": 7,
+    "count": 3,
+    "col": 4,
+    "figure": 5,
+    "bullet": 6,
+    "keyword": 7,
+    "caption": 8,
 }
 
 
@@ -66,6 +70,27 @@ def _emphasis_words(text: str) -> list[str]:
         if w:
             words.append(w)
     return words
+
+
+def _count_spec(class_name: str, title: str) -> Optional[dict[str, Any]]:
+    if class_name != "card":
+        return None
+    m = _COUNT_RE.search(title or "")
+    if not m:
+        return None
+    raw = m.group("num")
+    sep = "," if "," in raw else "."
+    try:
+        to = float(raw.replace(",", "."))
+    except ValueError:
+        return None
+    decimals = len(raw.split(sep, 1)[1]) if sep in raw else 0
+    return {
+        "to": to,
+        "suffix": m.group("suf") or "",
+        "decimals": min(decimals, 2),
+        "sep": sep,
+    }
 
 
 def parse_slide_body(body: str) -> dict[str, Any]:
@@ -117,6 +142,7 @@ def parse_slide_body(body: str) -> dict[str, Any]:
         "punch": class_name in {"accent", "card"} or has_quote,
         "n_cols": n_cols,
         "images": images,
+        "count": _count_spec(class_name, title),
     }
 
 
@@ -216,8 +242,20 @@ def _attach_motion_events(
             "i": spec["i"],
             "text": spec["text"],
         })
+    count = parsed.get("count")
+    if count:
+        extra.append({
+            "t": _round_t(title_t if title_t is not None else fallback),
+            "type": "count",
+            "slide": slide_idx,
+            "to": count.get("to"),
+            "suffix": count.get("suffix") or "",
+            "decimals": int(count.get("decimals") or 0),
+            "sep": count.get("sep") or ".",
+        })
     slide_events.extend(extra)
-    return _sort_events(slide_events)
+    _sort_events(slide_events)
+    return slide_events
 
 
 def build_talk_cues(marp_md: str, *, duration_s: float,
@@ -280,11 +318,13 @@ def build_talk_cues(marp_md: str, *, duration_s: float,
             "punch": bool(parsed.get("punch")),
             "n_cols": int(parsed.get("n_cols") or 0),
             "images": parsed.get("images") or [],
+            "count": parsed.get("count"),
             "start_s": _round_t(start),
             "end_s": _round_t(end),
             "events": slide_events,
         })
 
+    _fill_chapter_labels(slides)
     _sort_events(events)
     return {
         "version": CUE_VERSION,
@@ -295,6 +335,23 @@ def build_talk_cues(marp_md: str, *, duration_s: float,
         "slides": slides,
         "events": events,
     }
+
+
+def _fill_chapter_labels(slides: list[dict[str, Any]]) -> None:
+    agenda = next((s for s in slides if s.get("class_name") == "agenda"), None)
+    bullets = list((agenda or {}).get("bullets") or [])
+    n = len(slides)
+    ci = 0
+    for s in slides:
+        cls = s.get("class_name")
+        if cls in {"lead", "agenda", "sources"}:
+            s["chapter"] = s.get("title") or ""
+        elif ci < len(bullets):
+            s["chapter"] = bullets[ci]
+            ci += 1
+        else:
+            s["chapter"] = s.get("title") or ""
+        s["chapter_n"] = n
 
 
 def _allocate_sentences(slides: list[dict[str, Any]],
@@ -386,6 +443,7 @@ def map_timeline_to_cues(marp_md: str, timeline: list[dict[str, Any]],
             "events": slide_events,
         })
     _sort_events(events)
+    _fill_chapter_labels(slides_out)
     return {
         "version": CUE_VERSION,
         "width": int(width),

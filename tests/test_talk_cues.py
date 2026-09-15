@@ -1,11 +1,7 @@
 """Tests fuer ragapp.talk_cues: Marp → suchbare Eventliste."""
 from __future__ import annotations
 
-from ragapp.talk_cues import (
-    build_talk_cues,
-    parse_slide_body,
-    split_marp_slides,
-)
+from ragapp.talk_cues import CUE_VERSION, build_talk_cues, parse_slide_body, split_marp_slides
 
 
 FIXTURE_MD = """\
@@ -69,7 +65,7 @@ def test_parse_slide_extracts_class_title_bullets():
 
 def test_build_talk_cues_placeholder_timing():
     cues = build_talk_cues(FIXTURE_MD, duration_s=12.0)
-    assert cues["version"] == 5
+    assert cues["version"] == CUE_VERSION
     assert cues["width"] == 1280
     assert cues["height"] == 720
     assert cues["duration_s"] == 12.0
@@ -98,6 +94,21 @@ def test_build_talk_cues_placeholder_timing():
     assert bullets[0]["t"] > title_t
     assert bullets[0]["t"] >= agenda["start_s"] + 0.39
     assert bullets[-1]["t"] < agenda["end_s"]
+    assert cues["slides"][0]["chapter"] == "Lernvortrag Testing"
+    assert cues["slides"][2]["chapter"] == "Begriff klären"
+
+
+def test_card_count_event_emits_target():
+    md = """\
+<!-- _class: card -->
+
+## **42 %**
+"""
+    cues = build_talk_cues(md, duration_s=4.0)
+    count = next(e for e in cues["events"] if e["type"] == "count")
+    assert count["to"] == 42
+    assert "%" in count["suffix"]
+    assert cues["slides"][0]["count"]["to"] == 42
 
 
 def test_build_talk_cues_empty_md_gets_one_slide():
@@ -284,6 +295,8 @@ def test_parse_keyword_and_punch():
     assert card["class_name"] == "card"
     assert card["punch"] is True
     assert card["title"] == "42 %"
+    assert card["count"]["to"] == 42
+    assert "%" in card["count"]["suffix"]
 
 
 def test_cues_emit_keyword_and_punch_sorted():

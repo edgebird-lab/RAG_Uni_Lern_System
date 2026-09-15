@@ -379,3 +379,65 @@ marp: true
         font = word.evaluate("el => getComputedStyle(el).fontSize")
         assert float(font.replace("px", "")) >= 48
         browser.close()
+
+
+def test_seek_count_up_and_chapter_chip(tmp_path):
+    from playwright.sync_api import sync_playwright
+
+    md = """\
+---
+marp: true
+---
+
+<!-- _class: lead -->
+
+# Start
+
+---
+
+<!-- _class: agenda -->
+
+## Heute lernen wir
+
+1. Grounding
+2. Prozent
+
+---
+
+<!-- _class: card -->
+
+## **42 %**
+"""
+    html_src = """<!DOCTYPE html><html><body>
+<section class="lead"><h1>Start</h1></section>
+<section class="agenda"><h2>Heute lernen wir</h2><ol><li>Grounding</li><li>Prozent</li></ol></section>
+<section class="card"><h2><strong>42 %</strong></h2></section>
+</body></html>"""
+    cues = build_talk_cues(md, duration_s=9.0)
+    html = inject_talk_presenter(html_src, cues)
+    path = tmp_path / "count.html"
+    path.write_text(html, encoding="utf-8")
+    card = next(s for s in cues["slides"] if s["class_name"] == "card")
+    count_t = next(e["t"] for e in card["events"] if e["type"] == "count")
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.goto(path.as_uri(), wait_until="load")
+        page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
+
+        page.evaluate("t => window.TalkPresenter.seek(t)", 0)
+        assert page.locator("#talk-chapter-chip.is-on").count() == 0
+
+        page.evaluate("t => window.TalkPresenter.seek(t)", count_t)
+        early = page.locator("section.card .talk-count").inner_text()
+        page.evaluate("t => window.TalkPresenter.seek(t)", count_t + 0.75)
+        late = page.locator("section.card .talk-count").inner_text()
+        assert early.startswith("0")
+        assert "42" in late
+        chip = page.locator("#talk-chapter-chip")
+        assert chip.evaluate("el => el.classList.contains('is-on')")
+        text = chip.inner_text()
+        assert "3 / 3" in text
+        assert "grounding" in text.lower()
+        browser.close()

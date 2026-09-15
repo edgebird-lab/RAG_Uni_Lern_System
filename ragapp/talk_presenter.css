@@ -145,6 +145,28 @@ section.card .talk-title-rule {
   opacity: 1;
 }
 
+#talk-chapter-chip {
+  position: fixed;
+  top: 4.5%;
+  left: 4.5%;
+  z-index: 40;
+  font-family: 'Source Sans 3', 'Segoe UI', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff7eb;
+  background: rgba(14, 61, 69, 0.82);
+  border-radius: 999px;
+  padding: 0.28em 0.85em;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#talk-chapter-chip.is-on {
+  opacity: 1;
+}
+
 .talk-bullet.is-current {
   border-left: 6px solid #c9a227;
   padding-left: 0.4em;

@@ -9,6 +9,7 @@
   const MERKSATZ_S = 0.35;
   const TITLE_RULE_S = 0.35;
   const FIGURE_FADE_S = 0.45;
+  const COUNT_S = 0.7;
 
   const TalkPresenter = {
     cues: null,
@@ -62,6 +63,44 @@
       heading.dataset.talkWrapped = "1";
     },
 
+    _wrapCount(heading) {
+      if (!heading || heading.dataset.talkCount === "1") return;
+      const re = /(\d+(?:[.,]\d+)?)(\s*%|\s*Prozent)?/;
+      const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+      const nodes = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      for (const node of nodes) {
+        const text = node.textContent || "";
+        const m = re.exec(text);
+        if (!m) continue;
+        const span = document.createElement("span");
+        span.className = "talk-count";
+        const raw = m[1];
+        const sep = raw.indexOf(",") >= 0 ? "," : ".";
+        span.dataset.to = raw.replace(",", ".");
+        span.dataset.decimals = String(sep && raw.indexOf(sep) >= 0
+          ? (raw.split(sep)[1] || "").length
+          : 0);
+        span.dataset.suffix = m[2] || "";
+        span.dataset.sep = sep;
+        span.textContent = m[0];
+        const after = node.splitText(m.index);
+        after.nodeValue = after.nodeValue.slice(m[0].length);
+        node.parentNode.insertBefore(span, after);
+        heading.dataset.talkCount = "1";
+        break;
+      }
+    },
+
+    _formatCount(to, frac, decimals, suffix, sep) {
+      const v = Number(to) * frac;
+      let shown;
+      if (decimals > 0) shown = v.toFixed(decimals);
+      else shown = String(Math.round(v));
+      if (sep === ",") shown = shown.replace(".", ",");
+      return shown + (suffix || "");
+    },
+
     _frac(t, start, dur) {
       return Math.min(1, Math.max(0, (t - start) / dur));
     },
@@ -78,7 +117,8 @@
         if (heading) {
           heading.classList.add("talk-title");
           if (isCard) heading.classList.add("talk-card-word");
-          this._wrapLetters(heading);
+          if (isCard) this._wrapCount(heading);
+          if (!heading.querySelector(".talk-count")) this._wrapLetters(heading);
           if (!isCard && !heading.querySelector(".talk-title-rule")) {
             const rule = document.createElement("span");
             rule.className = "talk-title-rule";
@@ -140,6 +180,8 @@
       let punchOn = false;
       let punchStart = 0;
       let caption = "";
+      let count = null;
+      let countStart = 0;
       const events = this.cues.events || [];
       for (const ev of events) {
         if (ev.t > t + 1e-9) break;
@@ -154,6 +196,7 @@
           figures.clear();
           punchOn = false;
           caption = "";
+          count = null;
         } else if (ev.type === "title" && ev.slide === slide) {
           titleOn = true;
           titleStart = ev.t;
@@ -172,6 +215,9 @@
         } else if (ev.type === "punch" && ev.slide === slide) {
           punchOn = true;
           punchStart = ev.t;
+        } else if (ev.type === "count" && ev.slide === slide) {
+          count = ev;
+          countStart = ev.t;
         }
       }
       const letterFrac = titleOn
@@ -189,7 +235,7 @@
       return {
         slide, prevSlide, slideStart, titleOn, titleStart, letterFrac, fade, bullets,
         keywords, keywordStart, punchOn, punchStart, cols, figures, figureStart, kenBurns,
-        caption,
+        caption, count, countStart,
       };
     },
 
@@ -313,6 +359,18 @@
             if (!punch.querySelector(".talk-letter")) punch.style.opacity = "";
           }
         }
+        section.querySelectorAll(".talk-count").forEach((el) => {
+          const spec = isCurr ? state.count : null;
+          const to = spec ? Number(spec.to) : Number(el.dataset.to || 0);
+          const start = spec ? state.countStart : 0;
+          const frac = spec ? this._frac(t, start, COUNT_S) : 0;
+          el.textContent = this._formatCount(
+            to, frac,
+            Number(spec && spec.decimals != null ? spec.decimals : el.dataset.decimals || 0),
+            (spec && spec.suffix) || el.dataset.suffix || "",
+            (spec && spec.sep) || el.dataset.sep || ".",
+          );
+        });
       });
       let bar = document.getElementById("talk-lower-third");
       if (!bar) {
@@ -323,6 +381,19 @@
       const cap = (state.caption || "").trim();
       bar.textContent = cap;
       bar.classList.toggle("is-on", Boolean(cap));
+      let chip = document.getElementById("talk-chapter-chip");
+      if (!chip) {
+        chip = document.createElement("div");
+        chip.id = "talk-chapter-chip";
+        document.body.appendChild(chip);
+      }
+      const slides = this.cues.slides || [];
+      const meta = slides[state.slide] || {};
+      const n = slides.length;
+      const label = String(meta.chapter || meta.title || "").trim();
+      const hideChip = n < 2 || meta.class_name === "lead";
+      chip.textContent = `${state.slide + 1} / ${n} · ${label}`;
+      chip.classList.toggle("is-on", !hideChip);
     },
   };
 
