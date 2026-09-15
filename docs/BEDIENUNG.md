@@ -311,7 +311,8 @@ Aus gewählten Unterlagen entsteht ein **Marp-Markdown-Vortrag** plus separates
    Folien bleiben bewusst knapp (eine Idee, höchstens drei Zeilen, Mix aus
    Merksatz/Card/Split/Inhalt). Der Vortrag beginnt mit einem **Cold Open**
    (Behauptung auf der Lead-Folie), die Agenda kommt erst danach.
-   Abbildungen kommen zuerst aus den **hochgeladenen PDFs**.
+   Abbildungen kommen zuerst aus den **hochgeladenen PDFs** und stehen im Video
+   vollflächig (A-Roll, Titel als Leiste).
 4. Export: Marp-`.md`, WAV, optional HTML/PDF (Marp-CLI, **statische** Folien)
    und **MP4**. Das Video nimmt die Folien in Chrome mit **30 Bildern/s** auf
    (harter Schnitt ohne Folien-Schub, Punkte nacheinander, Titel buchstabenweise,

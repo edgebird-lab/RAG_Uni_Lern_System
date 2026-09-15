@@ -306,6 +306,16 @@ marp: true
         page.evaluate("t => window.TalkPresenter.seek(t)", 7.5)
         late = page.locator(".talk-figure-img").evaluate("el => el.style.transform")
         assert scale_of(late) > scale_of(early)
+        assert page.locator("section.talk-aroll").count() == 1
+        box = page.locator(".talk-figure").bounding_box()
+        assert box is not None
+        assert box["width"] >= 1200
+        assert box["height"] >= 680
+        display = page.locator(".talk-bullet").evaluate("el => getComputedStyle(el).display")
+        assert display == "none"
+        title_pos = page.locator("section.talk-aroll .talk-title").evaluate(
+            "el => getComputedStyle(el).position")
+        assert title_pos == "absolute"
         browser.close()
 
 

@@ -250,6 +250,20 @@ img {
   box-shadow: 0 8px 24px rgba(20,35,58,.12);
   background: rgba(255,255,255,.4);
 }
+section:has(img):not(.lead):not(.agenda):not(.card):not(.sources) {
+  padding: 0;
+  overflow: hidden;
+  position: relative;
+}
+section:has(img):not(.lead):not(.agenda):not(.card):not(.sources) img {
+  max-height: none;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 0;
+  box-shadow: none;
+  background: none;
+}
 strong { color: var(--coral); font-weight: 700; }
 a { color: var(--petrol); }
 code, pre {

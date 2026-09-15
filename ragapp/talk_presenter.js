@@ -147,6 +147,12 @@
           wrap.dataset.talkFigure = String(i);
           img.classList.add("talk-figure-img");
         });
+        if (
+          section.querySelector("img") &&
+          !["lead", "agenda", "card", "sources"].some((c) => section.classList.contains(c))
+        ) {
+          section.classList.add("talk-aroll");
+        }
         section.querySelectorAll("strong, b").forEach((el, i) => {
           el.classList.add("talk-keyword");
           el.dataset.talkKeyword = String(i);
