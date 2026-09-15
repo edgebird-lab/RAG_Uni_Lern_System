@@ -117,8 +117,11 @@ def test_build_ffmpeg_xfade_cmd_structure(tmp_path):
     audio.write_bytes(b"x")
     out = tmp_path / "o.mp4"
     cmd = build_ffmpeg_xfade_cmd([p1, p2], audio, out, per_slide_s=3.0)
-    assert "xfade" in " ".join(cmd)
+    joined = " ".join(cmd)
+    assert "xfade" in joined
     assert str(out) in cmd
+    assert "loudnorm" in joined
+    assert "-af" in cmd
 
 
 def test_build_ffmpeg_concat_cmd_structure(tmp_path):
@@ -133,6 +136,8 @@ def test_build_ffmpeg_concat_cmd_structure(tmp_path):
     assert str(out) in cmd
     assert "-shortest" in cmd
     assert "libx264" in cmd
+    assert "loudnorm" in " ".join(cmd)
+    assert "-af" in cmd
 
 
 def test_write_concat_list(tmp_path):
@@ -174,6 +179,14 @@ def test_create_list_update_delete_talk(isolated_db, tmp_path, monkeypatch):
 
     listed = manifest.list_talks(subject="mathe")
     assert len(listed) == 1
+    assert row["forced_eos"] == []
+
+    manifest.update_talk(
+        tid, forced_eos=[{"index": 1, "text": "Abgeschnittener Satz."}, "   "])
+    assert manifest.get_talk(tid)["forced_eos"] == [
+        {"index": 1, "text": "Abgeschnittener Satz."}]
+    manifest.update_talk(tid, forced_eos=[])
+    assert manifest.get_talk(tid)["forced_eos"] == []
 
     # Ordner anlegen und loeschen
     d = tmp_path / "talks" / tid
@@ -182,3 +195,44 @@ def test_create_list_update_delete_talk(isolated_db, tmp_path, monkeypatch):
     manifest.delete_talk(tid)
     assert manifest.get_talk(tid) is None
     assert not d.exists()
+
+
+def test_join_talk_script_uses_section_pauses():
+    from ragapp.talk import _join_talk_script
+    out = _join_talk_script(["Eröffnung.", "Abschnitt eins.", "", " Quellen. "])
+    assert out == "Eröffnung.\n\n\nAbschnitt eins.\n\n\nQuellen."
+
+
+def test_synthesize_talk_audio_persists_forced_eos(isolated_db, tmp_path, monkeypatch):
+    talks_dir = tmp_path / "talks"
+    talks_dir.mkdir()
+    monkeypatch.setattr(talk, "TALK_DIR", talks_dir)
+    tid = manifest.create_talk(
+        title="EOS", subject="Livetest", doc_ids=[],
+        marp_md="---\nmarp: true\n---\n\n# Hi",
+        script_text="Hallo Welt.",
+        talk_id="talkeos1",
+    )
+
+    def fake_synth(text, ref, out, on_progress=None):
+        Path(out).write_bytes(b"RIFF")
+        return [{"index": 0, "text": "Abbruch."}]
+
+    monkeypatch.setattr("ragapp.audio_overview.synthesize_speech", fake_synth)
+    monkeypatch.setattr(
+        "ragapp.audio_overview._require_reference_wav", lambda: tmp_path / "ref.wav")
+    rel = talk.synthesize_talk_audio(tid, "Hallo Welt.")
+    assert rel == "talkeos1/audio.wav"
+    row = manifest.get_talk(tid)
+    assert row["forced_eos"] == [{"index": 0, "text": "Abbruch."}]
+    assert row["audio_path"] == rel
+    assert (talks_dir / rel).is_file()
+
+
+def test_vortrag_seite_zeigt_abgebrochene_saetze():
+    src = Path("ragapp/ui/pages/17_🎤_Vortrag.py").read_text(encoding="utf-8")
+    helper = Path("ragapp/ui/_pronunciation.py").read_text(encoding="utf-8")
+    assert "_render_forced_eos" in src
+    assert "erst dann das Video erzeugen" in src
+    assert "Abgebrochene Sätze" in helper
+    assert "Neuversuch hören" in helper

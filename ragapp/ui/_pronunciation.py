@@ -95,3 +95,33 @@ def render_pronunciation_hints(text: str, *, key_prefix: str,
                 st.rerun()
             else:
                 st.info("Keine Korrektur ausgewählt.")
+
+
+def render_forced_eos(record: dict, *, record_id: str, retry_hint: str) -> None:
+    """Sätze, die nach dem TTS-Retry weiter abgebrochen waren – Audio-Overview und Vortrag."""
+    items = record.get("forced_eos") or []
+    if not items:
+        return
+    n = len(items)
+    if n == 1:
+        st.warning("Ein Satz klingt unvollständig – das Modell hat mitten im Satz "
+                   "abgebrochen. Hörprobe unten oder das Audio neu erzeugen.")
+    else:
+        st.warning(f"{n} Sätze klingen unvollständig – das Modell hat mitten im Satz "
+                   "abgebrochen. Hörprobe je Satz oder das Audio neu erzeugen.")
+    with st.expander(f"Abgebrochene Sätze ({n})", expanded=True):
+        for item in items:
+            idx = int(item.get("index", 0)) + 1
+            text = item.get("text") or ""
+            st.markdown(f"**Satz {idx}.** {text}")
+            if st.button("🎧 Neuversuch hören",
+                         key=f"eos_retry_{record_id}_{idx}",
+                         use_container_width=True):
+                with st.spinner("Erzeuge Hörprobe …"):
+                    try:
+                        probe = audio_overview.synthesize_sentence_probe(text)
+                    except audio_overview.AudioOverviewError as exc:
+                        st.error(str(exc))
+                    else:
+                        st.audio(str(probe))
+                        st.caption(f"Nur dieser Satz, neu erzeugt. {retry_hint}")

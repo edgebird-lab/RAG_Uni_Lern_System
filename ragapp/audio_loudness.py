@@ -1,4 +1,4 @@
-"""EBU-R128-Lautheit fuer Sprache (Audio-Overview und Hoerbuch)."""
+"""EBU-R128-Lautheit fuer Sprache (Audio-Overview, Hoerbuch, Vortrags-Video)."""
 from __future__ import annotations
 
 import tempfile

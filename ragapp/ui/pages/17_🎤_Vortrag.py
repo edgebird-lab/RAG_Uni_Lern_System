@@ -34,7 +34,10 @@ with skeleton("Vortrag wird geladen …"):
     from ragapp.config import settings, SUBJECT_LABELS, PROJECT_ROOT, TALK_DIR
     from ragapp.llm import list_installed_models
     from ragapp.ui._progress import fmt_dauer as _fmt_dauer, progress_tracker as _progress_tracker
-    from ragapp.ui._pronunciation import render_pronunciation_hints as _render_pronunciation_hints
+    from ragapp.ui._pronunciation import (
+        render_pronunciation_hints as _render_pronunciation_hints,
+        render_forced_eos as _render_forced_eos,
+    )
 
 _KEIN_FACH = "— Kein Fach —"
 
@@ -296,6 +299,9 @@ with card("talk_head"):
     _script_edit = st.text_area("Sprecher-Skript", value=_active["script_text"], height=240,
                                 key=f"talk_script_{_active_id}")
     st.caption(f"{len(_script_edit)} Zeichen Skript (~{len(_script_edit) / 1000:.0f} Min. grob)")
+    _render_forced_eos(
+        _active, record_id=_active["talk_id"],
+        retry_hint="Klingt er vollständig, unten erneut „Vertonen“ – erst dann das Video erzeugen.")
     _render_pronunciation_hints(_script_edit, key_prefix=f"talk_exist_{_active_id}")
 
     if _active.get("sources"):
@@ -420,6 +426,8 @@ with vc2:
             st.error(str(exc))
     if not _audio_rel:
         st.caption("Video braucht zuerst eine Vertonung.")
+    elif _active.get("forced_eos"):
+        st.caption("Audio klingt unvollständig – zuerst erneut „Vertonen“, dann Video erzeugen.")
 
 _video_rel = _active.get("video_path")
 if _video_rel:

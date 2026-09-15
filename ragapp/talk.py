@@ -783,6 +783,7 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
             if len(body_chunks) > 1:
                 split_sections += 1
             section_ok = False
+            section_scripts: list[str] = []
             for chunk in body_chunks:
                 prompt = _SECTION_PROMPT.format(
                     title=display_title, label=label, body=chunk)
@@ -799,8 +800,12 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
                 if slides:
                     slide_chunks.append(slides)
                 if script:
-                    script_parts.append(script)
+                    section_scripts.append(script)
                     total_script += len(script)
+            if section_scripts:
+                # Gleiche Quelle = Absatzpausen; erst zwischen Abschnitten
+                # Abschnittspause (siehe _join_talk_script).
+                script_parts.append("\n\n".join(section_scripts))
             step += 1
             if on_progress:
                 on_progress(step, steps_total, sec_title)
@@ -865,7 +870,7 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
         body = _join_slide_chunks(slide_chunks)
         marp_md = validate_marp_markdown(
             "---\nmarp: true\npaginate: true\n---\n\n" + body)
-        script = "\n\n".join(script_parts)
+        script = _join_talk_script(script_parts)
         if len(script) > hard_cap:
             script = script[:hard_cap].rsplit(" ", 1)[0] + "…"
             hit_hard_cap = True
@@ -1191,6 +1196,17 @@ def probe_audio_duration_s(audio_path: Path) -> float:
         raise TalkError("ffprobe lieferte keine Dauer.") from exc
 
 
+def _join_talk_script(parts: list[str]) -> str:
+    """Opening, Abschnitte und Quellen mit Abschnittspause (drei Newlines)."""
+    return "\n\n\n".join(p.strip() for p in parts if (p or "").strip())
+
+
+def _video_aac_args() -> list[str]:
+    """AAC-Tonspur mit gleicher Sprach-Lautheit wie Audio-Overview."""
+    from ragapp.audio_loudness import LOUDNORM_FILTER
+    return ["-c:a", "aac", "-b:a", "192k", "-af", LOUDNORM_FILTER]
+
+
 def build_ffmpeg_concat_cmd(
     concat_list: Path,
     audio_path: Path,
@@ -1203,7 +1219,7 @@ def build_ffmpeg_concat_cmd(
         "-f", "concat", "-safe", "0", "-i", str(concat_list),
         "-i", str(audio_path),
         "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "192k",
+        *_video_aac_args(),
         "-shortest",
         "-movflags", "+faststart",
         str(output_mp4),
@@ -1255,7 +1271,7 @@ def build_ffmpeg_xfade_cmd(
         "-map", f"[{prev}]",
         "-map", f"{audio_idx}:a",
         "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "192k",
+        *_video_aac_args(),
         "-shortest",
         "-movflags", "+faststart",
         str(output_mp4),
@@ -1377,6 +1393,6 @@ def synthesize_talk_audio(talk_id: str, script_text: Optional[str] = None,
     rel = f"{talk_id}/audio.wav"
     out = TALK_DIR / rel
     out.parent.mkdir(parents=True, exist_ok=True)
-    audio_overview.synthesize_speech(text, ref, out, on_progress=on_progress)
-    manifest.update_talk(talk_id, script_text=text, audio_path=rel)
+    forced = audio_overview.synthesize_speech(text, ref, out, on_progress=on_progress) or []
+    manifest.update_talk(talk_id, script_text=text, audio_path=rel, forced_eos=forced)
     return rel

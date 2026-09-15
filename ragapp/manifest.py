@@ -423,6 +423,7 @@ CREATE TABLE IF NOT EXISTS talks (
     audio_path   TEXT,             -- relativ zu TALK_DIR (z. B. <id>/audio.wav)
     video_path   TEXT,             -- relativ zu TALK_DIR (z. B. <id>/talk.mp4)
     model        TEXT,
+    forced_eos   TEXT,             -- JSON-Liste abgeschnittener Saetze nach TTS-Retry
     created_at   REAL,
     updated_at   REAL
 );
@@ -739,6 +740,12 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE audio_overviews ADD COLUMN forced_eos TEXT")
         except Exception:  # noqa: BLE001
             _log.warning("Additive Migration audio_overviews uebersprungen", exc_info=True)
+        try:
+            tcols = {r["name"] for r in conn.execute("PRAGMA table_info(talks)")}
+            if "forced_eos" not in tcols:
+                conn.execute("ALTER TABLE talks ADD COLUMN forced_eos TEXT")
+        except Exception:  # noqa: BLE001
+            _log.warning("Additive Migration talks uebersprungen", exc_info=True)
         # Alltag: Klausur-Einzelaufgaben, Fehlerheft, persistenter Pomodoro.
         conn.executescript(
             """
@@ -3374,7 +3381,8 @@ def create_talk(*, title: str, subject: Optional[str], doc_ids: list[str],
                 audio_path: Optional[str] = None,
                 video_path: Optional[str] = None,
                 model: Optional[str] = None,
-                talk_id: Optional[str] = None) -> str:
+                talk_id: Optional[str] = None,
+                forced_eos: Optional[list] = None) -> str:
     """``talk_id`` optional vorgeben, damit Dateien unter ``data/talks/<id>/``
     schon vor dem Insert abgelegt werden koennen."""
     now = time.time()
@@ -3383,10 +3391,11 @@ def create_talk(*, title: str, subject: Optional[str], doc_ids: list[str],
         conn.execute(
             "INSERT INTO talks (talk_id, title, subject, doc_ids, marp_md, "
             "script_text, sources_json, audio_path, video_path, model, "
-            "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "forced_eos, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (tid, title.strip(), subject, json.dumps(doc_ids or []),
              marp_md, script_text, json.dumps(sources or []),
-             audio_path, video_path, model, now, now),
+             audio_path, video_path, model,
+             json.dumps(_decode_forced_eos(forced_eos)), now, now),
         )
     return tid
 
@@ -3401,6 +3410,7 @@ def _decode_talk(row: dict) -> dict:
         d["sources"] = json.loads(d.get("sources_json") or "[]")
     except Exception:  # noqa: BLE001
         d["sources"] = []
+    d["forced_eos"] = _decode_forced_eos(d.get("forced_eos"))
     return d
 
 
@@ -3414,7 +3424,7 @@ def get_talk(talk_id: str) -> Optional[dict]:
 def update_talk(talk_id: str, **fields: Any) -> None:
     """Aktualisiert einzelne Felder (Skript, Marp, Audio-/Video-Pfad, …)."""
     valid = {"title", "subject", "doc_ids", "marp_md", "script_text",
-             "sources", "audio_path", "video_path", "model"}
+             "sources", "audio_path", "video_path", "model", "forced_eos"}
     sets = []
     args = []
     for k, v in fields.items():
@@ -3424,6 +3434,8 @@ def update_talk(talk_id: str, **fields: Any) -> None:
         sets.append(f"{col}=?")
         if k in ("doc_ids", "sources"):
             args.append(json.dumps(v or []))
+        elif k == "forced_eos":
+            args.append(json.dumps(_decode_forced_eos(v)))
         else:
             args.append(v)
     if not sets:
