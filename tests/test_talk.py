@@ -97,6 +97,63 @@ def test_validate_slides_script_accepts_clean():
     assert validate_slides_script(slides, script, body_chars=200) == []
 
 
+def test_clamp_content_five_bullets_to_three():
+    from ragapp.talk import clamp_slide_grammar, validate_slides_script
+    raw = (
+        "<!-- _class: content -->\n\n## Wand\n\n"
+        "- eins\n- zwei\n- drei\n- vier\n- fünf\n"
+    )
+    out = clamp_slide_grammar(raw)
+    assert out.count("\n- ") == 3
+    assert "- vier" not in out
+    assert validate_slides_script(
+        out, "Wir klären die drei Kernaussagen nacheinander und bleiben knapp.",
+        body_chars=200) == []
+    errs = validate_slides_script(
+        raw, "Wir klären die drei Kernaussagen nacheinander und bleiben knapp.",
+        body_chars=200)
+    assert any("Stichpunkt" in e for e in errs)
+
+
+def test_clamp_accent_and_lead_and_split():
+    from ragapp.talk import clamp_slide_grammar
+    accent = clamp_slide_grammar(
+        "<!-- _class: accent -->\n\n## Merksatz\n\n- a\n- b\n- c\n")
+    assert accent.count("\n- ") == 1
+    lead = clamp_slide_grammar(
+        "<!-- _class: lead -->\n\n# Titel\n\n- weg\n- auch weg\n")
+    assert "- weg" not in lead
+    split = clamp_slide_grammar(
+        "<!-- _class: split -->\n\n## Vergleich\n\n"
+        "### Links\n- a1\n- a2\n- a3\n- a4\n\n"
+        "### Rechts\n- b1\n- b2\n- b3\n- b4\n"
+    )
+    assert "- a4" not in split
+    assert "- b4" not in split
+    assert "- a3" in split
+    assert "- b3" in split
+    agenda = clamp_slide_grammar(
+        "<!-- _class: agenda -->\n\n## Heute\n\n"
+        "1. eins\n2. zwei\n3. drei\n4. vier\n5. fünf\n6. sechs\n7. sieben\n"
+    )
+    assert "6. sechs" in agenda
+    assert "7. sieben" not in agenda
+    sources = clamp_slide_grammar(
+        "<!-- _class: sources -->\n\n## Quellen\n\n"
+        "- [A](http://a)\n- [B](http://b)\n- [C](http://c)\n"
+        "- [D](http://d)\n"
+    )
+    assert sources.count("- [") == 4
+
+
+def test_section_prompt_asks_for_sparse_slides():
+    from ragapp.talk import _OPENING_PROMPT, _SECTION_PROMPT
+    assert "höchstens 3" in _SECTION_PROMPT
+    assert "**Keyword**" in _SECTION_PROMPT
+    assert "KEINE Stichpunkte" in _OPENING_PROMPT
+    assert "**Hook-Wort**" in _OPENING_PROMPT
+
+
 def test_thematic_toc_filters_page_titles():
     from ragapp.talk import _thematic_toc_and_excerpts
     toc, excerpts = _thematic_toc_and_excerpts([

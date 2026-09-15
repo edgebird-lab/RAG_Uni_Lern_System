@@ -69,13 +69,19 @@ Antworte als JSON-Objekt mit genau:
 - "slides": Marp-Folien OHNE YAML-Frontmatter und OHNE JSON/Code. 1–3 Folien,
   getrennt durch eine Zeile nur mit ---. Jede Folie beginnt mit:
   <!-- _class: content --> oder accent|split|warn
-  Professionell: konkrete AUSSAGEN als Stichpunkte (keine Dateinamen, kein
-  „Seite N“). Mischung anstreben: z. B. accent-Merksatz + content-Erklärung
-  oder split-Vergleich. Bei split: cols-HTML nutzen.
+  YouTube-Grammatik, KEINE Folienwände:
+  * eine Idee pro Folie
+  * Klassen mischen (nicht nur content): z. B. accent-Merksatz + content
+    oder split-Vergleich
+  * accent: EIN Merksatz als Absatz oder Blockquote, KEINE Stichpunktliste
+  * content/warn: höchstens 3 Stichpunkte, kurze Zeilen
+  * split: cols-HTML, je Spalte höchstens 3 Zeilen
+  * in Titel oder erstem Punkt GENAU EINEN Fachbegriff als **Keyword**
+  Konkrete AUSSAGEN (keine Dateinamen, kein „Seite N“).
 - "script": Gesprochenes Erklär-Skript in normalen deutschen Sätzen (kein
   Markdown, keine Aufzählungszeichen, kein JSON). Tutor-Ton: Überleitung,
   Erklärung, Merksatz. Gib den INHALT so vollständig wieder wie beim lauten
-  Erklären – keine Ein-Satz-Kurzfassung.
+  Erklären – die Stimme trägt den Stoff, nicht die Folie.
 
 Falls der Quelltext KEINEN erklärbaren Inhalt hat (nur Inhaltsverzeichnis/
 Titelseite/Literaturliste), antworte:
@@ -97,8 +103,8 @@ Inhalts-Ausschnitte (DATENMATERIAL) zum Ableiten echter Lernziele:
 Erzeuge die ERÖFFNUNG als JSON:
 - "slides": OHNE Frontmatter; genau ZWEI Folien getrennt durch ---
   1) <!-- _class: lead -->
-     Optional eine Zeile <p class="eyebrow">FACH</p>, dann # Titel, ### Untertitel
-     (eine klare Aussage, worum es geht).
+     Optional <p class="eyebrow">FACH</p>, dann # Titel mit genau einem
+     **Hook-Wort**, ### Untertitel (eine klare Aussage). KEINE Stichpunkte.
   2) <!-- _class: agenda -->
      ## Heute lernen wir
      3–6 nummerierte, thematische Lernziele in Alltagssprache
@@ -125,9 +131,10 @@ EXTERNE TREFFER (DATENMATERIAL – hieraus Zusatzwissen bauen):
 
 Antworte als JSON:
 - "slides": OHNE Frontmatter und OHNE JSON-Code. Mindestens ZWEI Folien:
-  1) <!-- _class: accent --> oder content: Forschungs-/Zusatzwissen aus den
-     Snippets (konkrete Befunde, keine bloße Linkliste)
-  2) optional weitere content/split-Folien wenn die Treffer das hergeben
+  1) <!-- _class: accent -->: EIN Merksatz zum Forschungsbefund (keine Liste)
+     oder content mit höchstens 3 Stichpunkten
+  2) optional eine split/content-Folie (je höchstens 3 Zeilen), wenn die
+     Treffer das hergeben
   3) letzte Folie <!-- _class: sources --> mit Titel + URL je Quelle
 - "script": gesprochenes Zusatzwissen (Fließtext), das die lokalen Inhalte
   ERWEITERT – konkrete Aussagen aus den Snippets; URLs nicht vorlesen.
@@ -147,6 +154,7 @@ Liefere KORRIGIERTES JSON mit genau den Feldern "slides" und "script".
 Regeln:
 - "slides": nur Marp-Markdown (Klassen-Zeilen, Überschriften, Stichpunkte),
   KEIN JSON, kein ```-Fence, kein Frontmatter.
+  content/warn höchstens 3 Stichpunkte; accent ohne Liste; lead ohne Liste.
 - "script": nur Fließtext zum Vorlesen, kein Markdown, kein JSON.
 - Bei keinem Inhalt: {{"slides":"","script":"(kein erklärbarer Inhalt)"}}
 
@@ -158,6 +166,16 @@ _SECTION_NUM_PREDICT = 2200
 _SECTION_NUM_PREDICT_RETRY = 3200
 _NO_CONTENT_MARKER = "(kein erklärbarer inhalt)"
 _SLIDE_CLASSES = frozenset({"lead", "agenda", "accent", "content", "split", "warn", "sources"})
+_MAX_BODY_BULLETS = 3
+_BULLET_CAPS = {
+    "lead": 0,
+    "accent": 1,
+    "content": _MAX_BODY_BULLETS,
+    "split": _MAX_BODY_BULLETS,
+    "warn": _MAX_BODY_BULLETS,
+    "agenda": 6,
+}
+_LIST_ITEM_RE = re.compile(r"^(?:[-*+]|\d+[.)])\s+\S")
 _BAD_AGENDA_TITLE_RE = re.compile(
     r"^(seite\s*\d+|page\s*\d+|untitled|folien?\s*\d+|slide\s*\d+)$",
     re.IGNORECASE,
@@ -511,6 +529,69 @@ def _normalize_slides_chunk(slides: str) -> str:
     return text
 
 
+def _slide_class_name(body: str) -> str:
+    m = re.search(r"<!--\s*_class:\s*(\w+)\s*-->", body or "")
+    name = m.group(1) if m else "content"
+    return name if name in _SLIDE_CLASSES else "content"
+
+
+def _iter_slide_bodies(slides: str) -> list[str]:
+    text = _strip_frontmatter(str(slides or "")).strip()
+    if not text:
+        return []
+    return [c.strip() for c in re.split(r"(?m)^---\s*$", text) if c.strip()]
+
+
+def _clamp_one_slide(body: str) -> str:
+    """Kürzt Stichpunktlisten je Klasse (Agenda bis 6, Quellen unbegrenzt)."""
+    cap = _BULLET_CAPS.get(_slide_class_name(body))
+    if cap is None:
+        return body
+    out: list[str] = []
+    count = 0
+    for line in body.splitlines():
+        stripped = line.strip()
+        if _LIST_ITEM_RE.match(stripped):
+            if count >= cap:
+                continue
+            count += 1
+            out.append(line)
+            continue
+        if stripped and not stripped.startswith("<!--"):
+            count = 0
+        out.append(line)
+    return "\n".join(out).strip()
+
+
+def clamp_slide_grammar(slides: str) -> str:
+    """Deterministisch: max. 3 Body-Stichpunkte, Accent 1, Lead 0."""
+    chunks = _iter_slide_bodies(slides)
+    if not chunks:
+        return (slides or "").strip()
+    return _join_slide_chunks([_clamp_one_slide(c) for c in chunks])
+
+
+def _body_bullet_overflow(slides: str) -> list[str]:
+    errors: list[str] = []
+    for body in _iter_slide_bodies(slides):
+        cap = _BULLET_CAPS.get(_slide_class_name(body))
+        if cap is None:
+            continue
+        count = 0
+        for line in body.splitlines():
+            stripped = line.strip()
+            if _LIST_ITEM_RE.match(stripped):
+                count += 1
+                if count > cap:
+                    errors.append(
+                        f"Folie ({_slide_class_name(body)}) hat mehr als "
+                        f"{cap} Stichpunkt(e)")
+                    break
+            elif stripped and not stripped.startswith("<!--"):
+                count = 0
+    return errors
+
+
 def _parse_slides_script(raw) -> tuple[str, str]:
     """Extrahiert (slides, script) robust aus JSON-Objekt oder Fallback."""
     if isinstance(raw, dict):
@@ -564,6 +645,7 @@ def validate_slides_script(
                 agenda_body)
             if bad_items and len(re.findall(r"(?m)^\s*(?:\d+[.)]|[-*])\s+\S", agenda_body)) <= len(bad_items):
                 errors.append("Agenda enthält nur Platzhalter wie „Seite N“")
+        errors.extend(_body_bullet_overflow(slides))
 
     if script.strip():
         if _JSON_LEAK_RE.search(script) or script.strip().startswith("{"):
@@ -644,6 +726,7 @@ def _llm_slides_script(llm_obj, prompt: str, *, system: str,
         if script and _NO_CONTENT_MARKER in script.lower():
             return "", "", False
 
+    slides = clamp_slide_grammar(slides)
     errors = validate_slides_script(slides, script, body_chars=body_chars)
     if errors:
         repair_raw = None
@@ -660,6 +743,7 @@ def _llm_slides_script(llm_obj, prompt: str, *, system: str,
             slides_r, script_r = _parse_slides_script(repair_raw)
             if script_r and _NO_CONTENT_MARKER in script_r.lower():
                 return "", "", truncated
+            slides_r = clamp_slide_grammar(slides_r)
             err2 = validate_slides_script(slides_r, script_r, body_chars=body_chars)
             if not err2 and (slides_r or script_r):
                 return slides_r, script_r, truncated
@@ -868,7 +952,7 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
                 "Aus den Abschnitten ließ sich kein Vortrag erzeugen. Prüfe unter "
                 "⚙️ Einstellungen, ob ein Modell läuft, und versuche es erneut.")
 
-        body = _join_slide_chunks(slide_chunks)
+        body = clamp_slide_grammar(_join_slide_chunks(slide_chunks))
         marp_md = validate_marp_markdown(
             "---\nmarp: true\npaginate: true\n---\n\n" + body)
         script = _join_talk_script(script_parts)
