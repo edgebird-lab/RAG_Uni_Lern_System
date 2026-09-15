@@ -435,6 +435,14 @@ def test_chat_leerer_verlauf_scrollt_nicht_zur_eingabe():
     assert "_start_socratic_dialog" not in _prefill
 
 
+def test_chat_eingabe_laesst_maskottchen_in_der_rinne():
+    from pathlib import Path
+    assert "[data-testid=\"stChatInput\"]" in _BASE_CSS
+    assert "max-width:1180px" in _BASE_CSS
+    src = Path("ragapp/ui/pages/0_💬_Chat.py").read_text(encoding="utf-8")
+    assert "#rag-mascot-corner-wrap {bottom: 5.8rem;}" not in src
+
+
 def test_skript_seite_startet_ohne_llm():
     from pathlib import Path
     src = Path("ragapp/ui/pages/18_📖_Skript.py").read_text(encoding="utf-8")

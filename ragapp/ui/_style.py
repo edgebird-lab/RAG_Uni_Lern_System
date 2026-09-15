@@ -701,6 +701,27 @@ html.rag-dark .rag-heute-schedule li {{border-bottom-color:rgba(231,237,245,.08)
 @media (max-height: 620px), (max-width: 700px) {{
   .rag-mascot-corner, #rag-mascot-corner-wrap {{display:none;}}
 }}
+/* Chat-Eingabe auf Inhaltbreite zentrieren, Maskottchen sitzt in der Rinne.
+   Zwischen 701px und 1400px reicht die Rinne nicht – Figur über die Zeile. */
+@media (min-width: 701px) {{
+  [data-testid="stBottom"] {{
+    background:transparent !important;
+  }}
+  [data-testid="stBottom"] > div {{
+    background:transparent !important;
+    box-shadow:none !important;
+  }}
+  [data-testid="stChatInput"] {{
+    left:50% !important; right:auto !important;
+    width:min(1180px, calc(100vw - 16rem)) !important;
+    max-width:1180px !important;
+    transform:translateX(-50%);
+    bottom:1.1rem !important;
+  }}
+  #rag-mascot-corner-wrap {{
+    bottom:12px; z-index:6;
+  }}
+}}
 @media (max-width: 480px) {{
   .rag-mascot-hero-unit .rag-mascot svg {{width:110px !important; height:auto !important;}}
   .rag-bubble-mascot {{max-width:100%; font-size:.82rem;}}

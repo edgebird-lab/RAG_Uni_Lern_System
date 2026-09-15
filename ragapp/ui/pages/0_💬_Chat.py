@@ -38,7 +38,6 @@ from ragapp.ui._style import card, delete_button, seed_selectbox_from_query, sti
 st.markdown("""
 <style>
 .block-container {padding-bottom: 6rem;}
-#rag-mascot-corner-wrap {bottom: 5.8rem;}
 ul[role="listbox"], [data-testid="stSelectboxVirtualDropdown"] ul,
 [data-baseweb="menu"] {max-height: 45vh !important; overflow-y: auto !important;}
 .stChatMessage {border-radius: 14px;}
