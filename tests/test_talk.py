@@ -335,8 +335,12 @@ def test_render_talk_video_falls_back_when_record_fails(isolated_db, tmp_path, m
     assert rel == "talkfb1/talk.mp4"
     assert called.get("slideshow") is True
     assert (talks_dir / rel).is_file()
+    from ragapp.talk_cues import CUE_VERSION
     meta = talk.read_talk_video_meta(tid)
     assert meta.get("backend") == "slideshow"
+    assert meta.get("cues_version") == CUE_VERSION
+    assert meta.get("figures") == []
+    assert meta.get("broll") == []
 
 
 def test_vortrag_seite_zeigt_video_hinweise():
@@ -345,6 +349,9 @@ def test_vortrag_seite_zeigt_video_hinweise():
     assert "_render_forced_eos" in src
     assert "erst dann das Video erzeugen" in src
     assert "Animierte Folien, synchron zur Stimme" in src
+    assert "statische Handout" in src
+    assert "B-Roll" in src
+    assert "Unterzeile aus den Sätzen" in src
     assert "Diashow-Video erzeugt" in src
     assert "passgenaue Punkte" in src
     assert "Abgebrochene Sätze" in helper

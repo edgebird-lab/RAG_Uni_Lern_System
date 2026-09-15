@@ -1587,9 +1587,28 @@ def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
 
 
 def write_talk_video_meta(talk_id: str, *, backend: str, cues_source: str) -> None:
-    path = talk_dir(talk_id) / "video_meta.json"
+    from ragapp.talk_cues import CUE_VERSION
+    d = talk_dir(talk_id)
+    fig_dir = d / "figures"
+    figures: list[str] = []
+    broll: list[str] = []
+    if fig_dir.is_dir():
+        for p in sorted(fig_dir.iterdir()):
+            if p.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
+                continue
+            if p.name.startswith("broll_"):
+                broll.append(p.name)
+            else:
+                figures.append(p.name)
+    path = d / "video_meta.json"
     path.write_text(
-        json.dumps({"backend": backend, "cues": cues_source}, ensure_ascii=False, indent=2),
+        json.dumps({
+            "backend": backend,
+            "cues": cues_source,
+            "cues_version": CUE_VERSION,
+            "figures": figures,
+            "broll": broll,
+        }, ensure_ascii=False, indent=2),
         encoding="utf-8")
 
 

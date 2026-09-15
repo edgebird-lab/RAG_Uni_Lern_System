@@ -300,17 +300,23 @@ Aus gewählten Unterlagen entsteht ein **Marp-Markdown-Vortrag** plus separates
    URL setzen und „Verbindung testen“; oft nur per VPN/LAN erreichbar. Treffer
    werden gegen eine Domain-Allowlist gefiltert (arxiv, PubMed, Nature, …) und
    als **Zusatzwissen** in Folien/Skript eingearbeitet (nicht nur Literaturliste).
+   Optional **lizenzierte B-Roll** (Wikimedia/Openverse, Default **aus**): nur wenn
+   eine Folie keine Abbildung aus dem PDF hat, höchstens zwei Bilder, lokal mit
+   Lizenzhinweis gespeichert.
 3. Folien & Skript prüfen/bearbeiten (inkl. Aussprache-Korrekturen wie beim
    Audio-Overview), speichern, mit der **gleichen Stimme** vertonen.
    Erzeugung läuft **abschnittweise** (wie Audio-Overview): jedes Kapitel bekommt
    eigene Folien + ausführliches Sprecher-Skript; optionale SearXNG-Treffer einen
    eigenen „Zusatzwissen“-Lauf – kein einzelnes Riesen-JSON mehr.
+   Folien bleiben bewusst knapp (eine Idee, höchstens drei Zeilen, Mix aus
+   Merksatz/Split/Inhalt). Abbildungen kommen zuerst aus den **hochgeladenen PDFs**.
 4. Export: Marp-`.md`, WAV, optional HTML/PDF (Marp-CLI, **statische** Folien)
-   und **MP4**. Das Video nimmt die Folien in Chrome auf (Punkte erscheinen
-   nacheinander, Titel buchstabenweise, Wechsel mit kurzem Schub) und legt die
-   Stimme darunter. Ohne Timeline aus einer frischen Vertonung sind die Zeiten
-   nur gleichmäßig verteilt – dann einmal neu vertonen und das Video neu
-   erzeugen. Scheitert die Aufnahme, entsteht wie früher eine PNG-Diashow.
+   und **MP4**. Das Video nimmt die Folien in Chrome auf (Punkte nacheinander,
+   Titel buchstabenweise, Keyword-Punch, Split-Spalten, Bild-Zoom, Unterzeile
+   aus der Vertonung) und legt die Stimme darunter. Ohne Timeline aus einer
+   frischen Vertonung sind die Zeiten nur gleichmäßig verteilt und die Unterzeile
+   fehlt – dann einmal neu vertonen und das Video neu erzeugen. Scheitert die
+   Aufnahme, entsteht wie früher eine PNG-Diashow.
    Ohne Marp-CLI bleiben MD + Audio nutzbar.
 
 Skript-Länge: Sicherheitsnetz ca. **3 Stunden** Sprechzeit (gemeinsam mit

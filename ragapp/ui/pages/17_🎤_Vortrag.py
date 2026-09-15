@@ -27,7 +27,9 @@ from ragapp.ui._style import card, delete_button
 
 st.caption("Erzeugt einen Marp-Vortrag aus deinen Unterlagen, optional mit "
            "wissenschaftlichen Quellen (SearXNG, Opt-in), vertont ihn mit deiner "
-           "Stimme und exportiert Markdown / Audio / optional MP4.")
+           "Stimme und exportiert Markdown / Audio / optional MP4. Das Video ist "
+           "animiert (Keywords, Merksatz, Split, PDF-Abbildungen); HTML und PDF "
+           "bleiben das statische Handout.")
 
 with skeleton("Vortrag wird geladen …"):
     from ragapp import manifest, talk, searx_client, audio_overview
@@ -410,6 +412,7 @@ with vc1:
             st.download_button("⬇️ HTML herunterladen", data=_html.read_bytes(),
                                file_name="talk.html", mime="text/html",
                                key="talk_dl_html")
+            st.caption("HTML-Download ist das statische Handout, ohne Presenter-Animation.")
         except talk.TalkError as exc:
             st.error(str(exc))
 with vc3:
@@ -435,12 +438,17 @@ with vc2:
         except talk.TalkError as exc:
             st.error(str(exc))
     st.caption("Animierte Folien, synchron zur Stimme. Handout und PDF bleiben statisch.")
+    st.caption("Nach frischer Vertonung: Unterzeile aus den Sätzen, Bilder zoomen mit.")
     if not _audio_rel:
         st.caption("Video braucht zuerst eine Vertonung.")
     elif _active.get("forced_eos"):
         st.caption("Audio klingt unvollständig – zuerst erneut „Vertonen“, dann Video erzeugen.")
     elif not (talk.talk_dir(_active_id) / "timeline.json").is_file():
         st.caption("Für passgenaue Punkte neu vertonen, dann Video neu erzeugen.")
+    _fig_dir = talk.talk_dir(_active_id) / "figures"
+    if _fig_dir.is_dir() and any(_fig_dir.glob("*.*")):
+        _nfig = len([p for p in _fig_dir.iterdir() if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}])
+        st.caption(f"{_nfig} Abbildung(en) aus den Unterlagen oder optionaler B-Roll liegen bei den Folien.")
 
 _video_rel = _active.get("video_path")
 _vmeta = talk.read_talk_video_meta(_active_id)
