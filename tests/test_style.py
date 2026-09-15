@@ -441,8 +441,12 @@ def test_skript_seite_startet_ohne_llm():
     assert "skript_prefill" in src
     assert "finish_skript_session" in src
     assert "Skript-Sitzung" in src
-    assert "answer_query" not in src
     assert "_pending_prompt" not in src
+    assert 'key="skript_ask"' in src
+    assert "Frage zu dieser Stelle" in src
+    assert "answer_query_stream" in src
+    assert src.index('key="skript_ask"') < src.index("answer_query_stream")
+    assert "_skript_ask_now" in src
 
 
 def test_bottom_nav_html_hat_alltag_und_mehr():

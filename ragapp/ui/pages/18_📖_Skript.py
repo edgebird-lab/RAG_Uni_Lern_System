@@ -50,6 +50,7 @@ if _pre:
             "started_at": time.time(),
             "marks": [],
             "current": None,
+            "answers": [],
         }
 
 if "skript_session" not in st.session_state:
@@ -61,7 +62,7 @@ if "skript_session" not in st.session_state:
             if _spot:
                 st.session_state["skript_session"] = {
                     **_spot, "started_at": time.time(),
-                    "marks": [], "current": None,
+                    "marks": [], "current": None, "answers": [],
                 }
                 st.rerun()
         st.stop()
@@ -72,6 +73,7 @@ if "skript_session" not in st.session_state:
             "started_at": time.time(),
             "marks": [],
             "current": None,
+            "answers": [],
         }
 
 _sess = st.session_state.get("skript_session")
@@ -105,6 +107,19 @@ st.caption(f"{_sess.get('filename') or _path.name}"
 _flash = st.session_state.pop("_skript_flash", None)
 if _flash:
     st.success(_flash)
+
+_answers = list(_sess.get("answers") or [])
+if _answers:
+    st.markdown("##### Zur Stelle")
+    for _ai, _row in enumerate(_answers):
+        with st.expander(_row.get("prompt") or f"Frage {_ai + 1}",
+                         expanded=_ai == len(_answers) - 1):
+            st.markdown(_row.get("answer") or "")
+            for _src in (_row.get("sources") or [])[:4]:
+                _fn = _src.get("filename") or ""
+                _sloc = f" · {_src['location']}" if _src.get("location") else ""
+                if _fn:
+                    st.caption(f"{_fn}{_sloc}")
 
 if not _path.is_file():
     st.warning("Originaldatei nicht gefunden – unter Dokumente prüfen.")
@@ -166,6 +181,52 @@ _cur = _sess.get("current") or {}
 if _cur.get("text"):
     st.caption("Markiert: **" + (_cur["text"][:160]
                + ("…" if len(_cur["text"]) > 160 else "")) + "**")
+
+if st.button("Frage zu dieser Stelle", type="secondary",
+             key="skript_ask", use_container_width=True,
+             help="Sucht nur in dieser Unterlage – startet erst, wenn du tippst."):
+    st.session_state["_skript_ask_now"] = True
+
+if st.session_state.pop("_skript_ask_now", False):
+    from ragapp.graph.rag_graph import answer_query_stream
+    from ragapp.ui._progress import LlmWait
+    _loc = f"{_heading} · Seite {_page}" if _is_pdf else _heading
+    _prompt = (
+        f"Erkläre genau diese Stelle aus der Unterlage "
+        f"({_sess.get('filename') or _path.name}): {_loc}."
+    )
+    if _cur.get("text"):
+        _prompt += "\n\nMarkierter Absatz:\n" + _cur["text"][:1200]
+    _prompt += "\n\nBleib beim Text der Unterlage. Erfinde nichts."
+    _doc_ids = [_sess["doc_id"]] if _sess.get("doc_id") else None
+    with LlmWait("Suche in dieser Unterlage …") as wait:
+        def _on_stage(name: str) -> None:
+            wait.set("Formuliere Antwort …" if name == "generate"
+                     else "Suche in dieser Unterlage …")
+        try:
+            _stream, _holder = answer_query_stream(
+                _prompt, subject=_sess.get("subject"), doc_ids=_doc_ids,
+                check_faithfulness=False, chat_mode="tutor",
+                on_stage=_on_stage)
+        except Exception as exc:  # noqa: BLE001
+            _stream, _holder = None, {"answer": f"Frage nicht möglich: {exc}"}
+        if _stream is not None:
+            try:
+                wait.set("Formuliere Antwort …")
+                _answer = st.write_stream(_stream)
+            except Exception as exc:  # noqa: BLE001
+                _answer = _holder.get("answer") or f"Frage nicht möglich: {exc}"
+        else:
+            _answer = _holder.get("answer") or "Keine Antwort erhalten."
+            st.markdown(_answer)
+        wait.done()
+    _answers.append({
+        "prompt": _loc,
+        "answer": (_answer or "").strip(),
+        "sources": list(_holder.get("sources") or []),
+    })
+    _sess["answers"] = _answers
+    st.rerun()
 
 if st.button("Karte aus Markierung", type="secondary",
              disabled=not (_cur.get("text")),
