@@ -706,11 +706,27 @@ def _fallback_opening_slides_youtube(title: str, subject: Optional[str], hook: s
     return f"<!-- _class: lead -->\n\n{subj_line}# {title}\n\n### {hook}\n"
 
 
+_BLOCKQUOTE_HTML_RE = re.compile(
+    r"<blockquote\b[^>]*>(.*?)</blockquote>", re.I | re.S)
+_INNER_HTML_RE = re.compile(r"</?(?:blockquote|p|div|span)\b[^>]*>", re.I)
+
+
+def _unwrap_blockquote_html(text: str) -> str:
+    """Holt den Text aus ``<blockquote>`` in Überschriften/Zitaten."""
+    t = text or ""
+    t = _BLOCKQUOTE_HTML_RE.sub(lambda m: (m.group(1) or "").strip(), t)
+    t = _INNER_HTML_RE.sub("", t)
+    t = re.sub(r"[ \t]{2,}", " ", t)
+    t = re.sub(r"\.{2,}", ".", t)
+    t = re.sub(r"([.!?…])\s*[.]+$", r"\1", t)
+    return t.strip()
+
+
 def _slide_heading(body: str) -> str:
     for line in (body or "").splitlines():
         m = re.match(r"^#{1,3}\s+(.+?)\s*$", line.strip())
         if m:
-            return re.sub(r"[*`_]+", "", m.group(1)).strip()
+            return re.sub(r"[*`_]+", "", _unwrap_blockquote_html(m.group(1))).strip()
     return ""
 
 
@@ -750,6 +766,7 @@ def _expand_mashed_youtube_body(body: str) -> list[str]:
             name, extra = m.group(1), (m.group(2) or "").strip()
             current.append(f"<!-- _class: {name} -->")
             if extra:
+                extra = _unwrap_blockquote_html(extra)
                 current.append("")
                 current.append(extra if extra.startswith("#") else f"## **{extra}**")
             continue
@@ -782,6 +799,7 @@ def _blockquote_text(body: str) -> str:
         stripped = line.strip()
         if stripped.startswith(">"):
             text = re.sub(r"[*`_]+", "", stripped.lstrip(">").strip())
+            text = _unwrap_blockquote_html(text)
             if text:
                 return " ".join(text.split())
     return ""
@@ -796,7 +814,7 @@ def _merksatz_from_slides(slides: str) -> str:
         title = _slide_heading(body)
         if "merke dir das" in title.lower():
             continue
-        cand = _blockquote_text(body) or title
+        cand = _unwrap_blockquote_html(_blockquote_text(body) or title)
         cand = re.sub(r"[.!?]+$", "", " ".join(cand.split())).strip()
         if len(cand.split()) >= 4:
             return cand
@@ -811,7 +829,7 @@ def _youtube_takeaway_slide(script: str, slides: str = "") -> str:
         text = " ".join((script or "").split())
         parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", text) if p.strip()]
         merksatz = parts[-1] if parts else "Das bleibt für die Klausur hängen."
-        merksatz = re.sub(r"[.!?]+$", "", merksatz).strip()
+        merksatz = re.sub(r"[.!?]+$", "", _unwrap_blockquote_html(merksatz)).strip()
     if len(merksatz) > 140:
         merksatz = merksatz[:137].rsplit(" ", 1)[0] + "…"
     elif merksatz and merksatz[-1] not in ".!?…":
@@ -885,6 +903,9 @@ def _sanitize_one_slide(body: str) -> str:
         if raw.strip() in {"---", "***", "___"}:
             continue
         cleaned = _GLUED_HR_RE.sub("", raw).rstrip()
+        lead = cleaned.lstrip()
+        if lead.startswith("#") or lead.startswith(">"):
+            cleaned = _unwrap_blockquote_html(cleaned)
         if cleaned.count("**") % 2 == 1:
             cleaned += "**"
         if cleaned.strip():

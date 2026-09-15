@@ -65,6 +65,7 @@ def split_marp_slides(marp_md: str) -> list[str]:
 
 
 def _plain(text: str) -> str:
+    text = re.sub(r"<[^>]+>", "", text or "")
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
     text = re.sub(r"[*`_]+", "", text)
     return " ".join(text.split())

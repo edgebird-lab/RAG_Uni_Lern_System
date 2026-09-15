@@ -254,6 +254,36 @@ def test_sanitize_lead_eyebrow_and_glued_hr():
     assert re.search(r"</p>\s*\n\s*\n# \*\*Hook\*\*", md)
 
 
+def test_sanitize_strips_blockquote_html_from_heading_and_takeaway():
+    from ragapp.talk import (
+        _ensure_youtube_takeaway,
+        _sanitize_one_slide,
+        clamp_slide_grammar,
+        pack_youtube_slides,
+    )
+    dirty = (
+        "<!-- _class: accent -->\n\n"
+        "## **<blockquote>Aktives Abrufen hält Wissen länger.</blockquote>**\n"
+    )
+    out = _sanitize_one_slide(dirty)
+    assert "<blockquote>" not in out.lower()
+    assert "Aktives Abrufen hält Wissen länger." in out
+    mashed = pack_youtube_slides(
+        "<!-- _class: accent --> <blockquote>Aktives Abrufen hält Wissen länger.</blockquote>"
+    )
+    assert "<blockquote>" not in mashed.lower()
+    assert "Aktives Abrufen hält Wissen länger." in mashed
+    packed = _ensure_youtube_takeaway(clamp_slide_grammar(dirty), "Hallo. Chancen.")
+    assert "<blockquote>" not in packed.lower()
+    take = packed.split("Merke dir das", 1)[-1]
+    assert "Aktives Abrufen hält Wissen länger." in take
+    assert take.count(">") == 1
+    from ragapp.talk_cues import parse_slide_body as parse_cues
+    title = parse_cues(out)["title"]
+    assert "<" not in title
+    assert "Aktives Abrufen" in title
+
+
 def test_ensure_youtube_takeaway_adds_accent_before_sources():
     from ragapp.talk import (
         _ensure_youtube_takeaway,
