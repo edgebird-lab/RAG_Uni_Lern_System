@@ -354,10 +354,31 @@ _audio_rel = _active.get("audio_path")
 if _audio_rel:
     _ap = TALK_DIR / _audio_rel
     if _ap.is_file():
-        st.audio(_ap.read_bytes(), format="audio/wav")
-        st.download_button("⬇️ Audio (WAV)", data=_ap.read_bytes(),
-                           file_name=f"{_active['title'][:40] or 'vortrag'}.wav",
-                           mime="audio/wav", key="talk_dl_wav")
+        _audio_bytes = _ap.read_bytes()
+        st.audio(_audio_bytes, format="audio/wav")
+        from ragapp import audio_convert
+        _dl_format = st.selectbox(
+            "Format zum Herunterladen", list(audio_convert.SUPPORTED_FORMATS.keys()),
+            format_func=lambda f: audio_convert.SUPPORTED_FORMATS[f]["label"],
+            key=f"talk_dl_format_{_active_id}")
+        _dl_spec = audio_convert.SUPPORTED_FORMATS[_dl_format]
+        _cache_key = f"_talk_dl_cache_{_active_id}_{_dl_format}"
+        if _dl_format == "wav":
+            st.session_state[_cache_key] = _audio_bytes
+        elif _cache_key not in st.session_state:
+            with st.spinner(f"Wandle nach {_dl_format.upper()} um …"):
+                try:
+                    st.session_state[_cache_key] = audio_convert.convert_wav_bytes(
+                        _audio_bytes, _dl_format)
+                except audio_convert.AudioConvertError as exc:
+                    st.session_state[_cache_key] = None
+                    st.error(str(exc))
+        _dl_bytes = st.session_state.get(_cache_key)
+        if _dl_bytes:
+            st.download_button(
+                f"⬇️ Audio ({_dl_spec['ext'].upper()})", data=_dl_bytes,
+                file_name=f"{_active['title'][:40] or 'vortrag'}.{_dl_spec['ext']}",
+                mime=_dl_spec["mime"], key=f"talk_dl_go_{_active_id}_{_dl_format}")
 
 _marp_ok = talk.find_marp_cli() is not None
 if not _marp_ok:

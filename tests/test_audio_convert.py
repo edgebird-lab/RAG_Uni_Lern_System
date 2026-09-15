@@ -55,3 +55,12 @@ def test_convert_wav_bytes_nach_mp3_liefert_valide_datei(tiny_wav_bytes):
 def test_convert_wav_bytes_kaputte_bytes_wirft_audioconverterror():
     with pytest.raises(audio_convert.AudioConvertError):
         audio_convert.convert_wav_bytes(b"das ist keine WAV-Datei", "m4a")
+
+
+def test_vortrag_seite_bietet_dieselben_download_formate():
+    from pathlib import Path
+    src = Path("ragapp/ui/pages/17_🎤_Vortrag.py").read_text(encoding="utf-8")
+    assert "audio_convert" in src
+    assert "SUPPORTED_FORMATS" in src
+    assert "talk_dl_format_" in src
+    assert "⬇️ Audio (WAV)" not in src
