@@ -105,6 +105,9 @@ können. Regeln:
 - Nicht die Überschrift umformulieren ("Was ist …?" mit dem Abschnittstitel).
   Frage nach einem prüfungsrelevanten Aspekt: Definition in eigenen Worten,
   Berechnung, Abgrenzung, Beispiel, Anwendung.
+- Formeln und Gleichungen als LaTeX mit einfachem Backslash, in $...$ (inline)
+  oder $$...$$ (abgesetzt). Beispiele: $\\frac{{a}}{{b}}$, $f'(x)=2x$, $[a;b)$.
+  Keine Unicode-Brüche und kein „a durch b“, wenn der Abschnitt LaTeX hat.
 
 Abschnitt:
 \"\"\"

@@ -18,6 +18,15 @@ def test_heading_echo_filtert_ueberschrift_paraphrasen(load_functions, ragapp_di
     assert fns["_chunk_heading"](chunk) == "Deckungsbeitrag"
 
 
+def test_fragen_prompt_verlangt_latex():
+    from pathlib import Path
+    src = Path("ragapp/ingestion/question_gen.py").read_text(encoding="utf-8")
+    assert "Formeln und Gleichungen als LaTeX" in src
+    assert "\\frac" in src
+    assert "[a;b)" in src
+    assert "einfachem Backslash" in src
+
+
 def test_is_heading_echo_card_nur_generierte_paraphrasen():
     from ragapp.study import is_heading_echo_card
     echo = {
