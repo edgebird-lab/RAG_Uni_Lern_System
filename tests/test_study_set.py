@@ -184,6 +184,72 @@ def test_generate_answers_leere_card_ids_ist_nichts(isolated_db):
     assert out["filled"] == 0
 
 
+def _patch_answer_llm(monkeypatch, *, answer: str, grounded: bool):
+    monkeypatch.setattr("ragapp.llm.require_vram", lambda *a, **k: None)
+    monkeypatch.setattr("ragapp.hardware.probe_model", lambda *a, **k: (True, "ok"))
+    monkeypatch.setattr(
+        "ragapp.ingestion.question_gen.generate_answer",
+        lambda beleg, frage, model=None: answer)
+    monkeypatch.setattr("ragapp.grading.is_grounded", lambda *a, **k: grounded)
+    monkeypatch.setattr("ragapp.llm.release_llm", lambda *a, **k: None)
+
+
+def test_generate_answers_verwirft_ungrounded(isolated_db, monkeypatch):
+    manifest.upsert_review_items([{
+        "card_id": "g-bad", "source": "question", "chroma_id": None,
+        "subject": "Analysis", "topic": None,
+        "front": "Wie lautet der Hauptsatz?",
+        "back": "Potenzregel: die Ableitung von $x^2$ ist $2x$.",
+        "answer": "", "doc_id": "d1",
+    }])
+    _patch_answer_llm(monkeypatch, answer="Der Hauptsatz verknüpft Integral und Ableitung.",
+                      grounded=False)
+    out = study.generate_answers(card_ids=["g-bad"])
+    assert out["filled"] == 0
+    assert out["ungrounded"] == 1
+    assert out["status"] == "empty"
+    stored = manifest.get_cards_by_ids(["g-bad"])[0]
+    assert not (stored.get("answer") or "").strip()
+
+
+def test_generate_answers_speichert_gedeckte_latex_antwort(isolated_db, monkeypatch):
+    manifest.upsert_review_items([{
+        "card_id": "g-ok", "source": "question", "chroma_id": None,
+        "subject": "Analysis", "topic": None,
+        "front": "Wie lautet die Ableitung von $f(x)=x^2$?",
+        "back": "Potenzregel: $f'(x)=2x$.",
+        "answer": "", "doc_id": "d1",
+    }])
+    _patch_answer_llm(
+        monkeypatch,
+        answer="Nach der Potenzregel gilt \\( f'(x)=2x \\).",
+        grounded=True)
+    out = study.generate_answers(card_ids=["g-ok"])
+    assert out["filled"] == 1
+    assert out.get("ungrounded", 0) == 0
+    stored = (manifest.get_cards_by_ids(["g-ok"])[0].get("answer") or "")
+    assert "$" in stored
+    assert "2x" in stored
+    assert "\\(" not in stored
+
+
+def test_generate_answers_ohne_grounding_speichert_trotzdem(isolated_db, monkeypatch):
+    calls = []
+    manifest.upsert_review_items([{
+        "card_id": "g-skip", "source": "question", "chroma_id": None,
+        "subject": "BWL", "topic": None,
+        "front": "Was ist X?", "back": "X ist 1.", "answer": "", "doc_id": "d1",
+    }])
+    _patch_answer_llm(monkeypatch, answer="X ist 1.", grounded=False)
+    monkeypatch.setattr(
+        "ragapp.grading.is_grounded",
+        lambda *a, **k: calls.append("ground") or False)
+    out = study.generate_answers(card_ids=["g-skip"], check_grounding=False)
+    assert out["filled"] == 1
+    assert calls == []
+    assert (manifest.get_cards_by_ids(["g-skip"])[0].get("answer") or "").strip() == "X ist 1."
+
+
 def test_needs_card_harvest_nur_ueber_flag(isolated_db, monkeypatch):
     from ragapp.config import settings
     monkeypatch.setattr(settings, "NEEDS_CARD_HARVEST", False, raising=False)

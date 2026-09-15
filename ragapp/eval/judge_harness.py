@@ -75,6 +75,12 @@ GROUNDING_LABELS = [
      "beleg": "Der jährliche Zinssatz liegt bei 3 Prozent.", "grounded": True},
     {"frage": "Wie hoch ist der Zinssatz?", "antwort": "Der Zinssatz beträgt 7 % und steigt jährlich.",
      "beleg": "Der jährliche Zinssatz liegt bei 3 Prozent.", "grounded": False},
+    {"frage": "Wie lautet die Ableitung von $f(x)=x^2$?",
+     "antwort": "Nach der Potenzregel gilt $f'(x)=2x$.",
+     "beleg": "Potenzregel: die Ableitung von x² ist 2x.", "grounded": True},
+    {"frage": "Wie lautet der Hauptsatz der Differential- und Integralrechnung?",
+     "antwort": "Der Hauptsatz sagt: $\\int_a^b f(x)\\,dx = F(b)-F(a)$ mit $F'=f$.",
+     "beleg": "Potenzregel: die Ableitung von x² ist 2x.", "grounded": False},
 ]
 
 

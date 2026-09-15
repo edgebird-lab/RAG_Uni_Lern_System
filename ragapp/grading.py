@@ -188,8 +188,21 @@ def check_cloze(user: str, solutions: list[str]) -> bool:
 # --------------------------------------------------------------------------- #
 # Qualitaetsgate: ist eine generierte Antwort durch den Beleg gedeckt?
 # --------------------------------------------------------------------------- #
-_GROUND_PROMPT = """Pruefe streng, ob die ANTWORT inhaltlich vollstaendig durch den
-BELEG-Text gedeckt ist (keine erfundenen oder aus Weltwissen ergaenzten Fakten).
+_GROUND_SYSTEM = (
+    "Du prüfst, ob eine Musterlösung vollständig durch den Beleg gedeckt ist. "
+    "Antworte ausschließlich mit JSON."
+)
+
+_GROUND_PROMPT = """Prüfe streng, ob die ANTWORT inhaltlich vollständig durch den
+BELEG-Text gedeckt ist (keine erfundenen oder aus Weltwissen ergänzten Fakten).
+
+Regeln:
+- Umformulieren in eigenen Worten ist gedeckt, wenn jede Aussage im Beleg steht.
+- Gleichwertiges LaTeX und Unicode (z. B. $\\frac{{a}}{{b}}$ statt a/b, $x^2$ statt x²)
+  gelten als gedeckt.
+- Erfundene Zahlen, Sätze, Rechenschritte oder Theoreme, die der Beleg nicht hergibt,
+  sind nicht gedeckt.
+- Bloße Formulierungs- oder Notationunterschiede sind kein Grund für false.
 
 Frage: {frage}
 Antwort: {antwort}
@@ -199,7 +212,7 @@ Beleg:
 {beleg}
 \"\"\"
 
-Gib NUR JSON zurueck: {{"grounded": true oder false}}"""
+Gib NUR JSON zurück, eines von: {{"grounded": true}} oder {{"grounded": false}}"""
 
 
 _MCQ_SYSTEM = ("Du bist ein erfahrener Klausur-Ersteller an einer deutschen Hochschule "
@@ -291,7 +304,8 @@ def is_grounded(frage: str, antwort: str, beleg: str, model: Optional[str] = Non
     try:
         data = get_llm(model or settings.LLM_MODEL_FAST).generate_json(
             _GROUND_PROMPT.format(frage=(frage or "")[:500], antwort=antwort[:1500],
-                                  beleg=beleg[:3000]), temperature=0.0)
+                                  beleg=beleg[:3000]),
+            system=_GROUND_SYSTEM, temperature=0.0)
     except Exception:  # noqa: BLE001
         return False   # fail-closed: bei Modellfehler NICHT durchwinken
     val = data.get("grounded") if isinstance(data, dict) else None
@@ -299,4 +313,6 @@ def is_grounded(frage: str, antwort: str, beleg: str, model: Optional[str] = Non
         return val
     if isinstance(val, str):
         return val.strip().lower() in {"true", "ja", "yes", "1"}
+    if isinstance(val, (int, float)):
+        return val != 0
     return False   # fail-closed: unparsebar / Schluessel fehlt -> nicht gegroundet

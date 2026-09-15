@@ -170,12 +170,11 @@ def needs_card_harvest() -> bool:
 
 def generate_answers(subject: "str | None" = None, deck: "str | None" = None,
                      limit: "int | None" = None, card_ids: "list[str] | None" = None,
-                     progress=None, check_grounding: bool = False) -> dict:
+                     progress=None, check_grounding: bool = True) -> dict:
     """Erzeugt fuer Karten aus generierten Fragen, die bisher nur den Chunk zeigen, eine
     echte KI-Musterloesung und speichert sie. Mit ``card_ids`` gezielt fuer eine Auswahl.
-    ``check_grounding=True``: eine zweite KI-Pruefung verwirft Antworten, die nicht durch
-    den Beleg gedeckt sind (Qualitaetsgate gegen subtil Falsches - kostet extra Zeit).
-    Ehrliches Ergebnis (status/filled/errors/ungrounded)."""
+    Standard: zweite KI-Pruefung (``check_grounding``) verwirft Antworten, die nicht
+    durch den Beleg gedeckt sind. Ehrliches Ergebnis (status/filled/errors/ungrounded)."""
     from ragapp.config import settings
     from ragapp.hardware import probe_model
     from ragapp.ingestion.question_gen import generate_answer, QuestionGenError
@@ -217,14 +216,22 @@ def generate_answers(subject: "str | None" = None, deck: "str | None" = None,
                     error_msg = str(exc)
                 if errors >= 3 and filled == 0:      # Fail-fast statt endlos ins Leere
                     return {"status": "llm_error", "processed": i, "filled": filled,
-                            "errors": errors, "error_msg": error_msg}
+                            "errors": errors, "ungrounded": ungrounded,
+                            "error_msg": error_msg}
                 continue
             if ans:
+                from ragapp.student_flow import normalize_card_latex
+                ans = normalize_card_latex(ans).strip()
+                if not ans:
+                    continue
                 if check_grounding:
+                    if progress:
+                        progress(f"Beleg prüfen {i}/{len(todo)} …")
                     from ragapp import grading
-                    if not grading.is_grounded(card.get("front") or "", ans, card.get("back") or ""):
+                    if not grading.is_grounded(
+                            card.get("front") or "", ans, card.get("back") or ""):
                         ungrounded += 1
-                        continue   # nicht belegte Antwort NICHT speichern (Qualitaetsgate)
+                        continue   # nicht belegte Antwort NICHT speichern
                 manifest.set_answer(card["card_id"], ans)
                 filled += 1
 

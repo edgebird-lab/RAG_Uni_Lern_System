@@ -426,6 +426,9 @@ def test_lernen_zeigt_stapel_vor_der_lernset_fabrik():
     assert 'key="cloze_formula_reveal"' in src
     assert 'key="mcq_formula_reveal"' in src
     assert "Formelkarten eignen sich nicht" in src
+    assert "def _show_answer_result" in src
+    assert "nicht durch den Abschnitt gedeckt" in src
+    assert "check_grounding" in Path("ragapp/study.py").read_text(encoding="utf-8")
 
 
 def test_chat_leerer_verlauf_scrollt_nicht_zur_eingabe():

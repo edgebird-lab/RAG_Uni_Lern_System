@@ -59,6 +59,32 @@ def _render_karte(text: str, *, kind: str = "front") -> None:
         st.markdown(body or "")
 
 
+def _show_answer_result(ares: dict) -> bool:
+    """Meldung nach generate_answers. True, wenn etwas gespeichert wurde (dann rerun)."""
+    filled = int(ares.get("filled") or 0)
+    ungrounded = int(ares.get("ungrounded") or 0)
+    if ares.get("status") == "llm_error":
+        st.error(f"❌ Modellfehler: {ares.get('error_msg', '')} – prüfe unter "
+                 "**⚙️ Einstellungen** ein laufendes Modell.")
+        return False
+    if ares.get("status") == "nothing_to_do":
+        st.info("Alle Karten haben bereits eine Antwort.")
+        return False
+    if filled == 0:
+        if ungrounded:
+            st.warning(
+                f"Keine Musterlösung gespeichert: {ungrounded} Antwort(en) "
+                "waren nicht durch den Abschnitt gedeckt.")
+        else:
+            st.warning("Es konnte keine Antwort erzeugt werden (der Text gab nichts her).")
+        return False
+    msg = f"✅ {filled} Musterlösung(en) erzeugt."
+    if ungrounded:
+        msg += f" {ungrounded} verworfen (nicht im Beleg)."
+    st.success(msg)
+    return True
+
+
 # --------------------------------------------------------------------------- #
 # Karten-Bestand
 # --------------------------------------------------------------------------- #
@@ -183,7 +209,8 @@ def _render_karten_erstellen() -> None:
     st.divider()
     _offen = manifest.count_cards(subject=_hv_subj_arg, source="question", only_unanswered=True)
     st.caption(f"**Musterlösungen erzeugen:** {_offen} Karte(n) zeigen bisher nur den "
-               "Originaltext. Die KI erzeugt daraus echte Antworten (~20 s pro Karte).")
+               "Originaltext. Die KI erzeugt daraus echte Antworten und prüft jede "
+               "gegen den Abschnitt (~20 s plus Belegprüfung pro Karte).")
     ca1, ca2 = st.columns([1, 2])
     _ans_n = ca1.number_input("Anzahl", min_value=1, max_value=500,
                               value=min(20, max(1, _offen)), step=5, key="ans_n",
@@ -194,15 +221,7 @@ def _render_karten_erstellen() -> None:
             ares = study.generate_answers(subject=_hv_subj_arg, limit=int(_ans_n),
                                           progress=lambda m: s.update(label=m))
             s.update(label="Fertig", state="complete")
-        if ares["status"] == "llm_error":
-            st.error(f"❌ Modellfehler: {ares.get('error_msg', '')} – prüfe unter "
-                     "**⚙️ Einstellungen** ein laufendes Modell (z. B. `gemma3:4b`).")
-        elif ares["status"] == "nothing_to_do":
-            st.info("Alle Karten haben bereits eine Antwort.")
-        elif ares["filled"] == 0:
-            st.warning("Es konnte keine Antwort erzeugt werden (der Text gab nichts her).")
-        else:
-            st.success(f"✅ {ares['filled']} Musterlösung(en) erzeugt.")
+        if _show_answer_result(ares):
             st.rerun()
 
     st.divider()
@@ -467,11 +486,8 @@ if not st.session_state.get(ACTIVE):
                     limit=min(20, _offen_global),
                     progress=lambda m: s.update(label=m))
                 s.update(label="Fertig", state="complete")
-            if ares.get("filled"):
-                st.success(f"✅ {ares['filled']} Musterlösung(en) erzeugt.")
+            if _show_answer_result(ares):
                 st.rerun()
-            elif ares.get("status") == "llm_error":
-                st.error(f"❌ Modellfehler: {ares.get('error_msg', '')}")
 
     _err_open = manifest.list_errors(limit=8)
     if _err_open:
@@ -1647,12 +1663,12 @@ if _active_tab == "📋 Bearbeiten & Löschen":
             with st.status("Erzeuge Musterlösungen …", expanded=True) as s:
                 _ar = study.generate_answers(card_ids=_sel, progress=lambda m: s.update(label=m))
                 s.update(label="Fertig", state="complete")
-            if _ar["status"] == "llm_error":
-                st.error(f"❌ Modellfehler: {_ar.get('error_msg', '')}")
-            elif _ar["filled"] == 0:
-                st.info("Nichts zu erzeugen (Auswahl hat schon Antworten oder ergab keine).")
-            else:
-                st.session_state["_mv_flash"] = f"✅ {_ar['filled']} Antwort(en) erzeugt."
+            if _show_answer_result(_ar):
+                st.session_state["_mv_flash"] = (
+                    f"✅ {_ar['filled']} Antwort(en) erzeugt"
+                    + (f", {_ar.get('ungrounded') or 0} verworfen"
+                       if _ar.get("ungrounded") else "")
+                    + ".")
                 st.rerun()
 
         if _b4.button("⏸️ Auswahl pausieren", use_container_width=True, disabled=not _sel,
