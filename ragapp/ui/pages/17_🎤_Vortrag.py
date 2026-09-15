@@ -428,11 +428,20 @@ with vc3:
             st.error(str(exc))
 with vc2:
     _can_video = bool(_audio_rel and _marp_ok)
+    _music_bed = st.checkbox(
+        "Ruhiges Musikbett (Opt-in, lokal)",
+        value=False,
+        key="talk_use_music_bed",
+        help="Default aus. Leises Loop unter der Stimme, geduckt. Kein Netz, "
+             "TTS bleibt unverändert. Optional eigene Datei data/talks/bed.wav "
+             "(nicht reference.wav). Sonst ein leises lokales Brummen.",
+    )
     if st.button("🎬 Video (MP4) erzeugen", disabled=not _can_video, key="talk_video",
                  type="primary" if _can_video else "secondary"):
         try:
             with st.spinner("Folien aufnehmen und mit der Stimme verbinden …"):
-                _vrel = talk.render_talk_video(_active_id)
+                _vrel = talk.render_talk_video(
+                    _active_id, music_bed=bool(_music_bed))
             st.success("Video fertig.")
             st.rerun()
         except talk.TalkError as exc:

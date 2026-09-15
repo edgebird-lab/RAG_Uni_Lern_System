@@ -296,6 +296,18 @@ def test_create_list_update_delete_talk(isolated_db, tmp_path, monkeypatch):
     assert not d.exists()
 
 
+def test_find_talk_music_bed_skips_reference(tmp_path, monkeypatch):
+    monkeypatch.setattr(talk, "TALK_DIR", tmp_path)
+    monkeypatch.setattr("ragapp.config.DATA_DIR", tmp_path)
+    monkeypatch.setattr("ragapp.config.PROJECT_ROOT", tmp_path)
+    (tmp_path / "reference.wav").write_bytes(b"RIFF")
+    assert talk.find_talk_music_bed() is None
+    bed = tmp_path / "bed.wav"
+    bed.write_bytes(b"RIFF....")
+    found = talk.find_talk_music_bed()
+    assert found == bed
+
+
 def test_join_talk_script_uses_section_pauses():
     from ragapp.talk import _join_talk_script
     out = _join_talk_script(["Eröffnung.", "Abschnitt eins.", "", " Quellen. "])
@@ -341,6 +353,11 @@ def test_mux_video_with_talk_audio_uses_loudnorm():
     assert talk.RECORD_FPS == 30
     rec = Path("ragapp/marp_record.mjs").read_text(encoding="utf-8")
     assert "Math.min(30" in rec
+    assert "music_bed: bool = False" in src
+    assert "sidechaincompress" in src
+    ui = Path("ragapp/ui/pages/17_🎤_Vortrag.py").read_text(encoding="utf-8")
+    assert "talk_use_music_bed" in ui
+    assert "talk_use_broll" in ui
 
 
 def test_render_talk_video_falls_back_when_record_fails(isolated_db, tmp_path, monkeypatch):
@@ -385,6 +402,7 @@ def test_render_talk_video_falls_back_when_record_fails(isolated_db, tmp_path, m
     assert meta.get("backend") == "slideshow"
     assert meta.get("cues_version") == CUE_VERSION
     assert meta.get("figures") == []
+    assert meta.get("music_bed") is False
     assert meta.get("broll") == []
 
 

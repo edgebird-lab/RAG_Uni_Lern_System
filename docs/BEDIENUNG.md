@@ -321,7 +321,9 @@ Aus gewählten Unterlagen entsteht ein **Marp-Markdown-Vortrag** plus separates
    legt die Stimme darunter. Ohne Timeline aus einer
    frischen Vertonung sind die Zeiten nur gleichmäßig verteilt und die Unterzeile
    fehlt – dann einmal neu vertonen und das Video neu erzeugen. Die Unterzeile
-   erscheint nur bei Merksatz- und Card-Folien, nicht bei jedem Satz. Scheitert die
+   erscheint nur bei Merksatz- und Card-Folien, nicht bei jedem Satz. Optional
+   **Musikbett** (Default **aus**, lokal, unter die Stimme geduckt; eigene
+   `data/talks/bed.wav` oder leises Brummen). Scheitert die
    Aufnahme, entsteht wie früher eine PNG-Diashow.
    Ohne Marp-CLI bleiben MD + Audio nutzbar.
 

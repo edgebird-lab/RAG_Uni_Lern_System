@@ -60,6 +60,10 @@ def test_record_presenter_video_writes_mp4(tmp_path):
     mux_video_with_talk_audio(silent, audio, out)
     assert out.is_file()
     assert out.stat().st_size > 1000
+    bed_out = tmp_path / "talk_bed.mp4"
+    mux_video_with_talk_audio(silent, audio, bed_out, music_bed=True)
+    assert bed_out.is_file()
+    assert bed_out.stat().st_size > 1000
     # ffprobe Dauer grob Audio
     import subprocess
     proc = subprocess.run(

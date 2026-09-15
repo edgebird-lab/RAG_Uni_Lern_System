@@ -1577,8 +1577,14 @@ def record_presenter_video(
 
 
 def mux_video_with_talk_audio(video_path: Path, audio_path: Path,
-                              output_mp4: Path) -> Path:
+                              output_mp4: Path, *,
+                              music_bed: bool = False) -> Path:
     """Hängt die Vortrags-WAV an ein stummes MP4 (AAC + Lautheit)."""
+    if music_bed:
+        mixed = _mux_with_music_bed(video_path, audio_path, output_mp4)
+        if mixed:
+            return mixed
+        log.warning("Musikbett übersprungen, mux nur Stimme")
     ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
     base = [
         ffmpeg, "-y",
@@ -1599,6 +1605,97 @@ def mux_video_with_talk_audio(video_path: Path, audio_path: Path,
     if proc.returncode != 0 or not output_mp4.is_file():
         raise TalkError(f"ffmpeg (Tonspur) fehlgeschlagen: {(proc.stderr or '')[-600:]}")
     return output_mp4
+
+
+_BED_FORBIDDEN = frozenset({"reference.wav", "ref.wav"})
+
+
+def find_talk_music_bed() -> Optional[Path]:
+    """Optionale lokale Bett-Datei; nie die TTS-Referenzstimme."""
+    from ragapp.config import DATA_DIR, PROJECT_ROOT
+    candidates = [
+        TALK_DIR / "bed.wav",
+        TALK_DIR / "bed.ogg",
+        TALK_DIR / "bed.mp3",
+        DATA_DIR / "talks" / "bed.wav",
+        PROJECT_ROOT / "data" / "talks" / "bed.ogg",
+    ]
+    for path in candidates:
+        try:
+            if path.is_file() and path.name.lower() not in _BED_FORBIDDEN:
+                return path
+        except OSError:
+            continue
+    return None
+
+
+def _make_quiet_drone(path: Path, duration_s: float) -> Optional[Path]:
+    ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+    duration_s = max(0.4, float(duration_s))
+    cmd = [
+        ffmpeg, "-y",
+        "-f", "lavfi", "-i", f"sine=frequency=196:duration={duration_s}:sample_rate=44100",
+        "-f", "lavfi", "-i", f"sine=frequency=294:duration={duration_s}:sample_rate=44100",
+        "-filter_complex", "amix=inputs=2:duration=longest,volume=0.08",
+        "-ac", "2", str(path),
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60, check=False)
+    if proc.returncode != 0 or not path.is_file() or path.stat().st_size < 200:
+        return None
+    return path
+
+
+def _mux_with_music_bed(video_path: Path, audio_path: Path,
+                        output_mp4: Path) -> Optional[Path]:
+    ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+    bed = find_talk_music_bed()
+    tmp_bed: Optional[Path] = None
+    if not bed:
+        duration = 4.0
+        try:
+            duration = float(probe_audio_duration_s(audio_path))
+        except Exception:  # noqa: BLE001
+            duration = 4.0
+        tmp_bed = Path(output_mp4).parent / "_bed_drone.wav"
+        bed = _make_quiet_drone(tmp_bed, duration)
+    if not bed:
+        return None
+    output_mp4 = Path(output_mp4)
+    output_mp4.parent.mkdir(parents=True, exist_ok=True)
+    filt = (
+        "[2:a]volume=0.16[bed];"
+        "[1:a]asplit=2[sc][voice];"
+        "[bed][sc]sidechaincompress=threshold=0.03:ratio=8:attack=80:release=400[dk];"
+        "[voice][dk]amix=inputs=2:duration=first:dropout_transition=0[mix]"
+    )
+    cmd = [
+        ffmpeg, "-y",
+        "-i", str(video_path),
+        "-i", str(audio_path),
+        "-stream_loop", "-1", "-i", str(bed),
+        "-filter_complex", filt,
+        "-map", "0:v", "-map", "[mix]",
+        "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+        "-shortest", "-movflags", "+faststart",
+        str(output_mp4),
+    ]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=False)
+        if proc.returncode == 0 and output_mp4.is_file() and output_mp4.stat().st_size > 200:
+            return output_mp4
+        log.warning("sidechain-Bett fehlgeschlagen, amix: %s", (proc.stderr or "")[-300:])
+        simple = (
+            "[1:a]volume=1[voice];[2:a]volume=0.10[bed];"
+            "[voice][bed]amix=inputs=2:duration=first:dropout_transition=0[mix]"
+        )
+        cmd[cmd.index(filt)] = simple
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=False)
+        if proc.returncode == 0 and output_mp4.is_file() and output_mp4.stat().st_size > 200:
+            return output_mp4
+        return None
+    finally:
+        if tmp_bed:
+            tmp_bed.unlink(missing_ok=True)
 
 
 def _render_slideshow_video(html_path: Path, md_path: Path, d: Path,
@@ -1640,7 +1737,8 @@ def _render_slideshow_video(html_path: Path, md_path: Path, d: Path,
 
 
 def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
-                      marp_md: Optional[str] = None) -> str:
+                      marp_md: Optional[str] = None,
+                      music_bed: bool = False) -> str:
     """Erzeugt MP4 unter ``data/talks/<id>/talk.mp4``. Gibt relativen Pfad zurück.
 
     Bevorzugt: Marp-HTML + Presenter-Cues in Chrome aufnehmen, WAV dazu muxen.
@@ -1686,7 +1784,8 @@ def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
     backend = "presenter"
     try:
         record_presenter_video(video_html, silent, duration_s=cues["duration_s"])
-        mux_video_with_talk_audio(silent, audio_path, out_path)
+        mux_video_with_talk_audio(
+            silent, audio_path, out_path, music_bed=bool(music_bed))
     except TalkError as exc:
         log.warning("Presenter-Aufnahme fehlgeschlagen, Fallback Diashow: %s", exc)
         backend = "slideshow"
@@ -1696,13 +1795,15 @@ def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
     if not out_path.is_file():
         raise TalkError("Video-Datei wurde nicht erzeugt.")
     write_talk_video_meta(
-        talk_id, backend=backend, cues_source=str(cues.get("source") or "placeholder"))
+        talk_id, backend=backend, cues_source=str(cues.get("source") or "placeholder"),
+        music_bed=bool(music_bed))
     if row:
         manifest.update_talk(talk_id, video_path=out_rel)
     return out_rel
 
 
-def write_talk_video_meta(talk_id: str, *, backend: str, cues_source: str) -> None:
+def write_talk_video_meta(talk_id: str, *, backend: str, cues_source: str,
+                          music_bed: bool = False) -> None:
     from ragapp.talk_cues import CUE_VERSION
     d = talk_dir(talk_id)
     fig_dir = d / "figures"
@@ -1724,6 +1825,7 @@ def write_talk_video_meta(talk_id: str, *, backend: str, cues_source: str) -> No
             "cues_version": CUE_VERSION,
             "figures": figures,
             "broll": broll,
+            "music_bed": bool(music_bed),
         }, ensure_ascii=False, indent=2),
         encoding="utf-8")
 
