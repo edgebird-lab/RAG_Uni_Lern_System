@@ -40,6 +40,11 @@ body.talk-presenter-on > section:not(.talk-slide-on) {
   display: inline-block;
 }
 
+.talk-word {
+  display: inline-block;
+  white-space: nowrap;
+}
+
 .talk-letter:not(.is-on) {
   opacity: 0;
   transform: translateY(8px) scale(0.96);

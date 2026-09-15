@@ -456,24 +456,30 @@ marp: true
 
 def test_seek_youtube_shot_overlay_changes(tmp_path):
     from playwright.sync_api import sync_playwright
-    from ragapp.talk_cues import apply_youtube_shots, build_talk_cues
+    from ragapp.talk_cues import load_talk_cues
 
     md = """\
-<!-- _class: card -->
+<!-- _class: accent -->
 
-## **Grounding**
+## Merksatz eins
 
 ---
 
-<!-- _class: card -->
+<!-- _class: accent -->
 
-## **Testing**
+## Merksatz zwei
 """
     html_src = """<!DOCTYPE html><html><body>
-<section class="card"><h2>Grounding</h2></section>
-<section class="card"><h2>Testing</h2></section>
+<section class="accent"><h2>Merksatz eins</h2></section>
+<section class="accent"><h2>Merksatz zwei</h2></section>
 </body></html>"""
-    cues = apply_youtube_shots(build_talk_cues(md, duration_s=12.0))
+    timeline = [
+        {"index": 0, "text": "Grounding heißt nur schreiben was da steht.",
+         "start_s": 0.0, "duration_s": 3.0},
+        {"index": 1, "text": "Spaced Repetition hält das Gelernte.",
+         "start_s": 6.0, "duration_s": 3.0},
+    ]
+    cues = load_talk_cues(md, duration_s=12.0, timeline=timeline, youtube=True)
     html = inject_talk_presenter(html_src, cues)
     path = tmp_path / "yt.html"
     path.write_text(html, encoding="utf-8")
@@ -485,23 +491,59 @@ def test_seek_youtube_shot_overlay_changes(tmp_path):
         page = browser.new_page(viewport={"width": 1280, "height": 720})
         page.goto(path.as_uri(), wait_until="load")
         page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
-        page.evaluate("t => window.TalkPresenter.seek(t)", shots[0]["t"] + 0.05)
+        page.evaluate("t => window.TalkPresenter.seek(t)", 0.05)
         layer = page.locator("#talk-yt-shot")
+        assert not layer.evaluate("el => el.classList.contains('is-on')")
+        late = next(e for e in shots if e["t"] >= 5.0)
+        page.evaluate("t => window.TalkPresenter.seek(t)", late["t"] + 0.05)
         assert layer.evaluate("el => el.classList.contains('is-on')")
         box = layer.bounding_box()
         assert box is not None
         assert box["height"] < 280
         assert box["y"] < 200
-        first = layer.inner_text()
+        assert layer.inner_text().strip()
+        assert "bestehen" not in layer.inner_text().lower()
         chip = page.locator("#talk-chapter-chip")
-        assert not chip.evaluate("el => el.classList.contains('is-on')")
-        page.evaluate("t => window.TalkPresenter.seek(t)", shots[-1]["t"] + 0.05)
-        second = layer.inner_text()
-        assert first.strip()
-        assert second.strip()
-        assert first != second or len(shots) == 1
         page.evaluate("t => window.TalkPresenter.seek(t)", 6.0)
         assert chip.evaluate("el => el.classList.contains('is-on')")
+        browser.close()
+
+
+def test_seek_youtube_hides_shot_on_lead(tmp_path):
+    from playwright.sync_api import sync_playwright
+    from ragapp.talk_cues import load_talk_cues
+
+    md = """\
+<!-- _class: lead -->
+
+# **Livetest** Die Kraft der aktiven Wiederholung
+"""
+    html_src = """<!DOCTYPE html><html><body>
+<section class="lead"><h1>Livetest Die Kraft der aktiven Wiederholung</h1></section>
+</body></html>"""
+    timeline = [
+        {"index": 0, "text": "Hast du schon einmal versucht, die Lernstoffkarten zu wiederholen?",
+         "start_s": 0.4, "duration_s": 3.0},
+    ]
+    cues = load_talk_cues(md, duration_s=8.0, timeline=timeline, youtube=True)
+    html = inject_talk_presenter(html_src, cues)
+    path = tmp_path / "lead.html"
+    path.write_text(html, encoding="utf-8")
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 900, "height": 500})
+        page.goto(path.as_uri(), wait_until="load")
+        page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
+        page.evaluate("t => window.TalkPresenter.seek(t)", 1.0)
+        layer = page.locator("#talk-yt-shot")
+        assert not layer.evaluate("el => el.classList.contains('is-on')")
+        words = page.locator("h1 .talk-word")
+        assert words.count() >= 4
+        wieder = page.locator("h1 .talk-word").filter(has_text="Wiederholung")
+        assert wieder.count() >= 1
+        box = wieder.first.bounding_box()
+        assert box is not None
+        assert box["height"] < 90
         browser.close()
 
 

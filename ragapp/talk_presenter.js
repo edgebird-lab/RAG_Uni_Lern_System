@@ -41,11 +41,22 @@
       const wrapText = (textNode, extra) => {
         const text = textNode.textContent || "";
         const frag = document.createDocumentFragment();
-        for (const ch of text) {
-          const span = document.createElement("span");
-          span.className = extra ? "talk-letter talk-keyword-letter" : "talk-letter";
-          span.textContent = ch === " " ? "\u00a0" : ch;
-          frag.appendChild(span);
+        const parts = text.split(/(\s+)/);
+        for (const part of parts) {
+          if (!part) continue;
+          if (/^\s+$/.test(part)) {
+            frag.appendChild(document.createTextNode(" "));
+            continue;
+          }
+          const word = document.createElement("span");
+          word.className = "talk-word";
+          for (const ch of part) {
+            const span = document.createElement("span");
+            span.className = extra ? "talk-letter talk-keyword-letter" : "talk-letter";
+            span.textContent = ch;
+            word.appendChild(span);
+          }
+          frag.appendChild(word);
         }
         textNode.parentNode.replaceChild(frag, textNode);
       };
@@ -436,8 +447,16 @@
         document.body.appendChild(layer);
       }
       const sh = state.shot;
-      const showShot = Boolean(sh && sh.kind !== "figure" && String(sh.text || "").trim());
-      layer.textContent = showShot ? String(sh.text || "") : "";
+      const shotText = String((sh && sh.text) || "").trim();
+      const titleNorm = String(meta.title || "").toLowerCase().replace(/[^a-zäöüß0-9%]+/gi, "");
+      const shotNorm = shotText.toLowerCase().replace(/[^a-zäöüß0-9%]+/gi, "");
+      const echoTitle = Boolean(
+        titleNorm && shotNorm && (titleNorm.includes(shotNorm) || shotNorm.includes(titleNorm))
+      );
+      const showShot = Boolean(
+        ytHud && !inHook && sh && sh.kind !== "figure" && shotText && !echoTitle
+      );
+      layer.textContent = showShot ? shotText : "";
       layer.dataset.kind = showShot ? String(sh.kind || "word") : "";
       layer.classList.toggle("is-on", showShot);
       let kara = document.getElementById("talk-karaoke");
