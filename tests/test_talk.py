@@ -358,6 +358,7 @@ def test_mux_video_with_talk_audio_uses_loudnorm():
     ui = Path("ragapp/ui/pages/17_🎤_Vortrag.py").read_text(encoding="utf-8")
     assert "talk_use_music_bed" in ui
     assert "talk_use_broll" in ui
+    assert "talk_youtube_style" in ui
 
 
 def test_render_talk_video_falls_back_when_record_fails(isolated_db, tmp_path, monkeypatch):
@@ -403,6 +404,7 @@ def test_render_talk_video_falls_back_when_record_fails(isolated_db, tmp_path, m
     assert meta.get("cues_version") == CUE_VERSION
     assert meta.get("figures") == []
     assert meta.get("music_bed") is False
+    assert meta.get("youtube") is False
     assert meta.get("broll") == []
 
 

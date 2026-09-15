@@ -32,7 +32,7 @@ st.caption("Erzeugt einen Marp-Vortrag aus deinen Unterlagen, optional mit "
            "bleiben das statische Handout.")
 
 with skeleton("Vortrag wird geladen …"):
-    from ragapp import manifest, talk, searx_client, audio_overview
+    from ragapp import manifest, talk, talk_style, searx_client, audio_overview
     from ragapp.config import settings, SUBJECT_LABELS, PROJECT_ROOT, TALK_DIR
     from ragapp.llm import list_installed_models
     from ragapp.ui._progress import fmt_dauer as _fmt_dauer, progress_tracker as _progress_tracker
@@ -185,6 +185,13 @@ if _active_id is None:
             key="talk_use_broll",
             help="Default aus. Nur wenn keine PDF-Abbildung da ist: höchstens "
                  "zwei Bilder über SearXNG, lokal mit Lizenzhinweis gespeichert.")
+        _youtube = st.checkbox(
+            "YouTube-Stil (privat, schnelle Shots)",
+            value=False,
+            key="talk_youtube_style",
+            help="Default aus = Erklärvideo wie bisher. An = YouTube-Schnitt: "
+                 "kein Agenda-Block, Card-Shots, Bildwechsel alle paar Sekunden, "
+                 "Stille kürzen, 1080p, Musikbett. Nur Privatgebrauch.")
 
         _talk_len = st.radio(
             "Länge", ["Kurz (5 Folien, Referat morgen)", "Normal"],
@@ -200,7 +207,8 @@ if _active_id is None:
                     _doc_ids, title=_new_title or "Vortrag",
                     subject=_new_subject, sources=_sources, model=_new_model,
                     on_progress=_progress_tracker(_bar, _cap, "Vortrag"),
-                    max_slides=5 if _talk_len.startswith("Kurz") else None)
+                    max_slides=5 if _talk_len.startswith("Kurz") else None,
+                    youtube_style=bool(_youtube))
                 st.session_state["_talk_draft"] = {
                     "marp_md": _marp, "script": _script,
                     "title": _new_title or f"Vortrag {_fach(_new_subject)}",
@@ -208,6 +216,7 @@ if _active_id is None:
                     "sources": _sources, "model": _used,
                     "warning": _warn,
                     "broll": bool(_broll),
+                    "youtube_style": bool(_youtube),
                 }
                 st.rerun()
             except talk.TalkError as exc:
@@ -251,6 +260,7 @@ if _active_id is None:
                     sources=_draft.get("sources") or [],
                     model=_draft.get("model"),
                     broll=bool(_draft.get("broll")),
+                    youtube_style=bool(_draft.get("youtube_style")),
                 )
                 st.session_state.pop("_talk_draft", None)
                 st.session_state["_talk_pending_choice"] = _tid
@@ -268,6 +278,7 @@ if _active_id is None:
                     sources=_draft.get("sources") or [],
                     model=_draft.get("model"),
                     broll=bool(_draft.get("broll")),
+                    youtube_style=bool(_draft.get("youtube_style")),
                 )
                 _bar = st.progress(0.0)
                 _cap = st.empty()
@@ -428,6 +439,14 @@ with vc3:
             st.error(str(exc))
 with vc2:
     _can_video = bool(_audio_rel and _marp_ok)
+    _yt_saved = bool(talk_style.read_talk_style(_active_id).get("youtube")) if _active_id else False
+    _youtube_video = st.checkbox(
+        "YouTube-Stil (privat, schnelle Shots)",
+        value=_yt_saved,
+        key="talk_video_youtube_style",
+        help="Wirkt auf dieses MP4: Shot-Rhythmus, 1080p, Stille kürzen, Musik. "
+             "Handout bleibt das Erklär-Deck. Nur Privatgebrauch.",
+    )
     _music_bed = st.checkbox(
         "Ruhiges Musikbett (Opt-in, lokal)",
         value=False,
@@ -441,7 +460,8 @@ with vc2:
         try:
             with st.spinner("Folien aufnehmen und mit der Stimme verbinden …"):
                 _vrel = talk.render_talk_video(
-                    _active_id, music_bed=bool(_music_bed))
+                    _active_id, music_bed=bool(_music_bed) or bool(_youtube_video),
+                    youtube_style=bool(_youtube_video))
             st.success("Video fertig.")
             st.rerun()
         except talk.TalkError as exc:

@@ -918,6 +918,7 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
                           model: Optional[str] = None,
                           on_progress: ProgressCallback = None,
                           max_slides: Optional[int] = None,
+                          youtube_style: bool = False,
                           ) -> tuple[str, str, str, Optional[str]]:
     """Erzeugt Vortrag ABSCHNITTSWEISE (wie Audio-Overview).
 
@@ -1093,6 +1094,9 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
 
         n_slides = _count_slides(body)
         warning_parts: list[str] = []
+        if youtube_style:
+            warning_parts.append(
+                "YouTube-Stil (privat): schnelle Shots statt Folien-Hold.")
         if any_truncated:
             warning_parts.append(
                 "⚠️ Mindestens ein Abschnitt wurde vermutlich am Token-Budget abgeschnitten.")
@@ -1738,7 +1742,8 @@ def _render_slideshow_video(html_path: Path, md_path: Path, d: Path,
 
 def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
                       marp_md: Optional[str] = None,
-                      music_bed: bool = False) -> str:
+                      music_bed: bool = False,
+                      youtube_style: Optional[bool] = None) -> str:
     """Erzeugt MP4 unter ``data/talks/<id>/talk.mp4``. Gibt relativen Pfad zurück.
 
     Bevorzugt: Marp-HTML + Presenter-Cues in Chrome aufnehmen, WAV dazu muxen.
@@ -1756,6 +1761,10 @@ def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
     audio_path = TALK_DIR / audio_rel
     if not audio_path.is_file():
         raise TalkError(f"Audio-Datei fehlt: {audio_path}")
+
+    from ragapp.talk_style import is_youtube_style, read_talk_style, write_talk_style
+    youtube = is_youtube_style(talk_id, youtube=youtube_style)
+    write_talk_style(talk_id, youtube=youtube)
 
     d = talk_dir(talk_id)
     md_path = save_marp_file(talk_id, md_text)
@@ -1796,14 +1805,14 @@ def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
         raise TalkError("Video-Datei wurde nicht erzeugt.")
     write_talk_video_meta(
         talk_id, backend=backend, cues_source=str(cues.get("source") or "placeholder"),
-        music_bed=bool(music_bed))
+        music_bed=bool(music_bed), youtube=youtube)
     if row:
         manifest.update_talk(talk_id, video_path=out_rel)
     return out_rel
 
 
 def write_talk_video_meta(talk_id: str, *, backend: str, cues_source: str,
-                          music_bed: bool = False) -> None:
+                          music_bed: bool = False, youtube: bool = False) -> None:
     from ragapp.talk_cues import CUE_VERSION
     d = talk_dir(talk_id)
     fig_dir = d / "figures"
@@ -1826,6 +1835,7 @@ def write_talk_video_meta(talk_id: str, *, backend: str, cues_source: str,
             "figures": figures,
             "broll": broll,
             "music_bed": bool(music_bed),
+            "youtube": bool(youtube),
         }, ensure_ascii=False, indent=2),
         encoding="utf-8")
 
@@ -1846,14 +1856,17 @@ def create_talk_record(*, title: str, subject: Optional[str], doc_ids: list[str]
                        sources: Optional[list] = None,
                        model: Optional[str] = None,
                        talk_id: Optional[str] = None,
-                       broll: bool = False) -> str:
+                       broll: bool = False,
+                       youtube_style: bool = False) -> str:
     """Legt DB-Eintrag an und speichert talk.md."""
     tid = talk_id or uuid.uuid4().hex[:16]
     from ragapp.talk_figures import attach_talk_figures
+    from ragapp.talk_style import write_talk_style
     marp_md = attach_talk_figures(
         marp_md, doc_ids, dest_dir=talk_dir(tid) / "figures",
         broll=bool(broll), broll_query=title or "")
     save_marp_file(tid, marp_md)
+    write_talk_style(tid, youtube=bool(youtube_style))
     return manifest.create_talk(
         title=title, subject=subject, doc_ids=doc_ids,
         marp_md=marp_md, script_text=script_text,
