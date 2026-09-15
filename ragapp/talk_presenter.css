@@ -14,7 +14,6 @@ body.talk-presenter-on svg.bespoke-marp-slide:not(.talk-slide-on) {
 }
 
 body.talk-presenter-on svg.bespoke-marp-slide.talk-slide-on {
-  opacity: 1 !important;
   z-index: 1 !important;
   content-visibility: visible !important;
 }
@@ -37,6 +36,26 @@ body.talk-presenter-on > section:not(.talk-slide-on) {
   transform: translateY(0.4em);
 }
 
-.talk-bullet.is-on {
+.talk-letter {
+  display: inline-block;
+}
+
+.talk-letter:not(.is-on) {
+  opacity: 0;
+  transform: translateY(8px) scale(0.96);
+}
+
+.talk-letter.is-on {
+  opacity: 1;
   transform: none;
+}
+
+body.talk-presenter-on svg.bespoke-marp-slide.talk-slide-on,
+body.talk-presenter-on > section.talk-slide-on {
+  z-index: 1;
+}
+
+body.talk-presenter-on svg.bespoke-marp-slide.talk-slide-prev,
+body.talk-presenter-on > section.talk-slide-prev {
+  z-index: 0;
 }

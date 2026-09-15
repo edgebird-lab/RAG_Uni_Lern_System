@@ -71,3 +71,37 @@ def test_seek_reveals_title_then_bullets(tmp_path):
         page.evaluate("t => window.TalkPresenter.seek(t)", 7.9)
         assert page.locator("section.agenda .talk-bullet.is-on").count() == 2
         browser.close()
+
+
+def test_seek_title_letters_and_slide_fade(tmp_path):
+    from playwright.sync_api import sync_playwright
+
+    cues = build_talk_cues(MARP, duration_s=8.0)
+    html = inject_talk_presenter(FIXTURE.read_text(encoding="utf-8"), cues)
+    path = tmp_path / "presenter.html"
+    path.write_text(html, encoding="utf-8")
+    agenda = next(s for s in cues["slides"] if s["class_name"] == "agenda")
+    first_bullet_t = next(e["t"] for e in agenda["events"] if e.get("i") == 0)
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.goto(path.as_uri(), wait_until="load")
+        page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
+
+        page.evaluate("t => window.TalkPresenter.seek(t)", 0)
+        letters = page.locator("section.lead .talk-letter")
+        on0 = page.locator("section.lead .talk-letter.is-on").count()
+        assert letters.count() >= 4
+        assert 0 < on0 < letters.count()
+
+        page.evaluate("t => window.TalkPresenter.seek(t)", 0.45)
+        assert page.locator("section.lead .talk-letter.is-on").count() == letters.count()
+        assert page.locator("section.agenda .talk-bullet.is-on").count() == 0
+
+        page.evaluate("t => window.TalkPresenter.seek(t)", agenda["start_s"] + 0.1)
+        assert page.locator("section.agenda.talk-slide-on").count() == 1
+        assert page.locator("section.lead.talk-slide-prev").count() == 1
+        assert page.locator("section.agenda .talk-bullet.is-on").count() == 0
+        assert first_bullet_t > agenda["start_s"]
+        browser.close()
