@@ -291,6 +291,16 @@ def test_normalize_card_latex_laesst_fliessetext():
     assert student_flow.normalize_card_latex(text) == text
 
 
+def test_normalize_card_latex_holt_punkt_aus_der_formel():
+    inline = student_flow.normalize_card_latex(r"Dann ist $f'(x)=2x.$")
+    assert inline == r"Dann ist $f'(x)=2x$."
+    display = student_flow.normalize_card_latex("ist\n$$\nf'(x)=2x.\n$$")
+    assert display.endswith("$$.")
+    assert "2x." not in display
+    assert "2x" in display
+    assert student_flow.normalize_card_latex(r"Was ist $\frac{a}{b}$?") == r"Was ist $\frac{a}{b}$?"
+
+
 def test_clip_preserving_math_schliesst_dollar():
     raw = "a" * 20 + "$langeformel" + "b" * 30 + "$ ende"
     out = student_flow.clip_preserving_math(raw, 25)

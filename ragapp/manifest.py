@@ -1792,6 +1792,16 @@ def cards_needing_answer(subject: Optional[str] = None, deck: Optional[str] = No
                       only_unanswered=True, limit=limit)
 
 
+def cards_with_answer(subject: Optional[str] = None, deck: Optional[str] = None,
+                      limit: Optional[int] = None) -> list[dict]:
+    """Generierte Fragenkarten, die bereits eine Musterloesung haben."""
+    rows = [c for c in list_cards(subject=subject, deck=deck, source="question")
+            if (c.get("answer") or "").strip()]
+    if limit:
+        return rows[: int(limit)]
+    return rows
+
+
 # --------------------------------------------------------------------------- #
 # Stapel (Decks): hierarchisch nach Fach, flexibel nach Doc/Thema/Karte
 # --------------------------------------------------------------------------- #

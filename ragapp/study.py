@@ -173,8 +173,10 @@ def generate_answers(subject: "str | None" = None, deck: "str | None" = None,
                      progress=None, check_grounding: bool = True) -> dict:
     """Erzeugt fuer Karten aus generierten Fragen, die bisher nur den Chunk zeigen, eine
     echte KI-Musterloesung und speichert sie. Mit ``card_ids`` gezielt fuer eine Auswahl.
-    Standard: zweite KI-Pruefung (``check_grounding``) verwirft Antworten, die nicht
-    durch den Beleg gedeckt sind. Ehrliches Ergebnis (status/filled/errors/ungrounded)."""
+    Standard: zweite KI-Pruefung (``check_grounding``) verwirft nur Antworten, die
+    der Judge klar als nicht gedeckt markiert. Modellfehler beim Gate lassen die
+    Loesung stehen (``unchecked``). Ehrliches Ergebnis
+    (status/filled/errors/ungrounded/unchecked)."""
     from ragapp.config import settings
     from ragapp.hardware import probe_model
     from ragapp.ingestion.question_gen import generate_answer, QuestionGenError
@@ -202,7 +204,7 @@ def generate_answers(subject: "str | None" = None, deck: "str | None" = None,
         return {"status": "llm_error", "processed": 0, "filled": 0, "errors": 0,
                 "error_msg": f"Modell '{settings.LLM_MODEL_FAST}' laeuft nicht: {msg}"}
 
-    filled = errors = ungrounded = 0
+    filled = errors = ungrounded = unchecked = 0
     error_msg = None
     try:
         for i, card in enumerate(todo, 1):
@@ -217,7 +219,7 @@ def generate_answers(subject: "str | None" = None, deck: "str | None" = None,
                 if errors >= 3 and filled == 0:      # Fail-fast statt endlos ins Leere
                     return {"status": "llm_error", "processed": i, "filled": filled,
                             "errors": errors, "ungrounded": ungrounded,
-                            "error_msg": error_msg}
+                            "unchecked": unchecked, "error_msg": error_msg}
                 continue
             if ans:
                 from ragapp.student_flow import normalize_card_latex
@@ -228,16 +230,111 @@ def generate_answers(subject: "str | None" = None, deck: "str | None" = None,
                     if progress:
                         progress(f"Beleg prüfen {i}/{len(todo)} …")
                     from ragapp import grading
-                    if not grading.is_grounded(
-                            card.get("front") or "", ans, card.get("back") or ""):
+                    verdict = grading.grounding_verdict(
+                        card.get("front") or "", ans, card.get("back") or "")
+                    if verdict == "no":
                         ungrounded += 1
-                        continue   # nicht belegte Antwort NICHT speichern
+                        continue   # klar unbelegt: nicht speichern
+                    if verdict == "unknown":
+                        unchecked += 1
                 manifest.set_answer(card["card_id"], ans)
                 filled += 1
 
         status = "ok" if filled > 0 else ("llm_error" if errors else "empty")
         return {"status": status, "processed": len(todo), "filled": filled,
-                "errors": errors, "ungrounded": ungrounded, "error_msg": error_msg}
+                "errors": errors, "ungrounded": ungrounded, "unchecked": unchecked,
+                "error_msg": error_msg}
+    finally:
+        release_llm()
+
+
+def tidy_stored_answers(subject: "str | None" = None, deck: "str | None" = None,
+                        card_ids: "list[str] | None" = None, limit: "int | None" = None,
+                        progress=None) -> dict:
+    """Normalisiert LaTeX in gespeicherten Antworten (Satzzeichen aus Formeln)."""
+    from ragapp.student_flow import normalize_card_latex
+
+    if card_ids is not None:
+        cards = [c for c in manifest.get_cards_by_ids(card_ids)
+                 if (c.get("answer") or "").strip()]
+        if limit:
+            cards = cards[:limit]
+    else:
+        cards = [c for c in manifest.list_cards(subject=subject, deck=deck)
+                 if (c.get("answer") or "").strip()]
+        if limit:
+            cards = cards[:limit]
+    tidied = 0
+    for i, card in enumerate(cards, 1):
+        if progress:
+            progress(f"Formel glätten {i}/{len(cards)} …")
+        raw = card.get("answer") or ""
+        neu = normalize_card_latex(raw).strip()
+        if neu and neu != raw:
+            manifest.set_answer(card["card_id"], neu)
+            tidied += 1
+    return {"status": "ok", "processed": len(cards), "tidied": tidied}
+
+
+def recheck_answers(subject: "str | None" = None, deck: "str | None" = None,
+                    limit: "int | None" = None, card_ids: "list[str] | None" = None,
+                    progress=None) -> dict:
+    """Prueft vorhandene Musterloesungen gegen den Beleg.
+
+    Nur ein klares ``no`` loescht die Antwort. ``unknown`` (Modellfehler) und
+    ``yes`` bleiben stehen; LaTeX wird dabei mitgeglaettet.
+    """
+    from ragapp.config import settings
+    from ragapp.hardware import probe_model
+    from ragapp.student_flow import normalize_card_latex
+
+    if card_ids is not None:
+        todo = [c for c in manifest.get_cards_by_ids(card_ids)
+                if c.get("source") == "question" and (c.get("answer") or "").strip()]
+        if limit:
+            todo = todo[:limit]
+    else:
+        todo = manifest.cards_with_answer(subject=subject, deck=deck, limit=limit)
+    if not todo:
+        return {"status": "nothing_to_do", "processed": 0, "kept": 0,
+                "cleared": 0, "unknown": 0, "tidied": 0, "error_msg": None}
+
+    from ragapp.llm import require_vram, release_llm, VramLowError
+    try:
+        require_vram(settings.LLM_MODEL_FAST)
+    except VramLowError as exc:
+        return {"status": "llm_error", "processed": 0, "kept": 0, "cleared": 0,
+                "unknown": 0, "tidied": 0, "error_msg": str(exc)}
+
+    ok, msg = probe_model(settings.LLM_MODEL_FAST)
+    if not ok:
+        return {"status": "llm_error", "processed": 0, "kept": 0, "cleared": 0,
+                "unknown": 0, "tidied": 0,
+                "error_msg": f"Modell '{settings.LLM_MODEL_FAST}' laeuft nicht: {msg}"}
+
+    kept = cleared = unknown = tidied = 0
+    try:
+        from ragapp import grading
+        for i, card in enumerate(todo, 1):
+            if progress:
+                progress(f"Beleg prüfen {i}/{len(todo)} · {(card.get('front') or '')[:50]} …")
+            raw = (card.get("answer") or "").strip()
+            ans = normalize_card_latex(raw).strip() or raw
+            verdict = grading.grounding_verdict(
+                card.get("front") or "", ans, card.get("back") or "")
+            if verdict == "no":
+                manifest.set_answer(card["card_id"], "")
+                cleared += 1
+                continue
+            if ans != raw:
+                manifest.set_answer(card["card_id"], ans)
+                tidied += 1
+            if verdict == "unknown":
+                unknown += 1
+            kept += 1
+        return {"status": "ok", "processed": len(todo), "kept": kept,
+                "cleared": cleared, "unknown": unknown, "tidied": tidied,
+                "error_msg": None}
     finally:
         release_llm()
 

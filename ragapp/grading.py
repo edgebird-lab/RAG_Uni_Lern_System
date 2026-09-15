@@ -8,8 +8,9 @@ Ersetzt die reine Ehrlichkeits-Selbstnote durch echtes produktives Abrufen:
     (Testing-Effekt ist bei produktivem Abruf viel staerker als bei Wiedererkennen).
   * ``make_cloze`` / ``check_cloze`` - Lueckentext, DETERMINISTISCH und OHNE LLM
     (funktioniert sofort/offline, auch auf schwacher Hardware).
-  * ``is_grounded`` - Qualitaetsgate: prueft mit dem LLM, ob eine generierte
-    Karten-Antwort wirklich durch den Beleg gedeckt ist (kein subtil Falsches lernen).
+  * ``grounding_verdict`` / ``is_grounded`` - Qualitaetsgate: prueft mit dem LLM,
+    ob eine generierte Karten-Antwort durch den Beleg gedeckt ist. Nur ein klares
+    ``no`` verwirft die Loesung; Modellfehler lassen sie stehen.
 
 Alle LLM-Aufrufe fangen Fehler ab und liefern ein ehrliches Fallback (keine
 Ausnahme nach oben), damit die Lernrunde nie an einem Modellproblem haengen bleibt.
@@ -200,6 +201,8 @@ Regeln:
 - Umformulieren in eigenen Worten ist gedeckt, wenn jede Aussage im Beleg steht.
 - Gleichwertiges LaTeX und Unicode (z. B. $\\frac{{a}}{{b}}$ statt a/b, $x^2$ statt x²)
   gelten als gedeckt.
+- Eine knappe Formel oder ein kurzer Satz ist gedeckt, wenn der Inhalt im Beleg steht.
+  Unvollständige Formulierung allein ist kein Grund für false.
 - Erfundene Zahlen, Sätze, Rechenschritte oder Theoreme, die der Beleg nicht hergibt,
   sind nicht gedeckt.
 - Bloße Formulierungs- oder Notationunterschiede sind kein Grund für false.
@@ -292,27 +295,50 @@ def generate_mcq(question: str, answer: str, model: Optional[str] = None,
     return result
 
 
-def is_grounded(frage: str, antwort: str, beleg: str, model: Optional[str] = None) -> bool:
-    """Qualitaetsgate fuer generierte Karten: True NUR, wenn das LLM die Antwort
-    eindeutig als durch den Beleg gedeckt bestaetigt (streng/fail-closed). Bei
-    LLM-Fehler, unparsebarer Antwort ODER fehlendem 'grounded'-Schluessel wird die
-    Antwort als NICHT gedeckt gewertet (False) - lieber eine unbelegte Karte
-    verwerfen als subtil Falsches lernen. Nur wenn es nichts zu pruefen gibt
-    (leere Antwort oder leerer Beleg), wird durchgelassen."""
-    if not (antwort or "").strip() or not (beleg or "").strip():
-        return True
-    try:
-        data = get_llm(model or settings.LLM_MODEL_FAST).generate_json(
-            _GROUND_PROMPT.format(frage=(frage or "")[:500], antwort=antwort[:1500],
-                                  beleg=beleg[:3000]),
-            system=_GROUND_SYSTEM, temperature=0.0)
-    except Exception:  # noqa: BLE001
-        return False   # fail-closed: bei Modellfehler NICHT durchwinken
+def _parse_grounded_flag(data) -> Optional[bool]:
+    """True/False bei klarem Flag, sonst None (unparsebar / fehlt)."""
     val = data.get("grounded") if isinstance(data, dict) else None
     if isinstance(val, bool):
         return val
     if isinstance(val, str):
-        return val.strip().lower() in {"true", "ja", "yes", "1"}
+        s = val.strip().lower()
+        if s in {"true", "ja", "yes", "1"}:
+            return True
+        if s in {"false", "nein", "no", "0"}:
+            return False
+        return None
     if isinstance(val, (int, float)):
-        return val != 0
-    return False   # fail-closed: unparsebar / Schluessel fehlt -> nicht gegroundet
+        return bool(val)
+    return None
+
+
+def grounding_verdict(frage: str, antwort: str, beleg: str,
+                      model: Optional[str] = None) -> str:
+    """Dreiwertiges Gate: ``yes`` / ``no`` / ``unknown``.
+
+    ``unknown`` = Modellfehler oder kein klares JSON. Speichern darf dann die
+    Antwort behalten – nur ein explizites ``no`` ist ein Verwurf. Leere Antwort
+    oder leerer Beleg gelten als ``yes`` (nichts zu pruefen). Ein Fehlschlag
+    wird einmal wiederholt, bevor ``unknown`` zurueckkommt.
+    """
+    if not (antwort or "").strip() or not (beleg or "").strip():
+        return "yes"
+    prompt = _GROUND_PROMPT.format(
+        frage=(frage or "")[:500], antwort=antwort[:1500], beleg=beleg[:3000])
+    llm = get_llm(model or settings.LLM_MODEL_FAST)
+    for _ in range(2):
+        try:
+            data = llm.generate_json(prompt, system=_GROUND_SYSTEM, temperature=0.0)
+        except Exception:  # noqa: BLE001
+            continue
+        parsed = _parse_grounded_flag(data)
+        if parsed is True:
+            return "yes"
+        if parsed is False:
+            return "no"
+    return "unknown"
+
+
+def is_grounded(frage: str, antwort: str, beleg: str, model: Optional[str] = None) -> bool:
+    """True nur bei klarem ``yes`` (fuer den Judge-Harness)."""
+    return grounding_verdict(frage, antwort, beleg, model=model) == "yes"

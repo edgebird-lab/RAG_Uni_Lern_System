@@ -63,6 +63,7 @@ def _show_answer_result(ares: dict) -> bool:
     """Meldung nach generate_answers. True, wenn etwas gespeichert wurde (dann rerun)."""
     filled = int(ares.get("filled") or 0)
     ungrounded = int(ares.get("ungrounded") or 0)
+    unchecked = int(ares.get("unchecked") or 0)
     if ares.get("status") == "llm_error":
         st.error(f"❌ Modellfehler: {ares.get('error_msg', '')} – prüfe unter "
                  "**⚙️ Einstellungen** ein laufendes Modell.")
@@ -81,8 +82,34 @@ def _show_answer_result(ares: dict) -> bool:
     msg = f"✅ {filled} Musterlösung(en) erzeugt."
     if ungrounded:
         msg += f" {ungrounded} verworfen (nicht im Beleg)."
+    if unchecked:
+        msg += f" {unchecked} ohne klare Prüfung behalten."
     st.success(msg)
     return True
+
+
+def _show_recheck_result(rres: dict) -> bool:
+    """Meldung nach recheck_answers. True, wenn sich Karten geändert haben."""
+    if rres.get("status") == "llm_error":
+        st.error(f"❌ Modellfehler: {rres.get('error_msg', '')} – prüfe unter "
+                 "**⚙️ Einstellungen** ein laufendes Modell.")
+        return False
+    if rres.get("status") == "nothing_to_do":
+        st.info("Keine gespeicherten Musterlösungen zum Prüfen.")
+        return False
+    cleared = int(rres.get("cleared") or 0)
+    kept = int(rres.get("kept") or 0)
+    unknown = int(rres.get("unknown") or 0)
+    tidied = int(rres.get("tidied") or 0)
+    msg = f"{kept} belegt behalten"
+    if cleared:
+        msg += f", {cleared} unbelegt entfernt"
+    if unknown:
+        msg += f", {unknown} ohne klare Prüfung behalten"
+    if tidied:
+        msg += f", {tidied} Formel geglättet"
+    st.success(msg + ".")
+    return bool(cleared or tidied)
 
 
 # --------------------------------------------------------------------------- #
@@ -210,7 +237,8 @@ def _render_karten_erstellen() -> None:
     _offen = manifest.count_cards(subject=_hv_subj_arg, source="question", only_unanswered=True)
     st.caption(f"**Musterlösungen erzeugen:** {_offen} Karte(n) zeigen bisher nur den "
                "Originaltext. Die KI erzeugt daraus echte Antworten und prüft jede "
-               "gegen den Abschnitt (~20 s plus Belegprüfung pro Karte).")
+               "gegen den Abschnitt. Nur klar unbelegte Antworten werden verworfen; "
+               "scheitert die Prüfung, bleibt die Lösung.")
     ca1, ca2 = st.columns([1, 2])
     _ans_n = ca1.number_input("Anzahl", min_value=1, max_value=500,
                               value=min(20, max(1, _offen)), step=5, key="ans_n",
@@ -222,6 +250,22 @@ def _render_karten_erstellen() -> None:
                                           progress=lambda m: s.update(label=m))
             s.update(label="Fertig", state="complete")
         if _show_answer_result(ares):
+            st.rerun()
+
+    _mit_antw = max(0, manifest.count_cards(subject=_hv_subj_arg, source="question") - _offen)
+    st.caption(f"**Belege nachprüfen:** {_mit_antw} gespeicherte Lösung(en). "
+               "Nur klar unbelegte werden entfernt; Formeln werden mitgeglättet.")
+    rc1, rc2 = st.columns([1, 2])
+    _rc_n = rc1.number_input("Anzahl", min_value=1, max_value=500,
+                             value=min(50, max(1, _mit_antw)), step=5, key="recheck_n",
+                             disabled=_mit_antw == 0)
+    if rc2.button(f"🔎 Belege prüfen ({_mit_antw})", disabled=_mit_antw == 0,
+                  use_container_width=True):
+        with st.status("Prüfe Belege …", expanded=True) as s:
+            rres = study.recheck_answers(subject=_hv_subj_arg, limit=int(_rc_n),
+                                         progress=lambda m: s.update(label=m))
+            s.update(label="Fertig", state="complete")
+        if _show_recheck_result(rres):
             st.rerun()
 
     st.divider()
@@ -1668,6 +1712,8 @@ if _active_tab == "📋 Bearbeiten & Löschen":
                     f"✅ {_ar['filled']} Antwort(en) erzeugt"
                     + (f", {_ar.get('ungrounded') or 0} verworfen"
                        if _ar.get("ungrounded") else "")
+                    + (f", {_ar.get('unchecked') or 0} ungeprüft behalten"
+                       if _ar.get("unchecked") else "")
                     + ".")
                 st.rerun()
 
@@ -1682,6 +1728,14 @@ if _active_tab == "📋 Bearbeiten & Löschen":
             n = manifest.set_suspended(_sel, False)
             st.session_state["_mv_flash"] = f"{n} Karte(n) wieder aktiv."
             st.rerun()
+        if st.button("🔎 Belege der Auswahl prüfen", use_container_width=True, disabled=not _sel):
+            with st.status("Prüfe Belege …", expanded=True) as s:
+                _rr = study.recheck_answers(card_ids=_sel, progress=lambda m: s.update(label=m))
+                s.update(label="Fertig", state="complete")
+            if _show_recheck_result(_rr):
+                st.session_state["_mv_flash"] = (
+                    f"{_rr.get('kept') or 0} behalten, {_rr.get('cleared') or 0} entfernt.")
+                st.rerun()
 
         _asg1, _asg2 = st.columns([2, 1])
         _asg_name = _asg1.text_input("Ausgewählte einem Stapel zuordnen", key="mv_assign_name",

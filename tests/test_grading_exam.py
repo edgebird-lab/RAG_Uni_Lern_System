@@ -1,5 +1,5 @@
 """Klausur-Gesamtscore: kein 100-%-Ergebnis aus einer Teilmenge."""
-from ragapp.grading import aggregate_exam_scores, is_grounded
+from ragapp.grading import aggregate_exam_scores, grounding_verdict, is_grounded
 
 
 def test_aggregate_alle_benotet():
@@ -41,11 +41,23 @@ def test_is_grounded_parst_int_und_string(monkeypatch):
     assert is_grounded("q", "a", "b") is False
     monkeypatch.setattr("ragapp.grading.get_llm", lambda *a, **k: _Llm({}))
     assert is_grounded("q", "a", "b") is False
+    assert grounding_verdict("q", "a", "b") == "unknown"
+
+
+def test_grounding_verdict_unknown_bei_llm_fehler(monkeypatch):
+    class _Boom:
+        def generate_json(self, *a, **k):
+            raise RuntimeError("down")
+
+    monkeypatch.setattr("ragapp.grading.get_llm", lambda *a, **k: _Boom())
+    assert grounding_verdict("q", "a", "b") == "unknown"
+    assert is_grounded("q", "a", "b") is False
 
 
 def test_ground_prompt_kennt_latex_paraphrase():
     from pathlib import Path
     src = Path("ragapp/grading.py").read_text(encoding="utf-8")
     assert "Gleichwertiges LaTeX" in src
+    assert "kappe Formel" in src or "knappe Formel" in src
     assert "check_grounding" in Path("ragapp/study.py").read_text(encoding="utf-8")
     assert "generate_answers" in Path("ragapp/study.py").read_text(encoding="utf-8")

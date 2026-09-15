@@ -428,6 +428,10 @@ def test_lernen_zeigt_stapel_vor_der_lernset_fabrik():
     assert "Formelkarten eignen sich nicht" in src
     assert "def _show_answer_result" in src
     assert "nicht durch den Abschnitt gedeckt" in src
+    assert "def _show_recheck_result" in src
+    assert "Belege prüfen" in src
+    assert "grounding_verdict" in Path("ragapp/study.py").read_text(encoding="utf-8")
+    assert "recheck_answers" in Path("ragapp/study.py").read_text(encoding="utf-8")
     assert "check_grounding" in Path("ragapp/study.py").read_text(encoding="utf-8")
 
 

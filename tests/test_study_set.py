@@ -184,13 +184,13 @@ def test_generate_answers_leere_card_ids_ist_nichts(isolated_db):
     assert out["filled"] == 0
 
 
-def _patch_answer_llm(monkeypatch, *, answer: str, grounded: bool):
+def _patch_answer_llm(monkeypatch, *, answer: str, verdict: str = "yes"):
     monkeypatch.setattr("ragapp.llm.require_vram", lambda *a, **k: None)
     monkeypatch.setattr("ragapp.hardware.probe_model", lambda *a, **k: (True, "ok"))
     monkeypatch.setattr(
         "ragapp.ingestion.question_gen.generate_answer",
         lambda beleg, frage, model=None: answer)
-    monkeypatch.setattr("ragapp.grading.is_grounded", lambda *a, **k: grounded)
+    monkeypatch.setattr("ragapp.grading.grounding_verdict", lambda *a, **k: verdict)
     monkeypatch.setattr("ragapp.llm.release_llm", lambda *a, **k: None)
 
 
@@ -203,7 +203,7 @@ def test_generate_answers_verwirft_ungrounded(isolated_db, monkeypatch):
         "answer": "", "doc_id": "d1",
     }])
     _patch_answer_llm(monkeypatch, answer="Der Hauptsatz verknüpft Integral und Ableitung.",
-                      grounded=False)
+                      verdict="no")
     out = study.generate_answers(card_ids=["g-bad"])
     assert out["filled"] == 0
     assert out["ungrounded"] == 1
@@ -223,7 +223,7 @@ def test_generate_answers_speichert_gedeckte_latex_antwort(isolated_db, monkeypa
     _patch_answer_llm(
         monkeypatch,
         answer="Nach der Potenzregel gilt \\( f'(x)=2x \\).",
-        grounded=True)
+        verdict="yes")
     out = study.generate_answers(card_ids=["g-ok"])
     assert out["filled"] == 1
     assert out.get("ungrounded", 0) == 0
@@ -233,6 +233,20 @@ def test_generate_answers_speichert_gedeckte_latex_antwort(isolated_db, monkeypa
     assert "\\(" not in stored
 
 
+def test_generate_answers_behaelt_bei_unbekanntem_judge(isolated_db, monkeypatch):
+    manifest.upsert_review_items([{
+        "card_id": "g-unk", "source": "question", "chroma_id": None,
+        "subject": "BWL", "topic": None,
+        "front": "Was ist X?", "back": "X ist 1.", "answer": "", "doc_id": "d1",
+    }])
+    _patch_answer_llm(monkeypatch, answer="X ist 1.", verdict="unknown")
+    out = study.generate_answers(card_ids=["g-unk"])
+    assert out["filled"] == 1
+    assert out["unchecked"] == 1
+    assert out.get("ungrounded", 0) == 0
+    assert (manifest.get_cards_by_ids(["g-unk"])[0].get("answer") or "").strip() == "X ist 1."
+
+
 def test_generate_answers_ohne_grounding_speichert_trotzdem(isolated_db, monkeypatch):
     calls = []
     manifest.upsert_review_items([{
@@ -240,14 +254,72 @@ def test_generate_answers_ohne_grounding_speichert_trotzdem(isolated_db, monkeyp
         "subject": "BWL", "topic": None,
         "front": "Was ist X?", "back": "X ist 1.", "answer": "", "doc_id": "d1",
     }])
-    _patch_answer_llm(monkeypatch, answer="X ist 1.", grounded=False)
+    _patch_answer_llm(monkeypatch, answer="X ist 1.", verdict="no")
     monkeypatch.setattr(
-        "ragapp.grading.is_grounded",
-        lambda *a, **k: calls.append("ground") or False)
+        "ragapp.grading.grounding_verdict",
+        lambda *a, **k: calls.append("ground") or "no")
     out = study.generate_answers(card_ids=["g-skip"], check_grounding=False)
     assert out["filled"] == 1
     assert calls == []
     assert (manifest.get_cards_by_ids(["g-skip"])[0].get("answer") or "").strip() == "X ist 1."
+
+
+def test_recheck_answers_loescht_nur_klares_nein(isolated_db, monkeypatch):
+    manifest.upsert_review_items([
+        {"card_id": "r-ok", "source": "question", "chroma_id": None,
+         "subject": "BWL", "topic": None,
+         "front": "Was ist X?", "back": "X ist 1.",
+         "answer": "X ist 1.", "doc_id": "d1"},
+        {"card_id": "r-bad", "source": "question", "chroma_id": None,
+         "subject": "BWL", "topic": None,
+         "front": "Was ist Y?", "back": "X ist 1.",
+         "answer": "Y wurde 1975 erfunden.", "doc_id": "d1"},
+        {"card_id": "r-unk", "source": "question", "chroma_id": None,
+         "subject": "BWL", "topic": None,
+         "front": "Was ist Z?", "back": "Z ist 3.",
+         "answer": "Z ist 3.", "doc_id": "d1"},
+        {"card_id": "r-punct", "source": "question", "chroma_id": None,
+         "subject": "BWL", "topic": None,
+         "front": "Ableitung?", "back": "2x",
+         "answer": r"Dann $f'(x)=2x.$", "doc_id": "d1"},
+    ])
+    monkeypatch.setattr("ragapp.llm.require_vram", lambda *a, **k: None)
+    monkeypatch.setattr("ragapp.hardware.probe_model", lambda *a, **k: (True, "ok"))
+    monkeypatch.setattr("ragapp.llm.release_llm", lambda *a, **k: None)
+
+    def _verdict(frage, antwort, beleg, model=None):
+        if "erfunden" in antwort:
+            return "no"
+        if "Z ist" in antwort:
+            return "unknown"
+        return "yes"
+
+    monkeypatch.setattr("ragapp.grading.grounding_verdict", _verdict)
+    out = study.recheck_answers(card_ids=["r-ok", "r-bad", "r-unk", "r-punct"])
+    assert out["cleared"] == 1
+    assert out["kept"] == 3
+    assert out["unknown"] == 1
+    assert out["tidied"] == 1
+    by_id = {c["card_id"]: c for c in manifest.get_cards_by_ids(
+        ["r-ok", "r-bad", "r-unk", "r-punct"])}
+    assert not (by_id["r-bad"].get("answer") or "").strip()
+    assert (by_id["r-ok"].get("answer") or "").strip() == "X ist 1."
+    assert (by_id["r-unk"].get("answer") or "").strip() == "Z ist 3."
+    assert by_id["r-punct"]["answer"] == r"Dann $f'(x)=2x$."
+
+
+def test_tidy_stored_answers_ohne_llm(isolated_db):
+    manifest.upsert_review_items([{
+        "card_id": "t1", "source": "exam_qa", "chroma_id": None,
+        "subject": "Analysis", "topic": None,
+        "front": "Ableitung?", "back": "2x",
+        "answer": "$$\nf'(x)=2x.\n$$", "doc_id": "d1",
+    }])
+    out = study.tidy_stored_answers(card_ids=["t1"])
+    assert out["tidied"] == 1
+    stored = manifest.get_cards_by_ids(["t1"])[0]["answer"]
+    assert stored.endswith("$$.")
+    assert "2x." not in stored
 
 
 def test_needs_card_harvest_nur_ueber_flag(isolated_db, monkeypatch):

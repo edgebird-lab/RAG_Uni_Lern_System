@@ -81,6 +81,9 @@ GROUNDING_LABELS = [
     {"frage": "Wie lautet der Hauptsatz der Differential- und Integralrechnung?",
      "antwort": "Der Hauptsatz sagt: $\\int_a^b f(x)\\,dx = F(b)-F(a)$ mit $F'=f$.",
      "beleg": "Potenzregel: die Ableitung von x² ist 2x.", "grounded": False},
+    {"frage": "Ableitung von $x^2$?",
+     "antwort": "$$f'(x)=2x$$",
+     "beleg": "Potenzregel: die Ableitung von x² ist 2x.", "grounded": True},
 ]
 
 

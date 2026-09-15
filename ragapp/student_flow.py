@@ -398,10 +398,48 @@ def _latex_span_end(s: str, i: int) -> int:
     return j
 
 
-def normalize_card_latex(text: Optional[str]) -> str:
-    """Macht Karten-LaTeX display-tauglich: ``\\(`` → ``$``, nackte ``\\frac`` wrappen.
+_MATH_TRAIL_PUNCT_RE = re.compile(r"^(.*?)([.!?]+)(\s*)$", re.S)
 
-    Ändert nicht die gespeicherte Karte – nur die Anzeige und den Anki-Export.
+
+def _shift_trailing_math_punct(text: str) -> str:
+    """Holt Satzzeichen aus ``$...$`` / ``$$...$$``, damit KaTeX den Punkt nicht mitsetzt."""
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        if text.startswith("$$", i):
+            j = text.find("$$", i + 2)
+            if j < 0:
+                out.append(text[i:])
+                break
+            body, punct = _split_math_punct(text[i + 2:j])
+            out.append("$$" + body + "$$" + punct)
+            i = j + 2
+            continue
+        if text[i] == "$":
+            j = text.find("$", i + 1)
+            if j < 0:
+                out.append(text[i:])
+                break
+            body, punct = _split_math_punct(text[i + 1:j])
+            out.append("$" + body + "$" + punct)
+            i = j + 1
+            continue
+        out.append(text[i])
+        i += 1
+    return "".join(out)
+
+
+def _split_math_punct(body: str) -> tuple[str, str]:
+    m = _MATH_TRAIL_PUNCT_RE.match(body)
+    if not m or not m.group(1).strip():
+        return body, ""
+    return m.group(1).rstrip(), m.group(2)
+
+
+def normalize_card_latex(text: Optional[str]) -> str:
+    """Macht Karten-LaTeX display-tauglich: ``\\(`` → ``$``, nackte ``\\frac`` wrappen,
+    Satzzeichen hinter die Formel ziehen.
     """
     s = text or ""
     if not s.strip():
@@ -433,7 +471,7 @@ def normalize_card_latex(text: Optional[str]) -> str:
             continue
         out.append(s[i])
         i += 1
-    return "".join(out)
+    return _shift_trailing_math_punct("".join(out))
 
 
 def card_looks_like_formula(card: dict) -> bool:
