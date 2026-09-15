@@ -166,6 +166,10 @@ def test_section_prompt_asks_for_sparse_slides():
     assert "Cold Open" in _OPENING_PROMPT
     assert "KEIN Begrüßungs-Fluff" in _OPENING_PROMPT
     assert "ZUERST" in _OPENING_PROMPT
+    from ragapp.talk import _OPENING_PROMPT_YOUTUBE, _SECTION_PROMPT_YOUTUBE
+    assert "GENAU EINE Folie" in _OPENING_PROMPT_YOUTUBE
+    assert "KEINE Agenda-Folie" in _OPENING_PROMPT_YOUTUBE
+    assert "VERBOTEN: content" in _SECTION_PROMPT_YOUTUBE
 
 
 def test_fallback_opening_is_cold_open_not_welcome():
@@ -194,6 +198,26 @@ def test_fallback_opening_is_cold_open_not_welcome():
     assert not script.lower().startswith("willkommen")
     assert hook in script
     assert "Fahrplan" in script
+
+
+def test_pack_youtube_slides_drops_agenda_and_cards_content():
+    from ragapp.talk import (
+        _fallback_opening_slides_youtube,
+        pack_youtube_slides,
+    )
+    raw = (
+        "<!-- _class: lead -->\n\n# T\n\n---\n\n"
+        "<!-- _class: agenda -->\n\n## Heute\n\n1. A\n2. B\n\n---\n\n"
+        "<!-- _class: content -->\n\n## Grounding\n\n- nur schreiben was da steht\n"
+    )
+    out = pack_youtube_slides(raw)
+    assert "_class: agenda" not in out
+    assert "_class: lead" in out
+    assert "_class: card" in out
+    assert "Grounding" in out
+    yt = _fallback_opening_slides_youtube("Livetest", "Livetest", "Abrufen schlägt Nachlesen.")
+    assert "_class: lead" in yt
+    assert "_class: agenda" not in yt
 
 
 def test_thematic_toc_filters_page_titles():

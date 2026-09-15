@@ -91,6 +91,23 @@ Titelseite/Literaturliste), antworte:
 
 Nur JSON – und der Wert von "slides" darf KEINEN JSON-Code enthalten."""
 
+_SECTION_PROMPT_YOUTUBE = """Abschnitt "{title}" der Quelle "{label}" – DATENMATERIAL:
+\"\"\"
+{body}
+\"\"\"
+
+YouTube-Shots, KEINE Unterrichtsfolien. Antworte als JSON:
+- "slides": OHNE Frontmatter, 2–3 Folien getrennt durch ---. Jede Folie NUR:
+  <!-- _class: card -->  ein **Keyword** oder eine Zahl als Überschrift, KEINE Liste
+  oder <!-- _class: accent -->  EIN Merksatz als Absatz/Blockquote, KEINE Liste
+  VERBOTEN: content, split, agenda, warn-Listen, Stichpunkte.
+  Die Stimme trägt den Satz, die Folie zeigt ein Wort.
+- "script": gesprochene Erklärung in deutschen Sätzen (kein Markdown, kein JSON),
+  YouTube-Pacing: kurze Sätze, alle paar Sekunden eine neue Aussage.
+
+Falls kein Inhalt: {{"slides": "", "script": "(kein erklärbarer Inhalt)"}}
+Nur JSON."""
+
 _OPENING_PROMPT = """Thema: "{title}" (Fach: {subject})
 
 Abschnitts-Hinweise aus den Unterlagen (oft technische Platzhalter wie „Seite 1“
@@ -118,6 +135,26 @@ Erzeuge die ERÖFFNUNG als JSON:
   (kein Markdown, kein JSON).
 
 Nur JSON – "slides" ohne JSON-Code darin."""
+
+_OPENING_PROMPT_YOUTUBE = """Thema: "{title}" (Fach: {subject})
+
+Abschnitts-Hinweise (NICHT als Agenda-Folie verwenden):
+{toc}
+
+Inhalts-Ausschnitte:
+\"\"\"
+{excerpts}
+\"\"\"
+
+Erzeuge die ERÖFFNUNG als JSON:
+- "slides": OHNE Frontmatter; GENAU EINE Folie
+  <!-- _class: lead -->
+  Cold Open: Optional <p class="eyebrow">FACH</p>, # Titel mit einem **Hook-Wort**,
+  ### eine kühne Behauptung. KEINE Stichpunkte, KEINE Agenda-Folie.
+- "script": 1–2 Sätze Hook (kein Willkommen), danach in einem Satz der Fahrplan
+  nur gesprochen, nicht als Folie.
+
+Nur JSON."""
 
 _SOURCES_SYSTEM = """Du erweiterst einen Lernvortrag um wissenschaftliches Zusatzwissen
 aus gelieferten Suchtreffern. Nutze NUR die Snippets/Titel – keine erfundenen
@@ -648,6 +685,54 @@ def _fallback_opening_script(title: str, hook: str, agenda_points: list[str]) ->
     return f"{hook} Danach der Fahrplan zu {title}: {agenda}."
 
 
+def _fallback_opening_slides_youtube(title: str, subject: Optional[str], hook: str) -> str:
+    subj_line = (
+        f'<p class="eyebrow">{subject or "Lernvortrag"}</p>\n\n' if subject else "")
+    return f"<!-- _class: lead -->\n\n{subj_line}# {title}\n\n### {hook}\n"
+
+
+def _slide_heading(body: str) -> str:
+    for line in (body or "").splitlines():
+        m = re.match(r"^#{1,3}\s+(.+?)\s*$", line.strip())
+        if m:
+            return re.sub(r"[*`_]+", "", m.group(1)).strip()
+    return ""
+
+
+def _force_youtube_card(body: str) -> str:
+    raw_title = _slide_heading(body)
+    if not raw_title:
+        item = ""
+        for line in (body or "").splitlines():
+            stripped = line.strip()
+            m = _LIST_ITEM_RE.match(stripped)
+            if m:
+                item = re.sub(r"^(?:[-*+]|\d+[.)])\s+", "", stripped)
+                item = re.sub(r"[*`_]+", "", item).strip()
+                break
+        raw_title = item or "Kern"
+    words = raw_title.split()
+    short = " ".join(words[:4])
+    return f"<!-- _class: card -->\n\n## **{short}**\n"
+
+
+def pack_youtube_slides(slides: str) -> str:
+    """Agenda weg, Content/Split/Warn zu Card oder Accent."""
+    chunks: list[str] = []
+    for body in _iter_slide_bodies(slides):
+        cls = _slide_class_name(body)
+        if cls == "agenda":
+            continue
+        if cls in {"lead", "accent", "card", "sources"}:
+            chunks.append(body)
+            continue
+        if cls == "accent" or "> " in body or body.strip().startswith(">"):
+            chunks.append(body)
+            continue
+        chunks.append(_force_youtube_card(body))
+    return _join_slide_chunks(chunks)
+
+
 def _iter_slide_bodies(slides: str) -> list[str]:
     text = _strip_frontmatter(str(slides or "")).strip()
     if not text:
@@ -953,9 +1038,10 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
         split_sections = 0
 
         toc, excerpts = _thematic_toc_and_excerpts(usable)
+        opening_prompt = _OPENING_PROMPT_YOUTUBE if youtube_style else _OPENING_PROMPT
         open_slides, open_script, trunc = _llm_slides_script(
             llm_obj,
-            _OPENING_PROMPT.format(
+            opening_prompt.format(
                 title=title, subject=subject or "–", toc=toc, excerpts=excerpts[:3500]),
             system=_SECTION_SYSTEM,
             num_predict=1600,
@@ -966,8 +1052,12 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
             agenda_points = _agenda_points_from_usable(usable)
             hook = _fallback_hook_line(title, excerpts)
             if not open_slides:
-                open_slides = _fallback_opening_slides(
-                    title, subject, agenda_points, hook)
+                if youtube_style:
+                    open_slides = _fallback_opening_slides_youtube(
+                        title, subject, hook)
+                else:
+                    open_slides = _fallback_opening_slides(
+                        title, subject, agenda_points, hook)
             if not open_script:
                 open_script = _fallback_opening_script(title, hook, agenda_points)
         slide_chunks.append(open_slides)
@@ -1002,7 +1092,9 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
             section_ok = False
             section_scripts: list[str] = []
             for chunk in body_chunks:
-                prompt = _SECTION_PROMPT.format(
+                section_prompt = (
+                    _SECTION_PROMPT_YOUTUBE if youtube_style else _SECTION_PROMPT)
+                prompt = section_prompt.format(
                     title=display_title, label=label, body=chunk)
                 try:
                     slides, script, trunc = _llm_slides_script(
@@ -1085,6 +1177,9 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
                 "⚙️ Einstellungen, ob ein Modell läuft, und versuche es erneut.")
 
         body = clamp_slide_grammar(_join_slide_chunks(slide_chunks))
+        if youtube_style:
+            body = pack_youtube_slides(body)
+            body = clamp_slide_grammar(body)
         marp_md = validate_marp_markdown(
             "---\nmarp: true\npaginate: true\n---\n\n" + body)
         script = _join_talk_script(script_parts)
