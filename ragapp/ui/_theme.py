@@ -49,7 +49,8 @@ _THEME_CSS = """
   from {opacity:0; transform:translateY(10px) scale(.975);}
   to   {opacity:1; transform:translateY(0) scale(1);}
 }
-.karte {
+.karte,
+div[class*="st-key-karte_"] {
     position:relative; overflow:hidden;
     border:1px solid rgba(31,58,99,.08); border-radius:22px;
     padding:32px 32px 26px;
@@ -58,13 +59,20 @@ _THEME_CSS = """
     box-shadow:0 18px 34px -12px rgba(31,58,99,.28), 0 2px 8px rgba(31,58,99,.08);
     animation:ragKarteIn .4s cubic-bezier(.22,1,.36,1) both;
 }
-.karte::before {
+.karte::before,
+div[class*="st-key-karte_"]::before {
     content:""; position:absolute; top:0; left:0; right:0; height:7px;
     background:linear-gradient(90deg,#61C9A8 0%,#B7ECDC 100%);
 }
-.karte-frage {font-weight:700; color:#1f3a63; font-size:1.05em;}
+.karte-frage,
+div[class*="st-key-karte_front"] {
+    font-weight:700; color:#1f3a63; font-size:1.05em;
+}
+div[class*="st-key-karte_"] [data-testid="stMarkdown"] {
+    font-size:inherit; line-height:inherit;
+}
 @media (prefers-reduced-motion: reduce) {
-  .karte {animation:none !important;}
+  .karte, div[class*="st-key-karte_"] {animation:none !important;}
 }
 .stButton > button { white-space:normal; overflow-wrap:anywhere; }
 
@@ -164,12 +172,14 @@ html.rag-dark .badge-answer{background:#0f3d2a !important; color:#4ade80 !import
 html.rag-dark .badge-fallback{background:#3a2a12 !important; color:#fbbf24 !important;}
 
 /* --- Karteikarte (Dark) - gleicher Kopfstreifen-Look, marineblaue Flaeche - */
-html.rag-dark .karte{
+html.rag-dark .karte,
+html.rag-dark div[class*="st-key-karte_"]{
     background:linear-gradient(160deg,#132b4d 0%,#0d2038 100%) !important;
     border-color:#1e3a5f !important; color:#dbe6f5 !important;
     box-shadow:0 18px 34px -12px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.3) !important;
 }
-html.rag-dark .karte-frage{color:#eaf1fb !important;}
+html.rag-dark .karte-frage,
+html.rag-dark div[class*="st-key-karte_front"]{color:#eaf1fb !important;}
 </style>
 """
 

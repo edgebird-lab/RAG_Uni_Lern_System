@@ -419,6 +419,10 @@ def test_lernen_zeigt_stapel_vor_der_lernset_fabrik():
     assert "Stapel ankreuzen" in src
     assert "Bestand ·" in src
     assert "heading: bool = True" in src
+    assert "def _render_karte" in src
+    assert "normalize_card_latex" in src
+    assert 'kind="front"' in src
+    assert "unsafe_allow_html=True)" not in src.split("Vorderseite")[1].split("st.write")[0]
 
 
 def test_chat_leerer_verlauf_scrollt_nicht_zur_eingabe():

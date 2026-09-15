@@ -22,6 +22,12 @@ from ragapp.manifest import FEHLERHEFT_DECK
 _LATEX_RE = re.compile(
     r"\$[^$]+\$|\\\(|\\\[|\\begin\{|\\frac|\\sum|\\int|\\lim|\\vec|"
     r"\\mathbb|\\mathrm|\\partial|\\cdot")
+_LATEX_CMD_RE = re.compile(
+    r"\\(?:frac|sum|int|lim|sqrt|cdot|mathbb|mathrm|partial|vec|"
+    r"infty|alpha|beta|gamma|delta|varepsilon|epsilon|theta|lambda|"
+    r"mu|pi|sigma|omega|to|rightarrow|leq|geq|neq|times|in|subset|"
+    r"cup|cap|left|right|overline|hat|bar|text|sin|cos|tan|log|ln|"
+    r"exp|begin|end|mathbf|mathcal)\b")
 _FORMULA_SYM_RE = re.compile(r"[=∑∫√±≤≥≈∞∂∇]|\\[a-zA-Z]+")
 _FORMULA_WORD_RE = re.compile(
     r"(?i)\b(formel|gleichung|ableitung|integral|matrix|determinante|"
@@ -340,6 +346,96 @@ def oral_weak_card_ids(session: dict, *, threshold: int = 75) -> list[str]:
     return ids
 
 
+def clip_preserving_math(text: Optional[str], limit: int) -> str:
+    """Kürzt Text, ohne ein geöffnetes ``$...$`` in der Mitte abzuschneiden."""
+    raw = text or ""
+    if limit <= 0 or len(raw) <= limit:
+        return raw
+    cut = raw[:limit]
+    if cut.count("$") % 2 == 0:
+        return cut
+    rest = raw[limit:]
+    nxt = rest.find("$")
+    if nxt < 0:
+        return cut
+    return raw[:limit + nxt + 1]
+
+
+def _latex_span_end(s: str, i: int) -> int:
+    """Ende eines LaTeX-Befehls inkl. ``{...}``-Argumenten und ``^``/``_``."""
+    n = len(s)
+    if i >= n or s[i] != "\\":
+        return min(i + 1, n)
+    j = i + 1
+    while j < n and s[j].isalpha():
+        j += 1
+    while True:
+        k = j
+        while k < n and s[k].isspace():
+            k += 1
+        if k < n and s[k] == "{":
+            j = k
+            depth = 0
+            while j < n:
+                if s[j] == "{":
+                    depth += 1
+                elif s[j] == "}":
+                    depth -= 1
+                    j += 1
+                    if depth == 0:
+                        break
+                    continue
+                j += 1
+            continue
+        if k < n and s[k] in "^_":
+            j = k + 1
+            if j < n and s[j] == "{":
+                continue
+            if j < n:
+                j += 1
+            continue
+        break
+    return j
+
+
+def normalize_card_latex(text: Optional[str]) -> str:
+    """Macht Karten-LaTeX display-tauglich: ``\\(`` → ``$``, nackte ``\\frac`` wrappen.
+
+    Ändert nicht die gespeicherte Karte – nur die Anzeige und den Anki-Export.
+    """
+    s = text or ""
+    if not s.strip():
+        return s
+    s = re.sub(
+        r"\\\\(frac|sum|int|lim|sqrt|cdot|mathbb|mathrm|partial|vec)\b",
+        r"\\\1", s)
+    s = s.replace("\\[", "$$").replace("\\]", "$$")
+    s = s.replace("\\(", "$").replace("\\)", "$")
+    out: list[str] = []
+    i = 0
+    n = len(s)
+    in_math = False
+    while i < n:
+        if s.startswith("$$", i):
+            in_math = not in_math
+            out.append("$$")
+            i += 2
+            continue
+        if s[i] == "$":
+            in_math = not in_math
+            out.append("$")
+            i += 1
+            continue
+        if not in_math and _LATEX_CMD_RE.match(s, i):
+            j = _latex_span_end(s, i)
+            out.append("$" + s[i:j] + "$")
+            i = j
+            continue
+        out.append(s[i])
+        i += 1
+    return "".join(out)
+
+
 def card_looks_like_formula(card: dict) -> bool:
     """True, wenn Vorder- oder Rückseite nach einer echten Formel aussieht."""
     front = (card.get("front") or "").strip()
@@ -446,7 +542,9 @@ def card_from_text(front: str, back: str, *, source: str = "text",
     manifest.upsert_review_items([{
         "card_id": cid, "source": source, "chroma_id": None,
         "subject": subject, "topic": topic,
-        "front": q[:400], "back": a[:4000], "answer": a[:4000], "doc_id": doc_id,
+        "front": clip_preserving_math(q, 400),
+        "back": clip_preserving_math(a, 4000),
+        "answer": clip_preserving_math(a, 4000), "doc_id": doc_id,
     }])
     if deck:
         manifest.assign_deck(deck, card_ids=[cid])

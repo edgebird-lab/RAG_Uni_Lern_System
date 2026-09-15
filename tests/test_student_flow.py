@@ -277,6 +277,28 @@ def test_card_looks_like_formula_erkennt_latex_und_gleichung():
         "front": "Was ist ein Deckungsbeitrag?", "back": "Erlös minus variable Kosten."})
 
 
+def test_normalize_card_latex_wrappt_nacktes_frac():
+    out = student_flow.normalize_card_latex(r"Ableitung: \frac{d}{dx} x^2")
+    assert r"$\frac{d}{dx}$" in out
+    already = r"Was ist $\frac{a}{b}$?"
+    assert student_flow.normalize_card_latex(already) == already
+    parens = student_flow.normalize_card_latex(r"\(x^2\)")
+    assert parens == "$x^2$"
+
+
+def test_normalize_card_latex_laesst_fliessetext():
+    text = "Was ist der Deckungsbeitrag?"
+    assert student_flow.normalize_card_latex(text) == text
+
+
+def test_clip_preserving_math_schliesst_dollar():
+    raw = "a" * 20 + "$langeformel" + "b" * 30 + "$ ende"
+    out = student_flow.clip_preserving_math(raw, 25)
+    assert out.count("$") % 2 == 0
+    assert out.endswith("$") or "$" not in out
+    assert student_flow.clip_preserving_math("kurz", 10) == "kurz"
+
+
 def test_sprint_inventory_und_prefer_formula_vs_definition(isolated_db):
     student_flow.card_from_text(
         r"Ableitung von $x^2$", "2x", subject="Analysis", source="note")

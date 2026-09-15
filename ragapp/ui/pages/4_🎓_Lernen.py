@@ -49,6 +49,16 @@ def _fach_label(code: str) -> str:
     return SUBJECT_LABELS.get(code, code)
 
 
+def _render_karte(text: str, *, kind: str = "front") -> None:
+    """Kartenfläche mit Markdown/KaTeX – nicht als HTML-Div (sonst bleiben $...$ roh)."""
+    from ragapp.student_flow import normalize_card_latex
+    body = normalize_card_latex(text)
+    key = {"front": "karte_front", "back": "karte_back", "cloze": "karte_cloze"}.get(
+        kind, "karte_front")
+    with st.container(key=key):
+        st.markdown(body or "")
+
+
 # --------------------------------------------------------------------------- #
 # Karten-Bestand
 # --------------------------------------------------------------------------- #
@@ -750,8 +760,7 @@ else:
             st.caption("⚡ Formel-/Definitionssprint – kurz und knapp, etwa 30 Sekunden pro Karte.")
 
     # Vorderseite
-    st.markdown(f"<div class='karte karte-frage'>{karte['front']}</div>",
-                unsafe_allow_html=True)
+    _render_karte(karte.get("front") or "", kind="front")
     st.write("")
 
     _mode = st.session_state.get("_study_mode", "reveal")
@@ -776,7 +785,7 @@ else:
                 cz = grading.make_cloze(_ref) or ["", []]
                 st.session_state["_cloze"] = cz
             if cz[1]:
-                st.markdown(f"<div class='karte'>🧩 {cz[0]}</div>", unsafe_allow_html=True)
+                _render_karte("🧩 " + cz[0], kind="cloze")
                 st.write("")
                 st.text_input("Fehlender Begriff", key="_cloze_in",
                               placeholder="Wort in die Lücke …")
@@ -878,15 +887,16 @@ else:
         # ist, der Original-Chunk als Notbehelf. LaTeX rendert via Markdown.
         _ans = (karte.get("answer") or "").strip()
         if _ans:
-            st.markdown(_ans)
+            _render_karte(_ans, kind="back")
             if (karte.get("back") or "").strip() and karte.get("source") == "question":
+                from ragapp.student_flow import normalize_card_latex as _ntex
                 with st.expander("📄 Beleg / Originaltext"):
-                    st.markdown(karte["back"])
+                    st.markdown(_ntex(karte["back"]))
         else:
             st.warning("Für diese Karte gibt es noch **keine** Musterlösung – gezeigt "
                        "wird der Originaltext. Tipp: oben unter **⚙️ Karten verwalten → "
                        "Antworten erzeugen** die KI-Antworten nachziehen.")
-            st.markdown(karte.get("back") or "")
+            _render_karte(karte.get("back") or "", kind="back")
         st.write("")
         st.caption("Wie gut wusstest du es? (**1** Nicht · **2** Halb · **3** Gewusst · "
                    "am Handy: Karte ← nicht / gewusst → wischen)")
@@ -1002,7 +1012,7 @@ else:
       var EDGE = 24; // px - siehe Kommentar unten
       doc.addEventListener('touchstart', function(e) {
         var el = e.target && e.target.closest
-          ? e.target.closest('.karte, .karte-frage, [data-testid="stHorizontalBlock"]')
+          ? e.target.closest('.karte, .karte-frage, [class*="st-key-karte_"], [data-testid="stHorizontalBlock"]')
           : null;
         // Nur werten, wenn eine Karte sichtbar ist (Bewertungsbuttons existieren)
         if (!doc.querySelector('.st-key-rate_gewusst button')) { sx = null; return; }
