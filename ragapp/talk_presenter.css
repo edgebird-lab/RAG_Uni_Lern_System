@@ -64,6 +64,34 @@ body.talk-presenter-on > section:not(.talk-slide-on) {
   color: #d96b4c;
 }
 
+.talk-title-rule {
+  display: block;
+  height: 4px;
+  width: 0;
+  max-width: 100%;
+  background: #d96b4c;
+  margin-top: 0.18em;
+  border-radius: 2px;
+  opacity: 0;
+}
+
+.talk-col:not(.is-on) {
+  opacity: 0;
+  transform: translateY(0.45em);
+}
+
+.talk-col.is-on {
+  opacity: 1;
+  transform: none;
+}
+
+.talk-bullet.is-current {
+  border-left: 6px solid #c9a227;
+  padding-left: 0.4em;
+  background: rgba(201, 162, 39, 0.14);
+  border-radius: 0 8px 8px 0;
+}
+
 body.talk-presenter-on svg.bespoke-marp-slide.talk-slide-on,
 body.talk-presenter-on > section.talk-slide-on {
   z-index: 1;

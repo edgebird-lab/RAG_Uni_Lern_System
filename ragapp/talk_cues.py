@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
-CUE_VERSION = 2
+CUE_VERSION = 3
 VIDEO_WIDTH = 1280
 VIDEO_HEIGHT = 720
 
@@ -25,8 +25,9 @@ _EVENT_ORDER = {
     "slide": 0,
     "title": 1,
     "punch": 2,
-    "bullet": 3,
-    "keyword": 4,
+    "col": 3,
+    "bullet": 4,
+    "keyword": 5,
 }
 
 
@@ -89,6 +90,14 @@ def parse_slide_body(body: str) -> dict[str, Any]:
             if text:
                 bullets.append(text)
                 bullet_keywords.append(_emphasis_words(raw_item))
+    n_cols = 0
+    if class_name == "split":
+        divs = len(re.findall(r"(?i)<div\b", raw))
+        inner_heads = max(0, len(_HEADING_RE.findall(raw)) - 1)
+        if divs >= 3:
+            n_cols = max(2, divs - 1)
+        else:
+            n_cols = max(2, inner_heads or 2)
     return {
         "class_name": class_name,
         "title": title,
@@ -96,6 +105,7 @@ def parse_slide_body(body: str) -> dict[str, Any]:
         "title_keywords": title_keywords,
         "bullet_keywords": bullet_keywords,
         "punch": class_name == "accent" or has_quote,
+        "n_cols": n_cols,
     }
 
 
@@ -136,8 +146,10 @@ def _attach_motion_events(
     slide_events: list[dict[str, Any]],
     parsed: dict[str, Any],
     slide_idx: int,
+    *,
+    end_s: Optional[float] = None,
 ) -> list[dict[str, Any]]:
-    """Haengt keyword/punch an, unbekannte Typen bleiben fuer den Presenter egal."""
+    """Haengt keyword/punch/col an, unbekannte Typen bleiben fuer den Presenter egal."""
     title_t = next((e["t"] for e in slide_events if e.get("type") == "title"), None)
     bullet_t = {
         e["i"]: e["t"] for e in slide_events
@@ -151,6 +163,19 @@ def _attach_motion_events(
             "type": "punch",
             "slide": slide_idx,
         })
+    n_cols = int(parsed.get("n_cols") or 0)
+    if n_cols > 0:
+        start = fallback
+        end = float(end_s) if end_s is not None else start + 4.0
+        span_start = title_t if title_t is not None else start
+        remain = max(0.05, end - span_start)
+        for ci in range(n_cols):
+            extra.append({
+                "t": _round_t(min(span_start + ci * remain / n_cols, max(start, end - 0.01))),
+                "type": "col",
+                "slide": slide_idx,
+                "i": ci,
+            })
     for spec in _keyword_specs(parsed):
         if spec["anchor"] == "title":
             t = title_t if title_t is not None else fallback
@@ -209,7 +234,7 @@ def build_talk_cues(marp_md: str, *, duration_s: float,
                     "slide": i,
                     "i": bi,
                 })
-        _attach_motion_events(slide_events, parsed, i)
+        _attach_motion_events(slide_events, parsed, i, end_s=end)
         events.extend(slide_events)
         slides.append({
             "index": i,
@@ -219,6 +244,7 @@ def build_talk_cues(marp_md: str, *, duration_s: float,
             "title_keywords": parsed.get("title_keywords") or [],
             "bullet_keywords": parsed.get("bullet_keywords") or [],
             "punch": bool(parsed.get("punch")),
+            "n_cols": int(parsed.get("n_cols") or 0),
             "start_s": _round_t(start),
             "end_s": _round_t(end),
             "events": slide_events,
@@ -302,7 +328,7 @@ def map_timeline_to_cues(marp_md: str, timeline: list[dict[str, Any]],
                     "slide": i,
                     "i": bi,
                 })
-        _attach_motion_events(slide_events, slide, i)
+        _attach_motion_events(slide_events, slide, i, end_s=end)
         events.extend(slide_events)
         slides_out.append({
             **slide,

@@ -69,7 +69,7 @@ def test_parse_slide_extracts_class_title_bullets():
 
 def test_build_talk_cues_placeholder_timing():
     cues = build_talk_cues(FIXTURE_MD, duration_s=12.0)
-    assert cues["version"] == 2
+    assert cues["version"] == 3
     assert cues["width"] == 1280
     assert cues["height"] == 720
     assert cues["duration_s"] == 12.0
@@ -285,3 +285,36 @@ marp: true
     assert bullet["t"] == 1.4
     assert kw["t"] == 1.4
     assert kw["text"] == "Keyword"
+
+
+def test_split_cues_emit_two_cols():
+    md = """\
+---
+marp: true
+---
+
+<!-- _class: split -->
+
+## Vergleich
+
+<div class="cols">
+<div>
+
+### Abrufen
+
+- Karteikarten
+</div>
+<div>
+
+### Nachlesen
+
+- Skript nochmal
+</div>
+</div>
+"""
+    parsed = parse_slide_body(split_marp_slides(md)[0])
+    assert parsed["n_cols"] >= 2
+    cues = build_talk_cues(md, duration_s=6.0)
+    cols = [e for e in cues["events"] if e["type"] == "col"]
+    assert [e["i"] for e in cols] == [0, 1]
+    assert cols[1]["t"] > cols[0]["t"]

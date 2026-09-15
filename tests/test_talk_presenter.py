@@ -67,9 +67,13 @@ def test_seek_reveals_title_then_bullets(tmp_path):
 
         page.evaluate("t => window.TalkPresenter.seek(t)", after_bullet)
         assert page.locator("section.agenda .talk-bullet.is-on").count() == 1
+        assert page.locator("section.agenda .talk-bullet.is-current").count() == 1
 
         page.evaluate("t => window.TalkPresenter.seek(t)", 7.9)
         assert page.locator("section.agenda .talk-bullet.is-on").count() == 2
+        current = page.locator("section.agenda .talk-bullet.is-current")
+        assert current.count() == 1
+        assert current.inner_text().startswith("Beispiel")
         browser.close()
 
 
@@ -154,7 +158,9 @@ def test_seek_title_letters_and_slide_fade(tmp_path):
     path = tmp_path / "presenter.html"
     path.write_text(html, encoding="utf-8")
     agenda = next(s for s in cues["slides"] if s["class_name"] == "agenda")
-    first_bullet_t = next(e["t"] for e in agenda["events"] if e.get("i") == 0)
+    first_bullet_t = next(
+        e["t"] for e in agenda["events"]
+        if e.get("type") == "bullet" and e.get("i") == 0)
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -171,10 +177,69 @@ def test_seek_title_letters_and_slide_fade(tmp_path):
         page.evaluate("t => window.TalkPresenter.seek(t)", 0.45)
         assert page.locator("section.lead .talk-letter.is-on").count() == letters.count()
         assert page.locator("section.agenda .talk-bullet.is-on").count() == 0
+        rule_w = page.locator("section.lead .talk-title-rule").evaluate("el => el.style.width")
+        assert rule_w.endswith("%")
+        assert float(rule_w[:-1]) > 0
 
         page.evaluate("t => window.TalkPresenter.seek(t)", agenda["start_s"] + 0.1)
         assert page.locator("section.agenda.talk-slide-on").count() == 1
         assert page.locator("section.lead.talk-slide-prev").count() == 1
         assert page.locator("section.agenda .talk-bullet.is-on").count() == 0
         assert first_bullet_t > agenda["start_s"]
+        browser.close()
+
+
+SPLIT_MARP = """\
+---
+marp: true
+---
+
+<!-- _class: split -->
+
+## Vergleich
+
+<div class="cols">
+<div>
+
+### Abrufen
+
+- Karten
+</div>
+<div>
+
+### Nachlesen
+
+- Skript
+</div>
+</div>
+"""
+
+
+def test_seek_split_columns(tmp_path):
+    from playwright.sync_api import sync_playwright
+
+    html_src = """<!DOCTYPE html><html><body>
+<section class="split">
+  <h2>Vergleich</h2>
+  <div class="cols">
+    <div><h3>Abrufen</h3><ul><li>Karten</li></ul></div>
+    <div><h3>Nachlesen</h3><ul><li>Skript</li></ul></div>
+  </div>
+</section>
+</body></html>"""
+    cues = build_talk_cues(SPLIT_MARP, duration_s=6.0)
+    html = inject_talk_presenter(html_src, cues)
+    path = tmp_path / "split.html"
+    path.write_text(html, encoding="utf-8")
+    col1 = next(e for e in cues["events"] if e["type"] == "col" and e["i"] == 1)
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.goto(path.as_uri(), wait_until="load")
+        page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
+        page.evaluate("t => window.TalkPresenter.seek(t)", 0.05)
+        assert page.locator(".talk-col.is-on").count() == 1
+        page.evaluate("t => window.TalkPresenter.seek(t)", col1["t"] + 0.05)
+        assert page.locator(".talk-col.is-on").count() == 2
         browser.close()

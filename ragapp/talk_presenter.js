@@ -7,6 +7,7 @@
   const SLIDE_FADE_S = 0.55;
   const KEYWORD_PUNCH_S = 0.35;
   const MERKSATZ_S = 0.35;
+  const TITLE_RULE_S = 0.35;
 
   const TalkPresenter = {
     cues: null,
@@ -75,6 +76,11 @@
         if (heading) {
           heading.classList.add("talk-title");
           this._wrapLetters(heading);
+          if (!heading.querySelector(".talk-title-rule")) {
+            const rule = document.createElement("span");
+            rule.className = "talk-title-rule";
+            heading.appendChild(rule);
+          }
         }
         const lis = [...section.querySelectorAll("li")].filter(
           (li) => !li.parentElement.closest("li"),
@@ -82,6 +88,10 @@
         lis.forEach((li, i) => {
           li.classList.add("talk-bullet");
           li.dataset.talkBullet = String(i);
+        });
+        section.querySelectorAll(".cols > div").forEach((col, i) => {
+          col.classList.add("talk-col");
+          col.dataset.talkCol = String(i);
         });
         section.querySelectorAll("strong, b").forEach((el, i) => {
           el.classList.add("talk-keyword");
@@ -109,6 +119,7 @@
       const bullets = new Set();
       const keywords = new Set();
       const keywordStart = {};
+      const cols = new Set();
       let punchOn = false;
       let punchStart = 0;
       const events = this.cues.events || [];
@@ -121,12 +132,15 @@
           titleOn = false;
           bullets.clear();
           keywords.clear();
+          cols.clear();
           punchOn = false;
         } else if (ev.type === "title" && ev.slide === slide) {
           titleOn = true;
           titleStart = ev.t;
         } else if (ev.type === "bullet" && ev.slide === slide) {
           bullets.add(ev.i);
+        } else if (ev.type === "col" && ev.slide === slide) {
+          cols.add(ev.i);
         } else if (ev.type === "keyword" && ev.slide === slide) {
           keywords.add(ev.i);
           if (keywordStart[ev.i] == null) keywordStart[ev.i] = ev.t;
@@ -142,8 +156,8 @@
         ? Math.min(1, Math.max(0, (t - slideStart) / SLIDE_FADE_S))
         : 1;
       return {
-        slide, prevSlide, slideStart, titleOn, letterFrac, fade, bullets,
-        keywords, keywordStart, punchOn, punchStart,
+        slide, prevSlide, slideStart, titleOn, titleStart, letterFrac, fade, bullets,
+        keywords, keywordStart, punchOn, punchStart, cols,
       };
     },
 
@@ -194,10 +208,32 @@
               span.style.color = "";
             }
           });
+          const rule = title.querySelector(".talk-title-rule");
+          if (rule) {
+            const ruleFrac = isCurr && state.titleOn
+              ? this._frac(t, state.titleStart + TITLE_LETTER_S, TITLE_RULE_S)
+              : 0;
+            rule.classList.toggle("is-on", ruleFrac > 0);
+            rule.style.width = `${Math.round(ruleFrac * 1000) / 10}%`;
+            rule.style.opacity = ruleFrac > 0 ? "1" : "0";
+          }
         }
         section.querySelectorAll(".talk-bullet").forEach((li) => {
           const idx = Number(li.dataset.talkBullet);
           li.classList.toggle("is-on", isCurr && state.bullets.has(idx));
+        });
+        if (section.classList.contains("agenda")) {
+          const ons = [...section.querySelectorAll(".talk-bullet.is-on")];
+          ons.forEach((li, idx) => {
+            li.classList.toggle("is-current", idx === ons.length - 1);
+          });
+          section.querySelectorAll(".talk-bullet:not(.is-on)").forEach((li) => {
+            li.classList.remove("is-current");
+          });
+        }
+        section.querySelectorAll(".talk-col").forEach((col) => {
+          const idx = Number(col.dataset.talkCol);
+          col.classList.toggle("is-on", isCurr && state.cols.has(idx));
         });
         section.querySelectorAll(".talk-keyword").forEach((el) => {
           if (el.closest(".talk-title")) return;

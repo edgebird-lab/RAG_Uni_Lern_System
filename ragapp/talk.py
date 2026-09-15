@@ -349,6 +349,13 @@ section.content h2 {
   padding-bottom: 0.2em;
   display: inline-block;
 }
+.talk-title-rule {
+  display: block;
+  height: 4px;
+  background: var(--coral);
+  margin-top: 0.18em;
+  border-radius: 2px;
+}
 
 /* Zwei Spalten */
 section.split h2 { color: var(--petrol); }
