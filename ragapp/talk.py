@@ -102,8 +102,8 @@ YouTube-Shots, KEINE Unterrichtsfolien. Antworte als JSON:
   oder <!-- _class: accent -->  EIN Merksatz als Absatz/Blockquote, KEINE Liste
   VERBOTEN: content, split, agenda, warn-Listen, Stichpunkte.
   Die Stimme trägt den Satz, die Folie zeigt ein Wort.
-- "script": gesprochene Erklärung in deutschen Sätzen (kein Markdown, kein JSON),
-  YouTube-Pacing: kurze Sätze, alle paar Sekunden eine neue Aussage.
+- "script": gesprochenes YouTube, Du-Form. Kurze Sätze (eine Aussage, dann Punkt).
+  Erkläre, warum das in der Klausur zählt. Kein „Willkommen“, kein Folientext vorlesen.
 
 Falls kein Inhalt: {{"slides": "", "script": "(kein erklärbarer Inhalt)"}}
 Nur JSON."""
@@ -151,8 +151,9 @@ Erzeuge die ERÖFFNUNG als JSON:
   <!-- _class: lead -->
   Cold Open: Optional <p class="eyebrow">FACH</p>, # Titel mit einem **Hook-Wort**,
   ### eine kühne Behauptung. KEINE Stichpunkte, KEINE Agenda-Folie.
-- "script": 1–2 Sätze Hook (kein Willkommen), danach in einem Satz der Fahrplan
-  nur gesprochen, nicht als Folie.
+- "script": Erste 3 Sekunden eine direkte Frage an dich (Du), dann 1 Satz
+  Behauptung. Kein Willkommen, keine Agenda-Folie. Danach in einem Satz:
+  warum das in der Klausur zählt.
 
 Nur JSON."""
 
@@ -685,6 +686,14 @@ def _fallback_opening_script(title: str, hook: str, agenda_points: list[str]) ->
     return f"{hook} Danach der Fahrplan zu {title}: {agenda}."
 
 
+def _fallback_opening_script_youtube(title: str, hook: str) -> str:
+    name = (title or "der Stoff").strip()
+    return (
+        f"Weißt du, warum {name} in der Klausur Punkte kostet? "
+        f"{hook} Darum musst du das abrufen können."
+    )
+
+
 def _fallback_opening_slides_youtube(title: str, subject: Optional[str], hook: str) -> str:
     subj_line = (
         f'<p class="eyebrow">{subject or "Lernvortrag"}</p>\n\n' if subject else "")
@@ -760,6 +769,35 @@ def pack_youtube_slides(slides: str) -> str:
                 continue
             chunks.append(_force_youtube_card(piece))
     return _join_slide_chunks(chunks)
+
+
+def _youtube_takeaway_slide(script: str) -> str:
+    text = " ".join((script or "").split())
+    parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", text) if p.strip()]
+    last = parts[-1] if parts else "Das bleibt für die Klausur hängen."
+    if len(last) > 140:
+        last = last[:137].rsplit(" ", 1)[0] + "…"
+    return (
+        "<!-- _class: accent -->\n\n"
+        "## Merke dir das\n\n"
+        f"> {last}\n"
+    )
+
+
+def _ensure_youtube_takeaway(slides: str, script: str) -> str:
+    bodies = _iter_slide_bodies(slides)
+    take = _youtube_takeaway_slide(script)
+    if not bodies:
+        return take
+    for body in bodies:
+        title = _slide_heading(body).lower()
+        if _slide_class_name(body) == "accent" and "merke dir das" in title:
+            return slides
+    if _slide_class_name(bodies[-1]) == "sources":
+        bodies.insert(-1, take)
+        return _join_slide_chunks(bodies)
+    bodies.append(take)
+    return _join_slide_chunks(bodies)
 
 
 def _iter_slide_bodies(slides: str) -> list[str]:
@@ -1088,7 +1126,10 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
                     open_slides = _fallback_opening_slides(
                         title, subject, agenda_points, hook)
             if not open_script:
-                open_script = _fallback_opening_script(title, hook, agenda_points)
+                if youtube_style:
+                    open_script = _fallback_opening_script_youtube(title, hook)
+                else:
+                    open_script = _fallback_opening_script(title, hook, agenda_points)
         slide_chunks.append(open_slides)
         script_parts.append(open_script)
         step += 1
@@ -1206,12 +1247,13 @@ def generate_talk_content(doc_ids: list[str], *, title: str,
                 "⚙️ Einstellungen, ob ein Modell läuft, und versuche es erneut.")
 
         body = clamp_slide_grammar(_join_slide_chunks(slide_chunks))
+        script = _join_talk_script(script_parts)
         if youtube_style:
             body = pack_youtube_slides(body)
+            body = _ensure_youtube_takeaway(body, script)
             body = clamp_slide_grammar(body)
         marp_md = validate_marp_markdown(
             "---\nmarp: true\npaginate: true\n---\n\n" + body)
-        script = _join_talk_script(script_parts)
         if len(script) > hard_cap:
             script = script[:hard_cap].rsplit(" ", 1)[0] + "…"
             hit_hard_cap = True
@@ -1760,6 +1802,9 @@ def write_concat_list(slide_pngs: list[Path], per_slide_s: float,
 
 
 RECORD_FPS = 30
+YOUTUBE_HOLD_S = 2.0
+YOUTUBE_BED_VOLUME = 0.26
+_EXPLAINER_BED_VOLUME = 0.16
 
 
 def record_presenter_video(
@@ -1788,17 +1833,23 @@ def record_presenter_video(
     output_mp4.parent.mkdir(parents=True, exist_ok=True)
     duration_s = max(0.2, float(duration_s))
     fps = max(1, int(fps))
-    timeout = max(120, int(duration_s * fps * 2) + 90)
+    width = max(320, int(width))
+    height = max(180, int(height))
+    timeout = max(
+        120,
+        int(duration_s * fps * (4 if width >= 1920 else 2)) + 90,
+    )
     rec_log = output_mp4.with_suffix(".record.log")
     rec_cmd = [
         node, str(script.resolve()),
         str(Path(html_path).resolve()), chrome,
         f"{duration_s:.3f}", str(fps),
-        str(int(width)), str(int(height)),
+        str(width), str(height),
     ]
     ff_cmd = [
         ffmpeg, "-y",
         "-f", "image2pipe", "-vcodec", "mjpeg", "-framerate", str(fps), "-i", "pipe:0",
+        "-vf", f"scale={width}:{height}:flags=lanczos",
         "-c:v", "libx264", "-pix_fmt", "yuv420p",
     ]
     if stillimage:
@@ -1838,12 +1889,19 @@ def record_presenter_video(
 def mux_video_with_talk_audio(video_path: Path, audio_path: Path,
                               output_mp4: Path, *,
                               music_bed: bool = False,
-                              youtube: bool = False) -> Path:
+                              youtube: bool = False,
+                              hold_s: float = 0.0,
+                              shot_times: Optional[list] = None) -> Path:
     """Hängt die Vortrags-WAV an ein stummes MP4 (AAC + Lautheit)."""
+    hold_s = max(0.0, float(hold_s or 0))
+    times = [float(t) for t in (shot_times or []) if float(t) > 0.15][:48]
     if music_bed:
         mixed = _mux_with_music_bed(
-            video_path, audio_path, output_mp4, youtube=youtube)
+            video_path, audio_path, output_mp4, youtube=youtube, hold_s=hold_s)
         if mixed:
+            if times:
+                sfx = _mix_cut_sfx(mixed, output_mp4, times)
+                return sfx or mixed
             return mixed
         log.warning("Musikbett übersprungen, mux nur Stimme")
     ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
@@ -1854,17 +1912,35 @@ def mux_video_with_talk_audio(video_path: Path, audio_path: Path,
         "-c:v", "copy",
     ]
     tail = ["-shortest", "-movflags", "+faststart", str(output_mp4)]
-    proc = subprocess.run(
-        base + _video_aac_args() + tail,
-        capture_output=True, text=True, timeout=300, check=False)
+    if hold_s > 0.05:
+        from ragapp.audio_loudness import LOUDNORM_FILTER
+        hold_cmd = (
+            base
+            + ["-filter_complex",
+               f"[1:a]apad=pad_dur={hold_s:.3f},{LOUDNORM_FILTER}[a]",
+               "-map", "0:v", "-map", "[a]",
+               "-c:a", "aac", "-b:a", "192k"]
+            + tail
+        )
+        proc = subprocess.run(
+            hold_cmd, capture_output=True, text=True, timeout=300, check=False)
+    else:
+        proc = subprocess.run(
+            base + _video_aac_args() + tail,
+            capture_output=True, text=True, timeout=300, check=False)
     if proc.returncode != 0 or not output_mp4.is_file() or output_mp4.stat().st_size < 200:
         log.warning("AAC+loudnorm fehlgeschlagen, mux ohne Filter: %s",
                     (proc.stderr or "")[-300:])
+        pad = (
+            ["-af", f"apad=pad_dur={hold_s:.3f}"] if hold_s > 0.05 else [])
         proc = subprocess.run(
-            base + ["-c:a", "aac", "-b:a", "192k"] + tail,
+            base + ["-c:a", "aac", "-b:a", "192k"] + pad + tail,
             capture_output=True, text=True, timeout=300, check=False)
     if proc.returncode != 0 or not output_mp4.is_file():
         raise TalkError(f"ffmpeg (Tonspur) fehlgeschlagen: {(proc.stderr or '')[-600:]}")
+    if times:
+        sfx = _mix_cut_sfx(output_mp4, output_mp4, times)
+        return sfx or output_mp4
     return output_mp4
 
 
@@ -1906,8 +1982,101 @@ def _make_quiet_drone(path: Path, duration_s: float) -> Optional[Path]:
     return path
 
 
+def _shot_cut_times(cues: dict, *, hold_s: float = 0.0) -> list[float]:
+    """Schnitt-Zeitpunkte für Click-SFX; Start und letztes Stück auslassen."""
+    duration = float(cues.get("duration_s") or 0)
+    out: list[float] = []
+    for ev in cues.get("events") or []:
+        if ev.get("type") != "shot":
+            continue
+        t = float(ev.get("t") or 0)
+        if t < 0.25:
+            continue
+        if duration and t >= max(0.4, duration - 0.4):
+            continue
+        out.append(round(t, 3))
+    return out[:48]
+
+
+def _make_cut_click(path: Path) -> Optional[Path]:
+    """Kurzer Schnitt-Click; nie die TTS-Referenzstimme."""
+    path = Path(path)
+    if path.name.lower() in _BED_FORBIDDEN:
+        return None
+    ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+    cmd = [
+        ffmpeg, "-y",
+        "-f", "lavfi",
+        "-i", "sine=frequency=1400:duration=0.045:sample_rate=44100",
+        "-af", "afade=t=out:st=0.012:d=0.033,volume=0.32",
+        "-ac", "2", str(path),
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=False)
+    if proc.returncode != 0 or not path.is_file() or path.stat().st_size < 200:
+        return None
+    return path
+
+
+def _mix_cut_sfx(video_path: Path, output_mp4: Path,
+                 times_s: list[float]) -> Optional[Path]:
+    """Mischt Schnitt-Clicks auf die Tonspur (Screenshots haben kein WebAudio)."""
+    times_s = [float(t) for t in times_s if float(t) > 0.15][:48]
+    if not times_s:
+        return None
+    ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+    video_path = Path(video_path)
+    output_mp4 = Path(output_mp4)
+    click = output_mp4.parent / "_yt_cut_click.wav"
+    if click.name.lower() in _BED_FORBIDDEN:
+        return None
+    tmp_out: Optional[Path] = None
+    try:
+        if not _make_cut_click(click):
+            return None
+        parts: list[str] = []
+        labels: list[str] = []
+        for i, t in enumerate(times_s):
+            ms = max(1, int(round(t * 1000)))
+            lab = f"sfx{i}"
+            parts.append(f"[1:a]adelay={ms}|{ms},volume=0.5[{lab}]")
+            labels.append(f"[{lab}]")
+        n = 1 + len(labels)
+        filt = ";".join(parts + [
+            "[0:a]" + "".join(labels)
+            + f"amix=inputs={n}:duration=first:dropout_transition=0:normalize=0[a]"
+        ])
+        same = video_path.resolve() == output_mp4.resolve()
+        tmp_out = (
+            output_mp4.with_name(output_mp4.stem + "._sfx.mp4") if same else output_mp4)
+        cmd = [
+            ffmpeg, "-y",
+            "-i", str(video_path),
+            "-i", str(click),
+            "-filter_complex", filt,
+            "-map", "0:v", "-map", "[a]",
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+            "-shortest", "-movflags", "+faststart",
+            str(tmp_out),
+        ]
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=300, check=False)
+        if proc.returncode != 0 or not tmp_out.is_file() or tmp_out.stat().st_size < 200:
+            log.warning("Schnitt-SFX übersprungen: %s", (proc.stderr or "")[-300:])
+            if same and tmp_out.is_file():
+                tmp_out.unlink(missing_ok=True)
+            return None
+        if same:
+            tmp_out.replace(output_mp4)
+        return output_mp4
+    finally:
+        click.unlink(missing_ok=True)
+        if tmp_out is not None and tmp_out != output_mp4:
+            tmp_out.unlink(missing_ok=True)
+
+
 def _mux_with_music_bed(video_path: Path, audio_path: Path,
-                        output_mp4: Path, *, youtube: bool = False) -> Optional[Path]:
+                        output_mp4: Path, *, youtube: bool = False,
+                        hold_s: float = 0.0) -> Optional[Path]:
     ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
     bed = find_talk_music_bed()
     if not bed and youtube:
@@ -1924,18 +2093,51 @@ def _mux_with_music_bed(video_path: Path, audio_path: Path,
             duration = float(probe_audio_duration_s(audio_path))
         except Exception:  # noqa: BLE001
             duration = 4.0
+        duration += max(0.0, float(hold_s or 0))
         tmp_bed = Path(output_mp4).parent / "_bed_drone.wav"
         bed = _make_quiet_drone(tmp_bed, duration)
     if not bed:
         return None
     output_mp4 = Path(output_mp4)
     output_mp4.parent.mkdir(parents=True, exist_ok=True)
-    filt = (
-        "[2:a]volume=0.16[bed];"
-        "[1:a]asplit=2[sc][voice];"
-        "[bed][sc]sidechaincompress=threshold=0.03:ratio=8:attack=80:release=400[dk];"
-        "[voice][dk]amix=inputs=2:duration=first:dropout_transition=0[mix]"
-    )
+    hold_s = max(0.0, float(hold_s or 0))
+    if youtube:
+        speech_s = 4.0
+        try:
+            speech_s = float(probe_audio_duration_s(audio_path))
+        except Exception:  # noqa: BLE001
+            speech_s = 4.0
+        swell_at = max(0.0, speech_s + hold_s - YOUTUBE_HOLD_S)
+        voice = (
+            f"[1:a]apad=pad_dur={hold_s:.3f}[vp];[vp]asplit=2[sc][voice];"
+            if hold_s > 0.05 else
+            "[1:a]asplit=2[sc][voice];"
+        )
+        filt = (
+            voice
+            + f"[2:a]asplit=2[beda][bedb];"
+            f"[beda]volume={YOUTUBE_BED_VOLUME}[bed];"
+            f"[bedb]volume=0.20,afade=t=in:st={swell_at:.3f}:d={YOUTUBE_HOLD_S}[swell];"
+            "[bed][swell]amix=inputs=2:duration=longest:dropout_transition=0[bedmix];"
+            "[bedmix][sc]sidechaincompress=threshold=0.03:ratio=8:attack=80:release=400[dk];"
+            "[voice][dk]amix=inputs=2:duration=first:dropout_transition=0[mix]"
+        )
+        simple = (
+            f"[1:a]apad=pad_dur={hold_s:.3f},volume=1[voice];"
+            f"[2:a]volume={YOUTUBE_BED_VOLUME}[bed];"
+            "[voice][bed]amix=inputs=2:duration=first:dropout_transition=0[mix]"
+        )
+    else:
+        filt = (
+            f"[2:a]volume={_EXPLAINER_BED_VOLUME}[bed];"
+            "[1:a]asplit=2[sc][voice];"
+            "[bed][sc]sidechaincompress=threshold=0.03:ratio=8:attack=80:release=400[dk];"
+            "[voice][dk]amix=inputs=2:duration=first:dropout_transition=0[mix]"
+        )
+        simple = (
+            "[1:a]volume=1[voice];[2:a]volume=0.10[bed];"
+            "[voice][bed]amix=inputs=2:duration=first:dropout_transition=0[mix]"
+        )
     cmd = [
         ffmpeg, "-y",
         "-i", str(video_path),
@@ -1952,10 +2154,6 @@ def _mux_with_music_bed(video_path: Path, audio_path: Path,
         if proc.returncode == 0 and output_mp4.is_file() and output_mp4.stat().st_size > 200:
             return output_mp4
         log.warning("sidechain-Bett fehlgeschlagen, amix: %s", (proc.stderr or "")[-300:])
-        simple = (
-            "[1:a]volume=1[voice];[2:a]volume=0.10[bed];"
-            "[voice][bed]amix=inputs=2:duration=first:dropout_transition=0[mix]"
-        )
         cmd[cmd.index(filt)] = simple
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=False)
         if proc.returncode == 0 and output_mp4.is_file() and output_mp4.stat().st_size > 200:
@@ -2072,15 +2270,17 @@ def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
     out_path = TALK_DIR / out_rel
     silent = d / "talk.silent.mp4"
     backend = "presenter"
+    hold_s = YOUTUBE_HOLD_S if youtube else 0.0
+    shot_times = _shot_cut_times(cues) if youtube else []
     try:
         record_presenter_video(
-            video_html, silent, duration_s=cues["duration_s"],
+            video_html, silent, duration_s=float(cues["duration_s"]) + hold_s,
             width=int(cues.get("width") or 1280),
             height=int(cues.get("height") or 720),
             stillimage=not youtube)
         mux_video_with_talk_audio(
             silent, audio_path, out_path, music_bed=bool(music_bed),
-            youtube=youtube)
+            youtube=youtube, hold_s=hold_s, shot_times=shot_times)
     except TalkError as exc:
         log.warning("Presenter-Aufnahme fehlgeschlagen, Fallback Diashow: %s", exc)
         backend = "slideshow"
@@ -2097,7 +2297,8 @@ def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
         talk_id, backend=backend, cues_source=str(cues.get("source") or "placeholder"),
         music_bed=bool(music_bed), youtube=youtube, silence_trim=silence_trim,
         width=int(cues.get("width") or 1280),
-        height=int(cues.get("height") or 720))
+        height=int(cues.get("height") or 720),
+        hold_s=hold_s, cut_sfx=bool(shot_times))
     if row:
         manifest.update_talk(talk_id, video_path=out_rel)
     return out_rel
@@ -2106,7 +2307,8 @@ def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
 def write_talk_video_meta(talk_id: str, *, backend: str, cues_source: str,
                           music_bed: bool = False, youtube: bool = False,
                           silence_trim: bool = False,
-                          width: int = 1280, height: int = 720) -> None:
+                          width: int = 1280, height: int = 720,
+                          hold_s: float = 0.0, cut_sfx: bool = False) -> None:
     from ragapp.talk_cues import CUE_VERSION
     d = talk_dir(talk_id)
     fig_dir = d / "figures"
@@ -2133,6 +2335,8 @@ def write_talk_video_meta(talk_id: str, *, backend: str, cues_source: str,
             "silence_trim": bool(silence_trim),
             "width": int(width),
             "height": int(height),
+            "hold_s": float(hold_s),
+            "cut_sfx": bool(cut_sfx),
         }, ensure_ascii=False, indent=2),
         encoding="utf-8")
 
@@ -2161,7 +2365,7 @@ def create_talk_record(*, title: str, subject: Optional[str], doc_ids: list[str]
     from ragapp.talk_style import write_talk_style
     marp_md = attach_talk_figures(
         marp_md, doc_ids, dest_dir=talk_dir(tid) / "figures",
-        broll=bool(broll), broll_query=title or "")
+        broll=bool(broll) or bool(youtube_style), broll_query=title or "")
     save_marp_file(tid, marp_md)
     write_talk_style(tid, youtube=bool(youtube_style))
     return manifest.create_talk(

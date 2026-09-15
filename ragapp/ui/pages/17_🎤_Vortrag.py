@@ -183,8 +183,9 @@ if _active_id is None:
             "Lizenzierte B-Roll (Wikimedia/Openverse, Opt-in)",
             value=False,
             key="talk_use_broll",
-            help="Default aus. Nur wenn keine PDF-Abbildung da ist: höchstens "
-                 "zwei Bilder über SearXNG, lokal mit Lizenzhinweis gespeichert.")
+            help="Default aus. Im YouTube-Stil trotzdem an: leere Folien mit "
+                 "höchstens zwei lizenzieren Bildern füllen. Sonst nur Opt-in, "
+                 "wenn keine PDF-Abbildung da ist.")
         _youtube = st.checkbox(
             "YouTube-Stil (privat, schnelle Shots)",
             value=False,
@@ -215,7 +216,7 @@ if _active_id is None:
                     "subject": _new_subject, "doc_ids": _doc_ids,
                     "sources": _sources, "model": _used,
                     "warning": _warn,
-                    "broll": bool(_broll),
+                    "broll": bool(_broll) or bool(_youtube),
                     "youtube_style": bool(_youtube),
                 }
                 st.rerun()

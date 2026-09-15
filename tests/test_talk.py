@@ -170,6 +170,10 @@ def test_section_prompt_asks_for_sparse_slides():
     assert "GENAU EINE Folie" in _OPENING_PROMPT_YOUTUBE
     assert "KEINE Agenda-Folie" in _OPENING_PROMPT_YOUTUBE
     assert "VERBOTEN: content" in _SECTION_PROMPT_YOUTUBE
+    assert "Du-Form" in _SECTION_PROMPT_YOUTUBE
+    assert "Klausur" in _SECTION_PROMPT_YOUTUBE
+    assert "Erste 3 Sekunden" in _OPENING_PROMPT_YOUTUBE
+    assert "Klausur" in _OPENING_PROMPT_YOUTUBE
 
 
 def test_fallback_opening_is_cold_open_not_welcome():
@@ -224,6 +228,31 @@ def test_pack_youtube_slides_drops_agenda_and_cards_content():
     assert mashed.count("_class: accent") == 1
     assert "## **Testing**" in mashed
     assert "## **Abruf hält.**" in mashed
+
+
+def test_ensure_youtube_takeaway_adds_accent_before_sources():
+    from ragapp.talk import (
+        _ensure_youtube_takeaway,
+        _fallback_opening_script_youtube,
+    )
+    body = (
+        "<!-- _class: card -->\n\n## Karte 1\n\n"
+        "---\n\n<!-- _class: sources -->\n\n## Quellen\n- a\n"
+    )
+    packed = _ensure_youtube_takeaway(body, "Hallo Welt. Das merkst du dir.")
+    assert "Merke dir das" in packed
+    assert "_class: accent" in packed
+    assert packed.rfind("Merke dir das") < packed.rfind("Quellen")
+    assert "Das merkst du dir." in packed
+    again = _ensure_youtube_takeaway(packed, "Anderer Satz.")
+    assert again.count("Merke dir das") == 1
+    opening = _fallback_opening_script_youtube(
+        "Grounding", "Abrufen schlägt Nachlesen.")
+    assert "Weißt du" in opening
+    assert "Klausur" in opening
+    assert "Abrufen schlägt Nachlesen." in opening
+    src = Path("ragapp/talk.py").read_text(encoding="utf-8")
+    assert "body = _ensure_youtube_takeaway(body, script)" in src
 
 
 def test_thematic_toc_filters_page_titles():
@@ -398,12 +427,19 @@ def test_mux_video_with_talk_audio_uses_loudnorm():
     assert "Math.min(30" in rec
     assert "process.argv[6]" in rec
     assert "jpegQuality" in rec
+    assert "width >= 1920 ? 95" in rec
+    assert "deviceScaleFactor = width >= 1920 ? 2" in rec
     assert "music_bed: bool = False" in src
     assert "sidechaincompress" in src
+    assert "YOUTUBE_HOLD_S" in src
+    assert "YOUTUBE_BED_VOLUME" in src
+    assert "_mix_cut_sfx" in src
+    assert 'scale={width}:{height}:flags=lanczos' in src
     ui = Path("ragapp/ui/pages/17_🎤_Vortrag.py").read_text(encoding="utf-8")
     assert "talk_use_music_bed" in ui
     assert "talk_use_broll" in ui
     assert "talk_youtube_style" in ui
+    assert "bool(_broll) or bool(_youtube)" in ui
 
 
 def test_render_talk_video_falls_back_when_record_fails(isolated_db, tmp_path, monkeypatch):
@@ -466,6 +502,7 @@ def test_vortrag_seite_zeigt_video_hinweise():
     assert "passgenaue Punkte" in src
     assert "Abgebrochene Sätze" in helper
     assert "Stille kürzen" in src
+    assert "Im YouTube-Stil trotzdem an" in src
 
 
 def test_speech_windows_merge_and_remap():
@@ -569,3 +606,53 @@ def test_render_talk_video_trims_silence_only_for_youtube(isolated_db, tmp_path,
     meta2 = talk.read_talk_video_meta("trim1")
     assert meta2.get("youtube") is False
     assert meta2.get("silence_trim") is False
+
+
+def test_shot_cut_times_skips_open_and_tail():
+    times = talk._shot_cut_times({
+        "duration_s": 10.0,
+        "events": [
+            {"type": "shot", "t": 0.0},
+            {"type": "shot", "t": 3.2},
+            {"type": "word", "t": 4.0},
+            {"type": "shot", "t": 9.8},
+        ],
+    })
+    assert times == [3.2]
+
+
+def test_make_cut_click_skips_reference_name(tmp_path):
+    assert talk._make_cut_click(tmp_path / "reference.wav") is None
+    assert talk._make_cut_click(tmp_path / "ref.wav") is None
+
+
+def test_make_cut_click_writes_wav(tmp_path):
+    import shutil
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg fehlt")
+    path = tmp_path / "_yt_cut_click.wav"
+    out = talk._make_cut_click(path)
+    assert out == path
+    assert path.is_file()
+    assert path.stat().st_size > 200
+
+
+def test_create_talk_record_youtube_enables_broll(isolated_db, tmp_path, monkeypatch):
+    called = {}
+
+    def fake_attach(md, doc_ids, *, dest_dir, broll=False, broll_query=""):
+        called["broll"] = bool(broll)
+        return md
+
+    monkeypatch.setattr("ragapp.talk_figures.attach_talk_figures", fake_attach)
+    talks_dir = tmp_path / "talks"
+    talks_dir.mkdir()
+    monkeypatch.setattr(talk, "TALK_DIR", talks_dir)
+    monkeypatch.setattr("ragapp.config.TALK_DIR", talks_dir)
+    talk.create_talk_record(
+        title="T", subject="Livetest", doc_ids=[],
+        marp_md="---\nmarp: true\n---\n\n# Hi",
+        script_text="Hallo.",
+        broll=False, youtube_style=True, talk_id="ytbroll1")
+    assert called.get("broll") is True
+

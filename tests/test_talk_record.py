@@ -101,3 +101,30 @@ def test_record_presenter_video_youtube_1080(tmp_path):
 def test_record_presenter_video_missing_html_raises(tmp_path):
     with pytest.raises(TalkError):
         record_presenter_video(tmp_path / "nope.html", tmp_path / "x.mp4", duration_s=0.5, fps=5)
+
+
+def test_mux_youtube_hold_and_cut_sfx(tmp_path):
+    import subprocess
+    from ragapp.talk import probe_audio_duration_s
+    video = tmp_path / "v.mp4"
+    proc = subprocess.run(
+        ["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=320x180:d=3:r=5",
+         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-t", "3", str(video)],
+        capture_output=True, text=True, check=False)
+    if proc.returncode != 0 or not video.is_file():
+        pytest.skip(proc.stderr[-200:] if proc.stderr else "ffmpeg lavfi skip")
+    audio = _tiny_wav(tmp_path / "a.wav", 0.8)
+    out = tmp_path / "talk.mp4"
+    mux_video_with_talk_audio(
+        video, audio, out, youtube=True, hold_s=2.0, shot_times=[0.35])
+    assert out.is_file()
+    assert out.stat().st_size > 1000
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", str(out)],
+        capture_output=True, text=True, check=False)
+    if probe.returncode == 0:
+        dur = float(probe.stdout.strip())
+        assert dur >= 2.2
+    speech = probe_audio_duration_s(audio)
+    assert speech == pytest.approx(0.8, abs=0.15)

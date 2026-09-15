@@ -13,7 +13,8 @@ const durationS = Math.max(0.2, Number(process.argv[4]) || 1);
 const fps = Math.max(1, Math.min(30, Number(process.argv[5]) || 30));
 const width = Math.max(320, Math.round(Number(process.argv[6]) || 1280));
 const height = Math.max(180, Math.round(Number(process.argv[7]) || 720));
-const jpegQuality = width >= 1920 ? 90 : 82;
+const jpegQuality = width >= 1920 ? 95 : 82;
+const deviceScaleFactor = width >= 1920 ? 2 : 1;
 
 if (!htmlPath || !chromePath) {
   console.error("Usage: node marp_record.mjs <html> <chrome> <durationS> <fps> [width] [height]");
@@ -40,7 +41,7 @@ const browser = await puppeteer.launch({
 
 try {
   const page = await browser.newPage();
-  await page.setViewport({ width, height, deviceScaleFactor: 1 });
+  await page.setViewport({ width, height, deviceScaleFactor });
   await page.goto(fileUrl, { waitUntil: "networkidle0", timeout: 120000 });
   await page.evaluate(() => {
     document.querySelectorAll(
