@@ -235,6 +235,14 @@ h3 { font-size: 1.1em; color: var(--petrol); }
 ul, ol { margin: 0.2em 0 0.2em 1.05em; }
 li { margin: 0.28em 0; }
 li::marker { color: var(--coral); font-weight: 700; }
+img {
+  max-width: 100%;
+  max-height: 42vh;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(20,35,58,.12);
+  background: rgba(255,255,255,.4);
+}
 strong { color: var(--coral); font-weight: 700; }
 a { color: var(--petrol); }
 code, pre {
@@ -1603,6 +1611,9 @@ def create_talk_record(*, title: str, subject: Optional[str], doc_ids: list[str]
                        talk_id: Optional[str] = None) -> str:
     """Legt DB-Eintrag an und speichert talk.md."""
     tid = talk_id or uuid.uuid4().hex[:16]
+    from ragapp.talk_figures import attach_talk_figures
+    marp_md = attach_talk_figures(
+        marp_md, doc_ids, dest_dir=talk_dir(tid) / "figures")
     save_marp_file(tid, marp_md)
     return manifest.create_talk(
         title=title, subject=subject, doc_ids=doc_ids,
