@@ -285,6 +285,7 @@ if _snap:
                     "wenn du jetzt nicht noch kurz lernst.")
 
         _card_total = int((_home_manifest.review_counts() or {}).get("total") or 0)
+        from ragapp import student_flow as _sf
         if _card_total > 0:
             if st.button("▶ Heute starten", type="primary",
                           key="heute_start", use_container_width=True,
@@ -302,7 +303,19 @@ if _snap:
         elif _needs_harvest:
             st.caption("Noch keine Karteikarten – zuerst das Lernset übernehmen.")
         else:
-            st.caption("Noch keine Karteikarten – unter Karteikarten ein Lernset anlegen.")
+            _stoff_faecher = _sf.subjects_needing_lernset()
+            if _stoff_faecher:
+                if st.button("Unterlagen da – Lernset fehlt", type="primary",
+                             key="heute_lernset", use_container_width=True,
+                             help="Karten aus den vorhandenen Unterlagen erzeugen."):
+                    _subj0 = _stoff_faecher[0]
+                    st.session_state["lernset_docs_prefill"] = [
+                        d["doc_id"] for d in _home_manifest.list_documents()
+                        if d.get("subject") == _subj0
+                    ]
+                    st.switch_page(_target["lernen"])
+            else:
+                st.caption("Noch keine Karteikarten – unter Karteikarten ein Lernset anlegen.")
 
         # Dringlichkeit zuerst; max. 3 kurze Chips, Rest steht in der Zeitleiste.
         _chips_priority: list[str] = []
@@ -398,7 +411,6 @@ if _snap:
 
         _tp = _snap.get("top_priority") or {}
         _tp_subj = SUBJECT_LABELS.get(_tp.get("subject"), _tp.get("subject")) if _tp else None
-        from ragapp import student_flow as _sf
         _vs = _sf.pick_verstehen_topic()
         if _vs:
             _vs_label = (_vs["topic"] or "").strip()
@@ -721,6 +733,21 @@ with card("missionen"):
                         st.session_state["splan_focus_block_ids"] = list(
                             _m["block_ids"])
                     st.switch_page(_target["lernplan"])
+                elif _m["kind"] == "skript":
+                    st.session_state["skript_prefill"] = _m.get("prefill") or {
+                        "subject": _m.get("subject"),
+                        "doc_id": _m.get("doc_id"),
+                        "heading": _m.get("heading"),
+                        "minutes": _m.get("minutes") or 20,
+                    }
+                    st.switch_page(_target["skript"])
+                elif _m["kind"] == "verstehen":
+                    st.session_state["verstehen_prefill"] = _m.get("prefill") or {
+                        "subject": _m.get("subject"),
+                        "topic": _m.get("topic"),
+                        "minutes": _m.get("minutes") or 20,
+                    }
+                    st.switch_page(_target["chat"])
                 else:
                     st.session_state["study_prefill"] = {
                         "source": "mission", "limit": 16, "mode": "reveal",
@@ -729,7 +756,7 @@ with card("missionen"):
                     }
                     st.switch_page(_target["lernen"])
     else:
-        st.caption("Keine Missionen – erst Karten oder einen Lernplan anlegen.")
+        st.caption("Keine Missionen – erst Karten, einen Lernplan oder Unterlagen anlegen.")
 
 st.markdown("#### Direkt zu")
 _pin_cols = st.columns(2)

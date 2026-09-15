@@ -81,8 +81,8 @@ if _prefill:
         st.session_state["_practice_prefill_doc_ids"] = _prefill.get("doc_ids") or []
         st.session_state["_practice_prefill_all_docs"] = not (_prefill.get("doc_ids") or [])
         st.session_state["practice_gen_topic"] = _prefill.get("topic") or ""
-        st.session_state["practice_gen_expander"] = True
         _pids = [p for p in (_prefill.get("problem_ids") or []) if p]
+        st.session_state["practice_gen_expander"] = not bool(_pids)
         if _pids:
             st.session_state["practice_choice"] = _pids[0]
         if _prefill.get("block_id"):
@@ -91,8 +91,12 @@ if _prefill:
         if _src == "coverage":
             st.info("🧮 Vorbelegt aus der Lernziel-Lücke – Thema und Fach stehen "
                     "im Generator; vorhandene Aufgaben siehst du in der Liste.")
+        elif _src == "plan" and _pids:
+            st.info("🧮 Vorbelegt aus dem Lernplan – vorhandene Aufgabe ist geöffnet.")
         elif _src == "plan":
             st.info("🧮 Vorbelegt aus dem Lernplan – unten Art/Modell wählen und generieren.")
+        elif _pids:
+            st.info("🧮 Vorhandene Aufgabe ist geöffnet – du kannst direkt üben.")
         else:
             st.info("🧮 Fach und Thema sind vorbelegt – unten Art/Modell wählen und generieren.")
     elif _psubj:

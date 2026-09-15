@@ -398,6 +398,11 @@ def test_home_heute_starten_steht_vor_den_chips():
     assert 'key="heute_verstehen"' in src
     assert "skript_prefill" in src
     assert 'key="heute_skript"' in src
+    assert 'key="heute_lernset"' in src
+    assert "lernset_docs_prefill" in src
+    assert src.index('key="heute_lernset"') < src.index("rag-heute-chips")
+    assert '_m["kind"] == "skript"' in src
+    assert '_m["kind"] == "verstehen"' in src
 
 
 def test_lernen_zeigt_stapel_vor_der_lernset_fabrik():
@@ -407,7 +412,8 @@ def test_lernen_zeigt_stapel_vor_der_lernset_fabrik():
     assert 'st.subheader("Stapel")' in src
     assert src.index('"▶️ Jetzt lernen"') < src.index('"Übungsmodus"')
     assert src.index('"▶️ Jetzt lernen"') < src.index(
-        '"Lernset erstellen",\n            expanded=bool(st.session_state.get("_lernset_result"))')
+        '"Lernset erstellen",\n            expanded=bool(st.session_state.get("_lernset_result")')
+    assert "lernset_docs_prefill" in src
     assert src.index('key="start_study"') < src.index("Nichts fällig")
     assert "_go2, _go3, _go4 = st.columns(3)" in src
     assert "Stapel ankreuzen" in src
@@ -506,6 +512,21 @@ def test_kurskarten_nutzen_dichte_kennzahlen():
     assert "_c1, _c2, _c3, _c4 = st.columns(4)" not in src
     assert 'key=f"kurs_skript_{_subj}"' in src
     assert "skript_prefill" in src
+    assert 'key=f"kurs_lernset_{_subj}"' in src
+    assert "lernset_docs_prefill" in src
+    assert "expanded=not _kurs_aktiv" in src
+    assert "Lernset aus diesem Fach" in src
+
+
+def test_lernplan_block_hat_verstehen_und_vorhandene_uebung():
+    from pathlib import Path
+    src = Path("ragapp/ui/pages/11_📋_Lernplan.py").read_text(encoding="utf-8")
+    assert 'key=f"splan_verstehen_{bl[\'block_id\']}"' in src
+    assert "verstehen_prefill" in src
+    assert "pick_existing_practice" in src
+    assert '"problem_ids"' in src
+    assert 'key=f"splan_docs_{bl[\'block_id\']}"' in src
+    assert "pages/0_💬_Chat.py" in src
 
 
 def test_fortschritt_nennt_lernstand_statt_klausurstatus():
@@ -525,6 +546,9 @@ def test_uebung_legende_ist_chips_und_fach_kommt_aus_der_url():
     assert "rag-legend" in src
     assert "seed_selectbox_from_query" in src
     assert 'sync_query_param("fach"' in src
+    assert "vorhandene Aufgabe" in src
+    assert "practice_gen_expander" in src
+    assert "not bool(_pids)" in src
     chat = Path("ragapp/ui/pages/0_💬_Chat.py").read_text(encoding="utf-8")
     assert "seed_selectbox_from_query" in chat
     lernen = Path("ragapp/ui/pages/4_🎓_Lernen.py").read_text(encoding="utf-8")

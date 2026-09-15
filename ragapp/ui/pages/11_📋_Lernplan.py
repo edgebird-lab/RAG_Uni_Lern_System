@@ -663,8 +663,6 @@ with card("zeitplan"):
                             + (" · Fokus" if _day_focus else ""),
                             expanded=(d == date.today().isoformat() or _day_focus)):
                 for bl in _day_blocks:
-                    bcol1, bcol2, bcol3, bcol4, bcol5, bcol6 = st.columns(
-                        [3.2, 1, 1, .7, .7, .7])
                     title = _sec_title.get(bl["section_id"], "Abschnitt")
                     section = _sec_by_id.get(bl["section_id"], {})
                     source_doc_ids = list(dict.fromkeys(
@@ -683,6 +681,7 @@ with card("zeitplan"):
                     ]
                     _src_txt = f" · {', '.join(_src_titles[:2])}" if _src_titles else ""
                     _focus_mark = " · 👈 Fokus" if bl["block_id"] in _focus_blocks else ""
+                    bcol1, bcol2 = st.columns([4.2, 1])
                     bcol1.write(
                         f"{_mark} {title}{_src_txt} · {_fmt_min(bl['planned_min'])}{_focus_mark}")
                     if bcol2.button("Erledigt" if not bl["done"] else "↩️",
@@ -694,36 +693,49 @@ with card("zeitplan"):
                             st.balloons()
                         st.rerun()
                     if not bl["done"]:
-                        if bcol3.button("🍅 Pomodoro", key=f"splan_pomo_{bl['block_id']}",
-                                        use_container_width=True,
-                                        help="Startet einen Pomodoro-Arbeitsblock auf der "
-                                             "Lernzeit-Seite; nach Abschluss gilt dieser "
-                                             "Block automatisch als erledigt."):
+                        a1, a2, a3, a4, a5 = st.columns(5)
+                        if a1.button("🍅 Pomodoro", key=f"splan_pomo_{bl['block_id']}",
+                                     use_container_width=True,
+                                     help="Startet einen Pomodoro-Arbeitsblock auf der "
+                                          "Lernzeit-Seite; nach Abschluss gilt dieser "
+                                          "Block automatisch als erledigt."):
                             st.session_state["pomo_prefill"] = {
                                 "subject": _plan["subject"], "minutes": bl["planned_min"],
                                 "block_id": bl["block_id"],
                             }
                             st.switch_page("pages/10_⏱️_Lernzeit.py")
-                        if bcol4.button("Karten", key=f"splan_cards_{bl['block_id']}",
-                                        help="Karten zu diesem Stoffabschnitt"):
+                        if a2.button("Karten", key=f"splan_cards_{bl['block_id']}",
+                                     use_container_width=True,
+                                     help="Karten zu diesem Stoffabschnitt"):
                             from ragapp.student_flow import prefill_from_plan_block
                             st.session_state["study_prefill"] = prefill_from_plan_block(
                                 bl["block_id"], limit=12, mode="reveal")
                             st.switch_page("pages/4_🎓_Lernen.py")
-                        if bcol5.button("Übung", key=f"splan_prac_{bl['block_id']}",
-                                        help="Eine Übung zu diesem Stoffabschnitt"):
-                            from ragapp.student_flow import prefill_from_plan_block
+                        if a3.button("Übung", key=f"splan_prac_{bl['block_id']}",
+                                     use_container_width=True,
+                                     help="Vorhandene Übung zu diesem Abschnitt, sonst Generator"):
+                            from ragapp.student_flow import (
+                                pick_existing_practice, prefill_from_plan_block)
                             _pre = prefill_from_plan_block(bl["block_id"])
-                            st.session_state["practice_prefill"] = {
+                            _topic = ((_pre.get("topics") or [title])[0]
+                                      if (_pre.get("topics") or [title]) else title)
+                            _pid = pick_existing_practice(
+                                subject=_pre.get("subject"), topic=_topic,
+                                doc_ids=_pre.get("doc_ids") or source_doc_ids)
+                            _prac = {
+                                "source": "plan",
                                 "subject": _pre.get("subject"),
                                 "doc_ids": _pre.get("doc_ids") or [],
-                                "topic": ((_pre.get("topics") or [title])[0]
-                                          if (_pre.get("topics") or [title]) else title),
+                                "topic": _topic,
                                 "block_id": bl["block_id"],
                             }
+                            if _pid:
+                                _prac["problem_ids"] = [_pid]
+                            st.session_state["practice_prefill"] = _prac
                             st.switch_page("pages/13_🧮_Übungsaufgaben.py")
-                        if bcol6.button("Skript", key=f"splan_docs_{bl['block_id']}",
-                                        help="20 Minuten in der Unterlage zu diesem Abschnitt"):
+                        if a4.button("Skript", key=f"splan_docs_{bl['block_id']}",
+                                     use_container_width=True,
+                                     help="20 Minuten in der Unterlage zu diesem Abschnitt"):
                             _did = source_doc_ids[0] if source_doc_ids else None
                             st.session_state["skript_prefill"] = {
                                 "subject": _plan.get("subject"),
@@ -733,3 +745,13 @@ with card("zeitplan"):
                                 "minutes": 20,
                             }
                             st.switch_page("pages/18_📖_Skript.py")
+                        if a5.button("Verstehen", key=f"splan_verstehen_{bl['block_id']}",
+                                     use_container_width=True,
+                                     help="20 Minuten Dialog zu diesem Abschnitt"):
+                            st.session_state["verstehen_prefill"] = {
+                                "subject": _plan.get("subject"),
+                                "topic": title,
+                                "minutes": 20,
+                                "block_id": bl["block_id"],
+                            }
+                            st.switch_page("pages/0_💬_Chat.py")

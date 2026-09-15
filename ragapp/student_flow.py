@@ -168,6 +168,34 @@ def prefill_from_plan_block(block_id: str, **extra) -> dict:
     return out
 
 
+def pick_existing_practice(*, subject: Optional[str] = None,
+                           topic: Optional[str] = None,
+                           doc_ids: Optional[list] = None) -> Optional[str]:
+    """Vorhandene Übung zum Abschnitt, sonst None – kein Generator-Zwang."""
+    rows = manifest.list_practice_problems(subject=subject, limit=80)
+    if not rows:
+        return None
+    topic_n = (topic or "").strip().lower()
+    wanted = {d for d in (doc_ids or []) if d}
+
+    def _topic(row: dict) -> str:
+        return (row.get("topic") or "").strip().lower()
+
+    if topic_n:
+        for row in rows:
+            if _topic(row) == topic_n:
+                return row.get("problem_id")
+        for row in rows:
+            t = _topic(row)
+            if t and (topic_n in t or t in topic_n):
+                return row.get("problem_id")
+    if wanted:
+        for row in rows:
+            if row.get("doc_id") in wanted:
+                return row.get("problem_id")
+    return None
+
+
 def mark_plan_block_done(block_id: str, via: str = "manual") -> None:
     """Block abhaken und Planstatus nachziehen."""
     if not block_id:
@@ -1092,10 +1120,11 @@ def weak_subject() -> Optional[str]:
 
 
 def daily_missions() -> list[dict]:
-    """Maximal drei Tagesmissionen: fällige Karten, ein schwaches Thema, ein Planblock.
+    """Maximal drei Tagesmissionen: fällige Karten, schwaches Thema, Planblock.
 
-    Der Planblock wird auf PLAN_MAX_DAILY_FOCUS_MIN gedeckelt, damit die Mission
-    ehrlich bleibt. Jede Mission hat Dauer und Begründung.
+    Wenn Plätze frei sind (nichts fällig, kein Plan), füllen Skript und
+    Verstehen auf. Fällige Karten werden nicht verdrängt. Der Planblock
+    wird auf PLAN_MAX_DAILY_FOCUS_MIN gedeckelt.
     """
     from ragapp import analytics
     from ragapp.config import settings
@@ -1169,6 +1198,35 @@ def daily_missions() -> list[dict]:
             "plan_id": b0.get("plan_id"),
             "block_ids": [b.get("block_id") for b in blocks if b.get("block_id")],
         })
+    if len(missions) < 3:
+        sk = pick_skript_spot()
+        if sk:
+            heading = (sk.get("heading") or sk.get("filename") or "Skript").strip()
+            missions.append({
+                "id": "skript",
+                "kind": "skript",
+                "title": f"Skript: {plain_study_snippet(heading, limit=36)}",
+                "minutes": max(5, int(sk.get("minutes") or 20)),
+                "reason": "Unterlage lesen und markieren – danach sitzt der Stoff besser.",
+                "subject": sk.get("subject"),
+                "doc_id": sk.get("doc_id"),
+                "heading": sk.get("heading"),
+                "prefill": sk,
+            })
+    if len(missions) < 3:
+        vs = pick_verstehen_topic()
+        if vs:
+            topic = (vs.get("topic") or "Thema").strip()
+            missions.append({
+                "id": "verstehen",
+                "kind": "verstehen",
+                "title": f"Verstehen: {plain_study_snippet(topic, limit=36)}",
+                "minutes": max(5, int(vs.get("minutes") or 20)),
+                "reason": "Ein Thema im Dialog klären, ohne auf fällige Karten zu warten.",
+                "subject": vs.get("subject"),
+                "topic": vs.get("topic"),
+                "prefill": vs,
+            })
     return missions[:3]
 
 
@@ -1807,6 +1865,20 @@ def course_cockpit_bucket(snapshot: dict, *, has_cards: bool) -> str:
     if int(snapshot.get("doc_count") or 0) > 0:
         return "stoff"
     return "import"
+
+
+def subjects_needing_lernset() -> list[str]:
+    """Fächer mit Unterlagen, aber ohne Karten – kein Fixture, Inbox oder Importrest."""
+    study = set(manifest.study_subjects())
+    seen: list[str] = []
+    for raw in manifest.list_documents():
+        subj = (dict(raw).get("subject") or "").strip()
+        if not subj or subj in study or subj in seen:
+            continue
+        if is_fixture_subject(subj) or is_placeholder_subject(subj) or is_inbox_subject(subj):
+            continue
+        seen.append(subj)
+    return seen
 
 
 def plain_study_snippet(text: Optional[str], *, limit: int = 42) -> str:

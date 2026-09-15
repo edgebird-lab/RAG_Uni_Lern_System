@@ -952,6 +952,49 @@ def test_pick_skript_spot_nimmt_echtes_dokument(isolated_db, tmp_path):
     assert got["heading"]
 
 
+def test_pick_existing_practice_nimmt_thema_dann_dokument(isolated_db):
+    p_topic = manifest.create_practice_problem(
+        subject="BWL", doc_id="d1", topic="Kostenrechnung",
+        problem_text="Aufgabe A", steps=["Schritt 1"])
+    p_doc = manifest.create_practice_problem(
+        subject="BWL", doc_id="d2", topic="Anderes",
+        problem_text="Aufgabe B", steps=["Schritt 1"])
+    assert student_flow.pick_existing_practice(
+        subject="BWL", topic="Kostenrechnung", doc_ids=["d2"]) == p_topic
+    assert student_flow.pick_existing_practice(
+        subject="BWL", topic="Deckungsbeitrag", doc_ids=["d2"]) == p_doc
+    assert student_flow.pick_existing_practice(
+        subject="BWL", topic="Nirgends", doc_ids=["dx"]) is None
+    assert student_flow.pick_existing_practice(
+        subject="Mathe", topic="Kostenrechnung") is None
+
+
+def test_pick_existing_practice_fuzzy_thema(isolated_db):
+    pid = manifest.create_practice_problem(
+        subject="BWL", doc_id="d1", topic="Kostenrechnung Teil 1",
+        problem_text="A", steps=["s"])
+    assert student_flow.pick_existing_practice(
+        subject="BWL", topic="Kostenrechnung") == pid
+
+
+def test_subjects_needing_lernset_ohne_karten(isolated_db):
+    manifest.upsert_document(
+        doc_id="d1", content_hash="h", source_path="x.md", filename="x.md",
+        subject="BWL", filetype="md", num_chunks=1, num_questions=0,
+        char_count=10, status="ok")
+    manifest.upsert_document(
+        doc_id="liv", content_hash="h", source_path="l.md", filename="l.md",
+        subject="Livetest", filetype="md", num_chunks=1, num_questions=0,
+        char_count=10, status="ok")
+    manifest.upsert_document(
+        doc_id="inb", content_hash="h", source_path="i.md", filename="i.md",
+        subject="inbox", filetype="md", num_chunks=1, num_questions=0,
+        char_count=10, status="ok")
+    assert student_flow.subjects_needing_lernset() == ["BWL"]
+    student_flow.card_from_text("Q", "A", subject="BWL")
+    assert student_flow.subjects_needing_lernset() == []
+
+
 def test_pick_skript_spot_nimmt_heutigen_planblock(isolated_db, tmp_path):
     path = _write_skript_md(tmp_path)
     manifest.upsert_document(

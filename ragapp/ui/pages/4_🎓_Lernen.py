@@ -532,7 +532,8 @@ if not st.session_state.get(ACTIVE):
 
     with st.expander(
             "Lernset erstellen",
-            expanded=bool(st.session_state.get("_lernset_result"))):
+            expanded=bool(st.session_state.get("_lernset_result")
+                          or st.session_state.get("lernset_docs_prefill"))):
         _render_lernset_pfad(heading=False)
 
     # --- Karten ankreuzen (dauerhaft use_flashcard) ---

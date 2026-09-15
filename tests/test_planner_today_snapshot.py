@@ -185,6 +185,64 @@ def test_daily_missions_faellige_karten_und_planblock(isolated_db, monkeypatch):
         assert m["minutes"] > 0 and m["reason"]
 
 
+def test_daily_missions_ohne_faellige_nimmt_skript(isolated_db, tmp_path):
+    from ragapp import student_flow
+    path = tmp_path / "skript.md"
+    path.write_text(
+        "# Kostenrechnung\n\nDeckungsbeitrag ist Erlös minus variable Kosten.\n",
+        encoding="utf-8")
+    manifest.upsert_document(
+        doc_id="d-sk", content_hash="h", source_path=str(path),
+        filename="skript.md", subject="BWL", filetype="md",
+        num_chunks=1, num_questions=0, char_count=80, status="ok")
+    missions = student_flow.daily_missions()
+    kinds = [m["kind"] for m in missions]
+    assert "reviews" not in kinds
+    assert "skript" in kinds
+    sk = next(m for m in missions if m["kind"] == "skript")
+    assert sk["subject"] == "BWL"
+    assert sk["minutes"] == 20
+    assert sk["reason"]
+    assert sk.get("prefill", {}).get("doc_id") == "d-sk"
+
+
+def test_daily_missions_ohne_faellige_nimmt_verstehen(isolated_db):
+    from ragapp import student_flow
+    now = _time.time()
+    with manifest._connect() as conn:
+        conn.execute(
+            "INSERT INTO review_items (card_id, subject, topic, front, back, "
+            "suspended, use_flashcard, reps, created_at, due) "
+            "VALUES (?,?,?,?,?,0,1,3,?,?)",
+            ("c-later", "BWL", "Deckungsbeitrag",
+             "Was ist der Deckungsbeitrag?",
+             "Erlös minus variable Kosten in der Kosten- und Leistungsrechnung.",
+             now, now + 86400 * 10))
+    missions = student_flow.daily_missions()
+    kinds = [m["kind"] for m in missions]
+    assert "reviews" not in kinds
+    assert "verstehen" in kinds
+    vs = next(m for m in missions if m["kind"] == "verstehen")
+    assert vs["subject"] == "BWL"
+    assert vs["topic"] == "Deckungsbeitrag"
+    assert vs["minutes"] == 20
+    assert vs["reason"]
+
+
+def test_daily_missions_verdraengt_faellige_karten_nicht(isolated_db):
+    from ragapp import student_flow
+    now = _time.time()
+    with manifest._connect() as conn:
+        conn.execute(
+            "INSERT INTO review_items (card_id, subject, topic, front, back, "
+            "suspended, use_flashcard, reps, created_at, due) "
+            "VALUES (?,?,?,?,?,0,1,3,?,?)",
+            ("c-due", "BWL", "Kosten", "Fällige Frage zu Kosten", "A",
+             now, now - 3600))
+    missions = student_flow.daily_missions()
+    assert missions[0]["kind"] == "reviews"
+
+
 def test_daily_missions_bevorzugt_sicher_falsche_karte(isolated_db):
     from ragapp import student_flow
     now = _time.time()

@@ -218,7 +218,8 @@ else:
         "Prüfung": "Prüfung",
     }
 
-    def _render_kurs(_subj: str, _ks: dict, *, quiet: bool = False) -> None:
+    def _render_kurs(_subj: str, _ks: dict, *, quiet: bool = False,
+                     has_cards: bool = True) -> None:
         import html as _html
         with card(f"kurs_{_subj}"):
             st.markdown(
@@ -293,8 +294,18 @@ else:
                                 }
                                 st.switch_page("pages/4_🎓_Lernen.py")
             _act = _ks["next_action"]
+            _needs_set = bool(_ks.get("doc_count")) and not has_cards
+            if _needs_set:
+                if st.button("Lernset aus diesem Fach", type="primary",
+                             key=f"kurs_lernset_{_subj}", use_container_width=True,
+                             help="Karten aus den Unterlagen dieses Fachs erzeugen."):
+                    st.session_state["lernset_docs_prefill"] = [
+                        d["doc_id"] for d in manifest.list_documents()
+                        if d["subject"] == _subj
+                    ]
+                    st.switch_page("pages/4_🎓_Lernen.py")
             if st.button(_act_label.get(_act, "Weiter"),
-                         type="secondary" if quiet else "primary",
+                         type="secondary" if (quiet or _needs_set) else "primary",
                          key=f"kurs_act_{_subj}", use_container_width=True):
                 if _act == "lernen":
                     st.session_state["study_prefill"] = {
@@ -340,20 +351,20 @@ else:
         elif _bucket == "import":
             _kurs_import.append((_subj, _ks))
     for _subj, _ks in _kurs_aktiv:
-        _render_kurs(_subj, _ks)
+        _render_kurs(_subj, _ks, has_cards=_subj in _study_set)
     if _kurs_stoff:
         with st.expander(
                 f"Fächer mit Unterlagen, noch ohne Karten ({len(_kurs_stoff)})",
-                expanded=False):
-            st.caption("Unterlagen liegen schon da – als Nächstes Karten oder einen Lernplan.")
+                expanded=not _kurs_aktiv):
+            st.caption("Unterlagen liegen schon da – als Nächstes ein Lernset oder einen Lernplan.")
             for _subj, _ks in _kurs_stoff:
-                _render_kurs(_subj, _ks, quiet=True)
+                _render_kurs(_subj, _ks, quiet=True, has_cards=False)
     if _kurs_import:
         with st.expander(
                 f"Weitere Fächer aus Import ({len(_kurs_import)})", expanded=False):
             st.caption("Noch ohne Unterlagen oder Karten – Namen aus dem Semesterimport.")
             for _subj, _ks in _kurs_import:
-                _render_kurs(_subj, _ks, quiet=True)
+                _render_kurs(_subj, _ks, quiet=True, has_cards=False)
 
 # --------------------------------------------------------------------------- #
 # Wochen-Dashboard
