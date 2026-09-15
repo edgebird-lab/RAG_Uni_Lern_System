@@ -103,7 +103,7 @@ def slots_without_figure(marp_md: str) -> int:
     n = 0
     for body in split_marp_slides(marp_md):
         parsed = parse_slide_body(body)
-        if parsed["class_name"] in {"lead", "agenda", "sources"}:
+        if parsed["class_name"] in {"lead", "agenda", "sources", "card"}:
             continue
         if parsed.get("images"):
             continue

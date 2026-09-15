@@ -68,13 +68,15 @@ siehst du nicht – kurze natürliche Überleitung ist ok).
 Antworte als JSON-Objekt mit genau:
 - "slides": Marp-Folien OHNE YAML-Frontmatter und OHNE JSON/Code. 1–3 Folien,
   getrennt durch eine Zeile nur mit ---. Jede Folie beginnt mit:
-  <!-- _class: content --> oder accent|split|warn
+  <!-- _class: content --> oder accent|split|warn|card
   YouTube-Grammatik, KEINE Folienwände:
   * eine Idee pro Folie
-  * Klassen mischen (nicht nur content): z. B. accent-Merksatz + content
-    oder split-Vergleich
+  * Klassen mischen (nicht nur content): bevorzugt **card** (ein Wort/Zahl
+    füllt die Folie) oder **accent**-Merksatz, sonst split-Vergleich
+  * card: nur Überschrift mit **einem** Keyword oder einer Zahl, KEINE Liste
   * accent: EIN Merksatz als Absatz oder Blockquote, KEINE Stichpunktliste
-  * content/warn: höchstens 3 Stichpunkte, kurze Zeilen
+  * content/warn: höchstens 3 Stichpunkte, kurze Zeilen – nur wenn card/accent
+    den Satz nicht tragen
   * split: cols-HTML, je Spalte höchstens 3 Zeilen
   * in Titel oder erstem Punkt GENAU EINEN Fachbegriff als **Keyword**
   Konkrete AUSSAGEN (keine Dateinamen, kein „Seite N“).
@@ -158,7 +160,7 @@ Liefere KORRIGIERTES JSON mit genau den Feldern "slides" und "script".
 Regeln:
 - "slides": nur Marp-Markdown (Klassen-Zeilen, Überschriften, Stichpunkte),
   KEIN JSON, kein ```-Fence, kein Frontmatter.
-  content/warn höchstens 3 Stichpunkte; accent ohne Liste; lead ohne Liste.
+  content/warn höchstens 3 Stichpunkte; accent/card ohne Liste; lead ohne Liste.
 - "script": nur Fließtext zum Vorlesen, kein Markdown, kein JSON.
 - Bei keinem Inhalt: {{"slides":"","script":"(kein erklärbarer Inhalt)"}}
 
@@ -169,11 +171,12 @@ _MIN_SECTION_CHARS = 150
 _SECTION_NUM_PREDICT = 2200
 _SECTION_NUM_PREDICT_RETRY = 3200
 _NO_CONTENT_MARKER = "(kein erklärbarer inhalt)"
-_SLIDE_CLASSES = frozenset({"lead", "agenda", "accent", "content", "split", "warn", "sources"})
+_SLIDE_CLASSES = frozenset({"lead", "agenda", "accent", "card", "content", "split", "warn", "sources"})
 _MAX_BODY_BULLETS = 3
 _BULLET_CAPS = {
     "lead": 0,
     "accent": 1,
+    "card": 0,
     "content": _MAX_BODY_BULLETS,
     "split": _MAX_BODY_BULLETS,
     "warn": _MAX_BODY_BULLETS,
@@ -354,6 +357,42 @@ section.accent p, section.accent li { color: rgba(247,241,230,.9); }
 section.accent::after { color: rgba(247,241,230,.5); }
 section.accent strong { color: var(--coral-soft); }
 section.accent li::marker { color: var(--coral-soft); }
+
+/* Full-bleed Karte: ein Wort oder eine Zahl */
+section.card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  background:
+    radial-gradient(900px 520px at 50% 120%, rgba(217,107,76,.28), transparent 58%),
+    linear-gradient(155deg, var(--petrol-deep) 0%, #12343c 52%, #1a5f6a 100%);
+  color: #fff7eb;
+  padding: 48px 40px;
+}
+section.card h1, section.card h2 {
+  font-size: 3.35em;
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  color: #fff7eb;
+  border: none;
+  max-width: 94%;
+  margin: 0;
+}
+section.card h3, section.card p {
+  font-family: 'Source Sans 3', 'Segoe UI', sans-serif;
+  font-size: 0.48em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--coral-soft);
+  margin: 0.55em 0 0 0;
+}
+section.card ul, section.card ol { display: none; }
+section.card strong { color: var(--coral-soft); }
+section.card::after { color: rgba(247,241,230,.45); }
+section.card .talk-title-rule { display: none; }
 
 /* Standard-Stoff */
 section.content h2 {
@@ -624,11 +663,44 @@ def _clamp_one_slide(body: str) -> str:
 
 
 def clamp_slide_grammar(slides: str) -> str:
-    """Deterministisch: max. 3 Body-Stichpunkte, Accent 1, Lead 0."""
+    """Deterministisch: max. 3 Body-Stichpunkte, Accent 1, Lead/Card 0."""
     chunks = _iter_slide_bodies(slides)
     if not chunks:
         return (slides or "").strip()
-    return _join_slide_chunks([_clamp_one_slide(c) for c in chunks])
+    clamped = [_clamp_one_slide(c) for c in chunks]
+    return _join_slide_chunks([_promote_card_slide(c) for c in clamped])
+
+
+def _promote_card_slide(body: str) -> str:
+    """Kurzer Keyword-/Zahlen-Titel ohne Liste wird zur Full-Bleed-Card."""
+    if _slide_class_name(body) != "content":
+        return body
+    title = ""
+    n_items = 0
+    has_emph = False
+    for line in body.splitlines():
+        stripped = line.strip()
+        if _LIST_ITEM_RE.match(stripped):
+            n_items += 1
+            continue
+        hm = re.match(r"^(#{1,3})\s+(.+?)\s*$", stripped)
+        if hm and not title:
+            raw = hm.group(2)
+            title = re.sub(r"[*`_]+", "", raw).strip()
+            has_emph = bool(re.search(r"\*\*.+?\*\*|__.+?__", raw))
+    if n_items or not title or len(title) > 22:
+        return body
+    words = title.split()
+    if len(words) > 4:
+        return body
+    if not (has_emph or re.search(r"\d", title)):
+        return body
+    return re.sub(
+        r"<!--\s*_class:\s*content\s*-->",
+        "<!-- _class: card -->",
+        body,
+        count=1,
+    )
 
 
 def _body_bullet_overflow(slides: str) -> list[str]:

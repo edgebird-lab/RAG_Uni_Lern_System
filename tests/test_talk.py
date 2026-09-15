@@ -138,6 +138,15 @@ def test_clamp_accent_and_lead_and_split():
     )
     assert "6. sechs" in agenda
     assert "7. sieben" not in agenda
+    card = clamp_slide_grammar(
+        "<!-- _class: card -->\n\n## **42 %**\n\n- weg\n- auch weg\n")
+    assert "- weg" not in card
+    promoted = clamp_slide_grammar(
+        "<!-- _class: content -->\n\n## **Grounding**\n")
+    assert "_class: card" in promoted
+    keep = clamp_slide_grammar(
+        "<!-- _class: content -->\n\n## Langer Titel ohne Zahl\n")
+    assert "_class: content" in keep
     sources = clamp_slide_grammar(
         "<!-- _class: sources -->\n\n## Quellen\n\n"
         "- [A](http://a)\n- [B](http://b)\n- [C](http://c)\n"
@@ -150,6 +159,8 @@ def test_section_prompt_asks_for_sparse_slides():
     from ragapp.talk import _OPENING_PROMPT, _SECTION_PROMPT
     assert "höchstens 3" in _SECTION_PROMPT
     assert "**Keyword**" in _SECTION_PROMPT
+    assert "_class: content --> oder accent|split|warn|card" in _SECTION_PROMPT
+    assert "bevorzugt **card**" in _SECTION_PROMPT
     assert "KEINE Stichpunkte" in _OPENING_PROMPT
     assert "**Hook-Wort**" in _OPENING_PROMPT
     assert "Cold Open" in _OPENING_PROMPT

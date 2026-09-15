@@ -59,6 +59,37 @@ body.talk-presenter-on > section:not(.talk-slide-on) {
   transform-origin: left center;
 }
 
+.talk-card-word.talk-punch {
+  transform-origin: center center;
+}
+
+section.card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  background:
+    radial-gradient(900px 520px at 50% 120%, rgba(217,107,76,.28), transparent 58%),
+    linear-gradient(155deg, #0e3d45 0%, #12343c 52%, #1a5f6a 100%);
+  color: #fff7eb;
+  min-height: 100vh;
+  padding: 48px 40px;
+}
+section.card h1,
+section.card h2,
+section.card .talk-card-word {
+  font-size: 3.2em;
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  color: #fff7eb;
+  border: none;
+  max-width: 94%;
+}
+section.card .talk-title-rule {
+  display: none !important;
+}
+
 .talk-letter.is-punch,
 .talk-keyword.is-on {
   color: #d96b4c;

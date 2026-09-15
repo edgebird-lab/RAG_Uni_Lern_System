@@ -339,3 +339,43 @@ def test_seek_lower_third_caption(tmp_path):
         page.evaluate("t => window.TalkPresenter.seek(t)", 2.1)
         assert "Zweites" in bar.inner_text()
         browser.close()
+
+
+def test_seek_card_word_scales_full_bleed(tmp_path):
+    from playwright.sync_api import sync_playwright
+
+    md = """\
+---
+marp: true
+---
+
+<!-- _class: card -->
+
+## **Grounding**
+"""
+    html_src = """<!DOCTYPE html><html><body>
+<section class="card"><h2><strong>Grounding</strong></h2></section>
+</body></html>"""
+    cues = build_talk_cues(md, duration_s=4.0)
+    html = inject_talk_presenter(html_src, cues)
+    path = tmp_path / "card.html"
+    path.write_text(html, encoding="utf-8")
+    punch = next(e for e in cues["events"] if e["type"] == "punch")
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.goto(path.as_uri(), wait_until="load")
+        page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
+        page.evaluate("t => window.TalkPresenter.seek(t)", 0)
+        assert page.locator("section.card .talk-card-word").count() == 1
+        assert page.locator("section.card .talk-title-rule").count() == 0
+        page.evaluate("t => window.TalkPresenter.seek(t)", punch["t"] + 0.4)
+        word = page.locator("section.card .talk-card-word")
+        assert word.evaluate("el => el.classList.contains('talk-punch')")
+        assert word.evaluate("el => el.classList.contains('is-on')")
+        scale = word.evaluate("el => el.style.transform")
+        assert "scale" in scale
+        font = word.evaluate("el => getComputedStyle(el).fontSize")
+        assert float(font.replace("px", "")) >= 48
+        browser.close()

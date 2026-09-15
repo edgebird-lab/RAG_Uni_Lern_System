@@ -280,6 +280,10 @@ def test_parse_keyword_and_punch():
     assert accent["bullets"] == []
     content = parse_slide_body(slides[2])
     assert content["bullet_keywords"] == [["Testing-Effekt"]]
+    card = parse_slide_body("<!-- _class: card -->\n\n## **42 %**\n")
+    assert card["class_name"] == "card"
+    assert card["punch"] is True
+    assert card["title"] == "42 %"
 
 
 def test_cues_emit_keyword_and_punch_sorted():

@@ -114,7 +114,7 @@ def parse_slide_body(body: str) -> dict[str, Any]:
         "bullets": bullets,
         "title_keywords": title_keywords,
         "bullet_keywords": bullet_keywords,
-        "punch": class_name == "accent" or has_quote,
+        "punch": class_name in {"accent", "card"} or has_quote,
         "n_cols": n_cols,
         "images": images,
     }

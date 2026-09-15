@@ -74,10 +74,12 @@
         const section = this._sectionsIn(root);
         if (!section) return;
         const heading = section.querySelector("h1, h2, marp-h1, marp-h2");
+        const isCard = section.classList.contains("card");
         if (heading) {
           heading.classList.add("talk-title");
+          if (isCard) heading.classList.add("talk-card-word");
           this._wrapLetters(heading);
-          if (!heading.querySelector(".talk-title-rule")) {
+          if (!isCard && !heading.querySelector(".talk-title-rule")) {
             const rule = document.createElement("span");
             rule.className = "talk-title-rule";
             heading.appendChild(rule);
@@ -115,7 +117,8 @@
             ? section.querySelector("p") ||
               section.querySelector("ul") ||
               heading
-            : null);
+            : null) ||
+          (section.classList.contains("card") ? heading : null);
         if (punch) punch.classList.add("talk-punch");
         root.dataset.talkSlide = String(slideIdx);
       });
@@ -298,7 +301,10 @@
           const pFrac = pOn ? this._frac(t, state.punchStart, MERKSATZ_S) : 0;
           punch.classList.toggle("is-on", pOn && pFrac > 0);
           if (pOn) {
-            punch.style.transform = `scale(${0.96 + 0.04 * pFrac})`;
+            const isCard = punch.classList.contains("talk-card-word");
+            punch.style.transform = isCard
+              ? `scale(${0.88 + 0.16 * pFrac})`
+              : `scale(${0.96 + 0.04 * pFrac})`;
             if (!punch.querySelector(".talk-letter")) {
               punch.style.opacity = String(pFrac);
             }

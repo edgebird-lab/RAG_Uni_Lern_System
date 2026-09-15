@@ -61,6 +61,12 @@ marp: true
 
 ---
 
+<!-- _class: card -->
+
+## **42 %**
+
+---
+
 <!-- _class: content -->
 
 ## Kern
@@ -85,6 +91,7 @@ marp: true
     assert "figures/a.png" in out.split("## Kern", 1)[1]
     assert "figures/a.png" not in out.split("## Kern", 1)[0]
     assert "![da](figures/old.png)" in out
+    assert "![Abbildung]" not in out.split("## **42 %**", 1)[1].split("## Kern", 1)[0]
 
 
 def test_attach_without_figures_unchanged():
