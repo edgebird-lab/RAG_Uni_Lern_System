@@ -41,9 +41,9 @@ def render_pronunciation_hints(text: str, *, key_prefix: str,
         key=f"pron_expander_{key_prefix}",
     ):
         st.caption(
-            "Vorschläge vom KI-Modell (z. B. „nmap“ → „en map“) – kurz prüfen und "
-            "übernehmen. Übernommene Korrekturen gelten dauerhaft für alle "
-            f"{apply_label}."
+            "Vorschläge vom KI-Modell (z. B. „nmap“ → „en map“) – kurz prüfen, "
+            "per 🎧 Gegenhören und erst dann übernehmen. Übernommene Korrekturen "
+            f"gelten dauerhaft für alle {apply_label}."
         )
         st.markdown(f'<div style="line-height:1.6">{highlighted}</div>',
                     unsafe_allow_html=True)
@@ -51,7 +51,7 @@ def render_pronunciation_hints(text: str, *, key_prefix: str,
 
         rows = []
         for word in words:
-            c1, c2, c3 = st.columns([2, 3, 1])
+            c1, c2, c3, c4 = st.columns([2, 3, 1, 1])
             c1.markdown(f"**{word}**")
             sugg = suggestions.get(word, "")
             val = c2.text_input(
@@ -63,7 +63,21 @@ def render_pronunciation_hints(text: str, *, key_prefix: str,
                 key=f"pron_take_{key_prefix}_{word}",
                 label_visibility="collapsed",
                 help="Übernehmen & dauerhaft merken")
-            rows.append((word, val.strip(), take))
+            spoken = (val or "").strip()
+            probe_text = spoken or word
+            if c4.button(
+                "🎧", key=f"pron_probe_{key_prefix}_{word}",
+                help="Hörprobe dieser Schreibweise – merkt die Korrektur nicht",
+            ):
+                with st.spinner("Erzeuge Hörprobe …"):
+                    try:
+                        probe = audio_overview.synthesize_sentence_probe(probe_text)
+                    except audio_overview.AudioOverviewError as exc:
+                        st.error(str(exc))
+                    else:
+                        st.audio(str(probe))
+                        st.caption(f"„{probe_text}“ – nur vorgespielt, noch nicht gespeichert.")
+            rows.append((word, spoken, take))
 
         if st.button("💾 Ausgewählte Korrekturen übernehmen & merken",
                      key=f"pron_apply_{key_prefix}"):

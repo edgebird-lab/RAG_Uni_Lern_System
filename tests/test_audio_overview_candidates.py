@@ -105,3 +105,13 @@ def test_dauerhaft_gemerkte_korrektur_ist_case_insensitive(find_fn_with_dynamic)
 def test_andere_kandidaten_bleiben_trotz_gemerkter_korrektur_erkannt(find_fn_with_dynamic):
     fn = find_fn_with_dynamic({"PID": "pie-ai-di"})
     assert fn("Die PID und die UID sind beide gesetzt.") == ["UID"]
+
+
+def test_pronunciation_ui_hat_hoerprobe_ohne_auto_apply():
+    from pathlib import Path
+    src = Path("ragapp/ui/_pronunciation.py").read_text(encoding="utf-8")
+    assert "synthesize_sentence_probe" in src
+    assert "pron_probe_" in src
+    assert src.count("upsert_pronunciation_fix") == 1
+    apply_idx = src.find("upsert_pronunciation_fix")
+    assert "pron_apply_" in src[apply_idx - 500: apply_idx]
