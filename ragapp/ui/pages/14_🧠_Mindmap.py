@@ -395,7 +395,7 @@ with card("viewer"):
         help="Stoff der Unterknoten mit dazu nehmen, nicht nur den angeklickten Kasten.")
 
     _idxs = mindmap.topic_indices(_graph, _selected, include_children=_include_kids)
-    _excerpts = mindmap.excerpts_for_indices(_sections, _idxs, max_chars=2200) if _selected else ""
+    _excerpts = mindmap.excerpts_for_indices(_sections, _idxs, max_chars=1800) if _selected else ""
     _title_join = ", ".join(
         _labels.get(s, _by_id[s].get("title") or s) for s in _selected)
 

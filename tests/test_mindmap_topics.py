@@ -86,3 +86,16 @@ def test_excerpts_for_indices_nutzt_anzeigenamen_und_cap(topic_funcs):
     assert "Erster Abschnitt" in out
     assert "QuickSort" in out
     assert "**Sortieren**" in out
+
+
+def test_excerpts_haengt_zweites_thema_an(topic_funcs):
+    fn = topic_funcs["excerpts_for_indices"]
+    sections = [
+        ("a.pdf", "Thema A", ("Alpha-Stoff. " * 80).strip()),
+        ("a.pdf", "Thema B", ("Beta-Stoff eindeutig. " * 80).strip()),
+    ]
+    out = fn(sections, [0, 1], max_chars=400)
+    assert "Alpha-Stoff" in out
+    assert "Beta-Stoff eindeutig" in out
+    assert "**Thema A**" in out
+    assert "**Thema B**" in out

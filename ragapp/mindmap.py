@@ -100,10 +100,15 @@ def topic_indices(graph: dict, node_ids: list[str], *,
 
 
 def excerpts_for_indices(sections: list[tuple[str, str, str]], indices: list[int],
-                         *, max_chars: int = 1800) -> str:
-    """Quellenauszuege zu TOC-Indizes (gleiche Nummerierung wie beim Erzeugen)."""
+                         *, max_chars: int = 1800, total_chars: int = 12000) -> str:
+    """Quellenauszuege zu TOC-Indizes (gleiche Nummerierung wie beim Erzeugen).
+
+    ``max_chars`` gilt pro Abschnitt, damit ein zweites/drittes Thema nicht
+    hinter einem langen ersten Auszug verschwindet. ``total_chars`` ist die
+    Gesamtobergrenze fuer die zusammengehaengte Anzeige.
+    """
     parts: list[str] = []
-    used = 0
+    total = 0
     for i in indices:
         if i < 0 or i >= len(sections):
             continue
@@ -113,14 +118,16 @@ def excerpts_for_indices(sections: list[tuple[str, str, str]], indices: list[int
         if not text:
             continue
         block = f"**{label}**\n{text}"
-        if used and used + len(block) > max_chars:
-            remain = max_chars - used
+        if len(block) > max_chars:
+            block = block[:max_chars].rstrip() + "…"
+        if total and total + len(block) > total_chars:
+            remain = total_chars - total
             if remain > 80:
                 parts.append(block[:remain].rstrip() + "…")
             break
         parts.append(block)
-        used += len(block)
-        if used >= max_chars:
+        total += len(block)
+        if total >= total_chars:
             break
     return "\n\n".join(parts)
 
