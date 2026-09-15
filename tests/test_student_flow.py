@@ -991,6 +991,58 @@ def test_hydrate_skript_spot_nimmt_prefill_dokument(isolated_db, tmp_path):
     assert got["minutes"] == 20
 
 
+def test_skript_cursor_merkt_letzte_seite(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        student_flow, "_skript_cursor_file", lambda: tmp_path / "cursors.json")
+    student_flow.save_skript_cursor("doc-a", 7, "Rechte")
+    got = student_flow.load_skript_cursor("doc-a")
+    assert got == {"page": 7, "heading": "Rechte"}
+    assert student_flow.load_skript_cursor("missing") is None
+    student_flow.save_skript_cursor("", 3)
+    assert student_flow.load_skript_cursor("") is None
+
+
+def test_pick_skript_spot_nimmt_gespeicherte_seite(isolated_db, tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        student_flow, "_skript_cursor_file", lambda: tmp_path / "cursors.json")
+    path = _write_skript_md(tmp_path)
+    manifest.upsert_document(
+        doc_id="d-cur", content_hash="h", source_path=str(path),
+        filename="skript.md", subject="Cybersecurity", filetype="md",
+        num_chunks=1, num_questions=0, char_count=80, status="ok")
+    student_flow.save_skript_cursor("d-cur", 4, "Navigation")
+    got = student_flow.pick_skript_spot()
+    assert got is not None
+    assert got["doc_id"] == "d-cur"
+    assert got["page"] == 4
+    assert got["heading"] == "Navigation"
+
+
+def test_hydrate_skript_nutzt_cursor_ohne_seite(isolated_db, tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        student_flow, "_skript_cursor_file", lambda: tmp_path / "cursors.json")
+    path = _write_skript_md(tmp_path)
+    manifest.upsert_document(
+        doc_id="d-hy2", content_hash="h", source_path=str(path),
+        filename="skript.md", subject="BWL", filetype="md",
+        num_chunks=1, num_questions=0, char_count=80, status="ok")
+    student_flow.save_skript_cursor("d-hy2", 9, "Break-even")
+    got = student_flow.hydrate_skript_spot({"doc_id": "d-hy2", "subject": "BWL"})
+    assert got["page"] == 9
+    assert got["heading"] == "Break-even"
+
+
+def test_page_text_len_leere_pdf_seite(tmp_path):
+    import fitz
+    from ragapp.ui import _docviewer
+    path = tmp_path / "scan.pdf"
+    doc = fitz.open()
+    doc.new_page()
+    doc.save(path)
+    doc.close()
+    assert _docviewer.page_text_len(path, 1) == 0
+
+
 def test_finish_skript_session_schreibt_notiz_und_karte(isolated_db):
     marks = [{
         "text": "Vertraulichkeit schuetzt vor unbefugtem Lesen in Informationssystemen.",

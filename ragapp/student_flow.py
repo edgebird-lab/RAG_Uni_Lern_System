@@ -653,6 +653,62 @@ def _heading_for_doc(path: Path, subject: Optional[str], fallback: str) -> tuple
     return heading, max(1, int(page or 1))
 
 
+def _skript_cursor_file() -> Path:
+    from ragapp.config import PROJECT_ROOT
+    path = PROJECT_ROOT / "data" / "skript_cursors.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def load_skript_cursor(doc_id: Optional[str]) -> Optional[dict]:
+    """Zuletzt gelesene Seite einer Unterlage (1-basiert)."""
+    if not doc_id:
+        return None
+    try:
+        import json
+        raw = json.loads(_skript_cursor_file().read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return None
+    row = raw.get(str(doc_id)) if isinstance(raw, dict) else None
+    if not isinstance(row, dict):
+        return None
+    try:
+        page = int(row.get("page") or 0)
+    except (TypeError, ValueError):
+        return None
+    if page < 1:
+        return None
+    heading = (row.get("heading") or "").strip() or None
+    return {"page": page, "heading": heading}
+
+
+def save_skript_cursor(doc_id: Optional[str], page: int,
+                       heading: Optional[str] = None) -> None:
+    """Merkt die letzte Skript-Seite, damit die nächste Sitzung dort weiterliest."""
+    if not doc_id:
+        return
+    try:
+        page = int(page or 0)
+    except (TypeError, ValueError):
+        return
+    if page < 1:
+        return
+    import json
+    path = _skript_cursor_file()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            data = {}
+    except Exception:  # noqa: BLE001
+        data = {}
+    data[str(doc_id)] = {
+        "page": page,
+        "heading": (heading or "").strip(),
+    }
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=0),
+                    encoding="utf-8")
+
+
 def pick_skript_spot() -> Optional[dict]:
     """Datei + Stelle für die nächste Skript-Sitzung – ohne Klausurdatum."""
     snap = planner.today_snapshot()
@@ -721,6 +777,11 @@ def pick_skript_spot() -> Optional[dict]:
     chosen = docs[0]
     path = chosen["_path"]
     heading, page = _heading_for_doc(path, subject, "")
+    cur = load_skript_cursor(chosen.get("doc_id"))
+    if cur:
+        page = cur["page"]
+        if cur.get("heading"):
+            heading = cur["heading"]
     return {
         "subject": subject,
         "doc_id": chosen.get("doc_id"),
@@ -763,7 +824,13 @@ def hydrate_skript_spot(raw: Optional[dict] = None) -> Optional[dict]:
         if page < 1:
             page = _dv.toc_page_for_heading(path, heading)
     else:
-        heading, page = _heading_for_doc(path, subject, heading)
+        if page < 1:
+            cur = load_skript_cursor(doc.get("doc_id"))
+            if cur:
+                page = cur["page"]
+                heading = cur.get("heading") or heading
+        if page < 1:
+            heading, page = _heading_for_doc(path, subject, heading)
     return {
         "subject": subject,
         "doc_id": doc.get("doc_id"),

@@ -96,6 +96,11 @@ _n_pages = _docviewer.pdf_page_count(_path) if _is_pdf else 1
 if _is_pdf and _n_pages:
     _page = min(_page, _n_pages)
     _sess["page"] = _page
+if _sess.get("doc_id"):
+    try:
+        _sf.save_skript_cursor(_sess.get("doc_id"), _page, _heading)
+    except Exception:  # noqa: BLE001
+        pass
 
 _left = max(0, int(_sess.get("minutes") or 20) - int(
     (time.time() - float(_sess.get("started_at") or time.time())) / 60))
@@ -132,6 +137,7 @@ if _is_pdf:
                      key="skript_prev"):
             _sess["page"] = _page - 1
             _sess["current"] = None
+            _sf.save_skript_cursor(_sess.get("doc_id"), _page - 1, _heading)
             st.rerun()
     _nav2.markdown(
         f"<p style='text-align:center;margin:.55rem 0 0'>Seite {_page} / "
@@ -142,6 +148,7 @@ if _is_pdf:
                      key="skript_next"):
             _sess["page"] = _page + 1
             _sess["current"] = None
+            _sf.save_skript_cursor(_sess.get("doc_id"), _page + 1, _heading)
             st.rerun()
 
     _mtime = _path.stat().st_mtime
@@ -150,6 +157,10 @@ if _is_pdf:
         st.image(_png, use_container_width=True)
     else:
         st.warning("Seite konnte nicht gerendert werden.")
+    if _docviewer.page_text_len(_path, _page) < 12:
+        st.info(
+            "Diese Seite hat kaum lesbaren Text – oft ein Scan. "
+            "Unter **Dokumente** kannst du OCR anstoßen.")
     _passages = _docviewer.passages_on_page(_path, _page, heading=_heading)
 else:
     _full = _docviewer.load_full_text(_path) or ""

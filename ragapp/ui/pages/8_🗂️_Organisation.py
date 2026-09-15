@@ -318,6 +318,15 @@ else:
                     st.switch_page("pages/9_🗃️_Dokumentenmanager.py")
                 else:
                     st.switch_page("pages/6_📝_Prüfung.py")
+            if _ks.get("doc_count"):
+                if st.button("Skript nacharbeiten",
+                             key=f"kurs_skript_{_subj}",
+                             use_container_width=True,
+                             help="20 Minuten in der Unterlage dieses Kurses."):
+                    st.session_state["skript_prefill"] = {
+                        "subject": _subj, "minutes": 20,
+                    }
+                    st.switch_page("pages/18_📖_Skript.py")
 
     _study_set = set(manifest.study_subjects())
     _kurs_aktiv, _kurs_stoff, _kurs_import = [], [], []

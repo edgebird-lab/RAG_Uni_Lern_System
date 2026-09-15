@@ -447,6 +447,9 @@ def test_skript_seite_startet_ohne_llm():
     assert "answer_query_stream" in src
     assert src.index('key="skript_ask"') < src.index("answer_query_stream")
     assert "_skript_ask_now" in src
+    assert "save_skript_cursor" in src
+    assert "kaum lesbaren Text" in src
+    assert "OCR" in src
 
 
 def test_bottom_nav_html_hat_alltag_und_mehr():
@@ -493,6 +496,8 @@ def test_kurskarten_nutzen_dichte_kennzahlen():
     assert '"Behalten"' in src
     assert '"Bereitschaft"' not in src
     assert "_c1, _c2, _c3, _c4 = st.columns(4)" not in src
+    assert 'key=f"kurs_skript_{_subj}"' in src
+    assert "skript_prefill" in src
 
 
 def test_fortschritt_nennt_lernstand_statt_klausurstatus():
