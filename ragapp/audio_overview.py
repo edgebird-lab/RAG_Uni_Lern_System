@@ -816,7 +816,8 @@ def _generate_sentence(model, sentence: str, lang: Optional[str],
 
 def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
                       output_path: "str | Path", *, language: Optional[str] = None,
-                      on_progress: ProgressCallback = None) -> list:
+                      on_progress: ProgressCallback = None,
+                      timeline: Optional[list] = None) -> list:
     """Synthetisiert ``script_text`` in der Stimme aus ``reference_wav_path``
     und schreibt sie nach ``output_path``. Vertont SATZWEISE (siehe Moduldoc -
     ein Aufruf mit dem kompletten Skript auf einmal klang in echten Tests
@@ -829,7 +830,9 @@ def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
     uebrig bleibt. ``on_progress`` (optional): siehe ``ProgressCallback`` -
     ein Aufruf je fertig vertontem Satz. Rueckgabe: Saetze, die NACH dem
     einmaligen Neuversuch weiter eine erzwungene EOS hatten (leere Liste,
-    wenn jeder Satz sauber durchlief)."""
+    wenn jeder Satz sauber durchlief). Optional ``timeline``: Liste wird
+    geleert und mit ``{index, text, start_s, duration_s}`` je Satz gefuellt
+    (inkl. Pausen dazwischen in den Startzeiten)."""
     units = _split_spoken_units(_apply_pronunciation_fixes(script_text))
     if not units:
         raise AudioOverviewError("Kein vertonbarer Text (nach Satzerkennung leer).")
@@ -896,6 +899,22 @@ def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
         for _, kind in units[:-1]
     ]
     full_wav = _concat_with_pauses(chunks, gaps)
+    if timeline is not None:
+        timeline.clear()
+        t = 0.0
+        sr = float(model.sr) or 1.0
+        for i, wav in enumerate(chunks):
+            n = int(wav.shape[-1]) if wav is not None else 0
+            dur = n / sr
+            timeline.append({
+                "index": i,
+                "text": sentences[i],
+                "start_s": round(t, 3),
+                "duration_s": round(dur, 3),
+            })
+            t += dur
+            if i < len(gaps):
+                t += max(0, int(gaps[i])) / sr
     full_wav, sr_out = _loudnorm_or_same(full_wav, model.sr)
     torchaudio.save(str(output_path), full_wav, sr_out)
     return forced_eos

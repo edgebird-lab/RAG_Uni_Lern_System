@@ -214,8 +214,11 @@ def test_synthesize_talk_audio_persists_forced_eos(isolated_db, tmp_path, monkey
         talk_id="talkeos1",
     )
 
-    def fake_synth(text, ref, out, on_progress=None):
+    def fake_synth(text, ref, out, on_progress=None, timeline=None):
         Path(out).write_bytes(b"RIFF")
+        if timeline is not None:
+            timeline.append({"index": 0, "text": "Hallo Welt.",
+                             "start_s": 0.0, "duration_s": 0.4})
         return [{"index": 0, "text": "Abbruch."}]
 
     monkeypatch.setattr("ragapp.audio_overview.synthesize_speech", fake_synth)
@@ -227,6 +230,7 @@ def test_synthesize_talk_audio_persists_forced_eos(isolated_db, tmp_path, monkey
     assert row["forced_eos"] == [{"index": 0, "text": "Abbruch."}]
     assert row["audio_path"] == rel
     assert (talks_dir / rel).is_file()
+    assert (talks_dir / tid / "timeline.json").is_file()
 
 
 def test_mux_video_with_talk_audio_uses_loudnorm():

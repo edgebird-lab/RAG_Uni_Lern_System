@@ -146,6 +146,98 @@ def build_talk_cues(marp_md: str, *, duration_s: float,
     }
 
 
+def _allocate_sentences(slides: list[dict[str, Any]],
+                        sentences: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    n = len(slides)
+    allocated: list[list[dict[str, Any]]] = [[] for _ in slides]
+    if n == 0 or not sentences:
+        return allocated
+    wants = [max(1, (1 if s.get("title") else 0) + len(s.get("bullets") or []))
+             for s in slides]
+    si = 0
+    for sent in sentences:
+        while si < n - 1 and len(allocated[si]) >= wants[si]:
+            si += 1
+        allocated[si].append(sent)
+    return allocated
+
+
+def map_timeline_to_cues(marp_md: str, timeline: list[dict[str, Any]],
+                         *, width: int = VIDEO_WIDTH,
+                         height: int = VIDEO_HEIGHT) -> dict[str, Any]:
+    """Ersetzt Platzhalter-Zeiten durch Satzstartzeiten aus der Vertonung."""
+    sentences = [s for s in (timeline or []) if isinstance(s, dict) and s.get("text")]
+    if not sentences:
+        return build_talk_cues(marp_md, duration_s=8.0, width=width, height=height)
+    last = sentences[-1]
+    duration_s = max(
+        0.5,
+        float(last.get("start_s") or 0) + float(last.get("duration_s") or 0) + 0.05,
+    )
+    base = build_talk_cues(marp_md, duration_s=duration_s, width=width, height=height)
+    allocated = _allocate_sentences(base["slides"], sentences)
+    events: list[dict[str, Any]] = []
+    slides_out: list[dict[str, Any]] = []
+    for i, slide in enumerate(base["slides"]):
+        sents = allocated[i]
+        next_start = (
+            allocated[i + 1][0]["start_s"] if i + 1 < len(allocated) and allocated[i + 1]
+            else duration_s
+        )
+        start = float(sents[0]["start_s"]) if sents else float(slide["start_s"])
+        end = float(next_start)
+        slide_events: list[dict[str, Any]] = [
+            {"t": _round_t(start), "type": "slide", "slide": i},
+        ]
+        if slide["title"]:
+            slide_events.append({"t": _round_t(start), "type": "title", "slide": i})
+        bullets = slide["bullets"]
+        rest = sents[1:] if slide["title"] and sents else sents
+        if bullets:
+            for bi, _b in enumerate(bullets):
+                if bi < len(rest):
+                    t = float(rest[bi]["start_s"])
+                elif rest:
+                    last_t = float(rest[-1]["start_s"])
+                    remain = len(bullets) - len(rest)
+                    span = max(0.05, end - last_t)
+                    t = last_t + (bi - len(rest) + 1) * span / (remain + 1)
+                else:
+                    hold = _title_hold_s(max(0.05, end - start), len(bullets))
+                    step = max(0.05, (end - start - hold)) / len(bullets)
+                    t = start + hold + bi * step
+                slide_events.append({
+                    "t": _round_t(min(max(t, start), max(start, end - 0.01))),
+                    "type": "bullet",
+                    "slide": i,
+                    "i": bi,
+                })
+        events.extend(slide_events)
+        slides_out.append({
+            **slide,
+            "start_s": _round_t(start),
+            "end_s": _round_t(end),
+            "events": slide_events,
+        })
+    return {
+        "version": CUE_VERSION,
+        "width": int(width),
+        "height": int(height),
+        "duration_s": _round_t(duration_s),
+        "source": "timeline",
+        "slides": slides_out,
+        "events": events,
+    }
+
+
+def load_talk_cues(marp_md: str, *, duration_s: float,
+                   timeline: Optional[list] = None) -> dict[str, Any]:
+    """Timeline aus der Vertonung, sonst Platzhalter-Cues."""
+    if timeline:
+        return map_timeline_to_cues(marp_md, timeline)
+    return build_talk_cues(marp_md, duration_s=duration_s)
+
+
 def cues_from_talk(row: dict, *, duration_s: Optional[float] = None) -> dict[str, Any]:
     """Cues aus einem Talk-Datensatz; ``duration_s`` sonst aus Skriptlaenge grob."""
     md = row.get("marp_md") or ""

@@ -13,6 +13,7 @@ Siehe Seite ``17_🎤_Vortrag.py`` und ``docs/BEDIENUNG.md``.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import shutil
@@ -1449,9 +1450,16 @@ def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
     run_marp(md_path, output=html_path, fmt="html")
 
     duration = probe_audio_duration_s(audio_path)
-    from ragapp.talk_cues import build_talk_cues
+    from ragapp.talk_cues import load_talk_cues
     from ragapp.talk_presenter import inject_talk_presenter
-    cues = build_talk_cues(md_text, duration_s=duration)
+    timeline = None
+    tl_path = d / "timeline.json"
+    if tl_path.is_file():
+        try:
+            timeline = json.loads(tl_path.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            timeline = None
+    cues = load_talk_cues(md_text, duration_s=duration, timeline=timeline)
     video_html = d / "talk.video.html"
     video_html.write_text(
         inject_talk_presenter(html_path.read_text(encoding="utf-8"), cues),
@@ -1505,6 +1513,10 @@ def synthesize_talk_audio(talk_id: str, script_text: Optional[str] = None,
     rel = f"{talk_id}/audio.wav"
     out = TALK_DIR / rel
     out.parent.mkdir(parents=True, exist_ok=True)
-    forced = audio_overview.synthesize_speech(text, ref, out, on_progress=on_progress) or []
+    timeline: list = []
+    forced = audio_overview.synthesize_speech(
+        text, ref, out, on_progress=on_progress, timeline=timeline) or []
+    (TALK_DIR / talk_id / "timeline.json").write_text(
+        json.dumps(timeline, ensure_ascii=False, indent=2), encoding="utf-8")
     manifest.update_talk(talk_id, script_text=text, audio_path=rel, forced_eos=forced)
     return rel

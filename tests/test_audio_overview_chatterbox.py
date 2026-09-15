@@ -389,6 +389,18 @@ def test_neuversuch_wird_im_progress_label_markiert(synth_env):
     assert not labels[1].startswith("🔁 ")
 
 
+def test_synthesize_speech_fuellt_timeline(synth_env):
+    env = synth_env(sentences=["Satz eins.", "Satz zwei."])
+    tl = []
+    still = env.synthesize_speech("Satz eins. Satz zwei.", "ref.wav",
+                                  str(env.tmp_path / "out.wav"), timeline=tl)
+    assert still == []
+    assert len(tl) == 2
+    assert tl[0]["text"] == "Satz eins."
+    assert tl[0]["start_s"] == 0.0
+    assert tl[1]["start_s"] > tl[0]["start_s"]
+
+
 def test_neuversuch_der_ebenfalls_erzwungene_eos_hat_bricht_nicht_ab(synth_env):
     # Auch wenn der Neuversuch WIEDER die Absicherung ausloest, muss die
     # Vertonung trotzdem fertig werden (kein zweiter Retry, kein Crash) -

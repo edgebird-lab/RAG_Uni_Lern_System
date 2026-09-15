@@ -104,6 +104,97 @@ def test_build_talk_cues_empty_md_gets_one_slide():
     assert cues["duration_s"] == 5.0
 
 
+def test_map_timeline_three_sentences_three_bullets():
+    from ragapp.talk_cues import map_timeline_to_cues
+    md = """---
+marp: true
+---
+
+## Thema
+
+- A
+- B
+- C
+"""
+    timeline = [
+        {"index": 0, "text": "Titel.", "start_s": 0.0, "duration_s": 1.0},
+        {"index": 1, "text": "Eins.", "start_s": 1.2, "duration_s": 1.0},
+        {"index": 2, "text": "Zwei.", "start_s": 2.4, "duration_s": 1.0},
+        {"index": 3, "text": "Drei.", "start_s": 3.6, "duration_s": 1.0},
+    ]
+    cues = map_timeline_to_cues(md, timeline)
+    assert cues["source"] == "timeline"
+    bullets = [e for e in cues["events"] if e["type"] == "bullet"]
+    assert [e["i"] for e in bullets] == [0, 1, 2]
+    assert bullets[0]["t"] == 1.2
+    assert bullets[1]["t"] == 2.4
+    assert bullets[2]["t"] == 3.6
+
+
+def test_map_timeline_more_sentences_than_bullets():
+    from ragapp.talk_cues import map_timeline_to_cues
+    md = """---
+marp: true
+---
+
+## Thema
+
+- A
+- B
+"""
+    timeline = [
+        {"index": i, "text": f"S{i}.", "start_s": float(i), "duration_s": 0.8}
+        for i in range(5)
+    ]
+    cues = map_timeline_to_cues(md, timeline)
+    bullets = [e for e in cues["events"] if e["type"] == "bullet"]
+    assert len(bullets) == 2
+    types = [e["type"] for e in cues["events"]]
+    assert types.count("bullet") == 2
+
+
+def test_map_timeline_more_bullets_than_sentences():
+    from ragapp.talk_cues import map_timeline_to_cues
+    md = """---
+marp: true
+---
+
+## Thema
+
+- A
+- B
+- C
+- D
+"""
+    timeline = [
+        {"index": 0, "text": "Titel.", "start_s": 0.0, "duration_s": 1.0},
+        {"index": 1, "text": "Nur einer.", "start_s": 1.5, "duration_s": 1.0},
+    ]
+    cues = map_timeline_to_cues(md, timeline)
+    bullets = [e for e in cues["events"] if e["type"] == "bullet"]
+    assert [e["i"] for e in bullets] == [0, 1, 2, 3]
+    times = [e["t"] for e in bullets]
+    assert times == sorted(times)
+    assert times[0] == 1.5
+    assert times[-1] > times[0]
+
+
+def test_map_timeline_slide_without_list():
+    from ragapp.talk_cues import map_timeline_to_cues
+    md = """---
+marp: true
+---
+
+<!-- _class: lead -->
+
+# Nur Titel
+"""
+    timeline = [{"index": 0, "text": "Hallo.", "start_s": 0.0, "duration_s": 2.0}]
+    cues = map_timeline_to_cues(md, timeline)
+    assert [e["type"] for e in cues["events"]] == ["slide", "title"]
+    assert cues["slides"][0]["bullets"] == []
+
+
 def test_link_and_emphasis_stripped_from_bullets():
     md = """---
 marp: true
