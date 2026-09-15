@@ -8,6 +8,7 @@
   const KEYWORD_PUNCH_S = 0.35;
   const MERKSATZ_S = 0.35;
   const TITLE_RULE_S = 0.35;
+  const FIGURE_FADE_S = 0.45;
 
   const TalkPresenter = {
     cues: null,
@@ -93,6 +94,17 @@
           col.classList.add("talk-col");
           col.dataset.talkCol = String(i);
         });
+        section.querySelectorAll("img").forEach((img, i) => {
+          let wrap = img.closest(".talk-figure");
+          if (!wrap) {
+            wrap = document.createElement("div");
+            wrap.className = "talk-figure";
+            img.parentNode.insertBefore(wrap, img);
+            wrap.appendChild(img);
+          }
+          wrap.dataset.talkFigure = String(i);
+          img.classList.add("talk-figure-img");
+        });
         section.querySelectorAll("strong, b").forEach((el, i) => {
           el.classList.add("talk-keyword");
           el.dataset.talkKeyword = String(i);
@@ -120,6 +132,8 @@
       const keywords = new Set();
       const keywordStart = {};
       const cols = new Set();
+      const figures = new Set();
+      const figureStart = {};
       let punchOn = false;
       let punchStart = 0;
       const events = this.cues.events || [];
@@ -133,6 +147,7 @@
           bullets.clear();
           keywords.clear();
           cols.clear();
+          figures.clear();
           punchOn = false;
         } else if (ev.type === "title" && ev.slide === slide) {
           titleOn = true;
@@ -141,6 +156,9 @@
           bullets.add(ev.i);
         } else if (ev.type === "col" && ev.slide === slide) {
           cols.add(ev.i);
+        } else if (ev.type === "figure" && ev.slide === slide) {
+          figures.add(ev.i);
+          if (figureStart[ev.i] == null) figureStart[ev.i] = ev.t;
         } else if (ev.type === "keyword" && ev.slide === slide) {
           keywords.add(ev.i);
           if (keywordStart[ev.i] == null) keywordStart[ev.i] = ev.t;
@@ -155,9 +173,15 @@
       const fade = slide !== prevSlide && t < slideStart + SLIDE_FADE_S
         ? Math.min(1, Math.max(0, (t - slideStart) / SLIDE_FADE_S))
         : 1;
+      const meta = (this.cues.slides || [])[slide] || {};
+      const slideDur = Math.max(
+        0.5,
+        (Number(meta.end_s) || slideStart + 8) - (Number(meta.start_s) || slideStart),
+      );
+      const kenBurns = Math.min(1, Math.max(0, (t - slideStart) / slideDur));
       return {
         slide, prevSlide, slideStart, titleOn, titleStart, letterFrac, fade, bullets,
-        keywords, keywordStart, punchOn, punchStart, cols,
+        keywords, keywordStart, punchOn, punchStart, cols, figures, figureStart, kenBurns,
       };
     },
 
@@ -234,6 +258,19 @@
         section.querySelectorAll(".talk-col").forEach((col) => {
           const idx = Number(col.dataset.talkCol);
           col.classList.toggle("is-on", isCurr && state.cols.has(idx));
+        });
+        section.querySelectorAll(".talk-figure").forEach((wrap) => {
+          const idx = Number(wrap.dataset.talkFigure);
+          const fOn = isCurr && state.figures.has(idx);
+          const start = state.figureStart[idx] ?? state.slideStart;
+          const fade = fOn ? this._frac(t, start, FIGURE_FADE_S) : 0;
+          wrap.classList.toggle("is-on", fOn && fade > 0);
+          wrap.style.opacity = fOn ? String(fade) : "0";
+          const img = wrap.querySelector(".talk-figure-img, img");
+          if (img) {
+            const kb = fOn ? state.kenBurns : 0;
+            img.style.transform = `scale(${1 + 0.08 * kb}) translate(${-6 * kb}px, ${-3 * kb}px)`;
+          }
         });
         section.querySelectorAll(".talk-keyword").forEach((el) => {
           if (el.closest(".talk-title")) return;

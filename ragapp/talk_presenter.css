@@ -85,6 +85,18 @@ body.talk-presenter-on > section:not(.talk-slide-on) {
   transform: none;
 }
 
+.talk-figure {
+  overflow: hidden;
+  border-radius: 12px;
+  opacity: 0;
+}
+
+.talk-figure-img {
+  display: block;
+  max-width: 100%;
+  transform-origin: 30% 40%;
+}
+
 .talk-bullet.is-current {
   border-left: 6px solid #c9a227;
   padding-left: 0.4em;

@@ -243,3 +243,59 @@ def test_seek_split_columns(tmp_path):
         page.evaluate("t => window.TalkPresenter.seek(t)", col1["t"] + 0.05)
         assert page.locator(".talk-col.is-on").count() == 2
         browser.close()
+
+
+def test_seek_figure_ken_burns(tmp_path):
+    from playwright.sync_api import sync_playwright
+    from PIL import Image
+    import re
+
+    png = tmp_path / "fig.png"
+    Image.new("RGB", (64, 48), (200, 80, 40)).save(png)
+
+    html_src = f"""<!DOCTYPE html><html><body>
+<section class="content">
+  <h2>Kern</h2>
+  <ul><li>Punkt</li></ul>
+  <p><img src="{png.as_uri()}" alt="Abbildung"></p>
+</section>
+</body></html>"""
+    md = """\
+---
+marp: true
+---
+
+<!-- _class: content -->
+
+## Kern
+
+- Punkt
+
+![Abbildung](figures/p1.png)
+"""
+    cues = build_talk_cues(md, duration_s=8.0)
+    html = inject_talk_presenter(html_src, cues)
+    path = tmp_path / "fig.html"
+    path.write_text(html, encoding="utf-8")
+    fig_t = next(e["t"] for e in cues["events"] if e["type"] == "figure")
+
+    def scale_of(s: str) -> float:
+        m = re.search(r"scale\(([-0-9.]+)\)", s)
+        return float(m.group(1)) if m else 0.0
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.goto(path.as_uri(), wait_until="load")
+        page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
+        page.evaluate("t => window.TalkPresenter.seek(t)", 0)
+        op0 = float(page.locator(".talk-figure").evaluate("el => el.style.opacity || '0'"))
+        assert op0 == 0
+        page.evaluate("t => window.TalkPresenter.seek(t)", fig_t + 0.5)
+        op1 = float(page.locator(".talk-figure").evaluate("el => el.style.opacity || '0'"))
+        assert op1 > 0.8
+        early = page.locator(".talk-figure-img").evaluate("el => el.style.transform")
+        page.evaluate("t => window.TalkPresenter.seek(t)", 7.5)
+        late = page.locator(".talk-figure-img").evaluate("el => el.style.transform")
+        assert scale_of(late) > scale_of(early)
+        browser.close()

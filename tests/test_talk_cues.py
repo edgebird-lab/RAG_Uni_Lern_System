@@ -69,7 +69,7 @@ def test_parse_slide_extracts_class_title_bullets():
 
 def test_build_talk_cues_placeholder_timing():
     cues = build_talk_cues(FIXTURE_MD, duration_s=12.0)
-    assert cues["version"] == 3
+    assert cues["version"] == 4
     assert cues["width"] == 1280
     assert cues["height"] == 720
     assert cues["duration_s"] == 12.0
@@ -318,3 +318,25 @@ marp: true
     cols = [e for e in cues["events"] if e["type"] == "col"]
     assert [e["i"] for e in cols] == [0, 1]
     assert cols[1]["t"] > cols[0]["t"]
+
+
+def test_figure_cues_from_markdown_image():
+    md = """\
+---
+marp: true
+---
+
+<!-- _class: content -->
+
+## Kern
+
+- Punkt
+
+![Abbildung](figures/p1_5.png)
+"""
+    parsed = parse_slide_body(split_marp_slides(md)[0])
+    assert parsed["images"][0]["src"] == "figures/p1_5.png"
+    cues = build_talk_cues(md, duration_s=5.0)
+    figs = [e for e in cues["events"] if e["type"] == "figure"]
+    assert len(figs) == 1
+    assert figs[0]["src"] == "figures/p1_5.png"

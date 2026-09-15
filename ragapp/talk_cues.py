@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
-CUE_VERSION = 3
+CUE_VERSION = 4
 VIDEO_WIDTH = 1280
 VIDEO_HEIGHT = 720
 
@@ -21,13 +21,15 @@ _CLASS_RE = re.compile(r"<!--\s*_class:\s*([A-Za-z0-9_-]+)\s*-->")
 _HEADING_RE = re.compile(r"^(#{1,3})\s+(.+?)\s*$", re.MULTILINE)
 _LIST_RE = re.compile(r"^(?:[-*+]|\d+[.)])\s+(.+?)\s*$")
 _EMPH_RE = re.compile(r"\*\*(.+?)\*\*|__(.+?)__")
+_IMG_RE = re.compile(r"!\[(.*?)\]\(([^)]+)\)")
 _EVENT_ORDER = {
     "slide": 0,
     "title": 1,
     "punch": 2,
     "col": 3,
-    "bullet": 4,
-    "keyword": 5,
+    "figure": 4,
+    "bullet": 5,
+    "keyword": 6,
 }
 
 
@@ -98,6 +100,11 @@ def parse_slide_body(body: str) -> dict[str, Any]:
             n_cols = max(2, divs - 1)
         else:
             n_cols = max(2, inner_heads or 2)
+    images = [
+        {"alt": (m.group(1) or "").strip(), "src": (m.group(2) or "").strip()}
+        for m in _IMG_RE.finditer(raw)
+        if (m.group(2) or "").strip()
+    ]
     return {
         "class_name": class_name,
         "title": title,
@@ -106,6 +113,7 @@ def parse_slide_body(body: str) -> dict[str, Any]:
         "bullet_keywords": bullet_keywords,
         "punch": class_name == "accent" or has_quote,
         "n_cols": n_cols,
+        "images": images,
     }
 
 
@@ -176,6 +184,14 @@ def _attach_motion_events(
                 "slide": slide_idx,
                 "i": ci,
             })
+    for fi, img in enumerate(parsed.get("images") or []):
+        extra.append({
+            "t": _round_t(title_t if title_t is not None else fallback),
+            "type": "figure",
+            "slide": slide_idx,
+            "i": fi,
+            "src": img.get("src") or "",
+        })
     for spec in _keyword_specs(parsed):
         if spec["anchor"] == "title":
             t = title_t if title_t is not None else fallback
@@ -245,6 +261,7 @@ def build_talk_cues(marp_md: str, *, duration_s: float,
             "bullet_keywords": parsed.get("bullet_keywords") or [],
             "punch": bool(parsed.get("punch")),
             "n_cols": int(parsed.get("n_cols") or 0),
+            "images": parsed.get("images") or [],
             "start_s": _round_t(start),
             "end_s": _round_t(end),
             "events": slide_events,
