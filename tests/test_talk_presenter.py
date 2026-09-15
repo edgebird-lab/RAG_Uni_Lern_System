@@ -73,6 +73,79 @@ def test_seek_reveals_title_then_bullets(tmp_path):
         browser.close()
 
 
+MOTION_MARP = """\
+---
+marp: true
+---
+
+<!-- _class: lead -->
+
+# Lernvortrag **Testing**
+
+---
+
+<!-- _class: accent -->
+
+## Merksatz
+
+> Abrufen schlägt Nachlesen.
+
+---
+
+<!-- _class: content -->
+
+## Kern
+
+- Der **Testing-Effekt** bleibt
+"""
+
+
+def test_seek_keyword_and_merksatz_punch(tmp_path):
+    from playwright.sync_api import sync_playwright
+
+    motion = Path("tests/fixtures/talk_presenter_motion.html")
+    cues = build_talk_cues(MOTION_MARP, duration_s=9.0)
+    # unknown event types must be ignored
+    cues["events"].append({"t": 0.05, "type": "nope", "slide": 0})
+    cues["events"].sort(key=lambda e: e["t"])
+    html = inject_talk_presenter(motion.read_text(encoding="utf-8"), cues)
+    path = tmp_path / "motion.html"
+    path.write_text(html, encoding="utf-8")
+
+    lead = cues["slides"][0]
+    accent = cues["slides"][1]
+    content = cues["slides"][2]
+    kw0 = next(e for e in lead["events"] if e["type"] == "keyword")
+    punch = next(e for e in accent["events"] if e["type"] == "punch")
+    kw_bullet = next(e for e in content["events"] if e["type"] == "keyword")
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.goto(path.as_uri(), wait_until="load")
+        page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
+
+        page.evaluate("t => window.TalkPresenter.seek(t)", 0)
+        assert page.locator("section.lead .talk-keyword-letter").count() >= 4
+        assert page.locator("section.lead .talk-keyword-letter.is-punch").count() == 0
+
+        page.evaluate("t => window.TalkPresenter.seek(t)", kw0["t"] + 0.45)
+        assert page.locator("section.lead .talk-keyword-letter.is-punch").count() >= 4
+
+        page.evaluate("t => window.TalkPresenter.seek(t)", max(0.0, accent["start_s"] - 0.05))
+        assert page.locator("section.accent.talk-slide-on").count() == 0
+
+        page.evaluate("t => window.TalkPresenter.seek(t)", punch["t"] + 0.4)
+        assert page.locator("section.accent .talk-punch.is-on").count() == 1
+        scale = page.locator("section.accent .talk-punch").evaluate(
+            "el => el.style.transform")
+        assert "scale" in scale
+
+        page.evaluate("t => window.TalkPresenter.seek(t)", kw_bullet["t"] + 0.4)
+        assert page.locator("section.content .talk-keyword.is-on").count() == 1
+        browser.close()
+
+
 def test_seek_title_letters_and_slide_fade(tmp_path):
     from playwright.sync_api import sync_playwright
 

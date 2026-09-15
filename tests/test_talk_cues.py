@@ -69,7 +69,7 @@ def test_parse_slide_extracts_class_title_bullets():
 
 def test_build_talk_cues_placeholder_timing():
     cues = build_talk_cues(FIXTURE_MD, duration_s=12.0)
-    assert cues["version"] == 1
+    assert cues["version"] == 2
     assert cues["width"] == 1280
     assert cues["height"] == 720
     assert cues["duration_s"] == 12.0
@@ -206,3 +206,82 @@ marp: true
 """
     parsed = parse_slide_body(split_marp_slides(md)[0])
     assert parsed["bullets"] == ["Siehe Paper wichtig"]
+    assert parsed["bullet_keywords"] == [["wichtig"]]
+
+
+def test_parse_keyword_and_punch():
+    md = """\
+<!-- _class: lead -->
+
+# Lernvortrag **Testing**
+
+---
+
+<!-- _class: accent -->
+
+## Merksatz
+
+> Abrufen schlägt Nachlesen.
+
+---
+
+<!-- _class: content -->
+
+## Kern
+
+- Der **Testing-Effekt** bleibt
+"""
+    slides = split_marp_slides(md)
+    lead = parse_slide_body(slides[0])
+    assert lead["title_keywords"] == ["Testing"]
+    assert lead["punch"] is False
+    accent = parse_slide_body(slides[1])
+    assert accent["punch"] is True
+    assert accent["bullets"] == []
+    content = parse_slide_body(slides[2])
+    assert content["bullet_keywords"] == [["Testing-Effekt"]]
+
+
+def test_cues_emit_keyword_and_punch_sorted():
+    md = """\
+---
+marp: true
+---
+
+<!-- _class: accent -->
+
+## **Merksatz**
+
+> Bleibt hängen.
+"""
+    cues = build_talk_cues(md, duration_s=4.0)
+    types = [e["type"] for e in cues["events"]]
+    assert types == ["slide", "title", "punch", "keyword"]
+    kw = next(e for e in cues["events"] if e["type"] == "keyword")
+    assert kw["text"] == "Merksatz"
+    assert kw["i"] == 0
+    # unknown types must not break ordering of known ones
+    times = [e["t"] for e in cues["events"]]
+    assert times == sorted(times)
+
+
+def test_map_timeline_keeps_keyword_on_bullet_time():
+    from ragapp.talk_cues import map_timeline_to_cues
+    md = """---
+marp: true
+---
+
+## Thema
+
+- Mit **Keyword**
+"""
+    timeline = [
+        {"index": 0, "text": "Titel.", "start_s": 0.0, "duration_s": 1.0},
+        {"index": 1, "text": "Punkt.", "start_s": 1.4, "duration_s": 1.0},
+    ]
+    cues = map_timeline_to_cues(md, timeline)
+    bullet = next(e for e in cues["events"] if e["type"] == "bullet")
+    kw = next(e for e in cues["events"] if e["type"] == "keyword")
+    assert bullet["t"] == 1.4
+    assert kw["t"] == 1.4
+    assert kw["text"] == "Keyword"

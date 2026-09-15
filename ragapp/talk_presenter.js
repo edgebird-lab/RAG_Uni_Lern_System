@@ -5,6 +5,8 @@
 (function () {
   const TITLE_LETTER_S = 0.4;
   const SLIDE_FADE_S = 0.55;
+  const KEYWORD_PUNCH_S = 0.35;
+  const MERKSATZ_S = 0.35;
 
   const TalkPresenter = {
     cues: null,
@@ -33,15 +35,33 @@
 
     _wrapLetters(heading) {
       if (!heading || heading.dataset.talkWrapped === "1") return;
-      const text = heading.textContent || "";
-      heading.textContent = "";
-      for (const ch of text) {
-        const span = document.createElement("span");
-        span.className = "talk-letter";
-        span.textContent = ch === " " ? "\u00a0" : ch;
-        heading.appendChild(span);
-      }
+      const wrapText = (textNode, extra) => {
+        const text = textNode.textContent || "";
+        const frag = document.createDocumentFragment();
+        for (const ch of text) {
+          const span = document.createElement("span");
+          span.className = extra ? "talk-letter talk-keyword-letter" : "talk-letter";
+          span.textContent = ch === " " ? "\u00a0" : ch;
+          frag.appendChild(span);
+        }
+        textNode.parentNode.replaceChild(frag, textNode);
+      };
+      const walk = (el, extra) => {
+        [...el.childNodes].forEach((node) => {
+          if (node.nodeType === 3) {
+            wrapText(node, extra);
+          } else if (node.nodeType === 1) {
+            const kw = extra || /^(STRONG|B)$/i.test(node.tagName);
+            walk(node, kw);
+          }
+        });
+      };
+      walk(heading, false);
       heading.dataset.talkWrapped = "1";
+    },
+
+    _frac(t, start, dur) {
+      return Math.min(1, Math.max(0, (t - start) / dur));
     },
 
     _prepare() {
@@ -63,6 +83,18 @@
           li.classList.add("talk-bullet");
           li.dataset.talkBullet = String(i);
         });
+        section.querySelectorAll("strong, b").forEach((el, i) => {
+          el.classList.add("talk-keyword");
+          el.dataset.talkKeyword = String(i);
+        });
+        const punch =
+          section.querySelector("blockquote") ||
+          (section.classList.contains("accent")
+            ? section.querySelector("p") ||
+              section.querySelector("ul") ||
+              heading
+            : null);
+        if (punch) punch.classList.add("talk-punch");
         root.dataset.talkSlide = String(slideIdx);
       });
       this.prepared = true;
@@ -75,6 +107,10 @@
       let titleOn = false;
       let titleStart = 0;
       const bullets = new Set();
+      const keywords = new Set();
+      const keywordStart = {};
+      let punchOn = false;
+      let punchStart = 0;
       const events = this.cues.events || [];
       for (const ev of events) {
         if (ev.t > t + 1e-9) break;
@@ -84,11 +120,19 @@
           slideStart = ev.t;
           titleOn = false;
           bullets.clear();
+          keywords.clear();
+          punchOn = false;
         } else if (ev.type === "title" && ev.slide === slide) {
           titleOn = true;
           titleStart = ev.t;
         } else if (ev.type === "bullet" && ev.slide === slide) {
           bullets.add(ev.i);
+        } else if (ev.type === "keyword" && ev.slide === slide) {
+          keywords.add(ev.i);
+          if (keywordStart[ev.i] == null) keywordStart[ev.i] = ev.t;
+        } else if (ev.type === "punch" && ev.slide === slide) {
+          punchOn = true;
+          punchStart = ev.t;
         }
       }
       const letterFrac = titleOn
@@ -97,7 +141,10 @@
       const fade = slide !== prevSlide && t < slideStart + SLIDE_FADE_S
         ? Math.min(1, Math.max(0, (t - slideStart) / SLIDE_FADE_S))
         : 1;
-      return { slide, prevSlide, slideStart, titleOn, letterFrac, fade, bullets };
+      return {
+        slide, prevSlide, slideStart, titleOn, letterFrac, fade, bullets,
+        keywords, keywordStart, punchOn, punchStart,
+      };
     },
 
     _apply(state, t) {
@@ -130,16 +177,58 @@
           const n = letters.length || 1;
           letters.forEach((span, idx) => {
             const last = Math.max(n - 1, 0);
-            span.classList.toggle(
-              "is-on",
-              isCurr && state.titleOn && idx <= state.letterFrac * last,
-            );
+            const letterOn = isCurr && state.titleOn && idx <= state.letterFrac * last;
+            span.classList.toggle("is-on", letterOn);
+            if (!span.classList.contains("talk-keyword-letter")) return;
+            const strong = span.closest("strong, b");
+            const ki = strong ? Number(strong.dataset.talkKeyword) : NaN;
+            const kOn = letterOn && state.keywords.has(ki);
+            const start = state.keywordStart[ki] ?? 0;
+            const kFrac = kOn ? this._frac(t, start, KEYWORD_PUNCH_S) : 0;
+            span.classList.toggle("is-punch", kOn && kFrac > 0);
+            if (kOn) {
+              span.style.transform = `scale(${0.96 + 0.12 * kFrac})`;
+              span.style.color = "#d96b4c";
+            } else {
+              span.style.transform = "";
+              span.style.color = "";
+            }
           });
         }
         section.querySelectorAll(".talk-bullet").forEach((li) => {
           const idx = Number(li.dataset.talkBullet);
           li.classList.toggle("is-on", isCurr && state.bullets.has(idx));
         });
+        section.querySelectorAll(".talk-keyword").forEach((el) => {
+          if (el.closest(".talk-title")) return;
+          const ki = Number(el.dataset.talkKeyword);
+          const kOn = isCurr && state.keywords.has(ki);
+          const start = state.keywordStart[ki] ?? 0;
+          const kFrac = kOn ? this._frac(t, start, KEYWORD_PUNCH_S) : 0;
+          el.classList.toggle("is-on", kOn && kFrac > 0);
+          if (kOn) {
+            el.style.transform = `scale(${0.96 + 0.12 * kFrac})`;
+            el.style.color = "#d96b4c";
+          } else {
+            el.style.transform = "";
+            el.style.color = "";
+          }
+        });
+        const punch = section.querySelector(".talk-punch");
+        if (punch) {
+          const pOn = isCurr && state.punchOn;
+          const pFrac = pOn ? this._frac(t, state.punchStart, MERKSATZ_S) : 0;
+          punch.classList.toggle("is-on", pOn && pFrac > 0);
+          if (pOn) {
+            punch.style.transform = `scale(${0.96 + 0.04 * pFrac})`;
+            if (!punch.querySelector(".talk-letter")) {
+              punch.style.opacity = String(pFrac);
+            }
+          } else {
+            punch.style.transform = "";
+            if (!punch.querySelector(".talk-letter")) punch.style.opacity = "";
+          }
+        }
       });
     },
   };

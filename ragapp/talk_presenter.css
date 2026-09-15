@@ -50,6 +50,20 @@ body.talk-presenter-on > section:not(.talk-slide-on) {
   transform: none;
 }
 
+.talk-keyword {
+  display: inline-block;
+  transform-origin: center;
+}
+
+.talk-punch {
+  transform-origin: left center;
+}
+
+.talk-letter.is-punch,
+.talk-keyword.is-on {
+  color: #d96b4c;
+}
+
 body.talk-presenter-on svg.bespoke-marp-slide.talk-slide-on,
 body.talk-presenter-on > section.talk-slide-on {
   z-index: 1;
