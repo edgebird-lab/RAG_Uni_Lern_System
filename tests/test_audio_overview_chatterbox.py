@@ -172,6 +172,7 @@ def synth_env(load_functions, ragapp_dir, tmp_path):
                 "logging": logging,
                 "_ForcedEosCapture": _FakeForcedEosCapture,
                 "manifest": types.SimpleNamespace(list_pronunciation_fixes=lambda: {}),
+                "_loudnorm_or_same": lambda wav, sr: (wav, sr),
             },
             const_names=["_PRONUNCIATION_FIXES", "_PATH_PATTERN", "_DOMAIN_PATTERN",
                          "_BARE_SUFFIX_PATTERN", "_ALIGNMENT_LOGGER_NAME"],

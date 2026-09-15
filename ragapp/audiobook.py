@@ -19,10 +19,9 @@ mit (bestätigt: ``torchaudio.io.StreamWriter`` kann hier live AAC/M4A
 schreiben), ein zusätzliches System-``ffmpeg`` ist nicht nötig.
 
 Zusätzlich wird jedes Kapitel per ffmpeg-``loudnorm``-Filter (EBU R128) auf
-denselben Lautstärke-Zielwert normalisiert - separat generierte Audio-
-Overviews klingen sonst beim Hintereinander-Abspielen oft unterschiedlich
-laut, was beim manuellen Zusammenfügen als störender Lautstärke-Sprung
-auffällt.
+denselben Lautstärke-Zielwert normalisiert. Neue Overviews sind nach der
+Vertonung bereits so gelegt; der Filter hier bleibt als Netz für ältere WAVs.
+Ein zweiter Durchgang auf schon normiertem Material ist praktisch wirkungslos.
 """
 from __future__ import annotations
 
@@ -33,12 +32,11 @@ from typing import Callable, Optional
 
 from ragapp.config import AUDIO_DIR, AUDIOBOOK_DIR
 from ragapp import manifest
+from ragapp.audio_loudness import LOUDNORM_FILTER as _LOUDNORM_FILTER
 
 ProgressCallback = Optional[Callable[[int, int, str], None]]
 
-# EBU-R128-Zielwerte fuer Sprache/Hoerbuecher (Standardempfehlung, z. B. auch
-# von Audible/ACX fuer Hoerbuch-Abgaben genutzt: -16 LUFS integriert).
-_LOUDNORM_FILTER = "loudnorm=I=-16:TP=-1.5:LRA=11"
+# EBU-R128 kommt aus ``audio_loudness`` (gleiche Werte wie nach der Vertonung).
 
 
 class AudiobookError(RuntimeError):

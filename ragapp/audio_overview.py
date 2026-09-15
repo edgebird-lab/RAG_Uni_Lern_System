@@ -707,7 +707,17 @@ def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
 
     pause_samples = int(model.sr * settings.AUDIO_TTS_PAUSE_MS / 1000)
     full_wav = _concat_with_pauses(chunks, pause_samples)
-    torchaudio.save(str(output_path), full_wav, model.sr)
+    full_wav, sr_out = _loudnorm_or_same(full_wav, model.sr)
+    torchaudio.save(str(output_path), full_wav, sr_out)
+
+
+def _loudnorm_or_same(wav, sample_rate: int):
+    """EBU-R128 auf das fertige Overview; bei Filterfehler unverändert speichern."""
+    try:
+        from ragapp.audio_loudness import loudnorm_waveform
+        return loudnorm_waveform(wav, sample_rate)
+    except Exception:  # noqa: BLE001
+        return wav, sample_rate
 
 
 def _require_reference_wav() -> Path:
