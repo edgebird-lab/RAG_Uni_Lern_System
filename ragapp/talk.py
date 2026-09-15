@@ -7,7 +7,7 @@ Audio-Overview-TTS (``audio_overview.synthesize_speech``). Export:
 
 - Marp ``.md`` (immer)
 - HTML/PDF/PNG via Marp-CLI (wenn installiert)
-- MP4: PNG-Folien + WAV per ffmpeg
+- MP4: Presenter-Aufnahme der Folien + WAV (PNG-Diashow als Fallback)
 
 Siehe Seite ``17_🎤_Vortrag.py`` und ``docs/BEDIENUNG.md``.
 """
@@ -1468,19 +1468,41 @@ def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
     out_rel = f"{talk_id}/talk.mp4"
     out_path = TALK_DIR / out_rel
     silent = d / "talk.silent.mp4"
+    backend = "presenter"
     try:
         record_presenter_video(video_html, silent, duration_s=cues["duration_s"])
         mux_video_with_talk_audio(silent, audio_path, out_path)
     except TalkError as exc:
         log.warning("Presenter-Aufnahme fehlgeschlagen, Fallback Diashow: %s", exc)
+        backend = "slideshow"
         _render_slideshow_video(html_path, md_path, d, audio_path, out_path)
     finally:
         silent.unlink(missing_ok=True)
     if not out_path.is_file():
         raise TalkError("Video-Datei wurde nicht erzeugt.")
+    write_talk_video_meta(
+        talk_id, backend=backend, cues_source=str(cues.get("source") or "placeholder"))
     if row:
         manifest.update_talk(talk_id, video_path=out_rel)
     return out_rel
+
+
+def write_talk_video_meta(talk_id: str, *, backend: str, cues_source: str) -> None:
+    path = talk_dir(talk_id) / "video_meta.json"
+    path.write_text(
+        json.dumps({"backend": backend, "cues": cues_source}, ensure_ascii=False, indent=2),
+        encoding="utf-8")
+
+
+def read_talk_video_meta(talk_id: str) -> dict:
+    path = talk_dir(talk_id) / "video_meta.json"
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def create_talk_record(*, title: str, subject: Optional[str], doc_ids: list[str],

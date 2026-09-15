@@ -418,18 +418,24 @@ with vc2:
     if st.button("🎬 Video (MP4) erzeugen", disabled=not _can_video, key="talk_video",
                  type="primary" if _can_video else "secondary"):
         try:
-            with st.spinner("Marp → PNG → ffmpeg …"):
+            with st.spinner("Folien aufnehmen und mit der Stimme verbinden …"):
                 _vrel = talk.render_talk_video(_active_id)
             st.success("Video fertig.")
             st.rerun()
         except talk.TalkError as exc:
             st.error(str(exc))
+    st.caption("Animierte Folien, synchron zur Stimme. Handout und PDF bleiben statisch.")
     if not _audio_rel:
         st.caption("Video braucht zuerst eine Vertonung.")
     elif _active.get("forced_eos"):
         st.caption("Audio klingt unvollständig – zuerst erneut „Vertonen“, dann Video erzeugen.")
+    elif not (talk.talk_dir(_active_id) / "timeline.json").is_file():
+        st.caption("Für passgenaue Punkte neu vertonen, dann Video neu erzeugen.")
 
 _video_rel = _active.get("video_path")
+_vmeta = talk.read_talk_video_meta(_active_id)
+if _vmeta.get("backend") == "slideshow":
+    st.warning("Aufnahme nicht möglich, Diashow-Video erzeugt.")
 if _video_rel:
     _vp = TALK_DIR / _video_rel
     if _vp.is_file():

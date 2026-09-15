@@ -278,3 +278,16 @@ def test_render_talk_video_falls_back_when_record_fails(isolated_db, tmp_path, m
     assert rel == "talkfb1/talk.mp4"
     assert called.get("slideshow") is True
     assert (talks_dir / rel).is_file()
+    meta = talk.read_talk_video_meta(tid)
+    assert meta.get("backend") == "slideshow"
+
+
+def test_vortrag_seite_zeigt_video_hinweise():
+    src = Path("ragapp/ui/pages/17_🎤_Vortrag.py").read_text(encoding="utf-8")
+    helper = Path("ragapp/ui/_pronunciation.py").read_text(encoding="utf-8")
+    assert "_render_forced_eos" in src
+    assert "erst dann das Video erzeugen" in src
+    assert "Animierte Folien, synchron zur Stimme" in src
+    assert "Diashow-Video erzeugt" in src
+    assert "passgenaue Punkte" in src
+    assert "Abgebrochene Sätze" in helper

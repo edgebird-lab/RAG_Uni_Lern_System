@@ -305,8 +305,13 @@ Aus gewählten Unterlagen entsteht ein **Marp-Markdown-Vortrag** plus separates
    Erzeugung läuft **abschnittweise** (wie Audio-Overview): jedes Kapitel bekommt
    eigene Folien + ausführliches Sprecher-Skript; optionale SearXNG-Treffer einen
    eigenen „Zusatzwissen“-Lauf – kein einzelnes Riesen-JSON mehr.
-4. Export: Marp-`.md`, WAV, optional HTML (Marp-CLI) und **MP4** (PNG-Folien +
-   Audio per ffmpeg). Ohne installiertes Marp-CLI bleiben MD + Audio nutzbar.
+4. Export: Marp-`.md`, WAV, optional HTML/PDF (Marp-CLI, **statische** Folien)
+   und **MP4**. Das Video nimmt die Folien in Chrome auf (Punkte erscheinen
+   nacheinander, Titel buchstabenweise, Wechsel mit kurzem Schub) und legt die
+   Stimme darunter. Ohne Timeline aus einer frischen Vertonung sind die Zeiten
+   nur gleichmäßig verteilt – dann einmal neu vertonen und das Video neu
+   erzeugen. Scheitert die Aufnahme, entsteht wie früher eine PNG-Diashow.
+   Ohne Marp-CLI bleiben MD + Audio nutzbar.
 
 Skript-Länge: Sicherheitsnetz ca. **3 Stunden** Sprechzeit (gemeinsam mit
 Audio-Overview, `AUDIO_MAX_SCRIPT_CHARS` / `TALK_MAX_SCRIPT_CHARS`).
