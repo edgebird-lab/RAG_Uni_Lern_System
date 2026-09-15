@@ -97,13 +97,20 @@ def download_broll(query: str, dest_dir: Path, *, max_n: int = MAX_BROLL) -> lis
     return saved
 
 
-def slots_without_figure(marp_md: str) -> int:
-    """Inhaltsfolien ohne Bild – Lead/Agenda/Quellen zaehlen nicht."""
+def slots_without_figure(marp_md: str, *, allow_cards: bool = False) -> int:
+    """Inhaltsfolien ohne Bild – Lead/Agenda/Quellen/Takeaway zaehlen nicht."""
     from ragapp.talk_cues import parse_slide_body, split_marp_slides
+    skip = {"lead", "agenda", "sources"}
+    if not allow_cards:
+        skip.add("card")
     n = 0
     for body in split_marp_slides(marp_md):
         parsed = parse_slide_body(body)
-        if parsed["class_name"] in {"lead", "agenda", "sources", "card"}:
+        cls = parsed["class_name"]
+        if cls in skip:
+            continue
+        title = (parsed.get("title") or "").lower()
+        if cls == "accent" and "merke dir das" in title:
             continue
         if parsed.get("images"):
             continue

@@ -34,6 +34,36 @@ marp: true
     assert talk_broll.slots_without_figure(md) == 1
 
 
+def test_slots_without_figure_counts_youtube_cards_skips_takeaway():
+    md = """\
+<!-- _class: lead -->
+
+# T
+
+---
+
+<!-- _class: card -->
+
+## **Grounding**
+
+---
+
+<!-- _class: accent -->
+
+## Merke dir das
+
+> x
+
+---
+
+<!-- _class: accent -->
+
+## Abruf hält
+"""
+    assert talk_broll.slots_without_figure(md) == 1
+    assert talk_broll.slots_without_figure(md, allow_cards=True) == 2
+
+
 def test_attach_without_broll_does_not_search(monkeypatch, tmp_path):
     called = {"n": 0}
 
@@ -58,6 +88,22 @@ def test_attach_with_broll_fills_empty_slot(monkeypatch, tmp_path):
     out = talk_figures.attach_talk_figures(
         md, [], dest_dir=tmp_path / "figures", broll=True, broll_query="q")
     assert "figures/broll_0.png" in out
+
+
+def test_attach_youtube_broll_fills_card(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        talk_broll, "download_broll",
+        lambda *a, **k: [{"rel": "figures/broll_0.png", "page": 0}],
+    )
+    md = "<!-- _class: card -->\n\n## **Grounding**\n"
+    out = talk_figures.attach_talk_figures(
+        md, [], dest_dir=tmp_path / "figures", broll=True, broll_query="q",
+        youtube=True)
+    assert "figures/broll_0.png" in out
+    skipped = talk_figures.attach_talk_figures(
+        md, [], dest_dir=tmp_path / "figures", broll=True, broll_query="q",
+        youtube=False)
+    assert "figures/broll_0.png" not in skipped
 
 
 def test_download_broll_writes_files_and_license(monkeypatch, tmp_path):

@@ -2403,7 +2403,8 @@ def create_talk_record(*, title: str, subject: Optional[str], doc_ids: list[str]
     from ragapp.talk_style import write_talk_style
     marp_md = attach_talk_figures(
         marp_md, doc_ids, dest_dir=talk_dir(tid) / "figures",
-        broll=bool(broll) or bool(youtube_style), broll_query=title or "")
+        broll=bool(broll) or bool(youtube_style), broll_query=title or "",
+        youtube=bool(youtube_style))
     save_marp_file(tid, marp_md)
     write_talk_style(tid, youtube=bool(youtube_style))
     return manifest.create_talk(

@@ -664,7 +664,7 @@ def test_make_cut_click_writes_wav(tmp_path):
 def test_create_talk_record_youtube_enables_broll(isolated_db, tmp_path, monkeypatch):
     called = {}
 
-    def fake_attach(md, doc_ids, *, dest_dir, broll=False, broll_query=""):
+    def fake_attach(md, doc_ids, *, dest_dir, broll=False, broll_query="", **_k):
         called["broll"] = bool(broll)
         return md
 

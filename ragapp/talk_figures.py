@@ -21,7 +21,8 @@ MIN_SIDE = 80
 MIN_PIXELS = 80 * 80
 MAX_PER_DOC = 8
 MAX_PER_TALK = 6
-_SKIP_CLASSES = frozenset({"lead", "agenda", "sources", "card"})
+_SKIP_CLASSES = frozenset({"lead", "agenda", "sources"})
+_SKIP_CLASSES_EXPLAINER = _SKIP_CLASSES | {"card"}
 _CLASS_RE = re.compile(r"<!--\s*_class:\s*(\w+)\s*-->")
 _HAS_IMG_RE = re.compile(r"!\[.*?\]\([^)]+\)|<img\b", re.IGNORECASE)
 _PAGE_HINT_RE = re.compile(r"seite\s*(\d+)|page\s*(\d+)", re.IGNORECASE)
@@ -168,7 +169,17 @@ def _page_hint(body: str) -> Optional[int]:
     return int(m.group(1) or m.group(2))
 
 
-def attach_figures_to_markdown(marp_md: str, figures: list[dict[str, Any]]) -> str:
+def _skip_figure_slide(body: str, cls: str, *, allow_cards: bool) -> bool:
+    skip = _SKIP_CLASSES if allow_cards else _SKIP_CLASSES_EXPLAINER
+    if cls in skip:
+        return True
+    if cls == "accent" and "merke dir das" in (body or "").lower():
+        return True
+    return False
+
+
+def attach_figures_to_markdown(marp_md: str, figures: list[dict[str, Any]],
+                              *, allow_cards: bool = False) -> str:
     """Haengt unused figures an Inhaltsfolien (max. eins je Folie)."""
     if not figures:
         return marp_md
@@ -188,7 +199,7 @@ def attach_figures_to_markdown(marp_md: str, figures: list[dict[str, Any]]) -> s
         if (
             unused
             and chunk.strip()
-            and cls not in _SKIP_CLASSES
+            and not _skip_figure_slide(chunk, cls, allow_cards=allow_cards)
             and not _HAS_IMG_RE.search(chunk)
         ):
             hint = _page_hint(chunk)
@@ -205,17 +216,20 @@ def attach_figures_to_markdown(marp_md: str, figures: list[dict[str, Any]]) -> s
 
 
 def attach_talk_figures(marp_md: str, doc_ids: list[str], *, dest_dir: Path,
-                        broll: bool = False, broll_query: str = "") -> str:
+                        broll: bool = False, broll_query: str = "",
+                        youtube: bool = False) -> str:
     """Extract + attach. Bei Fehlern unveraendertes Markdown zurueck."""
     try:
         figures = collect_talk_figures(doc_ids, dest_dir)
         if broll:
             from ragapp.talk_broll import download_broll, slots_without_figure
-            need = max(0, slots_without_figure(marp_md) - len(figures))
+            need = max(0, slots_without_figure(
+                marp_md, allow_cards=bool(youtube)) - len(figures))
             if need:
                 figures.extend(download_broll(
                     broll_query, dest_dir, max_n=min(2, need)))
-        return attach_figures_to_markdown(marp_md, figures)
+        return attach_figures_to_markdown(
+            marp_md, figures, allow_cards=bool(youtube))
     except Exception as exc:  # noqa: BLE001
         log.warning("Vortrags-Abbildungen übersprungen: %s", exc)
         return marp_md
