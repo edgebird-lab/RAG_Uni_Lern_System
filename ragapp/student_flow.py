@@ -11,6 +11,7 @@ import re
 import threading
 import time
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Optional
 
 from ragapp import manifest, planner
@@ -595,6 +596,200 @@ def finish_verstehen_session(
         "note_id": note_id,
         "card_ids": card_ids,
         "topic": topic,
+        "subject": subject,
+        "minutes": minutes,
+    }
+
+
+def _first_study_subject(preferred: Optional[str] = None) -> Optional[str]:
+    if preferred and not is_fixture_subject(preferred) and not is_placeholder_subject(preferred):
+        return preferred
+    for s in manifest.study_subjects():
+        if not is_fixture_subject(s) and not is_placeholder_subject(s):
+            return s
+    return None
+
+
+def _real_documents(subject: Optional[str] = None) -> list[dict]:
+    from ragapp.config import PROJECT_ROOT
+    out: list[dict] = []
+    for raw in manifest.list_documents():
+        d = dict(raw)
+        subj = (d.get("subject") or "").strip()
+        if subject and subj != subject:
+            continue
+        if is_fixture_subject(subj) or is_placeholder_subject(subj) or is_inbox_subject(subj):
+            continue
+        sp = d.get("source_path") or ""
+        path = Path(sp) if Path(sp).is_absolute() else PROJECT_ROOT / sp
+        if not path.is_file():
+            continue
+        d["_path"] = path
+        out.append(d)
+    return out
+
+
+def _heading_for_doc(path: Path, subject: Optional[str], fallback: str) -> tuple[str, int]:
+    from ragapp.graph.socratic import is_usable_topic, pdf_toc_titles, topics_from_markdown
+    from ragapp.ui import _docviewer
+
+    heading = (fallback or "").strip()
+    page = 1
+    if path.suffix.lower() == ".pdf":
+        toc = pdf_toc_titles(str(path), root=path.parent)
+        for cand in toc:
+            if is_usable_topic(cand, subject=subject):
+                heading = cand
+                break
+        if heading:
+            page = _docviewer.toc_page_for_heading(path, heading)
+    else:
+        text = _docviewer.load_full_text(path) or ""
+        for cand in topics_from_markdown(text, subject=subject, limit=5):
+            if is_usable_topic(cand, subject=subject):
+                heading = cand
+                break
+    heading = heading or path.stem.replace("_", " ").strip() or "Skript"
+    return heading, max(1, int(page or 1))
+
+
+def pick_skript_spot() -> Optional[dict]:
+    """Datei + Stelle für die nächste Skript-Sitzung – ohne Klausurdatum."""
+    snap = planner.today_snapshot()
+    for block in snap.get("plan_blocks_today") or []:
+        if block.get("done"):
+            continue
+        subject = block.get("plan_subject") or block.get("subject")
+        if not subject or is_fixture_subject(subject) or is_placeholder_subject(subject):
+            continue
+        heading = (block.get("section_title") or "").strip()
+        plan_id = block.get("plan_id")
+        section_id = block.get("section_id")
+        doc_ids: list[str] = []
+        if plan_id and section_id:
+            for sec in manifest.list_plan_sections(plan_id):
+                if sec.get("section_id") != section_id:
+                    continue
+                doc_ids = [
+                    r.get("doc_id") for r in (sec.get("source_refs") or [])
+                    if r.get("doc_id")
+                ]
+                break
+        docs = _real_documents(subject)
+        chosen = None
+        if doc_ids:
+            by_id = {d["doc_id"]: d for d in docs}
+            for did in doc_ids:
+                if did in by_id:
+                    chosen = by_id[did]
+                    break
+        if chosen is None and docs:
+            chosen = docs[0]
+        if not chosen:
+            continue
+        path = chosen["_path"]
+        from ragapp.graph.socratic import is_usable_topic
+        from ragapp.ui import _docviewer as _dv
+        if heading and is_usable_topic(heading, subject=subject):
+            title = heading
+            page = _dv.toc_page_for_heading(path, heading)
+        else:
+            title, page = _heading_for_doc(path, subject, heading)
+        return {
+            "subject": subject,
+            "doc_id": chosen.get("doc_id"),
+            "filename": chosen.get("filename") or path.name,
+            "source_path": str(chosen.get("source_path") or path),
+            "page": page,
+            "heading": title,
+            "minutes": 20,
+            "block_id": block.get("block_id"),
+        }
+
+    preferred = (snap.get("top_priority") or {}).get("subject")
+    subject = _first_study_subject(preferred)
+    if not subject:
+        docs = _real_documents()
+        if not docs:
+            return None
+        subject = docs[0].get("subject")
+    docs = _real_documents(subject)
+    if not docs:
+        docs = _real_documents()
+    if not docs:
+        return None
+    chosen = docs[0]
+    path = chosen["_path"]
+    heading, page = _heading_for_doc(path, subject, "")
+    return {
+        "subject": subject,
+        "doc_id": chosen.get("doc_id"),
+        "filename": chosen.get("filename") or path.name,
+        "source_path": str(chosen.get("source_path") or path),
+        "page": page,
+        "heading": heading,
+        "minutes": 20,
+        "block_id": None,
+    }
+
+
+def finish_skript_session(
+    marks: list, *, heading: str, subject: Optional[str] = None,
+    doc_id: Optional[str] = None, filename: Optional[str] = None,
+    started_at: Optional[float] = None, minutes: int = 20,
+    block_id: Optional[str] = None,
+) -> dict:
+    """Notiz + Karten aus Markierungen. Kein LLM, kein Harvest."""
+    heading = (heading or "").strip() or "Skript"
+    lines: list[str] = [f"Stelle: {heading}"]
+    if filename:
+        lines.append(f"Datei: {filename}")
+    card_ids: list[str] = []
+    seen: set[str] = set()
+    for mark in marks or []:
+        text = (mark.get("text") if isinstance(mark, dict) else str(mark or "")).strip()
+        if not text:
+            continue
+        loc = (mark.get("heading") if isinstance(mark, dict) else None) or heading
+        page = mark.get("page") if isinstance(mark, dict) else None
+        label = f"**{loc}**" + (f" · S. {page}" if page else "")
+        lines.append(f"{label}\n{text[:800]}")
+        key = text[:80].lower()
+        if key in seen or len(card_ids) >= 4:
+            continue
+        seen.add(key)
+        front = (loc if loc != heading else "") or (_SENTENCE_RE.findall(text) or [text[:80]])[0]
+        front = (front or heading).strip()[:120]
+        cid = card_from_text(
+            front, text[:1500], source="skript", subject=subject,
+            topic=heading, doc_id=doc_id)
+        if cid:
+            card_ids.append(cid)
+    body = "\n\n".join(lines).strip()
+    if body in {f"Stelle: {heading}", f"Stelle: {heading}\n\nDatei: {filename}"}:
+        body += "\n\nNoch keine Markierungen."
+    note_id = manifest.create_note(
+        subject=subject, doc_id=doc_id, topic=heading, collection="Skript",
+        title=f"Skript: {heading}"[:80], body=body)
+    ended = time.time()
+    started = float(started_at or ended)
+    duration = max(1, int(ended - started))
+    try:
+        manifest.log_study_session(
+            subject=subject, mode="skript",
+            started_at=started, ended_at=ended, duration_sec=duration,
+            notiz=heading)
+    except Exception:  # noqa: BLE001
+        pass
+    if block_id:
+        try:
+            mark_plan_block_done(block_id, via="manual")
+        except Exception:  # noqa: BLE001
+            pass
+    return {
+        "note_id": note_id,
+        "card_ids": card_ids,
+        "heading": heading,
         "subject": subject,
         "minutes": minutes,
     }

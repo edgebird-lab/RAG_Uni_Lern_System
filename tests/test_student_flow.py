@@ -886,3 +886,117 @@ def test_finish_verstehen_leerer_dialog_legt_trotzdem_notiz_an(isolated_db):
     note = manifest.get_note(out["note_id"])
     assert "Noch keine Dialogzeilen" in note["body"]
     assert note["collection"] == "Verstehen"
+
+
+def _write_skript_md(tmp_path, name="skript.md"):
+    path = tmp_path / name
+    path.write_text(
+        "# Schutzziele\n\n"
+        "Vertraulichkeit schützt Daten vor unbefugtem Lesen in der Praxis.\n\n"
+        "Integrität verhindert unbemerkte Änderungen an Informationen.\n",
+        encoding="utf-8")
+    return path
+
+
+def test_passages_on_page_nimmt_markdown_absatz(tmp_path):
+    from ragapp.ui import _docviewer
+    path = _write_skript_md(tmp_path)
+    rows = _docviewer.passages_on_page(path, heading="Schutzziele")
+    assert len(rows) >= 2
+    assert any("Vertraulichkeit" in r["text"] for r in rows)
+
+
+def test_passages_on_page_nimmt_pdf_bloecke(tmp_path):
+    import fitz
+    from ragapp.ui import _docviewer
+    path = tmp_path / "stoff.pdf"
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "Deckungsbeitrag ist Erloes minus variable Kosten in der Rechnung.")
+    page.insert_text((72, 140), "Break-even ist die Menge, bei der der Gewinn genau null ist.")
+    doc.save(path)
+    doc.close()
+    rows = _docviewer.passages_on_page(path, 1)
+    joined = " ".join(r["text"] for r in rows)
+    assert "Deckungsbeitrag" in joined
+    assert "Break-even" in joined
+
+
+def test_pick_skript_spot_ueberspringt_livetest(isolated_db, tmp_path):
+    path = _write_skript_md(tmp_path, "live.md")
+    manifest.upsert_document(
+        doc_id="liv", content_hash="h", source_path=str(path),
+        filename="live.md", subject="Livetest", filetype="md",
+        num_chunks=1, num_questions=0, char_count=20, status="ok")
+    student_flow.card_from_text(
+        "Was ist Grounding?", "Antwort nur aus den Unterlagen.",
+        subject="Livetest", topic="Grounding")
+    assert student_flow.pick_skript_spot() is None
+
+
+def test_pick_skript_spot_nimmt_echtes_dokument(isolated_db, tmp_path):
+    path = _write_skript_md(tmp_path)
+    manifest.upsert_document(
+        doc_id="d-cs", content_hash="h", source_path=str(path),
+        filename="skript.md", subject="Cybersecurity", filetype="md",
+        num_chunks=1, num_questions=0, char_count=80, status="ok")
+    student_flow.card_from_text(
+        "Was sind Schutzziele?", "Vertraulichkeit, Integritaet, Verfuegbarkeit.",
+        subject="Cybersecurity", topic="Schutzziele")
+    got = student_flow.pick_skript_spot()
+    assert got is not None
+    assert got["subject"] == "Cybersecurity"
+    assert got["doc_id"] == "d-cs"
+    assert got["minutes"] == 20
+    assert "Livetest" not in (got["subject"] or "")
+    assert got["heading"]
+
+
+def test_pick_skript_spot_nimmt_heutigen_planblock(isolated_db, tmp_path):
+    path = _write_skript_md(tmp_path)
+    manifest.upsert_document(
+        doc_id="d-plan", content_hash="h", source_path=str(path),
+        filename="skript.md", subject="BWL", filetype="md",
+        num_chunks=1, num_questions=0, char_count=80, status="ok")
+    student_flow.card_from_text("Q", "A ist lang genug fuer eine Karte.", subject="BWL")
+    pid = manifest.create_study_plan(
+        title="BWL", subject="BWL", doc_ids=["d-plan"], deadline=None, daily_minutes=45)
+    manifest.update_study_plan(pid, status="active")
+    sid = manifest.append_plan_section(
+        pid, title="Deckungsbeitrag", est_minutes=20,
+        source_refs=[{"doc_id": "d-plan", "filename": "skript.md"}])
+    manifest.append_plan_block(
+        pid, section_id=sid, planned_date=date.today().isoformat(), planned_min=20)
+    got = student_flow.pick_skript_spot()
+    assert got is not None
+    assert got["subject"] == "BWL"
+    assert got["doc_id"] == "d-plan"
+    assert got["block_id"]
+    assert "Deckungsbeitrag" in (got["heading"] or "")
+
+
+def test_finish_skript_session_schreibt_notiz_und_karte(isolated_db):
+    marks = [{
+        "text": "Vertraulichkeit schuetzt vor unbefugtem Lesen in Informationssystemen.",
+        "heading": "Schutzziele", "page": 2,
+    }]
+    out = student_flow.finish_skript_session(
+        marks, heading="Schutzziele", subject="IT-Sicherheit",
+        filename="skript.pdf", started_at=1000.0)
+    assert out["note_id"]
+    note = manifest.get_note(out["note_id"])
+    assert note["collection"] == "Skript"
+    assert "Vertraulichkeit" in note["body"]
+    assert out["card_ids"]
+    cards = manifest.get_cards_by_ids(out["card_ids"])
+    assert any(c.get("source") == "skript" for c in cards)
+
+
+def test_finish_skript_leere_markierung_legt_trotzdem_notiz_an(isolated_db):
+    out = student_flow.finish_skript_session(
+        [], heading="Schutzziele", subject="IT-Sicherheit", filename="a.md")
+    assert out["note_id"]
+    assert out["card_ids"] == []
+    note = manifest.get_note(out["note_id"])
+    assert "Noch keine Markierungen" in note["body"]
+    assert note["collection"] == "Skript"

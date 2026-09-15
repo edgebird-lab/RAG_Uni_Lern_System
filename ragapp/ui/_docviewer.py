@@ -9,6 +9,7 @@ Volltext. CPU-only, offline (fitz/PyMuPDF, bereits Abhaengigkeit der Loader).
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 
 def load_full_text(path: "str | Path") -> "str | None":
@@ -79,3 +80,127 @@ def render_pdf_page(path: "str | Path", page_num: int,
         return page.get_pixmap(dpi=dpi).tobytes("png")
     except Exception:  # noqa: BLE001
         return None
+
+
+_PARA_SPLIT = re.compile(r"\n\s*\n")
+_HEADING_LINE = re.compile(r"^#{1,3}\s+(.+)$", re.M)
+
+
+def page_text_len(path: "str | Path", page_num: int = 1) -> int:
+    """Sichtbarer Text auf einer PDF-Seite (0 wenn kein PDF/Fehler)."""
+    path = Path(path)
+    if not path.is_file() or path.suffix.lower() != ".pdf":
+        return 0
+    try:
+        import fitz
+        doc = fitz.open(str(path))
+        if page_num < 1 or page_num > doc.page_count:
+            return 0
+        text = (doc.load_page(page_num - 1).get_text("text") or "").strip()
+        return len(text)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def toc_page_for_heading(path: "str | Path", heading: str) -> int:
+    """1-basierte PDF-Seite zum Inhaltsverzeichnis-Titel, sonst 1."""
+    needle = (heading or "").strip().lower()
+    if not needle:
+        return 1
+    path = Path(path)
+    if not path.is_file() or path.suffix.lower() != ".pdf":
+        return 1
+    try:
+        import fitz
+        doc = fitz.open(str(path))
+        toc = doc.get_toc() or []
+        doc.close()
+    except Exception:  # noqa: BLE001
+        return 1
+    for _level, title, page in toc:
+        name = (title or "").strip().lower()
+        if not name:
+            continue
+        if needle in name or name in needle:
+            return max(1, int(page or 1))
+    return 1
+
+
+def passages_on_page(path: "str | Path", page_num: int = 1, *,
+                     heading: "str | None" = None, limit: int = 12,
+                     min_chars: int = 24) -> list[dict]:
+    """Tippbare Absätze einer Seite/eines Abschnitts – ohne LLM.
+
+    PDF: Textblöcke der gerenderten Seite. Markdown/TXT: Absätze des
+    aktuellen Überschriften-Abschnitts (sonst die ganze Datei).
+    """
+    path = Path(path)
+    if not path.is_file():
+        return []
+    limit = max(1, min(int(limit), 20))
+    min_chars = max(8, int(min_chars))
+    suffix = path.suffix.lower()
+    if suffix == ".pdf":
+        return _pdf_passages(path, page_num, limit=limit, min_chars=min_chars)
+    text = load_full_text(path) or ""
+    return _text_passages(text, heading=heading, limit=limit, min_chars=min_chars)
+
+
+def _pdf_passages(path: Path, page_num: int, *, limit: int, min_chars: int) -> list[dict]:
+    try:
+        import fitz
+        doc = fitz.open(str(path))
+        if page_num < 1 or page_num > doc.page_count:
+            return []
+        blocks = doc.load_page(page_num - 1).get_text("blocks") or []
+    except Exception:  # noqa: BLE001
+        return []
+    rows: list[tuple[float, str]] = []
+    for blk in blocks:
+        if not isinstance(blk, (list, tuple)) or len(blk) < 5:
+            continue
+        if len(blk) > 6 and int(blk[6] or 0) != 0:
+            continue
+        text = " ".join(str(blk[4] or "").split()).strip()
+        if len(text) < min_chars:
+            continue
+        y0 = float(blk[1] or 0)
+        rows.append((y0, text[:400]))
+    rows.sort(key=lambda r: r[0])
+    out: list[dict] = []
+    seen: set[str] = set()
+    for i, (_y, text) in enumerate(rows):
+        key = text[:80].lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"id": f"p{i}", "text": text, "page": int(page_num)})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _text_passages(text: str, *, heading: "str | None", limit: int,
+                   min_chars: int) -> list[dict]:
+    body = (text or "").strip()
+    if not body:
+        return []
+    want = (heading or "").strip().lower()
+    if want:
+        matches = list(_HEADING_LINE.finditer(body))
+        start = 0
+        end = len(body)
+        for i, m in enumerate(matches):
+            title = (m.group(1) or "").strip().lower()
+            if want in title or title in want:
+                start = m.end()
+                end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
+                break
+        body = body[start:end].strip() or body
+    paras = [p.strip() for p in _PARA_SPLIT.split(body) if len(p.strip()) >= min_chars]
+    if not paras and len(body) >= min_chars:
+        paras = [body[:400]]
+    out: list[dict] = []
+    for i, p in enumerate(paras[:limit]):
+        out.append({"id": f"t{i}", "text": " ".join(p.split())[:400], "page": 1})
+    return out
