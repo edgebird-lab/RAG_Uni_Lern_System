@@ -1366,17 +1366,119 @@ def daily_missions() -> list[dict]:
     return missions[:3]
 
 
-def save_voice_reference(audio_bytes: bytes) -> str:
-    """Speichert eine in der App aufgenommene Referenzstimme."""
-    from pathlib import Path
-    from ragapp.config import PROJECT_ROOT, settings
+class VoiceReferenceError(ValueError):
+    """Aufnahme unbrauchbar als Klon-Referenz (zu kurz, zu leise, nicht lesbar)."""
+
+
+VOICE_MIN_SECONDS = 30.0
+VOICE_MIN_PEAK = 0.02
+VOICE_CLIP_PEAK = 0.99
+VOICE_CLIP_FRAC = 0.01
+VOICE_TARGET_SR = 44100
+
+
+def inspect_voice_audio(audio_bytes: bytes) -> dict:
+    """Misst eine Aufnahme, ohne sie zu speichern. ``errors`` blockieren das Speichern."""
+    info = _inspect_voice_bytes(audio_bytes)
+    info.pop("wav", None)
+    return info
+
+
+def inspect_voice_path(path: "str | Path") -> dict:
+    """Misst eine bereits gespeicherte Referenz-WAV."""
+    import torchaudio
+    p = Path(path)
+    if not p.is_file():
+        raise VoiceReferenceError("Keine Stimm-Referenz vorhanden.")
+    wav, sr = torchaudio.load(str(p))
+    info = _measure_voice_wav(wav, int(sr))
+    info.pop("wav", None)
+    info["path"] = str(p)
+    return info
+
+
+def _inspect_voice_bytes(audio_bytes: bytes) -> dict:
     raw = bytes(audio_bytes or b"")
     if not raw:
-        raise ValueError("Keine Audiodaten.")
+        raise VoiceReferenceError("Keine Audiodaten.")
+    import io
+    import torchaudio
+    try:
+        wav, sr = torchaudio.load(io.BytesIO(raw))
+    except Exception as exc:  # noqa: BLE001
+        raise VoiceReferenceError(
+            "Die Aufnahme lässt sich nicht lesen. Bitte eine WAV-Datei verwenden."
+        ) from exc
+    return _measure_voice_wav(wav, int(sr))
+
+
+def _measure_voice_wav(wav, sr: int) -> dict:
+    import torch
+    if wav.dim() == 1:
+        wav = wav.unsqueeze(0)
+    channels_in = int(wav.shape[0])
+    n = int(wav.shape[-1])
+    duration_s = (n / float(sr)) if sr else 0.0
+    peak = float(wav.abs().max()) if n else 0.0
+    rms = float(wav.pow(2).mean().sqrt()) if n else 0.0
+    clip_frac = float((wav.abs() >= VOICE_CLIP_PEAK).float().mean()) if n else 0.0
+    errors: list[str] = []
+    warnings: list[str] = []
+    if duration_s < VOICE_MIN_SECONDS:
+        errors.append(
+            f"Zu kurz ({duration_s:.0f} s). Mindestens {int(VOICE_MIN_SECONDS)} s "
+            "in einem ruhigen Raum aufnehmen – die Klonqualität hängt an der Länge.")
+    if peak < VOICE_MIN_PEAK:
+        errors.append("Zu leise (kaum Pegel). Näher ans Mikro oder lauter sprechen.")
+    if clip_frac >= VOICE_CLIP_FRAC:
+        warnings.append(
+            "Die Aufnahme clippt (übersteuert). Etwas leiser oder weiter vom Mikro.")
+    if channels_in > 1:
+        warnings.append("Stereo wird als Mono gespeichert.")
+    return {
+        "duration_s": duration_s,
+        "sample_rate": sr,
+        "channels_in": channels_in,
+        "peak": peak,
+        "rms": rms,
+        "clip_frac": clip_frac,
+        "errors": errors,
+        "warnings": warnings,
+        "ok": not errors,
+        "wav": wav,
+    }
+
+
+def save_voice_reference(audio_bytes: bytes) -> dict:
+    """Prüft die Aufnahme, speichert sie als Mono-PCM-WAV, überschreibt erst nach OK."""
+    from ragapp.config import PROJECT_ROOT, settings
+    import torchaudio
+
+    info = _inspect_voice_bytes(audio_bytes)
+    if not info["ok"]:
+        raise VoiceReferenceError(" ".join(info["errors"]))
+    wav = info.pop("wav")
+    if wav.shape[0] > 1:
+        wav = wav.mean(dim=0, keepdim=True)
+    sr = int(info["sample_rate"])
+    if sr != VOICE_TARGET_SR:
+        wav = torchaudio.functional.resample(wav, sr, VOICE_TARGET_SR)
+        sr = VOICE_TARGET_SR
+    peak = float(wav.abs().max()) if wav.numel() else 0.0
+    if peak > 0.89:
+        wav = wav * (0.89 / peak)
     dest = Path(PROJECT_ROOT) / settings.AUDIO_REFERENCE_WAV
     dest.parent.mkdir(parents=True, exist_ok=True)
+    import io
+    buf = io.BytesIO()
+    torchaudio.save(buf, wav.cpu(), sr, format="wav")
+    raw = buf.getvalue()
+    if not raw:
+        raise VoiceReferenceError("Die Aufnahme konnte nicht als WAV gespeichert werden.")
     dest.write_bytes(raw)
-    return str(dest)
+    saved = inspect_voice_path(dest)
+    saved["warnings"] = list(info["warnings"])
+    return saved
 
 
 def keep_filter_option(current: Optional[str], available: list[str],

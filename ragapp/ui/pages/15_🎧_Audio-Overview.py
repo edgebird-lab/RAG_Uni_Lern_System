@@ -62,6 +62,52 @@ def _fach(code: "str | None") -> str:
     return SUBJECT_LABELS.get(code, code) if code else "–"
 
 
+def _fmt_voice_info(info: dict) -> str:
+    dur = float(info.get("duration_s") or 0)
+    mins, secs = divmod(int(dur), 60)
+    return (f"{mins}:{secs:02d} min · {int(info.get('sample_rate') or 0)} Hz · "
+            f"Peak {float(info.get('peak') or 0):.2f}")
+
+
+def _show_voice_issues(info: dict) -> None:
+    for _err in info.get("errors") or []:
+        st.error(_err)
+    for _warn in info.get("warnings") or []:
+        st.warning(_warn)
+
+
+def _voice_capture_ui(*, rec_key: str, up_key: str, btn_key: str, btn_label: str) -> None:
+    """Aufnahme/Upload mit Messung vor dem Speichern – keine kurze/leise Datei als Klon."""
+    from ragapp.student_flow import (
+        VoiceReferenceError, inspect_voice_audio, save_voice_reference,
+    )
+    _rec = st.audio_input("Stimme aufnehmen", key=rec_key)
+    _uploaded = st.file_uploader("Oder WAV hochladen", type=["wav"], key=up_key)
+    _blob = None
+    if _rec is not None:
+        _blob = _rec.getvalue()
+    elif _uploaded is not None:
+        _blob = _uploaded.getvalue()
+    if not _blob:
+        return
+    try:
+        _preview = inspect_voice_audio(_blob)
+    except VoiceReferenceError as exc:
+        st.error(str(exc))
+        return
+    st.caption("Vorschau · " + _fmt_voice_info(_preview))
+    _show_voice_issues(_preview)
+    if st.button(btn_label, type="primary", key=btn_key, disabled=not _preview["ok"],
+                 use_container_width=True):
+        try:
+            save_voice_reference(_blob)
+        except VoiceReferenceError as exc:
+            st.error(str(exc))
+        else:
+            st.success("Referenz gespeichert – Mono-WAV, bereit zum Klonen.")
+            st.rerun()
+
+
 from ragapp.ui._pronunciation import render_pronunciation_hints as _render_pronunciation_hints
 
 
@@ -98,19 +144,10 @@ if not _ref_path.is_file():
             "`docs/STIMME_AUFNEHMEN.md`. Die Aufnahme danach unter "
             f"`{settings.AUDIO_REFERENCE_WAV}` ablegen."
         )
-        st.caption("Direkt in der App aufnehmen oder eine WAV-Datei hochladen:")
-        _rec = st.audio_input("Stimme aufnehmen", key="voice_record")
-        _uploaded = st.file_uploader("Oder WAV hochladen", type=["wav"], key="voice_upload")
-        _blob = None
-        if _rec is not None:
-            _blob = _rec.getvalue()
-        elif _uploaded is not None:
-            _blob = _uploaded.getvalue()
-        if _blob and st.button("💾 Als Referenz speichern", type="primary"):
-            from ragapp.student_flow import save_voice_reference
-            save_voice_reference(_blob)
-            st.success("Gespeichert. Die Seite lädt jetzt neu.")
-            st.rerun()
+        st.caption("Direkt in der App aufnehmen oder eine WAV-Datei hochladen. "
+                   "Mindestens 30 Sekunden, ruhiger Raum, normales Sprechen.")
+        _voice_capture_ui(rec_key="voice_record", up_key="voice_upload",
+                          btn_key="voice_save", btn_label="💾 Als Referenz speichern")
     st.stop()
 
 _all_docs = [dict(d) for d in manifest.list_documents()
@@ -271,15 +308,26 @@ if _ov_by_id:
 st.divider()
 
 with st.expander("🎙️ Stimme ersetzen", expanded=False):
-    _rec2 = st.audio_input("Neu aufnehmen", key="voice_replace_rec")
-    _up2 = st.file_uploader("Oder neue WAV", type=["wav"], key="voice_replace_up")
-    _blob2 = (_rec2.getvalue() if _rec2 is not None
-              else _up2.getvalue() if _up2 is not None else None)
-    if _blob2 and st.button("Referenz überschreiben", key="voice_replace_save"):
-        from ragapp.student_flow import save_voice_reference
-        save_voice_reference(_blob2)
-        st.success("Neue Stimme gespeichert.")
-        st.rerun()
+    from ragapp.student_flow import VoiceReferenceError, inspect_voice_path
+    try:
+        _cur_voice = inspect_voice_path(_ref_path)
+        st.caption("Aktuell · " + _fmt_voice_info(_cur_voice))
+        _show_voice_issues(_cur_voice)
+        st.audio(str(_ref_path))
+    except VoiceReferenceError as exc:
+        st.warning(str(exc))
+    _voice_capture_ui(rec_key="voice_replace_rec", up_key="voice_replace_up",
+                      btn_key="voice_replace_save", btn_label="Referenz überschreiben")
+    if st.button("🎧 Klon-Hörprobe (ein Satz)", key="voice_probe",
+                 use_container_width=True):
+        with st.spinner("Erzeuge Hörprobe …"):
+            try:
+                _probe = audio_overview.synthesize_voice_probe()
+            except audio_overview.AudioOverviewError as exc:
+                st.error(str(exc))
+            else:
+                st.audio(str(_probe))
+                st.caption("So klingt der Klon mit der gespeicherten Referenz.")
 
 # --------------------------------------------------------------------------- #
 # Neues Audio-Overview: aus Dokumenten (KI) ODER selbst geschrieben

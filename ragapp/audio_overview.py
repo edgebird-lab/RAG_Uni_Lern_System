@@ -720,6 +720,20 @@ def _require_reference_wav() -> Path:
     return ref_path
 
 
+def synthesize_voice_probe(text: str = "Dies ist ein kurzer Stimmentest.",
+                           *, on_progress: ProgressCallback = None) -> Path:
+    """Ein Satz mit der gespeicherten Referenz – Hörprobe, bevor ein ganzes Skript läuft."""
+    ref_path = _require_reference_wav()
+    AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    out = AUDIO_DIR / "voice_probe.wav"
+    try:
+        synthesize_speech(text.strip() or "Dies ist ein kurzer Stimmentest.",
+                          ref_path, out, on_progress=on_progress)
+    finally:
+        unload_tts_model()
+    return out
+
+
 def synthesize_and_save_overview(script_text: str, title: str, subject: Optional[str],
                                  doc_ids: list[str], model: Optional[str], *,
                                  on_progress: ProgressCallback = None) -> str:
