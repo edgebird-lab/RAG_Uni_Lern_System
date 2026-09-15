@@ -63,6 +63,13 @@ SCIENCE_DOMAIN_ALLOWLIST = (
     "europepmc.org",
 )
 
+# Nur diese Bildquellen fuer optionale Vortrags-B-Roll (kein allgemeines Web).
+IMAGE_DOMAIN_ALLOWLIST = (
+    "wikimedia.org",
+    "wikipedia.org",
+    "openverse.org",
+)
+
 
 @dataclass
 class SearxResult:
@@ -71,6 +78,7 @@ class SearxResult:
     content: str
     engine: str = ""
     published: str = ""
+    img_src: str = ""
 
     def as_dict(self) -> dict:
         return {
@@ -79,6 +87,7 @@ class SearxResult:
             "content": self.content,
             "engine": self.engine,
             "published": self.published,
+            "img_src": self.img_src,
         }
 
 
@@ -241,3 +250,61 @@ def search_many(queries: list[str], *,
             if len(out) >= total:
                 return out
     return out
+
+
+def _parse_image_results(payload: dict, *, max_results: int) -> list[SearxResult]:
+    raw = payload.get("results") or []
+    out: list[SearxResult] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        img = (item.get("img_src") or item.get("thumbnail") or item.get("url") or "").strip()
+        page = (item.get("url") or img).strip()
+        title = (item.get("title") or "").strip() or "Abbildung"
+        if not img:
+            continue
+        if not (
+            domain_allowed(img, IMAGE_DOMAIN_ALLOWLIST)
+            or domain_allowed(page, IMAGE_DOMAIN_ALLOWLIST)
+        ):
+            continue
+        out.append(SearxResult(
+            title=title, url=page, content=(item.get("content") or "").strip(),
+            engine=str(item.get("engine") or ""), img_src=img,
+        ))
+        if len(out) >= max_results:
+            break
+    return out
+
+
+def search_images(query: str, *,
+                  max_results: int = 4,
+                  require_enabled: bool = True) -> list[SearxResult]:
+    """Bildsuche nur Wikimedia/Openverse. Default: Feature-Flag wie Science-Suche."""
+    if require_enabled and not settings.SEARXNG_ENABLED:
+        raise SearxError(
+            "Externe Quellen sind ausgeschaltet (SEARXNG_ENABLED=false).")
+    q = (query or "").strip()
+    if not q:
+        return []
+    base = _normalize_base_url(settings.SEARXNG_BASE_URL)
+    timeout = float(settings.SEARXNG_TIMEOUT_S)
+    search_url = urljoin(base, "search")
+    try:
+        with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+            r = client.get(search_url, params={
+                "q": q, "categories": "images", "format": "json",
+            })
+            if r.status_code >= 400:
+                log.info("Bildsuche HTTP %s für %r", r.status_code, q)
+                return []
+            data = r.json()
+            if not isinstance(data, dict):
+                return []
+            return _parse_image_results(data, max_results=max_results)
+    except httpx.TimeoutException as exc:
+        raise SearxError(
+            "SearXNG-Zeitüberschreitung – ist VPN/LAN aktiv und die URL erreichbar?"
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise SearxError(f"SearXNG nicht erreichbar: {exc}") from exc

@@ -177,6 +177,13 @@ if _active_id is None:
             st.session_state.pop("_talk_searx_hits", None)
             st.session_state["_talk_selected_sources"] = []
 
+        _broll = st.checkbox(
+            "Lizenzierte B-Roll (Wikimedia/Openverse, Opt-in)",
+            value=False,
+            key="talk_use_broll",
+            help="Default aus. Nur wenn keine PDF-Abbildung da ist: höchstens "
+                 "zwei Bilder über SearXNG, lokal mit Lizenzhinweis gespeichert.")
+
         _talk_len = st.radio(
             "Länge", ["Kurz (5 Folien, Referat morgen)", "Normal"],
             horizontal=True, key="talk_len_preset")
@@ -198,6 +205,7 @@ if _active_id is None:
                     "subject": _new_subject, "doc_ids": _doc_ids,
                     "sources": _sources, "model": _used,
                     "warning": _warn,
+                    "broll": bool(_broll),
                 }
                 st.rerun()
             except talk.TalkError as exc:
@@ -240,6 +248,7 @@ if _active_id is None:
                     script_text=st.session_state[_script_key],
                     sources=_draft.get("sources") or [],
                     model=_draft.get("model"),
+                    broll=bool(_draft.get("broll")),
                 )
                 st.session_state.pop("_talk_draft", None)
                 st.session_state["_talk_pending_choice"] = _tid
@@ -256,6 +265,7 @@ if _active_id is None:
                     script_text=st.session_state[_script_key],
                     sources=_draft.get("sources") or [],
                     model=_draft.get("model"),
+                    broll=bool(_draft.get("broll")),
                 )
                 _bar = st.progress(0.0)
                 _cap = st.empty()

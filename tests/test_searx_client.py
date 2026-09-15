@@ -73,6 +73,41 @@ def test_search_science_filters_allowlist(monkeypatch):
     assert all("spam.example" not in u for u in urls)
 
 
+def test_search_images_allowlist_only(monkeypatch):
+    monkeypatch.setattr(searx_client.settings, "SEARXNG_ENABLED", True)
+    monkeypatch.setattr(searx_client.settings, "SEARXNG_BASE_URL", "https://search.test/")
+    monkeypatch.setattr(searx_client.settings, "SEARXNG_TIMEOUT_S", 5.0)
+    payload = {
+        "results": [
+            {"title": "Wiki", "url": "https://commons.wikimedia.org/wiki/File:X",
+             "img_src": "https://upload.wikimedia.org/wikipedia/commons/x.png"},
+            {"title": "Stock", "url": "https://stock.example/x",
+             "img_src": "https://stock.example/x.jpg"},
+        ]
+    }
+
+    class _Resp:
+        status_code = 200
+        def json(self):
+            return payload
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def get(self, url, params=None):
+            assert params.get("categories") == "images"
+            return _Resp()
+
+    monkeypatch.setattr(searx_client.httpx, "Client", _Client)
+    hits = searx_client.search_images("testing effekt")
+    assert len(hits) == 1
+    assert "wikimedia.org" in hits[0].img_src
+
+
 def test_search_science_timeout_raises(monkeypatch):
     monkeypatch.setattr(searx_client.settings, "SEARXNG_ENABLED", True)
     monkeypatch.setattr(searx_client.settings, "SEARXNG_BASE_URL", "https://search.test/")

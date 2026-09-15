@@ -1608,12 +1608,14 @@ def create_talk_record(*, title: str, subject: Optional[str], doc_ids: list[str]
                        marp_md: str, script_text: str,
                        sources: Optional[list] = None,
                        model: Optional[str] = None,
-                       talk_id: Optional[str] = None) -> str:
+                       talk_id: Optional[str] = None,
+                       broll: bool = False) -> str:
     """Legt DB-Eintrag an und speichert talk.md."""
     tid = talk_id or uuid.uuid4().hex[:16]
     from ragapp.talk_figures import attach_talk_figures
     marp_md = attach_talk_figures(
-        marp_md, doc_ids, dest_dir=talk_dir(tid) / "figures")
+        marp_md, doc_ids, dest_dir=talk_dir(tid) / "figures",
+        broll=bool(broll), broll_query=title or "")
     save_marp_file(tid, marp_md)
     return manifest.create_talk(
         title=title, subject=subject, doc_ids=doc_ids,

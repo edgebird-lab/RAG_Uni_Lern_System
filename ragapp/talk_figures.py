@@ -204,10 +204,17 @@ def attach_figures_to_markdown(marp_md: str, figures: list[dict[str, Any]]) -> s
     return fm + "\n---\n".join(new_chunks)
 
 
-def attach_talk_figures(marp_md: str, doc_ids: list[str], *, dest_dir: Path) -> str:
+def attach_talk_figures(marp_md: str, doc_ids: list[str], *, dest_dir: Path,
+                        broll: bool = False, broll_query: str = "") -> str:
     """Extract + attach. Bei Fehlern unveraendertes Markdown zurueck."""
     try:
         figures = collect_talk_figures(doc_ids, dest_dir)
+        if broll:
+            from ragapp.talk_broll import download_broll, slots_without_figure
+            need = max(0, slots_without_figure(marp_md) - len(figures))
+            if need:
+                figures.extend(download_broll(
+                    broll_query, dest_dir, max_n=min(2, need)))
         return attach_figures_to_markdown(marp_md, figures)
     except Exception as exc:  # noqa: BLE001
         log.warning("Vortrags-Abbildungen übersprungen: %s", exc)
