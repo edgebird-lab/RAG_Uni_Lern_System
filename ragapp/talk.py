@@ -1837,10 +1837,12 @@ def record_presenter_video(
 
 def mux_video_with_talk_audio(video_path: Path, audio_path: Path,
                               output_mp4: Path, *,
-                              music_bed: bool = False) -> Path:
+                              music_bed: bool = False,
+                              youtube: bool = False) -> Path:
     """Hängt die Vortrags-WAV an ein stummes MP4 (AAC + Lautheit)."""
     if music_bed:
-        mixed = _mux_with_music_bed(video_path, audio_path, output_mp4)
+        mixed = _mux_with_music_bed(
+            video_path, audio_path, output_mp4, youtube=youtube)
         if mixed:
             return mixed
         log.warning("Musikbett übersprungen, mux nur Stimme")
@@ -1905,9 +1907,16 @@ def _make_quiet_drone(path: Path, duration_s: float) -> Optional[Path]:
 
 
 def _mux_with_music_bed(video_path: Path, audio_path: Path,
-                        output_mp4: Path) -> Optional[Path]:
+                        output_mp4: Path, *, youtube: bool = False) -> Optional[Path]:
     ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
     bed = find_talk_music_bed()
+    if not bed and youtube:
+        try:
+            from ragapp.talk_bed import fetch_open_music_bed
+            bed = fetch_open_music_bed()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Online-Musikbett übersprungen: %s", exc)
+            bed = None
     tmp_bed: Optional[Path] = None
     if not bed:
         duration = 4.0
@@ -2070,7 +2079,8 @@ def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
             height=int(cues.get("height") or 720),
             stillimage=not youtube)
         mux_video_with_talk_audio(
-            silent, audio_path, out_path, music_bed=bool(music_bed))
+            silent, audio_path, out_path, music_bed=bool(music_bed),
+            youtube=youtube)
     except TalkError as exc:
         log.warning("Presenter-Aufnahme fehlgeschlagen, Fallback Diashow: %s", exc)
         backend = "slideshow"
