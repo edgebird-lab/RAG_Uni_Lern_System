@@ -137,3 +137,14 @@ def test_delete_audio_overview_missing_file_does_not_raise(isolated_db, monkeypa
                                           script_text="x", audio_path="fehlt.wav")
     manifest.delete_audio_overview(oid)  # darf nicht crashen, obwohl fehlt.wav nie existierte
     assert manifest.get_audio_overview(oid) is None
+
+
+def test_audio_overview_stores_forced_eos(isolated_db):
+    oid = manifest.create_audio_overview(
+        title="EOS", subject=None, doc_ids=[], script_text="x", audio_path="a.wav",
+        forced_eos=[{"index": 2, "text": "Abgeschnittener Satz."}, "   ", {"text": ""}])
+    row = manifest.get_audio_overview(oid)
+    assert row["forced_eos"] == [{"index": 2, "text": "Abgeschnittener Satz."}]
+    manifest.update_audio_overview(oid, forced_eos=[])
+    assert manifest.get_audio_overview(oid)["forced_eos"] == []
+    assert manifest.get_audio_overview(oid)["title"] == "EOS"

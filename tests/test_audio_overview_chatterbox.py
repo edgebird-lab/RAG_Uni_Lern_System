@@ -395,7 +395,14 @@ def test_neuversuch_der_ebenfalls_erzwungene_eos_hat_bricht_nicht_ab(synth_env):
     # gleiches "einmal versuchen, dann akzeptieren"-Prinzip wie beim Skript.
     env = synth_env(sentences=["Satz eins."], force_eos_always_for={"Satz eins."})
     out_path = env.tmp_path / "out.wav"
-    env.synthesize_speech("Satz eins.", "ref.wav", str(out_path))
+    still = env.synthesize_speech("Satz eins.", "ref.wav", str(out_path))
     assert out_path.is_file()
     # Genau EIN Neuversuch, kein weiterer (Erstversuch + Retry = 2 Aufrufe):
     assert len(env.generate_calls) == 2
+    assert still == [{"index": 0, "text": "Satz eins."}]
+
+
+def test_erfolgreicher_eos_neuversuch_wird_nicht_gespeichert(synth_env):
+    env = synth_env(sentences=["Satz eins."], force_eos_once_for={"Satz eins."})
+    still = env.synthesize_speech("Satz eins.", "ref.wav", str(env.tmp_path / "out.wav"))
+    assert still == []

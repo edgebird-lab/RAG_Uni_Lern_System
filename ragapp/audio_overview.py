@@ -683,7 +683,7 @@ def _generate_sentence(model, sentence: str, lang: Optional[str],
 
 def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
                       output_path: "str | Path", *, language: Optional[str] = None,
-                      on_progress: ProgressCallback = None) -> None:
+                      on_progress: ProgressCallback = None) -> list:
     """Synthetisiert ``script_text`` in der Stimme aus ``reference_wav_path``
     und schreibt sie nach ``output_path``. Vertont SATZWEISE (siehe Moduldoc -
     ein Aufruf mit dem kompletten Skript auf einmal klang in echten Tests
@@ -694,7 +694,9 @@ def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
     angezeigte Skript. Wirft ``AudioOverviewError``, wenn nicht genug freier
     VRAM da ist (siehe ``_prepare_vram_for_tts``) oder kein vertonbarer Text
     uebrig bleibt. ``on_progress`` (optional): siehe ``ProgressCallback`` -
-    ein Aufruf je fertig vertontem Satz."""
+    ein Aufruf je fertig vertontem Satz. Rueckgabe: Saetze, die NACH dem
+    einmaligen Neuversuch weiter eine erzwungene EOS hatten (leere Liste,
+    wenn jeder Satz sauber durchlief)."""
     units = _split_spoken_units(_apply_pronunciation_fixes(script_text))
     if not units:
         raise AudioOverviewError("Kein vertonbarer Text (nach Satzerkennung leer).")
@@ -709,6 +711,7 @@ def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
     lang = language or settings.AUDIO_LANGUAGE
     total = len(sentences)
     chunks = []
+    forced_eos: list[dict] = []
     try:
         # Referenzstimme EINMAL pro Aufruf einbetten (Laden+Resample der Referenz-
         # WAV per librosa plus Voice-Encoder/S3Gen-Embedding), statt bei JEDEM Satz
@@ -739,7 +742,9 @@ def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
             if forced:
                 # Vermutlich mitten im Satz abgebrochen (siehe Kommentar oben) -
                 # EIN Neuversuch, gleiches Muster wie beim Skript (_narrate_section).
-                wav, _ = _generate_sentence(model, sentence, lang, tts_kwargs)
+                wav, forced_retry = _generate_sentence(model, sentence, lang, tts_kwargs)
+                if forced_retry:
+                    forced_eos.append({"index": i, "text": sentence})
             chunks.append(wav)
             if on_progress:
                 label = ("🔁 " if forced else "") + sentence[:40]
@@ -760,6 +765,7 @@ def synthesize_speech(script_text: str, reference_wav_path: "str | Path",
     full_wav = _concat_with_pauses(chunks, gaps)
     full_wav, sr_out = _loudnorm_or_same(full_wav, model.sr)
     torchaudio.save(str(output_path), full_wav, sr_out)
+    return forced_eos
 
 
 def _loudnorm_or_same(wav, sample_rate: int):
@@ -795,6 +801,21 @@ def synthesize_voice_probe(text: str = "Dies ist ein kurzer Stimmentest.",
     return out
 
 
+def synthesize_sentence_probe(text: str, *, on_progress: ProgressCallback = None) -> Path:
+    """Einen einzelnen Satz neu vertonen – Hörprobe nach einer erzwungenen EOS."""
+    sentence = (text or "").strip()
+    if not sentence:
+        raise AudioOverviewError("Kein Satz für die Hörprobe.")
+    ref_path = _require_reference_wav()
+    AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    out = AUDIO_DIR / "eos_retry.wav"
+    try:
+        synthesize_speech(sentence, ref_path, out, on_progress=on_progress)
+    finally:
+        unload_tts_model()
+    return out
+
+
 def synthesize_and_save_overview(script_text: str, title: str, subject: Optional[str],
                                  doc_ids: list[str], model: Optional[str], *,
                                  on_progress: ProgressCallback = None) -> str:
@@ -812,14 +833,15 @@ def synthesize_and_save_overview(script_text: str, title: str, subject: Optional
     overview_id = uuid.uuid4().hex[:16]
     audio_filename = f"{overview_id}.wav"
     try:
-        synthesize_speech(script_text, ref_path, AUDIO_DIR / audio_filename,
-                          on_progress=on_progress)
+        forced_eos = synthesize_speech(script_text, ref_path, AUDIO_DIR / audio_filename,
+                                       on_progress=on_progress) or []
     finally:
         unload_tts_model()
 
     manifest.create_audio_overview(
         title=title, subject=subject, doc_ids=doc_ids, script_text=script_text,
-        audio_path=audio_filename, model=model, overview_id=overview_id)
+        audio_path=audio_filename, model=model, overview_id=overview_id,
+        forced_eos=forced_eos)
     return overview_id
 
 
@@ -881,8 +903,10 @@ def resynthesize_audio_overview(overview_id: str, script_text: str, *,
     ref_path = _require_reference_wav()
     audio_path = AUDIO_DIR / row["audio_path"]
     try:
-        synthesize_speech(script_text, ref_path, audio_path, on_progress=on_progress)
+        forced_eos = synthesize_speech(script_text, ref_path, audio_path,
+                                       on_progress=on_progress) or []
     finally:
         unload_tts_model()
 
-    manifest.update_audio_overview(overview_id, script_text=script_text)
+    manifest.update_audio_overview(overview_id, script_text=script_text,
+                                   forced_eos=forced_eos)

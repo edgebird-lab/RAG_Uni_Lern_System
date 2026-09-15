@@ -91,3 +91,13 @@ def test_audio_seite_misst_referenz_vor_dem_speichern():
     assert "synthesize_voice_probe" in src
     assert "def synthesize_voice_probe" in Path("ragapp/audio_overview.py").read_text(
         encoding="utf-8")
+
+
+def test_audio_seite_zeigt_abgebrochene_saetze():
+    from pathlib import Path
+    src = Path("ragapp/ui/pages/15_🎧_Audio-Overview.py").read_text(encoding="utf-8")
+    assert "_render_forced_eos" in src
+    assert "Abgebrochene Sätze" in src
+    assert "Neuversuch hören" in src
+    assert "def synthesize_sentence_probe" in Path("ragapp/audio_overview.py").read_text(
+        encoding="utf-8")

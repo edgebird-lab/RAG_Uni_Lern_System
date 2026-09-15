@@ -129,6 +129,7 @@ def test_manual_overview_erfolgsfall_speichert_ohne_dokumente_und_modell(audio_f
     assert call["model"] is None
     assert call["script_text"] == "Mein eigener Text."
     assert call["overview_id"] == oid
+    assert call["forced_eos"] == []
 
 
 def test_manual_overview_mit_fach(audio_funcs):
@@ -171,7 +172,8 @@ def test_resynthesize_nutzt_denselben_dateinamen_und_aktualisiert_nur_skript(aud
     assert len(env.manifest.update_calls) == 1
     oid, fields = env.manifest.update_calls[0]
     assert oid == "abc"
-    assert fields == {"script_text": "Korrigierter Text ohne den falschen Fakt."}
+    assert fields["script_text"] == "Korrigierter Text ohne den falschen Fakt."
+    assert fields["forced_eos"] == []
 
 
 def test_resynthesize_ohne_referenzstimme_wirft_error_und_vertont_nicht(audio_funcs):
@@ -234,6 +236,7 @@ def test_synthesize_and_save_overview_speichert_bearbeitetes_skript_mit_doc_ids(
     assert call["model"] == "mein-modell"
     assert call["script_text"] == "Vom Nutzer korrigierter Skript-Text."
     assert call["overview_id"] == oid
+    assert call["forced_eos"] == []
 
 
 def test_synthesize_and_save_overview_ohne_referenzstimme_wirft_error(audio_funcs):

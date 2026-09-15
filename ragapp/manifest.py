@@ -402,6 +402,7 @@ CREATE TABLE IF NOT EXISTS audio_overviews (
     script_text TEXT NOT NULL,
     audio_path  TEXT NOT NULL,    -- relativ zu AUDIO_DIR
     model       TEXT,
+    forced_eos  TEXT,             -- JSON-Liste abgeschnittener Saetze nach TTS-Retry
     created_at  REAL,
     updated_at  REAL
 );
@@ -732,6 +733,12 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE exams ADD COLUMN note_updated_at REAL")
         except Exception:  # noqa: BLE001
             _log.warning("Additive Migration exams uebersprungen", exc_info=True)
+        try:
+            aocols = {r["name"] for r in conn.execute("PRAGMA table_info(audio_overviews)")}
+            if "forced_eos" not in aocols:
+                conn.execute("ALTER TABLE audio_overviews ADD COLUMN forced_eos TEXT")
+        except Exception:  # noqa: BLE001
+            _log.warning("Additive Migration audio_overviews uebersprungen", exc_info=True)
         # Alltag: Klausur-Einzelaufgaben, Fehlerheft, persistenter Pomodoro.
         conn.executescript(
             """
@@ -3238,7 +3245,8 @@ def delete_mindmap(mindmap_id: str) -> None:
 
 def create_audio_overview(*, title: str, subject: Optional[str], doc_ids: list[str],
                           script_text: str, audio_path: str,
-                          model: Optional[str] = None, overview_id: Optional[str] = None) -> str:
+                          model: Optional[str] = None, overview_id: Optional[str] = None,
+                          forced_eos: Optional[list] = None) -> str:
     """``overview_id`` optional vorgeben, damit die WAV-Datei VOR dem DB-Insert
     schon unter der endgueltigen ID abgelegt werden kann (audio_overview.py -
     sonst muesste die Datei nach dem Insert umbenannt werden, um zum
@@ -3248,12 +3256,38 @@ def create_audio_overview(*, title: str, subject: Optional[str], doc_ids: list[s
     with _connect() as conn:
         conn.execute(
             "INSERT INTO audio_overviews (overview_id, title, subject, doc_ids, "
-            "script_text, audio_path, model, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?)",
+            "script_text, audio_path, model, forced_eos, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
             (oid, title.strip(), subject, json.dumps(doc_ids), script_text,
-             audio_path, model, now, now),
+             audio_path, model, json.dumps(_decode_forced_eos(forced_eos)), now, now),
         )
     return oid
+
+
+def _decode_forced_eos(value) -> list:
+    if not value:
+        return []
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except Exception:  # noqa: BLE001
+            return []
+    if not isinstance(value, list):
+        return []
+    out: list[dict] = []
+    for item in value:
+        if isinstance(item, dict):
+            text = str(item.get("text") or "").strip()
+            if not text:
+                continue
+            try:
+                idx = int(item.get("index", len(out)))
+            except (TypeError, ValueError):
+                idx = len(out)
+            out.append({"index": idx, "text": text})
+        elif isinstance(item, str) and item.strip():
+            out.append({"index": len(out), "text": item.strip()})
+    return out
 
 
 def _decode_audio_overview(row: dict) -> dict:
@@ -3262,6 +3296,7 @@ def _decode_audio_overview(row: dict) -> dict:
         d["doc_ids"] = json.loads(d.get("doc_ids") or "[]")
     except Exception:  # noqa: BLE001
         d["doc_ids"] = []
+    d["forced_eos"] = _decode_forced_eos(d.get("forced_eos"))
     return d
 
 
@@ -3278,14 +3313,20 @@ def update_audio_overview(overview_id: str, **fields: Any) -> None:
     ``create_audio_overview`` mit vorhandener ``overview_id`` fuer diesen
     Zweck: das waere ein reines ``INSERT`` und wuerde an der PRIMARY-KEY-
     Kollision scheitern statt die Zeile zu aktualisieren."""
-    valid = {"title", "subject", "doc_ids", "script_text", "audio_path", "model"}
+    valid = {"title", "subject", "doc_ids", "script_text", "audio_path", "model",
+             "forced_eos"}
     sets = []
     args = []
     for k in fields:
         if k not in valid:
             continue
         sets.append(f"{k}=?")
-        args.append(json.dumps(fields[k]) if k == "doc_ids" else fields[k])
+        if k == "doc_ids":
+            args.append(json.dumps(fields[k]))
+        elif k == "forced_eos":
+            args.append(json.dumps(_decode_forced_eos(fields[k])))
+        else:
+            args.append(fields[k])
     if not sets:
         return
     args += [time.time(), overview_id]

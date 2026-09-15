@@ -69,6 +69,36 @@ def _fmt_voice_info(info: dict) -> str:
             f"Peak {float(info.get('peak') or 0):.2f}")
 
 
+def _render_forced_eos(overview: dict) -> None:
+    items = overview.get("forced_eos") or []
+    if not items:
+        return
+    n = len(items)
+    if n == 1:
+        st.warning("Ein Satz klingt unvollständig – das Modell hat mitten im Satz "
+                   "abgebrochen. Hörprobe unten oder das ganze Audio neu erzeugen.")
+    else:
+        st.warning(f"{n} Sätze klingen unvollständig – das Modell hat mitten im Satz "
+                   "abgebrochen. Hörprobe je Satz oder das ganze Audio neu erzeugen.")
+    with st.expander(f"Abgebrochene Sätze ({n})", expanded=True):
+        for item in items:
+            idx = int(item.get("index", 0)) + 1
+            text = item.get("text") or ""
+            st.markdown(f"**Satz {idx}.** {text}")
+            if st.button("🎧 Neuversuch hören",
+                         key=f"eos_retry_{overview['overview_id']}_{idx}",
+                         use_container_width=True):
+                with st.spinner("Erzeuge Hörprobe …"):
+                    try:
+                        probe = audio_overview.synthesize_sentence_probe(text)
+                    except audio_overview.AudioOverviewError as exc:
+                        st.error(str(exc))
+                    else:
+                        st.audio(str(probe))
+                        st.caption("Nur dieser Satz, neu erzeugt. Klingt er vollständig, "
+                                   "unten „Speichern & nur Audio neu erzeugen“ für das ganze Stück.")
+
+
 def _show_voice_issues(info: dict) -> None:
     for _err in info.get("errors") or []:
         st.error(_err)
@@ -508,6 +538,8 @@ with card("player"):
     _gen_notice = st.session_state.pop("_audio_gen_notice", None)
     if _gen_notice:
         st.info(_gen_notice)
+
+    _render_forced_eos(_active)
 
     if not _audio_path.is_file():
         st.error("Die Audiodatei fehlt (evtl. manuell gelöscht) - bitte neu erzeugen.")
