@@ -594,6 +594,17 @@ def require_vram(model: str | None = None) -> dict:
 _llm_task_depth: ContextVar[int] = ContextVar("llm_task_depth", default=0)
 
 
+def _unload_tts_for_llm() -> None:
+    """Chatterbox aus dem VRAM, bevor Ollama lädt – nur wenn das TTS-Modul schon da ist."""
+    import sys
+    mod = sys.modules.get("ragapp.audio_overview")
+    if mod is None:
+        return
+    fn = getattr(mod, "unload_tts_model", None)
+    if callable(fn):
+        fn()
+
+
 @contextmanager
 def llm_task(model: str | None = None):
     """Kontext fuer eine abgeschlossene KI-Aufgabe: VRAM-Check, danach Entladen.
@@ -606,6 +617,7 @@ def llm_task(model: str | None = None):
     depth = _llm_task_depth.get()
     if depth == 0:
         require_vram(model)
+        _unload_tts_for_llm()
     token = _llm_task_depth.set(depth + 1)
     try:
         yield

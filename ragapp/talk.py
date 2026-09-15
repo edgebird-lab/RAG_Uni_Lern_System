@@ -1377,9 +1377,6 @@ def synthesize_talk_audio(talk_id: str, script_text: Optional[str] = None,
     rel = f"{talk_id}/audio.wav"
     out = TALK_DIR / rel
     out.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        audio_overview.synthesize_speech(text, ref, out, on_progress=on_progress)
-    finally:
-        audio_overview.unload_tts_model()
+    audio_overview.synthesize_speech(text, ref, out, on_progress=on_progress)
     manifest.update_talk(talk_id, script_text=text, audio_path=rel)
     return rel

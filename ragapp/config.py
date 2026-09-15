@@ -510,6 +510,10 @@ class Settings:
     # muss, bevor XTTS-v2 geladen wird (gleiche Vorsicht wie beim Vision-OCR-
     # Gate, siehe ragapp/ingestion/loaders.py::_vision_ocr_prepare).
     AUDIO_VRAM_HEADROOM_GB: float = 2.0
+    # Chatterbox bleibt nach einer Vertonung im VRAM, damit Hörproben nicht
+    # jedes Mal neu laden. Nach dieser Leerlaufzeit (Minuten) wird es
+    # entladen; 0 = nur per Button oder vor der nächsten LLM-Aufgabe.
+    AUDIO_TTS_KEEP_ALIVE_MINUTES: float = 10.0
     # Sicherheitsnetz, NICHT die normale Ziel-Laenge: das Skript entsteht
     # ABSCHNITTSWEISE (ein LLM-Aufruf je Abschnitt, siehe audio_overview.py)
     # und waechst dadurch natuerlich mit der Dokumentgroesse - dieser Deckel

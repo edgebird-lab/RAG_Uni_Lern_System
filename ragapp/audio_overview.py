@@ -318,6 +318,8 @@ def generate_overview_script(doc_ids: list[str], subject: Optional[str],
 # --------------------------------------------------------------------------- #
 _TTS_ESTIMATED_VRAM_GB = 7.0   # gemessen: ~6.5 GB waehrend Laden+Generieren
 _tts_singleton = None
+_tts_last_used = 0.0
+_tts_idle_thread = None
 _segmenter_singleton = None
 
 
@@ -357,13 +359,53 @@ def _get_tts():
         from chatterbox.mtl_tts import ChatterboxMultilingualTTS
         device = "cuda" if torch.cuda.is_available() else "cpu"
         _tts_singleton = ChatterboxMultilingualTTS.from_pretrained(device=device)
+    _touch_tts()
     return _tts_singleton
 
 
+def tts_is_loaded() -> bool:
+    return _tts_singleton is not None
+
+
+def _touch_tts() -> None:
+    global _tts_last_used
+    _tts_last_used = time.monotonic()
+    _ensure_idle_watchdog()
+
+
+def _ensure_idle_watchdog() -> None:
+    global _tts_idle_thread
+    if _tts_idle_thread is not None and _tts_idle_thread.is_alive():
+        return
+    import threading
+
+    def _run() -> None:
+        while _tts_singleton is not None:
+            time.sleep(15)
+            maybe_unload_idle_tts()
+            if _tts_singleton is None:
+                return
+
+    _tts_idle_thread = threading.Thread(target=_run, name="tts-idle", daemon=True)
+    _tts_idle_thread.start()
+
+
+def maybe_unload_idle_tts() -> bool:
+    """Entlädt Chatterbox nach ``AUDIO_TTS_KEEP_ALIVE_MINUTES``. 0 = kein Idle."""
+    if _tts_singleton is None:
+        return False
+    keep_min = float(getattr(settings, "AUDIO_TTS_KEEP_ALIVE_MINUTES", 10) or 0)
+    if keep_min <= 0:
+        return False
+    if time.monotonic() - _tts_last_used < keep_min * 60:
+        return False
+    unload_tts_model()
+    return True
+
+
 def unload_tts_model() -> None:
-    """Gibt den VRAM wieder frei - Chatterbox kennt kein Ollama-artiges
-    ``keep_alive``, deshalb explizit nach jeder Generierung aufgerufen (siehe
-    ``create_and_save_audio_overview``)."""
+    """Gibt den VRAM wieder frei. Wird vor LLM-Aufgaben und nach Idle aufgerufen,
+    nicht mehr nach jeder einzelnen Hörprobe."""
     global _tts_singleton
     if _tts_singleton is not None:
         del _tts_singleton
@@ -884,11 +926,8 @@ def synthesize_voice_probe(text: str = "Dies ist ein kurzer Stimmentest.",
     ref_path = _require_reference_wav()
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
     out = AUDIO_DIR / "voice_probe.wav"
-    try:
-        synthesize_speech(text.strip() or "Dies ist ein kurzer Stimmentest.",
-                          ref_path, out, on_progress=on_progress)
-    finally:
-        unload_tts_model()
+    synthesize_speech(text.strip() or "Dies ist ein kurzer Stimmentest.",
+                      ref_path, out, on_progress=on_progress)
     return out
 
 
@@ -900,10 +939,7 @@ def synthesize_sentence_probe(text: str, *, on_progress: ProgressCallback = None
     ref_path = _require_reference_wav()
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
     out = AUDIO_DIR / "eos_retry.wav"
-    try:
-        synthesize_speech(sentence, ref_path, out, on_progress=on_progress)
-    finally:
-        unload_tts_model()
+    synthesize_speech(sentence, ref_path, out, on_progress=on_progress)
     return out
 
 
@@ -923,11 +959,8 @@ def synthesize_and_save_overview(script_text: str, title: str, subject: Optional
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
     overview_id = uuid.uuid4().hex[:16]
     audio_filename = f"{overview_id}.wav"
-    try:
-        forced_eos = synthesize_speech(script_text, ref_path, AUDIO_DIR / audio_filename,
-                                       on_progress=on_progress) or []
-    finally:
-        unload_tts_model()
+    forced_eos = synthesize_speech(script_text, ref_path, AUDIO_DIR / audio_filename,
+                                   on_progress=on_progress) or []
 
     manifest.create_audio_overview(
         title=title, subject=subject, doc_ids=doc_ids, script_text=script_text,
@@ -993,11 +1026,8 @@ def resynthesize_audio_overview(overview_id: str, script_text: str, *,
 
     ref_path = _require_reference_wav()
     audio_path = AUDIO_DIR / row["audio_path"]
-    try:
-        forced_eos = synthesize_speech(script_text, ref_path, audio_path,
-                                       on_progress=on_progress) or []
-    finally:
-        unload_tts_model()
+    forced_eos = synthesize_speech(script_text, ref_path, audio_path,
+                                   on_progress=on_progress) or []
 
     manifest.update_audio_overview(overview_id, script_text=script_text,
                                    forced_eos=forced_eos)

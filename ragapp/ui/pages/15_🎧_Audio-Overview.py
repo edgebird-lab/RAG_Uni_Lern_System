@@ -358,6 +358,14 @@ with st.expander("🎙️ Stimme ersetzen", expanded=False):
             else:
                 st.audio(str(_probe))
                 st.caption("So klingt der Klon mit der gespeicherten Referenz.")
+    _tts_on = audio_overview.tts_is_loaded()
+    st.caption("Sprachmodell ist geladen – Hörproben bleiben schnell." if _tts_on else
+               "Sprachmodell ruht und lädt sich bei der nächsten Vertonung.")
+    if st.button("Sprachmodell entladen", key="tts_unload", disabled=not _tts_on,
+                 use_container_width=True):
+        audio_overview.unload_tts_model()
+        st.success("Sprachmodell entladen, Grafikspeicher ist wieder frei.")
+        st.rerun()
 
 # --------------------------------------------------------------------------- #
 # Neues Audio-Overview: aus Dokumenten (KI) ODER selbst geschrieben

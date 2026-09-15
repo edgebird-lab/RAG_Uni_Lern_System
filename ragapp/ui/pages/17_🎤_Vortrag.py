@@ -335,6 +335,14 @@ with card("talk_head"):
             st.session_state["_talk_pending_choice"] = None
             st.rerun()
 
+    _tts_on = audio_overview.tts_is_loaded()
+    st.caption("Sprachmodell ist geladen – weitere Vertonungen bleiben schnell." if _tts_on else
+               "Sprachmodell ruht und lädt sich bei der nächsten Vertonung.")
+    if st.button("Sprachmodell entladen", key="talk_tts_unload", disabled=not _tts_on):
+        audio_overview.unload_tts_model()
+        st.success("Sprachmodell entladen, Grafikspeicher ist wieder frei.")
+        st.rerun()
+
 # Downloads & Video
 st.markdown("##### Export")
 _md_bytes = (_active.get("marp_md") or "").encode("utf-8")
