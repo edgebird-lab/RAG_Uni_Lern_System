@@ -612,3 +612,50 @@ def test_seek_youtube_title_letters_on_immediately(tmp_path):
         assert "Testing-Effekt" in page.locator("section.card h2").inner_text()
         browser.close()
 
+
+def test_seek_youtube_hides_shot_on_card_and_takeaway(tmp_path):
+    from playwright.sync_api import sync_playwright
+    from ragapp.talk_cues import load_talk_cues
+
+    md = """\
+<!-- _class: card -->
+
+## **Testing-Effekt**
+
+---
+
+<!-- _class: accent -->
+
+## Merke dir das
+
+> Abrufen schlägt Nachlesen.
+"""
+    html_src = """<!DOCTYPE html><html><body>
+<section class="card"><h2>Testing-Effekt</h2></section>
+<section class="accent"><h2>Merke dir das</h2><blockquote>Abrufen schlägt Nachlesen.</blockquote></section>
+</body></html>"""
+    timeline = [
+        {"index": 0, "text": "Ich behaupte, dass aktiver Abruf das Langzeitgedächtnis stärkt.",
+         "start_s": 0.0, "duration_s": 4.0},
+        {"index": 1, "text": "Merke dir das für die Klausur.",
+         "start_s": 6.0, "duration_s": 3.0},
+    ]
+    cues = load_talk_cues(md, duration_s=12.0, timeline=timeline, youtube=True)
+    html = inject_talk_presenter(html_src, cues)
+    path = tmp_path / "yt_card.html"
+    path.write_text(html, encoding="utf-8")
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.goto(path.as_uri(), wait_until="load")
+        page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
+        page.evaluate("t => window.TalkPresenter.seek(t)", 6.2)
+        layer = page.locator("#talk-yt-shot")
+        assert "Merke dir das" in page.locator("section.accent h2").inner_text()
+        assert not layer.evaluate("el => el.classList.contains('is-on')")
+        page.evaluate("t => window.TalkPresenter.seek(t)", 5.2)
+        assert page.locator("section.card.talk-slide-on").count() == 1
+        assert not layer.evaluate("el => el.classList.contains('is-on')")
+        browser.close()
+

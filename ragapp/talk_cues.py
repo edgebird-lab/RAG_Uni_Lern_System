@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
-CUE_VERSION = 9
+CUE_VERSION = 10
 VIDEO_WIDTH = 1280
 VIDEO_HEIGHT = 720
 YOUTUBE_WIDTH = 1920
@@ -482,13 +482,27 @@ def map_timeline_to_cues(marp_md: str, timeline: list[dict[str, Any]],
     }
 
 
+def _short_shot_title(slide: Optional[dict[str, Any]]) -> str:
+    title = re.sub(r"[.!?]+$", "", str((slide or {}).get("title") or "").strip())
+    title = " ".join(title.split())
+    if not title:
+        return ""
+    words = title.split()
+    if 1 <= len(words) <= 4 and 3 <= len(title) <= 28:
+        return title[:28]
+    return ""
+
+
 def _shot_label(text: str, *, prefer: Optional[list[str]] = None) -> str:
     raw = " ".join((text or "").split())
     low = raw.lower()
     for pref in prefer or []:
         p = " ".join(str(pref or "").split()).strip()
-        if len(p) >= 3 and p.lower() in low:
-            return p[:28]
+        if len(p) < 3 or p.lower() not in low:
+            continue
+        if len(p.split()) > 4 or len(p) > 28:
+            continue
+        return p[:28]
     words = re.findall(r"[A-Za-zÄÖÜäöüß0-9%][A-Za-zÄÖÜäöüß0-9%\-]{2,}", raw)
     scored: list[tuple[int, str]] = []
     for word in words:
@@ -573,16 +587,31 @@ def apply_youtube_shots(
     candidates: list[tuple[float, str, str]] = []
     sentences = [s for s in (timeline or []) if isinstance(s, dict) and s.get("text")]
     last = -_SHOT_MIN_S
+    last_text = ""
     for sent in sentences:
         t = float(sent.get("start_s") or 0)
         if t - last < _SHOT_MIN_S:
             continue
-        candidates.append((
-            t,
-            _shot_label(str(sent.get("text") or ""), prefer=_prefer_shot_terms(cues, t)),
-            "word",
-        ))
+        idx = _slide_index_at(cues, t)
+        slide = next(
+            (s for s in (cues.get("slides") or [])
+             if int(s.get("index") or 0) == idx),
+            {},
+        )
+        cls = str(slide.get("class_name") or "")
+        short = _short_shot_title(slide)
+        if short and cls in {"card", "lead"}:
+            text = short
+        else:
+            text = _shot_label(
+                str(sent.get("text") or ""),
+                prefer=_prefer_shot_terms(cues, t),
+            )
+        if last_text and text.lower() == last_text.lower():
+            continue
+        candidates.append((t, text, "word"))
         last = t
+        last_text = text
     if not candidates:
         for slide in cues.get("slides") or []:
             start = float(slide.get("start_s") or 0)

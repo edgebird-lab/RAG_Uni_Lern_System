@@ -498,6 +498,37 @@ def test_shot_label_skips_stopwords_prefers_keyword():
     assert pref == "Testing-Effekt"
 
 
+def test_youtube_card_shot_uses_short_title_not_sentence_word():
+    from ragapp.talk_cues import load_talk_cues
+    md = "<!-- _class: card -->\n\n## **Testing-Effekt**\n"
+    timeline = [
+        {"index": 0,
+         "text": "Ich behaupte, dass aktiver Abruf das Langzeitgedächtnis massiv stärkt.",
+         "start_s": 0.0, "duration_s": 3.0},
+        {"index": 1,
+         "text": "Du nutzt Karteikarten, weil das Behalten steigt.",
+         "start_s": 4.0, "duration_s": 3.0},
+    ]
+    cues = load_talk_cues(md, duration_s=8.0, timeline=timeline, youtube=True)
+    shots = [e for e in cues["events"] if e["type"] == "shot"]
+    assert shots
+    assert shots[0]["text"] == "Testing-Effekt"
+    assert all(e["text"] != "Langzeitgedächtnis" for e in shots)
+
+
+def test_youtube_card_shot_keeps_multiword_title():
+    from ragapp.talk_cues import load_talk_cues
+    md = "<!-- _class: card -->\n\n## **Spaced Repetition**\n"
+    timeline = [
+        {"index": 0, "text": "Du wiederholst, weil das Gedächtnis besser trainiert wird.",
+         "start_s": 0.0, "duration_s": 3.5},
+    ]
+    cues = load_talk_cues(md, duration_s=6.0, timeline=timeline, youtube=True)
+    shots = [e for e in cues["events"] if e["type"] == "shot"]
+    assert shots
+    assert shots[0]["text"] == "Spaced Repetition"
+
+
 def test_youtube_karaoke_words_from_timeline():
     from ragapp.talk_cues import load_talk_cues
     md = "<!-- _class: card -->\n\n## **Grounding**\n"

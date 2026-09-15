@@ -458,8 +458,12 @@
       const echoTitle = Boolean(
         titleNorm && shotNorm && (titleNorm.includes(shotNorm) || shotNorm.includes(titleNorm))
       );
+      const isCard = meta.class_name === "card";
+      const isTakeaway = /merke\s*dir\s*das/i.test(String(meta.title || ""))
+        || meta.class_name === "takeaway";
       const showShot = Boolean(
-        ytHud && !inHook && sh && sh.kind !== "figure" && shotText && !echoTitle
+        ytHud && !inHook && !isCard && !isTakeaway
+        && sh && sh.kind !== "figure" && shotText && !echoTitle
       );
       layer.textContent = showShot ? shotText : "";
       layer.dataset.kind = showShot ? String(sh.kind || "word") : "";
