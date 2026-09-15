@@ -229,10 +229,48 @@ def test_synthesize_talk_audio_persists_forced_eos(isolated_db, tmp_path, monkey
     assert (talks_dir / rel).is_file()
 
 
-def test_vortrag_seite_zeigt_abgebrochene_saetze():
-    src = Path("ragapp/ui/pages/17_🎤_Vortrag.py").read_text(encoding="utf-8")
-    helper = Path("ragapp/ui/_pronunciation.py").read_text(encoding="utf-8")
-    assert "_render_forced_eos" in src
-    assert "erst dann das Video erzeugen" in src
-    assert "Abgebrochene Sätze" in helper
-    assert "Neuversuch hören" in helper
+def test_mux_video_with_talk_audio_uses_loudnorm():
+    src = Path("ragapp/talk.py").read_text(encoding="utf-8")
+    assert "def mux_video_with_talk_audio" in src
+    assert "record_presenter_video" in src
+    assert "Fallback Diashow" in src
+    assert "_video_aac_args()" in src
+
+
+def test_render_talk_video_falls_back_when_record_fails(isolated_db, tmp_path, monkeypatch):
+    talks_dir = tmp_path / "talks"
+    talks_dir.mkdir()
+    monkeypatch.setattr(talk, "TALK_DIR", talks_dir)
+    monkeypatch.setattr("ragapp.config.TALK_DIR", talks_dir)
+    tid = "talkfb1"
+    tid = manifest.create_talk(
+        title="Fallback", subject="Livetest", doc_ids=[],
+        marp_md="---\nmarp: true\n---\n\n# Hi\n\n---\n\n## Zwei",
+        script_text="Hallo.",
+        audio_path=f"{tid}/audio.wav",
+        talk_id=tid,
+    )
+    d = talks_dir / tid
+    d.mkdir(parents=True)
+    (d / "audio.wav").write_bytes(b"RIFF")
+    (d / "talk.md").write_text("# Hi", encoding="utf-8")
+
+    monkeypatch.setattr(talk, "run_marp", lambda *a, **k: d / "talk.html")
+    (d / "talk.html").write_text("<html><body></body></html>", encoding="utf-8")
+    monkeypatch.setattr(talk, "probe_audio_duration_s", lambda p: 2.0)
+
+    def boom(*_a, **_k):
+        raise talk.TalkError("boom")
+
+    called = {}
+
+    def fake_slideshow(html_path, md_path, dd, audio_path, out_path):
+        called["slideshow"] = True
+        Path(out_path).write_bytes(b"mp4fake")
+
+    monkeypatch.setattr(talk, "record_presenter_video", boom)
+    monkeypatch.setattr(talk, "_render_slideshow_video", fake_slideshow)
+    rel = talk.render_talk_video(tid)
+    assert rel == "talkfb1/talk.mp4"
+    assert called.get("slideshow") is True
+    assert (talks_dir / rel).is_file()

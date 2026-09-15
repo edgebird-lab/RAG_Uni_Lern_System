@@ -988,10 +988,11 @@ def ensure_marp_shot_deps() -> Path:
         raise TalkError("npm nicht gefunden (für puppeteer-core nötig).")
     tools = Path(__file__).resolve().parents[1] / ".tools" / "marp-shot"
     tools.mkdir(parents=True, exist_ok=True)
-    src = Path(__file__).resolve().parent / "marp_screenshot.mjs"
-    script = tools / "marp_screenshot.mjs"
-    if src.is_file():
-        script.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    src_dir = Path(__file__).resolve().parent
+    for name in ("marp_screenshot.mjs", "marp_record.mjs"):
+        src = src_dir / name
+        if src.is_file():
+            (tools / name).write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
     pkg = tools / "package.json"
     if not pkg.is_file():
         pkg.write_text(
@@ -1293,12 +1294,141 @@ def write_concat_list(slide_pngs: list[Path], per_slide_s: float,
     return list_path
 
 
+RECORD_FPS = 15
+
+
+def record_presenter_video(
+    html_path: Path,
+    output_mp4: Path,
+    *,
+    duration_s: float,
+    fps: int = RECORD_FPS,
+) -> Path:
+    """Chrome: seek(t) → JPEG-Frames → H.264 (ohne Ton)."""
+    import os
+
+    ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+    node = shutil.which("node")
+    if not node:
+        raise TalkError("node nicht gefunden (Presenter-Aufnahme).")
+    chrome = ensure_chrome_for_screenshots()
+    tools = ensure_marp_shot_deps()
+    script = tools / "marp_record.mjs"
+    if not script.is_file():
+        raise TalkError("marp_record.mjs fehlt.")
+    output_mp4 = Path(output_mp4)
+    output_mp4.parent.mkdir(parents=True, exist_ok=True)
+    duration_s = max(0.2, float(duration_s))
+    fps = max(1, int(fps))
+    timeout = max(120, int(duration_s * fps * 2) + 90)
+    rec_log = output_mp4.with_suffix(".record.log")
+    rec_cmd = [
+        node, str(script.resolve()),
+        str(Path(html_path).resolve()), chrome,
+        f"{duration_s:.3f}", str(fps),
+    ]
+    ff_cmd = [
+        ffmpeg, "-y",
+        "-f", "image2pipe", "-vcodec", "mjpeg", "-framerate", str(fps), "-i", "pipe:0",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-tune", "stillimage",
+        "-movflags", "+faststart",
+        str(output_mp4),
+    ]
+    with rec_log.open("w", encoding="utf-8") as errf:
+        rec = subprocess.Popen(
+            rec_cmd, stdout=subprocess.PIPE, stderr=errf,
+            cwd=str(tools), env=dict(os.environ))
+        try:
+            ff = subprocess.run(
+                ff_cmd, stdin=rec.stdout, capture_output=True, text=True,
+                timeout=timeout, check=False)
+        except subprocess.TimeoutExpired as exc:
+            rec.kill()
+            raise TalkError("Presenter-Aufnahme Timeout.") from exc
+        finally:
+            if rec.stdout:
+                rec.stdout.close()
+        rec.wait(timeout=30)
+    rec_err = rec_log.read_text(encoding="utf-8", errors="replace") if rec_log.is_file() else ""
+    ok_file = output_mp4.is_file() and output_mp4.stat().st_size >= 200
+    if rec.returncode not in (0, 141):
+        log.warning("Recorder exit %s: %s", rec.returncode, rec_err[-400:])
+    if ff.returncode != 0 or not ok_file:
+        err = (ff.stderr or rec_err)[-800:]
+        raise TalkError(f"ffmpeg (Frames) fehlgeschlagen: {err}")
+    rec_log.unlink(missing_ok=True)
+    return output_mp4
+
+
+def mux_video_with_talk_audio(video_path: Path, audio_path: Path,
+                              output_mp4: Path) -> Path:
+    """Hängt die Vortrags-WAV an ein stummes MP4 (AAC + Lautheit)."""
+    ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+    base = [
+        ffmpeg, "-y",
+        "-i", str(video_path),
+        "-i", str(audio_path),
+        "-c:v", "copy",
+    ]
+    tail = ["-shortest", "-movflags", "+faststart", str(output_mp4)]
+    proc = subprocess.run(
+        base + _video_aac_args() + tail,
+        capture_output=True, text=True, timeout=300, check=False)
+    if proc.returncode != 0 or not output_mp4.is_file() or output_mp4.stat().st_size < 200:
+        log.warning("AAC+loudnorm fehlgeschlagen, mux ohne Filter: %s",
+                    (proc.stderr or "")[-300:])
+        proc = subprocess.run(
+            base + ["-c:a", "aac", "-b:a", "192k"] + tail,
+            capture_output=True, text=True, timeout=300, check=False)
+    if proc.returncode != 0 or not output_mp4.is_file():
+        raise TalkError(f"ffmpeg (Tonspur) fehlgeschlagen: {(proc.stderr or '')[-600:]}")
+    return output_mp4
+
+
+def _render_slideshow_video(html_path: Path, md_path: Path, d: Path,
+                            audio_path: Path, out_path: Path) -> None:
+    """Alter PNG-Diashow-Pfad (Fallback, wenn die Presenter-Aufnahme scheitert)."""
+    slides_dir = d / "slides"
+    if slides_dir.exists():
+        shutil.rmtree(slides_dir, ignore_errors=True)
+    slides_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        pngs = html_sections_to_pngs(html_path, slides_dir)
+    except TalkError:
+        log.warning("HTML→PNG fehlgeschlagen, Fallback auf Marp --images")
+        run_marp(md_path, output=slides_dir, fmt="png")
+        pngs = list_slide_pngs(slides_dir)
+    if not pngs:
+        raise TalkError("Keine PNG-Folien fürs Video erzeugt.")
+    duration = probe_audio_duration_s(audio_path)
+    per = max(0.8, duration / len(pngs))
+    if len(pngs) >= 2:
+        cmd = build_ffmpeg_xfade_cmd(pngs, audio_path, out_path, per_slide_s=per)
+    else:
+        concat_path = d / "concat.txt"
+        write_concat_list(pngs, per, concat_path)
+        cmd = build_ffmpeg_concat_cmd(concat_path, audio_path, out_path)
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900, check=False)
+    if proc.returncode != 0:
+        if len(pngs) >= 2:
+            log.warning("xfade fehlgeschlagen, Fallback concat: %s",
+                        (proc.stderr or "")[-400:])
+            concat_path = d / "concat.txt"
+            write_concat_list(pngs, per, concat_path)
+            cmd = build_ffmpeg_concat_cmd(concat_path, audio_path, out_path)
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=900, check=False)
+        if proc.returncode != 0:
+            err = (proc.stderr or proc.stdout or "")[-800:]
+            raise TalkError(f"ffmpeg fehlgeschlagen: {err}")
+
+
 def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
                       marp_md: Optional[str] = None) -> str:
     """Erzeugt MP4 unter ``data/talks/<id>/talk.mp4``. Gibt relativen Pfad zurück.
 
-    Pipeline: Marp-HTML (wie Download) → PNG je ``<section>`` → ffmpeg
-    (Crossfade ab 2 Folien, sonst concat).
+    Bevorzugt: Marp-HTML + Presenter-Cues in Chrome aufnehmen, WAV dazu muxen.
+    Fallback: PNG-Folien + xfade (alte Diashow).
     """
     if not shutil.which("ffmpeg"):
         raise TalkError("ffmpeg nicht gefunden (für Video-Export nötig).")
@@ -1318,46 +1448,28 @@ def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
     html_path = d / "talk.html"
     run_marp(md_path, output=html_path, fmt="html")
 
-    slides_dir = d / "slides"
-    if slides_dir.exists():
-        shutil.rmtree(slides_dir, ignore_errors=True)
-    slides_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        pngs = html_sections_to_pngs(html_path, slides_dir)
-    except TalkError:
-        # Fallback: klassisches Marp --images
-        log.warning("HTML→PNG fehlgeschlagen, Fallback auf Marp --images")
-        run_marp(md_path, output=slides_dir, fmt="png")
-        pngs = list_slide_pngs(slides_dir)
-    if not pngs:
-        raise TalkError("Keine PNG-Folien fürs Video erzeugt.")
-
     duration = probe_audio_duration_s(audio_path)
-    per = max(0.8, duration / len(pngs))
+    from ragapp.talk_cues import build_talk_cues
+    from ragapp.talk_presenter import inject_talk_presenter
+    cues = build_talk_cues(md_text, duration_s=duration)
+    video_html = d / "talk.video.html"
+    video_html.write_text(
+        inject_talk_presenter(html_path.read_text(encoding="utf-8"), cues),
+        encoding="utf-8")
+
     out_rel = f"{talk_id}/talk.mp4"
     out_path = TALK_DIR / out_rel
-
-    if len(pngs) >= 2:
-        cmd = build_ffmpeg_xfade_cmd(pngs, audio_path, out_path, per_slide_s=per)
-    else:
-        concat_path = d / "concat.txt"
-        write_concat_list(pngs, per, concat_path)
-        cmd = build_ffmpeg_concat_cmd(concat_path, audio_path, out_path)
-
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900, check=False)
-    if proc.returncode != 0:
-        # Crossfade kann auf manchen Builds scheitern → concat-Fallback
-        if len(pngs) >= 2:
-            log.warning("xfade fehlgeschlagen, Fallback concat: %s",
-                        (proc.stderr or "")[-400:])
-            concat_path = d / "concat.txt"
-            write_concat_list(pngs, per, concat_path)
-            cmd = build_ffmpeg_concat_cmd(concat_path, audio_path, out_path)
-            proc = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=900, check=False)
-        if proc.returncode != 0:
-            err = (proc.stderr or proc.stdout or "")[-800:]
-            raise TalkError(f"ffmpeg fehlgeschlagen: {err}")
+    silent = d / "talk.silent.mp4"
+    try:
+        record_presenter_video(video_html, silent, duration_s=cues["duration_s"])
+        mux_video_with_talk_audio(silent, audio_path, out_path)
+    except TalkError as exc:
+        log.warning("Presenter-Aufnahme fehlgeschlagen, Fallback Diashow: %s", exc)
+        _render_slideshow_video(html_path, md_path, d, audio_path, out_path)
+    finally:
+        silent.unlink(missing_ok=True)
+    if not out_path.is_file():
+        raise TalkError("Video-Datei wurde nicht erzeugt.")
     if row:
         manifest.update_talk(talk_id, video_path=out_rel)
     return out_rel
