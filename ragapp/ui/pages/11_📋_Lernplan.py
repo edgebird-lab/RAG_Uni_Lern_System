@@ -722,8 +722,14 @@ with card("zeitplan"):
                                 "block_id": bl["block_id"],
                             }
                             st.switch_page("pages/13_🧮_Übungsaufgaben.py")
-                        if bcol6.button("Stoff", key=f"splan_docs_{bl['block_id']}",
-                                        help="Zugehörige Unterlagen öffnen"):
-                            st.session_state["doc_folder"] = _plan.get("subject")
-                            st.session_state["doc_focus_ids"] = source_doc_ids
-                            st.switch_page("pages/9_🗃️_Dokumentenmanager.py")
+                        if bcol6.button("Skript", key=f"splan_docs_{bl['block_id']}",
+                                        help="20 Minuten in der Unterlage zu diesem Abschnitt"):
+                            _did = source_doc_ids[0] if source_doc_ids else None
+                            st.session_state["skript_prefill"] = {
+                                "subject": _plan.get("subject"),
+                                "doc_id": _did,
+                                "heading": title,
+                                "block_id": bl["block_id"],
+                                "minutes": 20,
+                            }
+                            st.switch_page("pages/18_📖_Skript.py")

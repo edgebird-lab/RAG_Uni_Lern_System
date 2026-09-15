@@ -416,6 +416,21 @@ if _snap:
         elif _tp_subj:
             st.caption(f"Heute lohnt: **{_tp_subj}**.")
 
+        _sk = _sf.pick_skript_spot()
+        if _sk:
+            _sk_label = (_sk.get("heading") or _sk.get("filename") or "Skript").strip()
+            if len(_sk_label) > 42:
+                _sk_label = _sk_label[:40].rstrip() + "…"
+            if st.button(
+                    f"📖 Skript: {_sk_label} · {_sk['minutes']} Min",
+                    type="secondary",
+                    key="heute_skript",
+                    use_container_width=True,
+                    help="20 Minuten in der Unterlage: Seite offen, Absatz "
+                         "markieren, am Ende eine Notiz und ein paar Karten."):
+                st.session_state["skript_prefill"] = _sk
+                st.switch_page(_target["skript"])
+
         _faecher = _home_manifest.study_subjects()
         _sprint_choices = ["Alle Fächer"] + _faecher
         if "home_sprint_subject" not in st.session_state:

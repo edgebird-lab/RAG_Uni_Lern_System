@@ -55,6 +55,8 @@ PAGE_REGISTRY: list[dict] = [
      "target": "pages/4_🎓_Lernen.py", "category": "Lernen"},
     {"key": "chat", "icon": "💬", "title": "Chat", "subtitle": "Frag deine Unterlagen",
      "target": "pages/0_💬_Chat.py", "category": "Lernen"},
+    {"key": "skript", "icon": "📖", "title": "Skript", "subtitle": "Im Skript nacharbeiten",
+     "target": "pages/18_📖_Skript.py", "category": "Lernen"},
     {"key": "uebungsaufgaben", "icon": "🧮", "title": "Übungsaufgaben",
      "subtitle": "Rechnen, Begründen, Anwenden", "target": "pages/13_🧮_Übungsaufgaben.py",
      "category": "Lernen"},
@@ -123,6 +125,7 @@ _MUTED = {"accent": "#A9A6D4", "soft": "#EAE9F7", "name": "Fliederblau"}
 _CORAL_KEYS = (
     "home", "chat", "lernen", "organisation", "lernplan", "notizen",
     "dokumente", "zusammenfassung", "audio", "vortrag", "semesterplan",
+    "skript",
 )
 _TEAL_KEYS = (
     "uebungsaufgaben", "pruefung", "fortschritt", "lernzeit", "mindmap",

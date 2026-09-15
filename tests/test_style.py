@@ -213,7 +213,7 @@ def test_kurse_haelt_stundenplan_semesterplan_und_dokumente():
 
 def test_generatoren_gehoeren_zu_lernen():
     by_key = {p["key"]: p["category"] for p in PAGE_REGISTRY}
-    for key in ("mindmap", "zusammenfassung", "audio", "vortrag"):
+    for key in ("mindmap", "zusammenfassung", "audio", "vortrag", "skript"):
         assert by_key[key] == "Lernen"
 
 
@@ -396,6 +396,8 @@ def test_home_heute_starten_steht_vor_den_chips():
     assert 'if _snap.get("cram_active")' in src
     assert "verstehen_prefill" in src
     assert 'key="heute_verstehen"' in src
+    assert "skript_prefill" in src
+    assert 'key="heute_skript"' in src
 
 
 def test_lernen_zeigt_stapel_vor_der_lernset_fabrik():
@@ -431,6 +433,16 @@ def test_chat_leerer_verlauf_scrollt_nicht_zur_eingabe():
     assert "_pending_prompt" not in _prefill
     assert "_socratic_boot" not in _prefill
     assert "_start_socratic_dialog" not in _prefill
+
+
+def test_skript_seite_startet_ohne_llm():
+    from pathlib import Path
+    src = Path("ragapp/ui/pages/18_📖_Skript.py").read_text(encoding="utf-8")
+    assert "skript_prefill" in src
+    assert "finish_skript_session" in src
+    assert "Skript-Sitzung" in src
+    assert "answer_query" not in src
+    assert "_pending_prompt" not in src
 
 
 def test_bottom_nav_html_hat_alltag_und_mehr():

@@ -975,6 +975,22 @@ def test_pick_skript_spot_nimmt_heutigen_planblock(isolated_db, tmp_path):
     assert "Deckungsbeitrag" in (got["heading"] or "")
 
 
+def test_hydrate_skript_spot_nimmt_prefill_dokument(isolated_db, tmp_path):
+    path = _write_skript_md(tmp_path)
+    manifest.upsert_document(
+        doc_id="d-hy", content_hash="h", source_path=str(path),
+        filename="skript.md", subject="Cybersecurity", filetype="md",
+        num_chunks=1, num_questions=0, char_count=80, status="ok")
+    got = student_flow.hydrate_skript_spot({
+        "doc_id": "d-hy", "subject": "Cybersecurity",
+        "heading": "Schutzziele", "minutes": 20,
+    })
+    assert got is not None
+    assert got["doc_id"] == "d-hy"
+    assert got["heading"] == "Schutzziele"
+    assert got["minutes"] == 20
+
+
 def test_finish_skript_session_schreibt_notiz_und_karte(isolated_db):
     marks = [{
         "text": "Vertraulichkeit schuetzt vor unbefugtem Lesen in Informationssystemen.",

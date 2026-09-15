@@ -36,6 +36,7 @@ PAGES = [
     ("/Lernplan", "Lernplan"),
     ("/Übungsaufgaben", "Übungsaufgaben"),
     ("/Prüfung", "Prüfung"),
+    ("/Skript", "Skript"),
 ]
 
 

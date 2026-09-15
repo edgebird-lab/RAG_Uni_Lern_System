@@ -733,6 +733,49 @@ def pick_skript_spot() -> Optional[dict]:
     }
 
 
+def hydrate_skript_spot(raw: Optional[dict] = None) -> Optional[dict]:
+    """Vervollständigt ein Prefill (doc_id/Fach) zu einem Sitzungs-Spot."""
+    from ragapp.config import PROJECT_ROOT
+    from ragapp.graph.socratic import is_usable_topic
+    from ragapp.ui import _docviewer as _dv
+
+    raw = dict(raw or {})
+    doc = None
+    if raw.get("doc_id"):
+        row = manifest.get_document(str(raw["doc_id"]))
+        if row:
+            d = dict(row)
+            sp = d.get("source_path") or ""
+            path = Path(sp) if Path(sp).is_absolute() else PROJECT_ROOT / sp
+            if path.is_file():
+                d["_path"] = path
+                doc = d
+    if doc is None and raw.get("subject"):
+        docs = _real_documents(str(raw["subject"]))
+        doc = docs[0] if docs else None
+    if doc is None:
+        return pick_skript_spot()
+    path = doc["_path"]
+    subject = raw.get("subject") or doc.get("subject")
+    heading = (raw.get("heading") or "").strip()
+    page = int(raw.get("page") or 0)
+    if heading and is_usable_topic(heading, subject=subject):
+        if page < 1:
+            page = _dv.toc_page_for_heading(path, heading)
+    else:
+        heading, page = _heading_for_doc(path, subject, heading)
+    return {
+        "subject": subject,
+        "doc_id": doc.get("doc_id"),
+        "filename": raw.get("filename") or doc.get("filename") or path.name,
+        "source_path": str(doc.get("source_path") or path),
+        "page": max(1, int(page or 1)),
+        "heading": heading,
+        "minutes": int(raw.get("minutes") or 20),
+        "block_id": raw.get("block_id"),
+    }
+
+
 def finish_skript_session(
     marks: list, *, heading: str, subject: Optional[str] = None,
     doc_id: Optional[str] = None, filename: Optional[str] = None,
