@@ -716,20 +716,49 @@ def _force_youtube_card(body: str) -> str:
     return f"<!-- _class: card -->\n\n## **{short}**\n"
 
 
+_MASHED_CLASS_RE = re.compile(
+    r"<!--\s*_class:\s*([A-Za-z0-9_-]+)\s*-->(.*)$")
+
+
+def _expand_mashed_youtube_body(body: str) -> list[str]:
+    """Zwei ``_class``-Kommentare in einem Block werden eigene Folien."""
+    parts: list[str] = []
+    current: list[str] = []
+    class_count = 0
+    for line in (body or "").splitlines():
+        m = _MASHED_CLASS_RE.match(line.strip())
+        if m:
+            if class_count >= 1 and current:
+                parts.append("\n".join(current).strip())
+                current = []
+            class_count += 1
+            name, extra = m.group(1), (m.group(2) or "").strip()
+            current.append(f"<!-- _class: {name} -->")
+            if extra:
+                current.append("")
+                current.append(extra if extra.startswith("#") else f"## **{extra}**")
+            continue
+        current.append(line)
+    if current:
+        parts.append("\n".join(current).strip())
+    return [p for p in parts if p]
+
+
 def pack_youtube_slides(slides: str) -> str:
     """Agenda weg, Content/Split/Warn zu Card oder Accent."""
     chunks: list[str] = []
     for body in _iter_slide_bodies(slides):
-        cls = _slide_class_name(body)
-        if cls == "agenda":
-            continue
-        if cls in {"lead", "accent", "card", "sources"}:
-            chunks.append(body)
-            continue
-        if cls == "accent" or "> " in body or body.strip().startswith(">"):
-            chunks.append(body)
-            continue
-        chunks.append(_force_youtube_card(body))
+        for piece in _expand_mashed_youtube_body(body):
+            cls = _slide_class_name(piece)
+            if cls == "agenda":
+                continue
+            if cls in {"lead", "accent", "card", "sources"}:
+                chunks.append(piece)
+                continue
+            if cls == "accent" or "> " in piece or piece.strip().startswith(">"):
+                chunks.append(piece)
+                continue
+            chunks.append(_force_youtube_card(piece))
     return _join_slide_chunks(chunks)
 
 
@@ -1876,7 +1905,8 @@ def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
             timeline = json.loads(tl_path.read_text(encoding="utf-8"))
         except Exception:  # noqa: BLE001
             timeline = None
-    cues = load_talk_cues(md_text, duration_s=duration, timeline=timeline)
+    cues = load_talk_cues(
+        md_text, duration_s=duration, timeline=timeline, youtube=youtube)
     video_html = d / "talk.video.html"
     video_html.write_text(
         inject_talk_presenter(html_path.read_text(encoding="utf-8"), cues),

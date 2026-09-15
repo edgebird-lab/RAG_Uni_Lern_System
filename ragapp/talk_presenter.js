@@ -188,6 +188,7 @@
       let caption = "";
       let count = null;
       let countStart = 0;
+      let shot = null;
       const events = this.cues.events || [];
       for (const ev of events) {
         if (ev.t > t + 1e-9) break;
@@ -224,6 +225,8 @@
         } else if (ev.type === "count" && ev.slide === slide) {
           count = ev;
           countStart = ev.t;
+        } else if (ev.type === "shot") {
+          shot = ev;
         }
       }
       const letterFrac = titleOn
@@ -241,7 +244,7 @@
       return {
         slide, prevSlide, slideStart, titleOn, titleStart, letterFrac, fade, bullets,
         keywords, keywordStart, punchOn, punchStart, cols, figures, figureStart, kenBurns,
-        caption, count, countStart,
+        caption, count, countStart, shot,
       };
     },
 
@@ -398,8 +401,22 @@
       const n = slides.length;
       const label = String(meta.chapter || meta.title || "").trim();
       const hideChip = n < 2 || meta.class_name === "lead";
-      chip.textContent = `${state.slide + 1} / ${n} · ${label}`;
-      chip.classList.toggle("is-on", !hideChip);
+      chip.textContent = label
+        ? `${state.slide + 1} / ${n} · ${label}`
+        : `${state.slide + 1} / ${n}`;
+      const yt = Boolean((this.cues || {}).youtube);
+      chip.classList.toggle("is-on", yt ? n >= 1 : !hideChip);
+      let layer = document.getElementById("talk-yt-shot");
+      if (!layer) {
+        layer = document.createElement("div");
+        layer.id = "talk-yt-shot";
+        document.body.appendChild(layer);
+      }
+      const sh = state.shot;
+      const showShot = Boolean(sh && sh.kind !== "figure" && String(sh.text || "").trim());
+      layer.textContent = showShot ? String(sh.text || "") : "";
+      layer.dataset.kind = showShot ? String(sh.kind || "word") : "";
+      layer.classList.toggle("is-on", showShot);
     },
   };
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
-CUE_VERSION = 7
+CUE_VERSION = 8
 VIDEO_WIDTH = 1280
 VIDEO_HEIGHT = 720
 
@@ -19,6 +19,9 @@ _TITLE_HOLD_MIN = 0.4
 _TITLE_HOLD_MAX = 1.2
 _LEAD_TIME_WEIGHT = 1.65
 _LEAD_SENTENCE_WANTS = 2
+_SHOT_TARGET_S = 3.8
+_SHOT_MIN_S = 2.0
+_SHOT_MAX_S = 5.0
 _CLASS_RE = re.compile(r"<!--\s*_class:\s*([A-Za-z0-9_-]+)\s*-->")
 _HEADING_RE = re.compile(r"^(#{1,3})\s+(.+?)\s*$", re.MULTILINE)
 _LIST_RE = re.compile(r"^(?:[-*+]|\d+[.)])\s+(.+?)\s*$")
@@ -37,6 +40,7 @@ _EVENT_ORDER = {
     "bullet": 6,
     "keyword": 7,
     "caption": 8,
+    "shot": 9,
 }
 
 
@@ -104,6 +108,16 @@ def parse_slide_body(body: str) -> dict[str, Any]:
     if head:
         title_keywords = _emphasis_words(head.group(2))
         title = _plain(head.group(2))
+    if not title:
+        for line in raw.splitlines():
+            trail = re.match(
+                r"<!--\s*_class:\s*[A-Za-z0-9_-]+\s*-->(.+)$", line.strip())
+            if trail:
+                extra = _plain(trail.group(1))
+                if extra:
+                    title = extra
+                    title_keywords = _emphasis_words(trail.group(1))
+                    break
     bullets: list[str] = []
     bullet_keywords: list[list[str]] = []
     has_quote = False
@@ -465,12 +479,138 @@ def map_timeline_to_cues(marp_md: str, timeline: list[dict[str, Any]],
     }
 
 
+def _shot_label(text: str) -> str:
+    raw = " ".join((text or "").split())
+    words = re.findall(r"[A-Za-zÄÖÜäöüß0-9%]{3,}", raw)
+    if words:
+        word = max(words, key=len)
+        if len(word) >= 3:
+            return word[:28]
+    short = _caption_text(raw)
+    return (short or raw)[:28] or "·"
+
+
+def _shot_texts_for_slide(slide: dict[str, Any]) -> list[str]:
+    texts: list[str] = []
+    for kw in slide.get("title_keywords") or []:
+        if kw:
+            texts.append(str(kw)[:28])
+    title = (slide.get("title") or "").strip()
+    if title:
+        texts.append(title[:28])
+    for bullet in slide.get("bullets") or []:
+        lab = _shot_label(str(bullet))
+        if lab and lab not in texts:
+            texts.append(lab)
+    return texts or ["·"]
+
+
+def _slide_index_at(cues: dict[str, Any], t: float) -> int:
+    slides = cues.get("slides") or []
+    idx = 0
+    for s in slides:
+        if float(s.get("start_s") or 0) <= t + 1e-9:
+            idx = int(s.get("index") or 0)
+        else:
+            break
+    return idx
+
+
+def apply_youtube_shots(
+    cues: dict[str, Any],
+    timeline: Optional[list] = None,
+) -> dict[str, Any]:
+    """Hart geschnittene Shots alle 3–5 s (YouTube-Rhythmus)."""
+    duration = max(0.5, float(cues.get("duration_s") or 1.0))
+    candidates: list[tuple[float, str, str]] = []
+    sentences = [s for s in (timeline or []) if isinstance(s, dict) and s.get("text")]
+    last = -_SHOT_MIN_S
+    for sent in sentences:
+        t = float(sent.get("start_s") or 0)
+        if t - last < _SHOT_MIN_S:
+            continue
+        candidates.append((t, _shot_label(str(sent.get("text") or "")), "word"))
+        last = t
+    if not candidates:
+        for slide in cues.get("slides") or []:
+            start = float(slide.get("start_s") or 0)
+            end = float(slide.get("end_s") or start + 4)
+            texts = _shot_texts_for_slide(slide)
+            cls = slide.get("class_name")
+            t = start
+            i = 0
+            while t < end - 0.12:
+                kind = "word"
+                if cls == "accent":
+                    kind = "punch"
+                elif (slide.get("images") or []) and i == 0:
+                    kind = "figure"
+                candidates.append((t, texts[i % len(texts)], kind))
+                t += _SHOT_TARGET_S
+                i += 1
+    if not candidates:
+        candidates.append((0.0, "·", "word"))
+    candidates.sort(key=lambda row: (row[0], row[1]))
+    kept: list[tuple[float, str, str]] = []
+    last_keep = -_SHOT_MIN_S
+    for t, text, kind in candidates:
+        if t - last_keep < _SHOT_MIN_S - 1e-6:
+            continue
+        kept.append((t, text, kind))
+        last_keep = t
+    packed: list[tuple[float, str, str]] = []
+    prev_text = kept[0][1]
+    prev_kind = kept[0][2]
+    for t, text, kind in kept + [(duration, prev_text, prev_kind)]:
+        if packed:
+            cursor = packed[-1][0]
+            while t - cursor > _SHOT_MAX_S:
+                nxt = _round_t(cursor + _SHOT_TARGET_S)
+                if nxt >= t - 0.05 or nxt >= duration:
+                    break
+                packed.append((nxt, prev_text, prev_kind))
+                cursor = nxt
+        if t >= duration:
+            break
+        if packed and t - packed[-1][0] < _SHOT_MIN_S - 1e-6:
+            continue
+        packed.append((t, text, kind))
+        prev_text = text
+        prev_kind = kind
+    shots = []
+    last_t = -_SHOT_MIN_S
+    for t, text, kind in packed:
+        if t >= duration or t - last_t < _SHOT_MIN_S - 1e-6:
+            continue
+        shots.append({
+            "t": _round_t(t),
+            "type": "shot",
+            "slide": _slide_index_at(cues, t),
+            "kind": kind,
+            "text": text,
+        })
+        last_t = t
+    events = list(cues.get("events") or [])
+    events.extend(shots)
+    _sort_events(events)
+    out = dict(cues)
+    out["events"] = events
+    out["youtube"] = True
+    out["version"] = CUE_VERSION
+    return out
+
+
 def load_talk_cues(marp_md: str, *, duration_s: float,
-                   timeline: Optional[list] = None) -> dict[str, Any]:
+                   timeline: Optional[list] = None,
+                   youtube: bool = False) -> dict[str, Any]:
     """Timeline aus der Vertonung, sonst Platzhalter-Cues."""
     if timeline:
-        return map_timeline_to_cues(marp_md, timeline)
-    return build_talk_cues(marp_md, duration_s=duration_s)
+        cues = map_timeline_to_cues(marp_md, timeline)
+    else:
+        cues = build_talk_cues(marp_md, duration_s=duration_s)
+    if youtube:
+        return apply_youtube_shots(cues, timeline=timeline)
+    return cues
 
 
 def cues_from_talk(row: dict, *, duration_s: Optional[float] = None) -> dict[str, Any]:

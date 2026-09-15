@@ -431,3 +431,52 @@ def test_timeline_caption_shortens_long_merksatz():
     assert len(caps) == 1
     assert caps[0]["text"].endswith("…")
     assert len(caps[0]["text"]) <= 48
+
+
+def test_youtube_shots_cut_every_few_seconds():
+    from ragapp.talk_cues import apply_youtube_shots, build_talk_cues, load_talk_cues
+    md = """\
+<!-- _class: card -->
+
+## **Grounding**
+
+---
+
+<!-- _class: accent -->
+
+## Merksatz
+
+> Abrufen schlägt Nachlesen.
+"""
+    base = build_talk_cues(md, duration_s=16.0)
+    assert all(e["type"] != "shot" for e in base["events"])
+    cues = apply_youtube_shots(base)
+    shots = [e for e in cues["events"] if e["type"] == "shot"]
+    assert cues["youtube"] is True
+    assert len(shots) >= 3
+    times = [e["t"] for e in shots]
+    assert times == sorted(times)
+    gaps = [b - a for a, b in zip(times, times[1:])]
+    assert all(g >= 1.9 for g in gaps)
+    assert all(g <= 5.1 for g in gaps)
+    loaded = load_talk_cues(md, duration_s=16.0, youtube=True)
+    assert any(e["type"] == "shot" for e in loaded["events"])
+    quiet = load_talk_cues(md, duration_s=16.0, youtube=False)
+    assert all(e["type"] != "shot" for e in quiet["events"])
+    mashed = load_talk_cues(
+        "<!-- _class: card --> Testing\n\n---\n\n<!-- _class: accent --> Abruf",
+        duration_s=12.0, youtube=True)
+    texts = [e.get("text") for e in mashed["events"] if e["type"] == "shot"]
+    assert any("Testing" in (t or "") for t in texts)
+    assert "·" not in texts[:2]
+    lead_md = "\n---\n\n".join(
+        f"<!-- _class: {cls} -->\n\n## **{title}**"
+        for cls, title in (
+            ("lead", "A"), ("card", "B"), ("card", "C"), ("card", "D"),
+        )
+    )
+    lead_cues = load_talk_cues(lead_md, duration_s=16.0, youtube=True)
+    lead_times = [e["t"] for e in lead_cues["events"] if e["type"] == "shot"]
+    lead_gaps = [b - a for a, b in zip(lead_times, lead_times[1:])]
+    assert lead_gaps
+    assert all(g <= 5.1 for g in lead_gaps), lead_gaps

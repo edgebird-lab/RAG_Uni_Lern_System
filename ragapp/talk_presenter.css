@@ -214,6 +214,34 @@ section.talk-aroll .talk-bullet {
   opacity: 1;
 }
 
+#talk-yt-shot {
+  position: fixed;
+  inset: 0;
+  z-index: 22;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: Fraunces, Georgia, serif;
+  font-size: 4.4vw;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  color: #fff7eb;
+  background: #0e3d45;
+  text-align: center;
+  padding: 8%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#talk-yt-shot.is-on {
+  opacity: 1;
+}
+
+#talk-yt-shot[data-kind="punch"] {
+  background: #1f3a4a;
+}
+
 .talk-bullet.is-current {
   border-left: 6px solid #c9a227;
   padding-left: 0.4em;

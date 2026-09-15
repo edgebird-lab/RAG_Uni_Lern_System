@@ -218,6 +218,12 @@ def test_pack_youtube_slides_drops_agenda_and_cards_content():
     yt = _fallback_opening_slides_youtube("Livetest", "Livetest", "Abrufen schlägt Nachlesen.")
     assert "_class: lead" in yt
     assert "_class: agenda" not in yt
+    mashed = pack_youtube_slides(
+        "<!-- _class: card --> Testing\n<!-- _class: accent --> Abruf hält.")
+    assert mashed.count("_class: card") == 1
+    assert mashed.count("_class: accent") == 1
+    assert "## **Testing**" in mashed
+    assert "## **Abruf hält.**" in mashed
 
 
 def test_thematic_toc_filters_page_titles():
