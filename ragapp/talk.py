@@ -777,22 +777,55 @@ def pack_youtube_slides(slides: str) -> str:
     return _join_slide_chunks(chunks)
 
 
-def _youtube_takeaway_slide(script: str) -> str:
-    text = " ".join((script or "").split())
-    parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", text) if p.strip()]
-    last = parts[-1] if parts else "Das bleibt für die Klausur hängen."
-    if len(last) > 140:
-        last = last[:137].rsplit(" ", 1)[0] + "…"
+def _blockquote_text(body: str) -> str:
+    for line in (body or "").splitlines():
+        stripped = line.strip()
+        if stripped.startswith(">"):
+            text = re.sub(r"[*`_]+", "", stripped.lstrip(">").strip())
+            if text:
+                return " ".join(text.split())
+    return ""
+
+
+def _merksatz_from_slides(slides: str) -> str:
+    """Erste substanzielle Accent-Aussage, nicht der Takeaway-Titel."""
+    best = ""
+    for body in _iter_slide_bodies(slides):
+        if _slide_class_name(body) != "accent":
+            continue
+        title = _slide_heading(body)
+        if "merke dir das" in title.lower():
+            continue
+        cand = _blockquote_text(body) or title
+        cand = re.sub(r"[.!?]+$", "", " ".join(cand.split())).strip()
+        if len(cand.split()) >= 4:
+            return cand
+        if cand and not best:
+            best = cand
+    return best
+
+
+def _youtube_takeaway_slide(script: str, slides: str = "") -> str:
+    merksatz = _merksatz_from_slides(slides)
+    if not merksatz:
+        text = " ".join((script or "").split())
+        parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", text) if p.strip()]
+        merksatz = parts[-1] if parts else "Das bleibt für die Klausur hängen."
+        merksatz = re.sub(r"[.!?]+$", "", merksatz).strip()
+    if len(merksatz) > 140:
+        merksatz = merksatz[:137].rsplit(" ", 1)[0] + "…"
+    elif merksatz and merksatz[-1] not in ".!?…":
+        merksatz += "."
     return (
         "<!-- _class: accent -->\n\n"
         "## Merke dir das\n\n"
-        f"> {last}\n"
+        f"> {merksatz}\n"
     )
 
 
 def _ensure_youtube_takeaway(slides: str, script: str) -> str:
     bodies = _iter_slide_bodies(slides)
-    take = _youtube_takeaway_slide(script)
+    take = _youtube_takeaway_slide(script, slides)
     if not bodies:
         return take
     for body in bodies:

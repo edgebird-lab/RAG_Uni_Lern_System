@@ -270,6 +270,15 @@ def test_ensure_youtube_takeaway_adds_accent_before_sources():
     assert "Das merkst du dir." in packed
     again = _ensure_youtube_takeaway(packed, "Anderer Satz.")
     assert again.count("Merke dir das") == 1
+    with_merk = (
+        "<!-- _class: accent -->\n\n"
+        "## **Aktiver Abruf stärkt Langzeitgedächtnis.**\n\n"
+        "---\n\n<!-- _class: card -->\n\n## Grounding\n"
+    )
+    from_merk = _ensure_youtube_takeaway(
+        with_merk, "Hallo. Du kannst so deine Chancen auf gute Noten erhöhen.")
+    assert "Aktiver Abruf stärkt Langzeitgedächtnis." in from_merk
+    assert "Chancen auf gute Noten" not in from_merk
     opening = _fallback_opening_script_youtube(
         "Grounding", "Abrufen schlägt Nachlesen.")
     assert "Weißt du" in opening
