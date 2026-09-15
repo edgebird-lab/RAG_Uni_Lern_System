@@ -1541,6 +1541,112 @@ def probe_audio_duration_s(audio_path: Path) -> float:
         raise TalkError("ffprobe lieferte keine Dauer.") from exc
 
 
+_YT_SILENCE_PAD_S = 0.14
+_YT_SILENCE_MIN_SAVE_S = 0.4
+
+
+def speech_windows_from_timeline(
+    timeline: Optional[list],
+    duration_s: float,
+    *,
+    pad_s: float = _YT_SILENCE_PAD_S,
+) -> list[tuple[float, float]]:
+    """Sprechfenster inkl. kurzem Pad, überlappende Pausen zusammengezogen."""
+    duration_s = max(0.05, float(duration_s))
+    pad_s = max(0.0, float(pad_s))
+    raw: list[tuple[float, float]] = []
+    for sent in timeline or []:
+        if not isinstance(sent, dict):
+            continue
+        start = float(sent.get("start_s") or 0)
+        dur = float(sent.get("duration_s") or 0)
+        if dur <= 0.04:
+            continue
+        a = max(0.0, start - pad_s)
+        b = min(duration_s, start + dur + pad_s)
+        if b - a >= 0.05:
+            raw.append((a, b))
+    raw.sort()
+    merged: list[tuple[float, float]] = []
+    for a, b in raw:
+        if merged and a <= merged[-1][1] + 0.02:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+        else:
+            merged.append((a, b))
+    return merged
+
+
+def remap_timeline_to_windows(
+    timeline: Optional[list],
+    windows: list[tuple[float, float]],
+) -> list[dict]:
+    """Satz-Startzeiten auf die geschnittene WAV abbilden."""
+    mapped_windows: list[tuple[float, float, float]] = []
+    cursor = 0.0
+    for a, b in windows:
+        mapped_windows.append((a, b, cursor))
+        cursor += max(0.0, b - a)
+
+    def _map(old: float) -> float:
+        for a, b, ns in mapped_windows:
+            if a - 1e-6 <= old <= b + 1e-6:
+                return ns + (old - a)
+        if mapped_windows and old < mapped_windows[0][0]:
+            return 0.0
+        return cursor
+
+    out: list[dict] = []
+    for sent in timeline or []:
+        if not isinstance(sent, dict):
+            continue
+        item = dict(sent)
+        item["start_s"] = round(_map(float(sent.get("start_s") or 0)), 3)
+        out.append(item)
+    return out
+
+
+def trim_talk_wav_to_speech(
+    wav_path: Path,
+    timeline: Optional[list],
+    out_path: Path,
+    *,
+    pad_s: float = _YT_SILENCE_PAD_S,
+) -> tuple[list, Path, bool]:
+    """Schneidet Pausen zwischen Sätzen. Original-WAV bleibt. TTS unverändert.
+
+    Gibt ``(timeline, wav_path, trimmed)`` zurück. Bei zu wenig Ersparnis oder
+    fehlendem ffmpeg bleibt die Quelldatei.
+    """
+    wav_path = Path(wav_path)
+    out_path = Path(out_path)
+    duration = probe_audio_duration_s(wav_path)
+    windows = speech_windows_from_timeline(timeline, duration, pad_s=pad_s)
+    covered = sum(b - a for a, b in windows)
+    if not windows or duration - covered < _YT_SILENCE_MIN_SAVE_S:
+        return list(timeline or []), wav_path, False
+    if not shutil.which("ffmpeg"):
+        raise TalkError("ffmpeg nicht gefunden (für Stille-Schnitt nötig).")
+    filters = []
+    labels = []
+    for i, (a, b) in enumerate(windows):
+        filters.append(
+            f"[0:a]atrim=start={a:.4f}:end={b:.4f},asetpts=PTS-STARTPTS[s{i}]")
+        labels.append(f"[s{i}]")
+    filters.append("".join(labels) + f"concat=n={len(windows)}:v=0:a=1[out]")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        "ffmpeg", "-y", "-i", str(wav_path),
+        "-filter_complex", ";".join(filters),
+        "-map", "[out]", str(out_path),
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
+    if proc.returncode != 0 or not out_path.is_file():
+        err = (proc.stderr or proc.stdout or "")[-400:]
+        raise TalkError(f"Stille-Schnitt fehlgeschlagen: {err}")
+    remapped = remap_timeline_to_windows(timeline, windows)
+    return remapped, out_path, True
+
+
 def _join_talk_script(parts: list[str]) -> str:
     """Opening, Abschnitte und Quellen mit Abschnittspause (drei Newlines)."""
     return "\n\n\n".join(p.strip() for p in parts if (p or "").strip())
@@ -1905,6 +2011,16 @@ def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
             timeline = json.loads(tl_path.read_text(encoding="utf-8"))
         except Exception:  # noqa: BLE001
             timeline = None
+    silence_trim = False
+    if youtube and timeline:
+        yt_wav = d / "audio.yt.wav"
+        try:
+            timeline, audio_path, silence_trim = trim_talk_wav_to_speech(
+                audio_path, timeline, yt_wav)
+            duration = probe_audio_duration_s(audio_path)
+        except TalkError as exc:
+            log.warning("YouTube-Stille-Schnitt übersprungen: %s", exc)
+            silence_trim = False
     cues = load_talk_cues(
         md_text, duration_s=duration, timeline=timeline, youtube=youtube)
     video_html = d / "talk.video.html"
@@ -1930,14 +2046,15 @@ def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
         raise TalkError("Video-Datei wurde nicht erzeugt.")
     write_talk_video_meta(
         talk_id, backend=backend, cues_source=str(cues.get("source") or "placeholder"),
-        music_bed=bool(music_bed), youtube=youtube)
+        music_bed=bool(music_bed), youtube=youtube, silence_trim=silence_trim)
     if row:
         manifest.update_talk(talk_id, video_path=out_rel)
     return out_rel
 
 
 def write_talk_video_meta(talk_id: str, *, backend: str, cues_source: str,
-                          music_bed: bool = False, youtube: bool = False) -> None:
+                          music_bed: bool = False, youtube: bool = False,
+                          silence_trim: bool = False) -> None:
     from ragapp.talk_cues import CUE_VERSION
     d = talk_dir(talk_id)
     fig_dir = d / "figures"
@@ -1961,6 +2078,7 @@ def write_talk_video_meta(talk_id: str, *, backend: str, cues_source: str,
             "broll": broll,
             "music_bed": bool(music_bed),
             "youtube": bool(youtube),
+            "silence_trim": bool(silence_trim),
         }, ensure_ascii=False, indent=2),
         encoding="utf-8")
 

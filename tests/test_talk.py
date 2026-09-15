@@ -450,3 +450,107 @@ def test_vortrag_seite_zeigt_video_hinweise():
     assert "Diashow-Video erzeugt" in src
     assert "passgenaue Punkte" in src
     assert "Abgebrochene Sätze" in helper
+    assert "Stille kürzen" in src
+
+
+def test_speech_windows_merge_and_remap():
+    from ragapp.talk import remap_timeline_to_windows, speech_windows_from_timeline
+    timeline = [
+        {"index": 0, "text": "A", "start_s": 0.0, "duration_s": 0.5},
+        {"index": 1, "text": "B", "start_s": 0.7, "duration_s": 0.5},
+        {"index": 2, "text": "C", "start_s": 3.0, "duration_s": 0.5},
+    ]
+    windows = speech_windows_from_timeline(timeline, 4.0, pad_s=0.14)
+    assert len(windows) == 2
+    assert windows[0][0] == 0.0
+    assert windows[0][1] == pytest.approx(1.34)
+    assert windows[1][0] == pytest.approx(2.86)
+    remapped = remap_timeline_to_windows(timeline, windows)
+    assert remapped[0]["start_s"] == 0.0
+    assert remapped[1]["start_s"] == pytest.approx(0.7)
+    assert remapped[2]["start_s"] < 3.0
+    assert remapped[2]["duration_s"] == 0.5
+
+
+def test_trim_talk_wav_drops_long_pauses(tmp_path):
+    import shutil
+    import subprocess
+    from ragapp.talk import probe_audio_duration_s, trim_talk_wav_to_speech
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg fehlt")
+    wav = tmp_path / "src.wav"
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=24000:duration=0.6",
+        "-f", "lavfi", "-t", "1.8", "-i", "anullsrc=r=24000:cl=mono",
+        "-f", "lavfi", "-i", "sine=frequency=660:sample_rate=24000:duration=0.6",
+        "-filter_complex", "[0:a][1:a][2:a]concat=n=3:v=0:a=1[out]",
+        "-map", "[out]", str(wav),
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        pytest.skip(proc.stderr[-200:] if proc.stderr else "ffmpeg lavfi skip")
+    timeline = [
+        {"index": 0, "text": "eins", "start_s": 0.0, "duration_s": 0.6},
+        {"index": 1, "text": "zwei", "start_s": 2.4, "duration_s": 0.6},
+    ]
+    out = tmp_path / "yt.wav"
+    new_tl, path, trimmed = trim_talk_wav_to_speech(wav, timeline, out)
+    assert trimmed is True
+    assert path == out
+    assert wav.stat().st_size > 0
+    src_dur = probe_audio_duration_s(wav)
+    out_dur = probe_audio_duration_s(out)
+    assert src_dur == pytest.approx(3.0, abs=0.15)
+    assert out_dur < src_dur - 0.8
+    assert new_tl[1]["start_s"] < 1.6
+
+
+def test_render_talk_video_trims_silence_only_for_youtube(isolated_db, tmp_path, monkeypatch):
+    talks_dir = tmp_path / "talks"
+    talks_dir.mkdir()
+    monkeypatch.setattr(talk, "TALK_DIR", talks_dir)
+    monkeypatch.setattr("ragapp.config.TALK_DIR", talks_dir)
+    tid = manifest.create_talk(
+        title="Trim", subject="Livetest", doc_ids=[],
+        marp_md="---\nmarp: true\n---\n\n# Hi",
+        script_text="Hallo.",
+        audio_path="trim1/audio.wav",
+        talk_id="trim1",
+    )
+    d = talks_dir / "trim1"
+    d.mkdir(parents=True)
+    (d / "audio.wav").write_bytes(b"RIFF")
+    (d / "timeline.json").write_text(
+        '[{"index":0,"text":"Hallo.","start_s":0.0,"duration_s":0.4},'
+        '{"index":1,"text":"Welt.","start_s":2.0,"duration_s":0.4}]',
+        encoding="utf-8")
+    monkeypatch.setattr(talk, "run_marp", lambda *a, **k: d / "talk.html")
+    (d / "talk.html").write_text("<html><body></body></html>", encoding="utf-8")
+    monkeypatch.setattr(talk, "probe_audio_duration_s", lambda p: 2.5)
+    calls = []
+
+    def fake_trim(wav, timeline, out, **_k):
+        calls.append(str(out))
+        Path(out).write_bytes(b"RIFFYT")
+        return ([{"index": 0, "start_s": 0.0, "duration_s": 0.4, "text": "Hallo."}],
+                Path(out), True)
+
+    monkeypatch.setattr(talk, "trim_talk_wav_to_speech", fake_trim)
+
+    def boom(*_a, **_k):
+        raise talk.TalkError("boom")
+
+    monkeypatch.setattr(talk, "record_presenter_video", boom)
+    monkeypatch.setattr(talk, "_render_slideshow_video", lambda *a, **k: (d / "talk.mp4").write_bytes(b"mp4"))
+    talk.render_talk_video("trim1", youtube_style=True)
+    assert calls
+    meta = talk.read_talk_video_meta("trim1")
+    assert meta.get("youtube") is True
+    assert meta.get("silence_trim") is True
+    calls.clear()
+    talk.render_talk_video("trim1", youtube_style=False)
+    assert not calls
+    meta2 = talk.read_talk_video_meta("trim1")
+    assert meta2.get("youtube") is False
+    assert meta2.get("silence_trim") is False
