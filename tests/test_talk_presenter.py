@@ -488,12 +488,54 @@ def test_seek_youtube_shot_overlay_changes(tmp_path):
         page.evaluate("t => window.TalkPresenter.seek(t)", shots[0]["t"] + 0.05)
         layer = page.locator("#talk-yt-shot")
         assert layer.evaluate("el => el.classList.contains('is-on')")
+        box = layer.bounding_box()
+        assert box is not None
+        assert box["height"] < 280
+        assert box["y"] < 200
         first = layer.inner_text()
+        chip = page.locator("#talk-chapter-chip")
+        assert not chip.evaluate("el => el.classList.contains('is-on')")
         page.evaluate("t => window.TalkPresenter.seek(t)", shots[-1]["t"] + 0.05)
         second = layer.inner_text()
         assert first.strip()
         assert second.strip()
         assert first != second or len(shots) == 1
-        chip = page.locator("#talk-chapter-chip")
+        page.evaluate("t => window.TalkPresenter.seek(t)", 6.0)
         assert chip.evaluate("el => el.classList.contains('is-on')")
+        browser.close()
+
+
+def test_seek_youtube_karaoke_highlights_words(tmp_path):
+    from playwright.sync_api import sync_playwright
+    from ragapp.talk_cues import load_talk_cues
+
+    md = "<!-- _class: card -->\n\n## **Grounding**\n"
+    html_src = """<!DOCTYPE html><html><body>
+<section class="card"><h2>Grounding</h2></section>
+</body></html>"""
+    timeline = [
+        {"index": 0, "text": "Abrufen schlägt Nachlesen.",
+         "start_s": 0.5, "duration_s": 1.8},
+    ]
+    cues = load_talk_cues(md, duration_s=4.0, timeline=timeline, youtube=True)
+    html = inject_talk_presenter(html_src, cues)
+    path = tmp_path / "kara.html"
+    path.write_text(html, encoding="utf-8")
+    words = [e for e in cues["events"] if e["type"] == "word"]
+    assert len(words) >= 2
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.goto(path.as_uri(), wait_until="load")
+        page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
+        page.evaluate("t => window.TalkPresenter.seek(t)", words[0]["t"] + 0.02)
+        kara = page.locator("#talk-karaoke")
+        assert kara.evaluate("el => el.classList.contains('is-on')")
+        first_on = kara.locator(".talk-kara-word.is-on").count()
+        page.evaluate("t => window.TalkPresenter.seek(t)", words[-1]["t"] + 0.02)
+        last_on = kara.locator(".talk-kara-word.is-on").count()
+        assert first_on >= 1
+        assert last_on >= first_on
+        assert "Nachlesen" in kara.inner_text()
         browser.close()

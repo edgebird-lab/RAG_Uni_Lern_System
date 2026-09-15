@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
-CUE_VERSION = 8
+CUE_VERSION = 9
 VIDEO_WIDTH = 1280
 VIDEO_HEIGHT = 720
 YOUTUBE_WIDTH = 1920
@@ -43,6 +43,7 @@ _EVENT_ORDER = {
     "keyword": 7,
     "caption": 8,
     "shot": 9,
+    "word": 10,
 }
 
 
@@ -604,6 +605,45 @@ def apply_youtube_shots(
     return out
 
 
+def apply_youtube_karaoke(
+    cues: dict[str, Any],
+    timeline: Optional[list] = None,
+) -> dict[str, Any]:
+    """Wortweise Untertitel aus der Vertonungs-Timeline (YouTube-Karaoke)."""
+    sentences = [s for s in (timeline or []) if isinstance(s, dict) and s.get("text")]
+    words_ev: list[dict[str, Any]] = []
+    for sent in sentences:
+        start = float(sent.get("start_s") or 0)
+        dur = max(0.16, float(sent.get("duration_s") or 0.5))
+        tokens = [w for w in re.findall(r"\S+", str(sent.get("text") or "")) if w.strip()]
+        if not tokens:
+            continue
+        slide = _slide_index_at(cues, start)
+        weights = [max(1, len(re.sub(r"\W+", "", tok))) for tok in tokens]
+        total = float(sum(weights) or 1)
+        acc = 0.0
+        for i, tok in enumerate(tokens):
+            t = start + dur * (acc / total)
+            words_ev.append({
+                "t": _round_t(t),
+                "type": "word",
+                "slide": slide,
+                "i": i,
+                "text": tok,
+                "words": tokens,
+            })
+            acc += weights[i]
+    if not words_ev:
+        return cues
+    events = [e for e in (cues.get("events") or []) if e.get("type") != "caption"]
+    events.extend(words_ev)
+    _sort_events(events)
+    out = dict(cues)
+    out["events"] = events
+    out["karaoke"] = True
+    return out
+
+
 def load_talk_cues(marp_md: str, *, duration_s: float,
                    timeline: Optional[list] = None,
                    youtube: bool = False) -> dict[str, Any]:
@@ -619,7 +659,8 @@ def load_talk_cues(marp_md: str, *, duration_s: float,
         cues = build_talk_cues(
             marp_md, duration_s=duration_s, width=width, height=height)
     if youtube:
-        return apply_youtube_shots(cues, timeline=timeline)
+        cues = apply_youtube_shots(cues, timeline=timeline)
+        return apply_youtube_karaoke(cues, timeline=timeline)
     return cues
 
 

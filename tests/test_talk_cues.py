@@ -484,3 +484,22 @@ def test_youtube_shots_cut_every_few_seconds():
     lead_gaps = [b - a for a, b in zip(lead_times, lead_times[1:])]
     assert lead_gaps
     assert all(g <= 5.1 for g in lead_gaps), lead_gaps
+
+
+def test_youtube_karaoke_words_from_timeline():
+    from ragapp.talk_cues import load_talk_cues
+    md = "<!-- _class: card -->\n\n## **Grounding**\n"
+    timeline = [
+        {"index": 0, "text": "Abrufen schlägt Nachlesen klar.",
+         "start_s": 0.0, "duration_s": 2.0},
+        {"index": 1, "text": "Punkt.",
+         "start_s": 2.4, "duration_s": 0.6},
+    ]
+    cues = load_talk_cues(md, duration_s=4.0, timeline=timeline, youtube=True)
+    words = [e for e in cues["events"] if e["type"] == "word"]
+    assert len(words) >= 4
+    assert words[0]["text"].startswith("Abrufen")
+    assert words[0]["words"][0].startswith("Abrufen")
+    assert cues.get("karaoke") is True
+    expl = load_talk_cues(md, duration_s=4.0, timeline=timeline, youtube=False)
+    assert all(e["type"] != "word" for e in expl["events"])

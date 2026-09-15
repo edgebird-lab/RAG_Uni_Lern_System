@@ -216,20 +216,23 @@ section.talk-aroll .talk-bullet {
 
 #talk-yt-shot {
   position: fixed;
-  inset: 0;
-  z-index: 22;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  left: 5%;
+  right: 5%;
+  top: 11%;
+  z-index: 28;
+  display: block;
   font-family: Fraunces, Georgia, serif;
-  font-size: 4.4vw;
+  font-size: 4.6vw;
   font-weight: 700;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.045em;
   line-height: 1.05;
   color: #fff7eb;
-  background: #0e3d45;
+  background: transparent;
   text-align: center;
-  padding: 8%;
+  padding: 0;
+  text-shadow:
+    0 1px 0 #0e3d45,
+    0 10px 32px rgba(14, 61, 69, 0.72);
   opacity: 0;
   pointer-events: none;
 }
@@ -239,7 +242,41 @@ section.talk-aroll .talk-bullet {
 }
 
 #talk-yt-shot[data-kind="punch"] {
-  background: #1f3a4a;
+  color: #f0b29a;
+}
+
+#talk-karaoke {
+  position: fixed;
+  left: 8%;
+  right: 8%;
+  bottom: 7%;
+  z-index: 42;
+  font-family: 'Source Sans 3', 'Segoe UI', sans-serif;
+  font-size: 2.15vw;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.25;
+  color: rgba(247, 241, 230, 0.55);
+  text-align: center;
+  text-shadow: 0 8px 24px rgba(14, 61, 69, 0.85);
+  opacity: 0;
+  pointer-events: none;
+}
+
+#talk-karaoke.is-on {
+  opacity: 1;
+}
+
+#talk-karaoke .talk-kara-word.is-on {
+  color: #fff7eb;
+}
+
+body.talk-youtube #talk-lower-third {
+  display: none !important;
+}
+
+body.talk-youtube section.talk-aroll .talk-title {
+  bottom: 22%;
 }
 
 .talk-bullet.is-current {
@@ -252,6 +289,7 @@ section.talk-aroll .talk-bullet {
 body.talk-presenter-on svg.bespoke-marp-slide.talk-slide-on,
 body.talk-presenter-on > section.talk-slide-on {
   z-index: 1;
+  transform-origin: center center;
 }
 
 body.talk-presenter-on svg.bespoke-marp-slide.talk-slide-prev,

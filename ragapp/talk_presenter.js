@@ -107,6 +107,7 @@
 
     _prepare() {
       document.body.classList.add("talk-presenter-on");
+      document.body.classList.toggle("talk-youtube", Boolean((this.cues || {}).youtube));
       const svgs = [...document.querySelectorAll("svg.bespoke-marp-slide")];
       this.roots = svgs.length ? svgs : [...document.querySelectorAll("section")];
       this.roots.forEach((root, slideIdx) => {
@@ -186,6 +187,8 @@
       let punchOn = false;
       let punchStart = 0;
       let caption = "";
+      let captionWords = [];
+      let captionWord = -1;
       let count = null;
       let countStart = 0;
       let shot = null;
@@ -203,6 +206,8 @@
           figures.clear();
           punchOn = false;
           caption = "";
+          captionWords = [];
+          captionWord = -1;
           count = null;
         } else if (ev.type === "title" && ev.slide === slide) {
           titleOn = true;
@@ -219,6 +224,12 @@
           if (keywordStart[ev.i] == null) keywordStart[ev.i] = ev.t;
         } else if (ev.type === "caption" && ev.slide === slide) {
           caption = String(ev.text || "");
+          captionWords = Array.isArray(ev.words) ? ev.words.map(String) : [];
+          captionWord = Number.isInteger(ev.i) ? ev.i : -1;
+        } else if (ev.type === "word") {
+          caption = String(ev.line || ev.text || caption);
+          captionWords = Array.isArray(ev.words) ? ev.words.map(String) : caption.split(/\s+/).filter(Boolean);
+          captionWord = Number.isInteger(ev.i) ? ev.i : captionWords.length - 1;
         } else if (ev.type === "punch" && ev.slide === slide) {
           punchOn = true;
           punchStart = ev.t;
@@ -244,7 +255,7 @@
       return {
         slide, prevSlide, slideStart, titleOn, titleStart, letterFrac, fade, bullets,
         keywords, keywordStart, punchOn, punchStart, cols, figures, figureStart, kenBurns,
-        caption, count, countStart, shot,
+        caption, captionWords, captionWord, count, countStart, shot,
       };
     },
 
@@ -256,15 +267,20 @@
         root.classList.toggle("talk-slide-on", on);
         root.classList.toggle("bespoke-marp-active", isCurr);
         root.classList.toggle("talk-slide-prev", isPrev);
+        const yt = Boolean((this.cues || {}).youtube);
+        const shotT = (state.shot && Number(state.shot.t)) || state.slideStart;
+        const punchIn = yt && isCurr
+          ? 1 + 0.05 * Math.min(1, Math.max(0, (t - shotT) / 0.28))
+          : 1;
         if (isCurr && state.fade < 1) {
           root.style.opacity = String(state.fade);
-          root.style.transform = "none";
+          root.style.transform = `scale(${punchIn})`;
         } else if (isPrev) {
           root.style.opacity = String(1 - state.fade);
           root.style.transform = "none";
         } else if (isCurr) {
           root.style.opacity = "1";
-          root.style.transform = "none";
+          root.style.transform = `scale(${punchIn})`;
         } else {
           root.style.opacity = "";
           root.style.transform = "";
@@ -332,7 +348,8 @@
           const img = wrap.querySelector(".talk-figure-img, img");
           if (img) {
             const kb = fOn ? state.kenBurns : 0;
-            img.style.transform = `scale(${1 + 0.08 * kb}) translate(${-6 * kb}px, ${-3 * kb}px)`;
+            const zoom = yt ? 0.16 : 0.08;
+            img.style.transform = `scale(${1 + zoom * kb}) translate(${-10 * kb}px, ${-5 * kb}px)`;
           }
         });
         section.querySelectorAll(".talk-keyword").forEach((el) => {
@@ -381,6 +398,7 @@
           );
         });
       });
+      const ytHud = Boolean((this.cues || {}).youtube);
       let bar = document.getElementById("talk-lower-third");
       if (!bar) {
         bar = document.createElement("div");
@@ -389,7 +407,7 @@
       }
       const cap = (state.caption || "").trim();
       bar.textContent = cap;
-      bar.classList.toggle("is-on", Boolean(cap));
+      bar.classList.toggle("is-on", Boolean(cap) && !ytHud);
       let chip = document.getElementById("talk-chapter-chip");
       if (!chip) {
         chip = document.createElement("div");
@@ -404,8 +422,13 @@
       chip.textContent = label
         ? `${state.slide + 1} / ${n} · ${label}`
         : `${state.slide + 1} / ${n}`;
-      const yt = Boolean((this.cues || {}).youtube);
-      chip.classList.toggle("is-on", yt ? n >= 1 : !hideChip);
+      const duration = Number((this.cues || {}).duration_s) || 0;
+      const inHook = ytHud && (t < 5 || meta.class_name === "lead");
+      const inTail = ytHud && duration > 0 && t >= duration - 2;
+      chip.classList.toggle(
+        "is-on",
+        ytHud ? n >= 1 && !inHook && !inTail : !hideChip,
+      );
       let layer = document.getElementById("talk-yt-shot");
       if (!layer) {
         layer = document.createElement("div");
@@ -417,6 +440,29 @@
       layer.textContent = showShot ? String(sh.text || "") : "";
       layer.dataset.kind = showShot ? String(sh.kind || "word") : "";
       layer.classList.toggle("is-on", showShot);
+      let kara = document.getElementById("talk-karaoke");
+      if (!kara) {
+        kara = document.createElement("div");
+        kara.id = "talk-karaoke";
+        document.body.appendChild(kara);
+      }
+      const words = state.captionWords || [];
+      const wi = Number(state.captionWord);
+      if (ytHud && words.length) {
+        kara.replaceChildren();
+        words.forEach((w, idx) => {
+          const span = document.createElement("span");
+          span.className = "talk-kara-word";
+          span.classList.toggle("is-on", idx <= wi);
+          span.textContent = w;
+          kara.appendChild(span);
+          kara.appendChild(document.createTextNode(" "));
+        });
+        kara.classList.toggle("is-on", true);
+      } else {
+        kara.textContent = "";
+        kara.classList.toggle("is-on", false);
+      }
     },
   };
 
