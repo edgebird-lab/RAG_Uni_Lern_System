@@ -461,8 +461,12 @@ def test_youtube_shots_cut_every_few_seconds():
     assert all(g <= 5.1 for g in gaps)
     loaded = load_talk_cues(md, duration_s=16.0, youtube=True)
     assert any(e["type"] == "shot" for e in loaded["events"])
+    assert loaded["width"] == 1920
+    assert loaded["height"] == 1080
     quiet = load_talk_cues(md, duration_s=16.0, youtube=False)
     assert all(e["type"] != "shot" for e in quiet["events"])
+    assert quiet["width"] == 1280
+    assert quiet["height"] == 720
     mashed = load_talk_cues(
         "<!-- _class: card --> Testing\n\n---\n\n<!-- _class: accent --> Abruf",
         duration_s=12.0, youtube=True)

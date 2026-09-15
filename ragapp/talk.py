@@ -1662,14 +1662,21 @@ def build_ffmpeg_concat_cmd(
     concat_list: Path,
     audio_path: Path,
     output_mp4: Path,
+    *,
+    stillimage: bool = True,
 ) -> list[str]:
     """ffmpeg: still images (concat demuxer) + audio → H.264/AAC MP4."""
     ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+    video = ["-c:v", "libx264", "-pix_fmt", "yuv420p"]
+    if stillimage:
+        video += ["-tune", "stillimage"]
+    else:
+        video += ["-preset", "fast", "-crf", "20"]
     return [
         ffmpeg, "-y",
         "-f", "concat", "-safe", "0", "-i", str(concat_list),
         "-i", str(audio_path),
-        "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p",
+        *video,
         *_video_aac_args(),
         "-shortest",
         "-movflags", "+faststart",
@@ -1684,6 +1691,9 @@ def build_ffmpeg_xfade_cmd(
     *,
     per_slide_s: float,
     fade_s: float = 0.35,
+    width: int = 1280,
+    height: int = 720,
+    stillimage: bool = True,
 ) -> list[str]:
     """ffmpeg mit kurzen Crossfades zwischen Folien (professionellere Übergänge)."""
     ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
@@ -1699,11 +1709,11 @@ def build_ffmpeg_xfade_cmd(
     cmd += ["-i", str(audio_path)]
     # filter_complex: xfade-Kette
     parts: list[str] = []
-    # Skaliere/pad auf 1280x720
+    w, h = int(width), int(height)
     for i in range(n):
         parts.append(
-            f"[{i}:v]scale=1280:720:force_original_aspect_ratio=decrease,"
-            f"pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v{i}]"
+            f"[{i}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,"
+            f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v{i}]"
         )
     prev = "v0"
     offset = show - fade
@@ -1717,11 +1727,16 @@ def build_ffmpeg_xfade_cmd(
         offset += show - fade
     filt = ";".join(parts)
     audio_idx = n
+    video = ["-c:v", "libx264", "-pix_fmt", "yuv420p"]
+    if stillimage:
+        video += ["-tune", "stillimage"]
+    else:
+        video += ["-preset", "fast", "-crf", "20"]
     cmd += [
         "-filter_complex", filt,
         "-map", f"[{prev}]",
         "-map", f"{audio_idx}:a",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        *video,
         *_video_aac_args(),
         "-shortest",
         "-movflags", "+faststart",
@@ -1753,6 +1768,9 @@ def record_presenter_video(
     *,
     duration_s: float,
     fps: int = RECORD_FPS,
+    width: int = 1280,
+    height: int = 720,
+    stillimage: bool = True,
 ) -> Path:
     """Chrome: seek(t) → JPEG-Frames → H.264 (ohne Ton)."""
     import os
@@ -1776,11 +1794,18 @@ def record_presenter_video(
         node, str(script.resolve()),
         str(Path(html_path).resolve()), chrome,
         f"{duration_s:.3f}", str(fps),
+        str(int(width)), str(int(height)),
     ]
     ff_cmd = [
         ffmpeg, "-y",
         "-f", "image2pipe", "-vcodec", "mjpeg", "-framerate", str(fps), "-i", "pipe:0",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-tune", "stillimage",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+    ]
+    if stillimage:
+        ff_cmd += ["-tune", "stillimage"]
+    else:
+        ff_cmd += ["-preset", "fast", "-crf", "20"]
+    ff_cmd += [
         "-movflags", "+faststart",
         str(output_mp4),
     ]
@@ -1933,7 +1958,9 @@ def _mux_with_music_bed(video_path: Path, audio_path: Path,
 
 
 def _render_slideshow_video(html_path: Path, md_path: Path, d: Path,
-                            audio_path: Path, out_path: Path) -> None:
+                            audio_path: Path, out_path: Path,
+                            *, width: int = 1280, height: int = 720,
+                            stillimage: bool = True) -> None:
     """Alter PNG-Diashow-Pfad (Fallback, wenn die Presenter-Aufnahme scheitert)."""
     slides_dir = d / "slides"
     if slides_dir.exists():
@@ -1950,11 +1977,14 @@ def _render_slideshow_video(html_path: Path, md_path: Path, d: Path,
     duration = probe_audio_duration_s(audio_path)
     per = max(0.8, duration / len(pngs))
     if len(pngs) >= 2:
-        cmd = build_ffmpeg_xfade_cmd(pngs, audio_path, out_path, per_slide_s=per)
+        cmd = build_ffmpeg_xfade_cmd(
+            pngs, audio_path, out_path, per_slide_s=per,
+            width=width, height=height, stillimage=stillimage)
     else:
         concat_path = d / "concat.txt"
         write_concat_list(pngs, per, concat_path)
-        cmd = build_ffmpeg_concat_cmd(concat_path, audio_path, out_path)
+        cmd = build_ffmpeg_concat_cmd(
+            concat_path, audio_path, out_path, stillimage=stillimage)
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900, check=False)
     if proc.returncode != 0:
         if len(pngs) >= 2:
@@ -1962,7 +1992,8 @@ def _render_slideshow_video(html_path: Path, md_path: Path, d: Path,
                         (proc.stderr or "")[-400:])
             concat_path = d / "concat.txt"
             write_concat_list(pngs, per, concat_path)
-            cmd = build_ffmpeg_concat_cmd(concat_path, audio_path, out_path)
+            cmd = build_ffmpeg_concat_cmd(
+                concat_path, audio_path, out_path, stillimage=stillimage)
             proc = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=900, check=False)
         if proc.returncode != 0:
@@ -2033,20 +2064,30 @@ def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
     silent = d / "talk.silent.mp4"
     backend = "presenter"
     try:
-        record_presenter_video(video_html, silent, duration_s=cues["duration_s"])
+        record_presenter_video(
+            video_html, silent, duration_s=cues["duration_s"],
+            width=int(cues.get("width") or 1280),
+            height=int(cues.get("height") or 720),
+            stillimage=not youtube)
         mux_video_with_talk_audio(
             silent, audio_path, out_path, music_bed=bool(music_bed))
     except TalkError as exc:
         log.warning("Presenter-Aufnahme fehlgeschlagen, Fallback Diashow: %s", exc)
         backend = "slideshow"
-        _render_slideshow_video(html_path, md_path, d, audio_path, out_path)
+        _render_slideshow_video(
+            html_path, md_path, d, audio_path, out_path,
+            width=int(cues.get("width") or 1280),
+            height=int(cues.get("height") or 720),
+            stillimage=not youtube)
     finally:
         silent.unlink(missing_ok=True)
     if not out_path.is_file():
         raise TalkError("Video-Datei wurde nicht erzeugt.")
     write_talk_video_meta(
         talk_id, backend=backend, cues_source=str(cues.get("source") or "placeholder"),
-        music_bed=bool(music_bed), youtube=youtube, silence_trim=silence_trim)
+        music_bed=bool(music_bed), youtube=youtube, silence_trim=silence_trim,
+        width=int(cues.get("width") or 1280),
+        height=int(cues.get("height") or 720))
     if row:
         manifest.update_talk(talk_id, video_path=out_rel)
     return out_rel
@@ -2054,7 +2095,8 @@ def render_talk_video(talk_id: str, *, audio_rel: Optional[str] = None,
 
 def write_talk_video_meta(talk_id: str, *, backend: str, cues_source: str,
                           music_bed: bool = False, youtube: bool = False,
-                          silence_trim: bool = False) -> None:
+                          silence_trim: bool = False,
+                          width: int = 1280, height: int = 720) -> None:
     from ragapp.talk_cues import CUE_VERSION
     d = talk_dir(talk_id)
     fig_dir = d / "figures"
@@ -2079,6 +2121,8 @@ def write_talk_video_meta(talk_id: str, *, backend: str, cues_source: str,
             "music_bed": bool(music_bed),
             "youtube": bool(youtube),
             "silence_trim": bool(silence_trim),
+            "width": int(width),
+            "height": int(height),
         }, ensure_ascii=False, indent=2),
         encoding="utf-8")
 

@@ -13,6 +13,8 @@ from typing import Any, Optional
 CUE_VERSION = 8
 VIDEO_WIDTH = 1280
 VIDEO_HEIGHT = 720
+YOUTUBE_WIDTH = 1920
+YOUTUBE_HEIGHT = 1080
 
 _TITLE_HOLD_FRAC = 0.18
 _TITLE_HOLD_MIN = 0.4
@@ -597,6 +599,8 @@ def apply_youtube_shots(
     out["events"] = events
     out["youtube"] = True
     out["version"] = CUE_VERSION
+    out["width"] = YOUTUBE_WIDTH
+    out["height"] = YOUTUBE_HEIGHT
     return out
 
 
@@ -604,10 +608,16 @@ def load_talk_cues(marp_md: str, *, duration_s: float,
                    timeline: Optional[list] = None,
                    youtube: bool = False) -> dict[str, Any]:
     """Timeline aus der Vertonung, sonst Platzhalter-Cues."""
+    width, height = (
+        (YOUTUBE_WIDTH, YOUTUBE_HEIGHT) if youtube
+        else (VIDEO_WIDTH, VIDEO_HEIGHT)
+    )
     if timeline:
-        cues = map_timeline_to_cues(marp_md, timeline)
+        cues = map_timeline_to_cues(
+            marp_md, timeline, width=width, height=height)
     else:
-        cues = build_talk_cues(marp_md, duration_s=duration_s)
+        cues = build_talk_cues(
+            marp_md, duration_s=duration_s, width=width, height=height)
     if youtube:
         return apply_youtube_shots(cues, timeline=timeline)
     return cues

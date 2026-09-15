@@ -75,6 +75,29 @@ def test_record_presenter_video_writes_mp4(tmp_path):
         assert 0.4 <= dur <= 2.5
 
 
+def test_record_presenter_video_youtube_1080(tmp_path):
+    from ragapp.talk_cues import load_talk_cues
+    cues = load_talk_cues(MARP, duration_s=0.4, youtube=True)
+    assert cues["width"] == 1920
+    html = inject_talk_presenter(
+        Path("tests/fixtures/talk_presenter.html").read_text(encoding="utf-8"), cues)
+    html_path = tmp_path / "yt.html"
+    html_path.write_text(html, encoding="utf-8")
+    silent = tmp_path / "yt.mp4"
+    record_presenter_video(
+        html_path, silent, duration_s=0.4, fps=5,
+        width=1920, height=1080, stillimage=False)
+    assert silent.is_file()
+    import subprocess
+    proc = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=width,height",
+         "-of", "csv=p=0", str(silent)],
+        capture_output=True, text=True, check=False)
+    assert proc.returncode == 0
+    assert proc.stdout.strip().startswith("1920,1080")
+
+
 def test_record_presenter_video_missing_html_raises(tmp_path):
     with pytest.raises(TalkError):
         record_presenter_video(tmp_path / "nope.html", tmp_path / "x.mp4", duration_s=0.5, fps=5)

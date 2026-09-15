@@ -248,6 +248,15 @@ def test_build_ffmpeg_xfade_cmd_structure(tmp_path):
     cmd = build_ffmpeg_xfade_cmd([p1, p2], audio, out, per_slide_s=3.0)
     joined = " ".join(cmd)
     assert "xfade" in joined
+    assert "1280:720" in joined
+    assert "-tune" in cmd and "stillimage" in cmd
+    yt = build_ffmpeg_xfade_cmd(
+        [p1, p2], audio, out, per_slide_s=3.0,
+        width=1920, height=1080, stillimage=False)
+    yt_join = " ".join(yt)
+    assert "1920:1080" in yt_join
+    assert "stillimage" not in yt_join
+    assert "-crf" in yt
     assert str(out) in cmd
     assert "loudnorm" in joined
     assert "-af" in cmd
@@ -267,6 +276,10 @@ def test_build_ffmpeg_concat_cmd_structure(tmp_path):
     assert "libx264" in cmd
     assert "loudnorm" in " ".join(cmd)
     assert "-af" in cmd
+    assert "stillimage" in cmd
+    yt = build_ffmpeg_concat_cmd(concat, audio, out, stillimage=False)
+    assert "stillimage" not in yt
+    assert "-crf" in yt
 
 
 def test_write_concat_list(tmp_path):
@@ -383,6 +396,8 @@ def test_mux_video_with_talk_audio_uses_loudnorm():
     assert talk.RECORD_FPS == 30
     rec = Path("ragapp/marp_record.mjs").read_text(encoding="utf-8")
     assert "Math.min(30" in rec
+    assert "process.argv[6]" in rec
+    assert "jpegQuality" in rec
     assert "music_bed: bool = False" in src
     assert "sidechaincompress" in src
     ui = Path("ragapp/ui/pages/17_🎤_Vortrag.py").read_text(encoding="utf-8")
@@ -418,7 +433,7 @@ def test_render_talk_video_falls_back_when_record_fails(isolated_db, tmp_path, m
 
     called = {}
 
-    def fake_slideshow(html_path, md_path, dd, audio_path, out_path):
+    def fake_slideshow(html_path, md_path, dd, audio_path, out_path, **_k):
         called["slideshow"] = True
         Path(out_path).write_bytes(b"mp4fake")
 
