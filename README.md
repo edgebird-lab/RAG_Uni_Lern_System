@@ -8,6 +8,7 @@
 
 Ein lokaler KI-Lernassistent für **Studierende, Forschende und alle, die mit vertraulichen Unterlagen arbeiten** (Medizin, Jura, Firmen-Know-how). Antworten kommen **nur aus deinen eigenen Dokumenten**, dazu Karteikarten mit Spaced Repetition – **nichts verlässt deinen Rechner**.
 
+[![CI](https://github.com/edgebird-lab/RAG_Uni_Lern_System/actions/workflows/ci.yml/badge.svg)](https://github.com/edgebird-lab/RAG_Uni_Lern_System/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![100% local & offline](https://img.shields.io/badge/100%25-local%20%26%20offline-orange.svg)](#-datenschutz-deine-unterlagen-bleiben-lokal)
