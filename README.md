@@ -366,6 +366,16 @@ z. B. `qwen2.5:3b-instruct` / `gemma3:4b` (klein/schnell),
 Oberfläche** gibt es zusätzlich einen **Modell-Picker** auf der
 Einstellungen-Seite; dort lässt sich das Modell ohne CLI wechseln.
 
+**Erfahrungswert (gemessen, Beispiel):** Auf Rechnern mit einer GPU ab ca. 8 GB VRAM hat sich
+`gemma4:latest` als Allrounder bewährt. Es bestand im Test alle KI-Funktionen der App
+(Zusammenfassung, Mindmap, Audio-Skript, Vortrag, Bewertung, Chat, Lernplan-Karten) und lieferte
+längere und genauere Ergebnisse als `gemma3:4b` (z. B. Zusammenfassung eines 19-Seiten-PDFs: 31 000 statt
+22 000 Zeichen, dafür 107 statt 70 s; kurze Aufgaben dauern gleich lang); mit 32 k Kontext braucht es rund
+5–6 GB VRAM. Größere Modelle (`qwen2.5:14b`, `gpt-oss:20b`) sind genauer bzw. dialogstärker, aber deutlich
+langsamer; Modelle um 17 GB sprengen auf einer 24-GB-Karte zusammen mit dem Desktop schnell den
+Grafikspeicher. Der Sokratische Dialog funktioniert mit allen getesteten Modellen, weil die Wiederholungs-Prüfung im Code liegt
+([docs/SOKRATISCHER_DIALOG.md](docs/SOKRATISCHER_DIALOG.md)).
+
 Lizenzen der Modelle: siehe [NOTICE.md](NOTICE.md).
 
 ---
