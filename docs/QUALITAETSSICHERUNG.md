@@ -12,15 +12,23 @@ laufenden Erstimport gefahren werden konnte.
 
 ## Automatische Regressionstests
 
-GitHub Actions führt zwei getrennte Stufen aus:
+GitHub Actions führt zwei getrennte Stufen aus (Python 3.11, nur
+`requirements-dev.txt` – kein torch, keine GPU, kein Ollama-Server):
 
-1. `pytest -q` prüft die vollständige modellfreie Logik.
+1. `pytest -q` prüft die modellfreie Logik mit Attrappen. Tests, die `torch`/`torchaudio`
+   oder einen startbaren Chromium brauchen, überspringen sich selbst.
 2. `python tests/live_smoke.py` startet die echte Streamlit-App lokal und öffnet
    die Kernseiten in headless Chromium. Damit werden zusätzlich Navigation,
-   Seiteneinstieg und Browser-Laufzeitfehler erkannt.
+   Seiteneinstieg und Browser-Laufzeitfehler erkannt. Die CI hat keine Daten – die
+   Seiten werden also im Leer-Zustand geprüft.
 
 Lokal benötigt der zweite Lauf Playwright samt Chromium
-(`python -m playwright install chromium`).
+(`python -m playwright install chromium`). Beide Stufen lassen sich lokal nachstellen
+(siehe [CONTRIBUTING.md](../CONTRIBUTING.md#tests-pytest)).
+
+**Test-Isolation:** `conftest.py` biegt für jeden Test die Datensicherungen
+(`data/backups/`) und die Tagesziel-Datei um. Kein Test darf echte Nutzerdaten lesen oder
+verändern.
 
 ## Ablauf des Reviews
 
@@ -49,6 +57,15 @@ Lokal benötigt der zweite Lauf Playwright samt Chromium
 | 11 | niedrig | `ingestion/pipeline.py` | Exakt gleiche Chunks **innerhalb** eines Dokuments wurden nicht dedupliziert (Registrierung erst nach der Schleife). | Durch das lokale Hash-Set (Fix 2) mit erledigt. |
 | 12 | niedrig | `scripts/verify.py` | `print("▶ …")` crasht bei umgeleiteter Windows-stdout (cp1252). | ASCII-Marker + `stdout.reconfigure(utf-8)`. |
 | 13 | niedrig | `ingestion/pipeline.py` | `progress()`-Aufruf mit Umlaut-Dateinamen außerhalb `try/except` → ein `UnicodeEncodeError` brach den **gesamten** Batch-Import ab. | `progress`-Aufruf gekapselt; CLI stellt stdout auf UTF-8. |
+
+### Nachträgliche Funde (Lernplan-Runde, Oktober 2026)
+
+| # | Schwere | Bereich | Problem | Fix |
+|---|---------|---------|---------|-----|
+| 14 | **hoch** | `tests/` ↔ `backup.py` | Tests, die Karten löschen, riefen über `manifest.delete_card_ids` → `backup.snapshot` auf und sicherten dabei die **echte** `manifest.db` nach `data/backups/` – die Rotation (`BACKUP_KEEP`) verdrängte so ältere echte Sicherungen. | Autouse-Fixture in `conftest.py` (Sicherungen auf Wegwerf-Pfad) + `tests/test_backup_isolation.py`. |
+| 15 | mittel | CI | Beide CI-Jobs auf `main` waren rot: der schlanke Stack hatte `ollama`, `httpx`, `rank_bm25`, `chromadb`, `icalendar`, `pymupdf` nicht, und die Smoke-Prüfung von `/Fortschritt` erwartete Text, den es ohne Daten nicht gibt. | `requirements-dev.txt` ergänzt, `torch`-Tests per `importorskip`, Smoke-Erwartung auf den Leer-Zustand angepasst. Lokal mit Python 3.11 nachgestellt: 1304 Tests grün, 11/11 Seiten. |
+| 16 | mittel | Tests | Zwei Tests hingen an der Umgebung der Entwicklerin (`data/daily_goal.json`, Chromium-Revision). | Tagesziel-Datei in `conftest.py` isoliert; Browser-Tests überspringen sich ohne startbaren Chromium (`RAG_CHROMIUM_PATH`). |
+| 17 | mittel | `study_plan.py` | Die KI vergab denselben Themen-Titel zweimal; Übungen werden über den Titel zugeordnet, die beiden Themen hätten sich ihre Übungen geteilt. | `_disambiguate_titles` hängt den Seitenbereich an. |
 
 ## Korrekt verworfenes Falsch-Positiv
 

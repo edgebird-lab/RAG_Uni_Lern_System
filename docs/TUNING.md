@@ -52,6 +52,8 @@ Code anzufassen (`Settings.save()`). Der Reiz: nach einer Evaluation gezielt
 | --------- | -------- | ------- |
 | `ENABLE_QUESTION_INDEXING` | `False` | Fragen pro Chunk beim Import mitindexieren. Steigert die Trefferquote, kostet aber auf CPU **~20 s/Chunk** → beim Bulk-Import bewusst AUS. **Index-relevant.** |
 | `NUM_INDEX_QUESTIONS` | `3` | Anzahl generierter Fragen pro Chunk (bei aktiver Indexierung/Anreicherung). |
+| `CARD_QUALITY_RETRIES` | `2` | Neuversuche, wenn eine generierte Kartenfrage/-antwort Mängel hat (Verweis auf „Abschnitt“/„Definition 4“, kaputte PDF-Zeichen, fehlender Kontext): verwerfen und mit gezieltem Hinweis neu formulieren lassen. `0` = nur verwerfen. Siehe [LERNPLAN.md](LERNPLAN.md#kartenqualität). |
+| `PLAN_*` | – | Einstellungen des Lernplans (Blockgröße, Tagesobergrenze, Gliederungsgruppen, Themengröße, Zeitfaktor): [LERNPLAN.md](LERNPLAN.md#einstellungen). |
 
 ### Retrieval-Deduplizierung (gegen doppelte Infos in der Antwort)
 

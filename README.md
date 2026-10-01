@@ -91,6 +91,17 @@ eigenen Kurs- und Klausurunterlagen bleiben ausschließlich auf deinem Rechner:
   *Nähe × Wissenslücke × Gewicht* (inkl. `.ics`-Export).
 - **📝 Prüfung:** schriftliche Probeklausur mit Zeitlimit **oder** mündliche
   Sprechschleife – ein Einstieg, Verlauf zum Starten auf derselben Seite.
+- **📋 Lernplan:** aus deinen Unterlagen wird eine Gliederung (**ein Thema = ein Dokument**), zu
+  jedem Thema entstehen **Karteikarten und eine Übungsaufgabe nur aus dem Text dieses Themas**,
+  danach ein Zeitplan auf Tage. Alles **halbautomatisch per Knopfdruck**: eine **Schrittleiste**
+  zeigt, was als Nächstes dran ist; das Füllen läuft **im Hintergrund mit „Abbrechen“**; jede
+  Kachel zeigt **Lernstand und Termin**; ein **Kartenqualitäts-Filter** sortiert Karten mit
+  „… im Abschnitt“, „nach Definition 4“, kaputten PDF-Zeichen oder Dubletten aus. Details:
+  [docs/LERNPLAN.md](docs/LERNPLAN.md).
+- **🧭 Sokratischer Dialog:** im Chat fragt dich die KI ab (*Hinweis · Teilweise · Auflösen ·
+  Nächster Aspekt*). Gesprächsstand statt Verlauf, Wiederholungsschutz und ein ehrlicher
+  Rückfall sorgen dafür, dass sich der Dialog nicht im Kreis dreht –
+  [docs/SOKRATISCHER_DIALOG.md](docs/SOKRATISCHER_DIALOG.md).
 - **📄 Zusammenfassung schreiben:** erzeugt aus einem Dokument/Fach eine strukturierte,
   **gegroundete** Markdown-Zusammenfassung – mit einem separat wählbaren, großen
   **Autoren-Modell** (`LLM_MODEL_AUTHOR`), während der interaktive Chat auf einem
@@ -160,6 +171,18 @@ eigenen Kurs- und Klausurunterlagen bleiben ausschließlich auf deinem Rechner:
 **📄 Zusammenfassung schreiben – gegroundete Markdown-Zusammenfassung je Dokument/Fach (großes „Autoren"-Modell, nur aus deinen Inhalten)**
 
 ![Zusammenfassung schreiben](docs/img/zusammenfassung.png)
+
+**📋 Lernplan – Schrittleiste, Lerneinheiten je Thema, Lernstand und Termine auf den Kacheln (Beispieldaten)**
+
+![Lernplan](docs/img/lernplan.png)
+
+**📋 Lernplan auf dem Handy – dieselbe Seite bei 390 px Breite**
+
+<img src="docs/img/lernplan-handy.png" alt="Lernplan auf dem Handy" width="320" />
+
+**🧭 Sokratischer Dialog – die KI fragt, du antwortest; Hinweis, Teilweise, Auflösen oder Nächster Aspekt (Beispieldaten)**
+
+![Sokratischer Dialog](docs/img/sokratisch.png)
 
 ---
 
@@ -287,6 +310,10 @@ Algorithmus wie bei Anki seit dessen Umstieg von SM-2).
 - **Voraussetzung:** einmal Fragen erzeugen (Seite **📥 Ingestion** → Fragen
   generieren bzw. `cli catalog <Fach>`). Neue Fragen holt „Karten aktualisieren"
   nach.
+- **Karten passend zum Tagesstoff:** Der **📋 Lernplan** erzeugt Karten **je Thema** und lässt
+  dich im Plan nur den Stoff üben, der für das Thema bzw. den Tag gedacht ist – die normalen
+  Karteikarten bleiben davon unberührt. Karten, die ohne das Skript unverständlich wären
+  („… im Abschnitt“, „nach Definition 4“), werden schon beim Erzeugen aussortiert.
 
 ---
 
@@ -419,6 +446,10 @@ Ausführliche Erklärung: [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md).
 │  ├─ config.py                #   Zentrale Konfiguration (alle Parameter)
 │  ├─ hardware.py              #   Hardware-Erkennung + Modell-Empfehlung (recommend)
 │  ├─ study.py                 #   Karteikarten ernten + FSRS-6-Planung (Spaced Repetition)
+│  ├─ study_plan.py            #   Lernplan: KI-Gliederung, Zeitschätzung, Zeitplan
+│  ├─ plan_cards.py            #   Lernplan ↔ Karten/Übungen (Themenbezug, Lernstand, Füllläufe)
+│  ├─ card_quality.py          #   Kartenqualität: Quellenbezug, PDF-Zeichen, Dubletten
+│  ├─ jobs.py                  #   Hintergrundaufträge (Fortschritt, Abbrechen)
 │  ├─ ingestion/               #   Loader, Chunking, Dedup, Fragen, Pipeline, Watcher
 │  ├─ retrieval/               #   Embeddings, ChromaDB, BM25, Reranker, Hybrid-Suche
 │  ├─ graph/                   #   LangGraph: retrieve→generate→faithfulness→fallback
@@ -452,6 +483,11 @@ Ausführliche Erklärung: [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md).
 | [docs/HANDY_ZUGRIFF.md](docs/HANDY_ZUGRIFF.md)             | Zugriff vom Smartphone/Tablet (WLAN + Cloudflare-Tunnel, PIN, QR-Code) |
 | [docs/WINDOWS_SICHERHEIT.md](docs/WINDOWS_SICHERHEIT.md)   | SmartScreen/Defender-Warnungen erklärt + Weg zur signierten Version    |
 | [docs/QUALITAETSSICHERUNG.md](docs/QUALITAETSSICHERUNG.md) | Qualitätssicherung: Tests, Prüfungen, Abnahmekriterien                 |
+| [docs/LERNPLAN.md](docs/LERNPLAN.md)                       | Lernplan: Ablauf in vier Schritten, Regeln, Kartenqualität, Einstellungen, Fehlersuche |
+| [docs/LERNPLAN_FORSCHUNG.md](docs/LERNPLAN_FORSCHUNG.md)   | Wissenschaftliche Herleitung der Zeitschätzung des Lernplans           |
+| [docs/SOKRATISCHER_DIALOG.md](docs/SOKRATISCHER_DIALOG.md) | Sokratischer Chat-Modus: Bedienung, Schutz vor Wiederholungen, Fehlersuche |
+| [docs/STIMME_AUFNEHMEN.md](docs/STIMME_AUFNEHMEN.md)       | Eigene Referenzstimme für Audio-Overview und Vortrag aufnehmen         |
+| [CONTRIBUTING.md](CONTRIBUTING.md)                         | Mitwirken: Entwicklungs-Setup, Tests (pytest, CI lokal nachstellen)    |
 
 ---
 

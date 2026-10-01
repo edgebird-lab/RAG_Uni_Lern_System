@@ -163,6 +163,10 @@ Der Reranker (`BAAI/bge-reranker-v2-m3`) läuft über `sentence-transformers`.
 | Evaluation          | `ragapp/eval/run_eval.py`        | Gold-Set gegen die echte Pipeline; JSON/CSV/history. |
 | CLI                 | `ragapp/scripts/cli.py`          | `ingest`, `ingest-file`, `watch`, `gold`, `enrich`, `eval`, `ask`, `stats`, `reset`. |
 | Weboberfläche       | `ragapp/ui/🏠_Home.py`           | Streamlit-Einstiegspunkt (Home-Kacheln); Chat unter `ragapp/ui/pages/0_💬_Chat.py`. |
+| Karten-Qualität     | `ragapp/card_quality.py`         | Regelbasierte Prüfung von Kartenfragen/-antworten (Quellenbezug, kaputte PDF-Zeichen, fehlender Kontext, Dubletten per Embedding). Siehe [LERNPLAN.md](LERNPLAN.md). |
+| Lernplan ↔ Karten   | `ragapp/plan_cards.py`           | Verknüpft Plan-Themen mit Karten/Übungen (über Fundstelle + Dokument), Lernstand, Termine, Füll-/Reparatur-Läufe, Schrittleiste. |
+| Hintergrundaufträge | `ragapp/jobs.py`                 | Thread-Register für lange KI-Läufe: Fortschritt, kooperatives Abbrechen, Ergebnis (ohne Streamlit-Import). |
+| Sokratischer Zug    | `ragapp/graph/socratic_turn.py`  | Gesprächsstand, Prüfung, Neuversuch und Rückfall für den sokratischen Chat. Siehe [SOKRATISCHER_DIALOG.md](SOKRATISCHER_DIALOG.md). |
 
 ---
 
@@ -369,3 +373,34 @@ Speichern konvertiert (`_sanitize_meta`).
 - **Logs** (`data/logs/`): `ingestion.jsonl`, `queries.jsonl`.
 - **Laufzeit-Config** (`data/config.json`): überschreibt Standardwerte aus
   `config.py` (siehe [TUNING.md](TUNING.md)).
+
+---
+
+## 10. Lern-Layer, Hintergrundaufträge und Modellspeicher
+
+**Karten und Lernplan.** `study.create_study_set` ist die eine Pipeline *Fragen → Karten ernten →
+Antworten → Beleg-Prüfung*; mit `chunk_ids` beschränkt sie sich auf die Textabschnitte eines
+Lernplan-Themas. Eine Karte gehört zu einem Thema, wenn ihr `topic` (= Fundstelle des Chunks, z. B.
+„Seite 5“) und ihre `doc_id` zu einer der `source_refs` des Themas passen – ohne eigene
+Zuordnungstabelle (`plan_cards.section_cards`). Die Fragen-Erzeugung filtert Mängel
+(`card_quality`) und lässt bei Bedarf neu formulieren; `enrich_questions` lässt eine fast
+gleiche Frage auf derselben Fundstelle aus.
+
+**Hintergrundaufträge.** Das Füllen vieler Themen läuft in einem eigenen Thread
+(`jobs.start`), nicht im Streamlit-Skriptlauf. Der Auftrag meldet Fortschritt über einen
+`JobContext` (kein `st.*` im Thread), prüft zwischen den Schritten `ctx.cancelled()` und gibt sein
+Ergebnis ins Register. Die Lernplan-Seite zeigt den Stand in einem
+`st.fragment(run_every=2)`; das Register hängt am Server-Prozess, nicht an der Browser-Sitzung.
+Höchstens ein Auftrag je Plan.
+
+**Modellspeicher über Threads.** `llm.llm_task` hält das Modell über mehrere Aufrufe geladen und
+gibt es am Ende frei. Weil der Tiefenzähler (`ContextVar`) nur den eigenen Thread sieht, zählt
+`_active_tasks` die äußeren Blöcke über **alle** Threads: Ein Chat, der neben einem Hintergrundlauf
+endet, entlädt das Modell nicht – erst der **letzte** Block tut es (`release_llm_unless_in_task`
+beachtet das ebenfalls). Der Tab-Close-Wächter (`ui/_shutdown_watchdog.py`) wartet, solange ein
+Hintergrundauftrag läuft, und startet seine Karenzzeit erst danach.
+
+**Ausfallsicherheit.** Jedes Thema wird einzeln gespeichert; der Auftrag lässt sich jederzeit
+abbrechen oder verlieren (Absturz, kein VRAM), ein erneuter Lauf macht dort weiter
+(`enrich_questions` überspringt schon bearbeitete Chunks). Vor dem Löschen von Karten legt
+`manifest.delete_card_ids` eine Datensicherung an.

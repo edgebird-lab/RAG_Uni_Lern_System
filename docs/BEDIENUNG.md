@@ -60,6 +60,12 @@ Faustregeln für hohe Trefferquote:
 Rechne auf CPU-Hardware mit **~20 bis 40 Sekunden** pro Antwort. Der Spinner
 („Suche in deinen Unterlagen und denke nach…") zeigt an, dass gearbeitet wird.
 
+**Gesprächsmodus:** Neben der Frage steht der Modus – **🎯 Strikt** (knapp, nur
+Belegtes), **🗣️ Tutor-Gespräch** (erklärt im Gespräch) und **🧭 Sokratischer
+Dialog**, in dem die KI **dich** abfragt und mit *Hinweis · Teilweise · Auflösen ·
+Nächster Aspekt* gesteuert wird. Wie der sokratische Modus funktioniert und
+warum er sich nicht mehr im Kreis dreht: [SOKRATISCHER_DIALOG.md](SOKRATISCHER_DIALOG.md).
+
 ---
 
 ## 3. Antworten deuten: Badge & Quellenkarten
@@ -252,10 +258,24 @@ Lernziele. Beide Teilwerte werden transparent angezeigt.
 
 ### 📋 Lernplan und konkrete Arbeitsblöcke
 
-Neu erzeugte Planabschnitte merken sich die zugehörigen Dokumentabschnitte.
-Ein Tagesblock kann dadurch direkt passende Unterlagen, Karten oder eine
-themenspezifische Übung öffnen. Beim Neuberechnen bleiben erledigte Blöcke,
-Pomodoro-Herkunft und gemessene Ist-Zeit erhalten.
+Der Lernplan führt in **vier Schritten** vom Stoff zum Lerntag – die **Schrittleiste**
+oben sagt dir immer, was als Nächstes dran ist:
+
+1. **Gliederung** – die KI ordnet deine Unterlagen zu Themen; ein Thema stammt immer
+   aus **einem** Dokument.
+2. **Einheiten** – zu jedem Thema entstehen Karteikarten und eine Übungsaufgabe, **nur
+   aus dem Text dieses Themas** (📦 *Einheit füllen* / *Alle Themen füllen*; läuft im
+   Hintergrund und lässt sich abbrechen).
+3. **Zeitplan** – 📐 *Plan berechnen* verteilt die Themen in Lernblöcken auf Tage (Zeit pro
+   Tag, Ruhetage, optionales Zieldatum; die Seite sagt dir, wenn der Plan veraltet ist).
+4. **Lernen** – pro Tag *Tag vorbereiten*, *Karten für diesen Tag* und *Wiederholen*; pro
+   Block 🍅 Pomodoro, Karten, Übung, Skript und Verstehen.
+
+Im Lernplan kommt beim Üben **nur der Stoff des Themas bzw. Tages** dran – kein
+„Matrizen“, solange Vektormultiplikation geplant ist. Die normalen Karteikarten
+(🎓 *Lernen*) bleiben unverändert. Beim Neuberechnen bleiben erledigte Blöcke,
+Pomodoro-Herkunft und gemessene Ist-Zeit erhalten. Alle Details, Regeln,
+Einstellungen und die Fehlersuche: **[LERNPLAN.md](LERNPLAN.md)**.
 
 ### 🧮 Übungsaufgaben mit Teilpunkten
 
