@@ -537,7 +537,8 @@ def test_lernplan_block_hat_verstehen_und_vorhandene_uebung():
     src = Path("ragapp/ui/pages/11_📋_Lernplan.py").read_text(encoding="utf-8")
     assert 'key=f"splan_verstehen_{bl[\'block_id\']}"' in src
     assert "verstehen_prefill" in src
-    assert "pick_existing_practice" in src
+    # Uebung: nur Aufgaben zu GENAU diesem Thema (kein "irgendeine Aufgabe zum Dokument").
+    assert "section_problems" in src and "pick_existing_practice" not in src
     assert '"problem_ids"' in src
     assert 'key=f"splan_docs_{bl[\'block_id\']}"' in src
     assert "pages/0_💬_Chat.py" in src

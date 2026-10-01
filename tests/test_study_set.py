@@ -352,3 +352,93 @@ def test_upsert_behaelt_ocr_partial_pages(isolated_db):
     assert dict(manifest.get_document("d1"))["ocr_partial_pages"] == 4
     assert dict(manifest.get_document("d1"))["num_questions"] == 2
 
+
+
+# --------------------------------------------------------------------------- #
+# Abbrechen (Hintergrundauftrag) und Qualitaetszaehler
+# --------------------------------------------------------------------------- #
+def test_create_study_set_reicht_qualitaetszaehler_durch(isolated_db, monkeypatch):
+    _doc(isolated_db)
+    monkeypatch.setattr("ragapp.ingestion.enrich.enrich_questions", lambda **kw: {
+        "status": "ok", "questions": 4, "error_msg": None, "rejected": 3, "duplicates": 2})
+    monkeypatch.setattr(study, "harvest_cards", lambda **kw: {"gefunden": 4, "neu": 4, "card_ids": ["a"]})
+    monkeypatch.setattr(study, "generate_answers", lambda **kw: {"status": "ok", "filled": 4})
+    out = study.create_study_set(["d1"])
+    assert out["status"] == "ok" and out["rejected"] == 3 and out["duplicates"] == 2
+
+
+def test_create_study_set_abbruch_waehrend_der_fragen_erntet_noch_und_ueberspringt_antworten(
+        isolated_db, monkeypatch):
+    """Was bis zum Abbruch an Fragen gespeichert wurde, soll als Karten da sein (kein
+    Zwischenzustand 'Fragen ohne Karten'), aber es werden keine Antworten mehr erzeugt."""
+    _doc(isolated_db)
+    seen = {}
+
+    def _enrich(**kw):
+        seen["cancel"] = kw["should_cancel"]
+        return {"status": "ok", "questions": 2, "error_msg": None, "cancelled": True}
+
+    monkeypatch.setattr("ragapp.ingestion.enrich.enrich_questions", _enrich)
+    harvested = []
+    monkeypatch.setattr(study, "harvest_cards",
+                        lambda **kw: harvested.append(1) or {"gefunden": 2, "neu": 2, "card_ids": ["a", "b"]})
+    monkeypatch.setattr(study, "generate_answers",
+                        lambda **kw: pytest.fail("nach dem Abbruch keine Antworten mehr erzeugen"))
+    stop = lambda: True  # noqa: E731
+    out = study.create_study_set(["d1"], should_cancel=stop)
+    assert seen["cancel"] is stop
+    assert out["status"] == "cancelled" and out["cards_new"] == 2 and out["questions"] == 2
+    assert harvested == [1]
+
+
+def test_create_study_set_abbruch_bei_den_antworten(isolated_db, monkeypatch):
+    _doc(isolated_db)
+    monkeypatch.setattr("ragapp.ingestion.enrich.enrich_questions",
+                        lambda **kw: {"status": "ok", "questions": 3, "error_msg": None})
+    monkeypatch.setattr(study, "harvest_cards", lambda **kw: {"gefunden": 3, "neu": 3, "card_ids": ["a"]})
+    got = {}
+
+    def _answers(**kw):
+        got["cancel"] = kw["should_cancel"]
+        return {"status": "ok", "filled": 1, "cancelled": True}
+
+    monkeypatch.setattr(study, "generate_answers", _answers)
+    out = study.create_study_set(["d1"], should_cancel=lambda: False)
+    assert callable(got["cancel"])
+    assert out["status"] == "cancelled" and out["answers"] == 1
+
+
+def test_generate_answers_bricht_vor_der_naechsten_karte_ab_und_behaelt_gespeichertes(
+        isolated_db, monkeypatch):
+    for i in range(3):
+        manifest.upsert_review_items([{
+            "card_id": f"c{i}", "source": "question", "chroma_id": f"c{i}", "subject": "BWL",
+            "topic": "Seite 1", "front": f"Frage {i}?", "back": "Beleg", "answer": None,
+            "doc_id": "d1"}])
+    monkeypatch.setattr("ragapp.llm.require_vram", lambda model=None: {})
+    monkeypatch.setattr("ragapp.hardware.probe_model", lambda model=None: (True, "ok"))
+    monkeypatch.setattr("ragapp.llm.release_llm_unless_in_task", lambda: 0)
+    monkeypatch.setattr("ragapp.ingestion.question_gen.generate_answer",
+                        lambda chunk, question, model=None: f"Antwort zu {question}")
+    monkeypatch.setattr("ragapp.grading.grounding_verdict", lambda *a, **k: "yes")
+    asked = {"n": 0}
+
+    def stop_after_first():
+        asked["n"] += 1
+        return asked["n"] > 1
+
+    out = study.generate_answers(card_ids=["c0", "c1", "c2"], should_cancel=stop_after_first)
+    assert out["cancelled"] is True and out["filled"] == 1 and out["status"] == "ok"
+    answered = [c["card_id"] for c in manifest.get_cards_by_ids(["c0", "c1", "c2"]) if c["answer"]]
+    assert len(answered) == 1
+
+
+def test_generate_answers_sofortiger_abbruch_hat_status_cancelled(isolated_db, monkeypatch):
+    manifest.upsert_review_items([{
+        "card_id": "c0", "source": "question", "chroma_id": "c0", "subject": "BWL",
+        "topic": "Seite 1", "front": "Frage?", "back": "Beleg", "answer": None, "doc_id": "d1"}])
+    monkeypatch.setattr("ragapp.llm.require_vram", lambda model=None: {})
+    monkeypatch.setattr("ragapp.hardware.probe_model", lambda model=None: (True, "ok"))
+    monkeypatch.setattr("ragapp.llm.release_llm_unless_in_task", lambda: 0)
+    out = study.generate_answers(card_ids=["c0"], should_cancel=lambda: True)
+    assert out["status"] == "cancelled" and out["filled"] == 0

@@ -715,6 +715,66 @@ def test_cards_for_prefill_uses_doc_ids(isolated_db):
     assert [c["card_id"] for c in cards] == [a]
 
 
+def test_cards_for_prefill_lernplan_faellt_nie_auf_andere_karten_zurueck(isolated_db):
+    """Im Lernplan darf nur der Stoff des Themas/Tages drankommen: Gibt es zu den
+    uebergebenen Karten nichts, ist die Liste LEER - sie wird nicht mit Karten des
+    Dokuments, des Fachs oder "Heute"-Karten aufgefuellt (z. B. "Matrizen", waehrend das
+    Thema Vektormultiplikation ist). Bei regulaeren Prefills bleibt der Rueckfall."""
+    vek = student_flow.card_from_text("Vektor?", "v", subject="LA", doc_id="d1", topic="Seite 1")
+    mat = student_flow.card_from_text("Matrix?", "m", subject="LA", doc_id="d2", topic="Seite 1")
+    assert student_flow.cards_for_prefill(
+        {"source": "plan", "subject": "LA", "doc_ids": ["d1", "d2"], "limit": 10}) == []
+    got = student_flow.cards_for_prefill(
+        {"source": "plan", "subject": "LA", "card_ids": [vek], "limit": 10})
+    assert [x["card_id"] for x in got] == [vek] and mat not in [x["card_id"] for x in got]
+    # unbekannte Karten-IDs -> leer, NICHT "alle Karten des Fachs"
+    assert student_flow.cards_for_prefill(
+        {"source": "plan", "subject": "LA", "card_ids": ["gibt-es-nicht"], "limit": 10}) == []
+    # regulaer (ohne source=plan) bleibt wie bisher
+    regular = student_flow.cards_for_prefill({"subject": "LA", "doc_ids": ["d2"], "limit": 10})
+    assert [x["card_id"] for x in regular] == [mat]
+
+
+def test_cards_for_prefill_lernplan_ueberspringt_pausierte_und_haelt_die_reihenfolge(isolated_db):
+    a = student_flow.card_from_text("A?", "a", subject="LA", doc_id="d1")
+    b = student_flow.card_from_text("B?", "b", subject="LA", doc_id="d1")
+    c_ = student_flow.card_from_text("C?", "c", subject="LA", doc_id="d1")
+    with manifest._connect() as conn:
+        conn.execute("UPDATE review_items SET suspended=1 WHERE card_id=?", (b,))
+    got = student_flow.cards_for_prefill(
+        {"source": "plan", "card_ids": [c_, b, a], "limit": 10})
+    assert [x["card_id"] for x in got] == [c_, a]
+    assert len(student_flow.cards_for_prefill(
+        {"source": "plan", "card_ids": [c_, b, a], "limit": 1})) == 1
+
+
+def test_prefill_from_plan_block_setzt_karten_und_geltungsbereich(isolated_db):
+    pid = manifest.create_study_plan(
+        title="P", subject="LA", doc_ids=["d1", "d2"], deadline=None, daily_minutes=45)
+    sid = manifest.append_plan_section(
+        pid, title="Skalarprodukt", summary="", est_minutes=25,
+        source_refs=[{"doc_id": "d1", "filename": "1 Vektorrechnung.pdf", "section": "Seite 11"},
+                     {"doc_id": "d1", "filename": "1 Vektorrechnung.pdf", "section": "Seite 12"}])
+    manifest.append_plan_block(
+        pid, section_id=sid, planned_date=date.today().isoformat(), planned_min=25)
+    bid = manifest.list_plan_blocks(pid)[0]["block_id"]
+    mine = student_flow.card_from_text("Skalar?", "s", subject="LA", doc_id="d1", topic="Seite 11")
+    student_flow.card_from_text("Matrix?", "m", subject="LA", doc_id="d2", topic="Seite 3")
+    pre = student_flow.prefill_from_plan_block(bid, limit=12)
+    assert pre["card_ids"] == [mine]
+    assert pre["scope"] == "Thema „Skalarprodukt“ · 📄 1 Vektorrechnung.pdf · S. 11–12"
+    # Auch ohne Karten wird die (leere) Liste gesetzt - damit der Plan-Prefill nie auffuellt.
+    sid2 = manifest.append_plan_section(
+        pid, title="Matrizen", summary="", est_minutes=25,
+        source_refs=[{"doc_id": "d2", "filename": "4 Matrizen.pdf", "section": "Seite 9"}])
+    manifest.append_plan_block(
+        pid, section_id=sid2, planned_date=date.today().isoformat(), planned_min=25)
+    bid2 = [b for b in manifest.list_plan_blocks(pid) if b["section_id"] == sid2][0]["block_id"]
+    pre2 = student_flow.prefill_from_plan_block(bid2, limit=12)
+    assert pre2["card_ids"] == []
+    assert student_flow.cards_for_prefill(pre2) == []
+
+
 def test_prefill_from_plan_block_carries_section_docs(isolated_db):
     pid = manifest.create_study_plan(
         title="P", subject="BWL", doc_ids=["fallback"],
@@ -982,31 +1042,6 @@ def test_pick_skript_spot_nimmt_echtes_dokument(isolated_db, tmp_path):
     assert got["minutes"] == 20
     assert "Livetest" not in (got["subject"] or "")
     assert got["heading"]
-
-
-def test_pick_existing_practice_nimmt_thema_dann_dokument(isolated_db):
-    p_topic = manifest.create_practice_problem(
-        subject="BWL", doc_id="d1", topic="Kostenrechnung",
-        problem_text="Aufgabe A", steps=["Schritt 1"])
-    p_doc = manifest.create_practice_problem(
-        subject="BWL", doc_id="d2", topic="Anderes",
-        problem_text="Aufgabe B", steps=["Schritt 1"])
-    assert student_flow.pick_existing_practice(
-        subject="BWL", topic="Kostenrechnung", doc_ids=["d2"]) == p_topic
-    assert student_flow.pick_existing_practice(
-        subject="BWL", topic="Deckungsbeitrag", doc_ids=["d2"]) == p_doc
-    assert student_flow.pick_existing_practice(
-        subject="BWL", topic="Nirgends", doc_ids=["dx"]) is None
-    assert student_flow.pick_existing_practice(
-        subject="Mathe", topic="Kostenrechnung") is None
-
-
-def test_pick_existing_practice_fuzzy_thema(isolated_db):
-    pid = manifest.create_practice_problem(
-        subject="BWL", doc_id="d1", topic="Kostenrechnung Teil 1",
-        problem_text="A", steps=["s"])
-    assert student_flow.pick_existing_practice(
-        subject="BWL", topic="Kostenrechnung") == pid
 
 
 def test_subjects_needing_lernset_ohne_karten(isolated_db):

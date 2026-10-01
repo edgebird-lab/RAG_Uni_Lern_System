@@ -109,6 +109,17 @@ class VectorStore:
             })
         return out
 
+    def get_doc_chunks(self, doc_id: str) -> list[dict]:
+        """Alle Chunk-Eintraege EINES Dokuments (ohne Fragen), in Dokumentreihenfolge
+        (``chunk_index``) - guenstiger als ``get_all_chunks`` fuer Aufgaben, die nur ein
+        paar Dokumente brauchen."""
+        res = self._col.get(where={"$and": [{"doc_id": doc_id}, {"type": "chunk"}]},
+                            include=["documents", "metadatas"])
+        out = [{"id": _id, "document": res["documents"][i], "meta": res["metadatas"][i]}
+               for i, _id in enumerate(res.get("ids") or [])]
+        out.sort(key=lambda c: int((c["meta"] or {}).get("chunk_index", 0) or 0))
+        return out
+
     def chunk_ids_for_doc(self, doc_id: str) -> list[str]:
         """Alle TATSAECHLICH in Chroma vorhandenen CHUNK-IDs eines Dokuments (ohne
         Fragen), direkt aus den Metadaten. Registry- UND index-unabhaengig -> die

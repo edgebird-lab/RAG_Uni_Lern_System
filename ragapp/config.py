@@ -240,6 +240,11 @@ class Settings:
     # Anreicherung (``ragapp.ingestion.enrich``) für die wichtigsten Dokumente.
     ENABLE_QUESTION_INDEXING: bool = False
     NUM_INDEX_QUESTIONS: int = 3           # generierte Fragen pro Chunk (indexiert)
+    # Qualitaetsfilter fuer Kartenfragen/-antworten (ragapp/card_quality.py): Fragen mit
+    # Quellenbezug ("im Abschnitt", "Abbildung 2"), kaputten PDF-Zeichen oder fehlendem
+    # Kontext werden verworfen und mit gezieltem Hinweis neu formuliert - so oft wie hier
+    # angegeben (0 = nur verwerfen, nie neu fragen).
+    CARD_QUALITY_RETRIES: int = 2
 
     # ------------------------------------------------------------------ #
     # Lern-Algorithmus (Karteikarten / Spaced Repetition)
@@ -331,7 +336,22 @@ class Settings:
     PLAN_MAX_DAILY_FOCUS_MIN: int = 240    # nachhaltige Tagesobergrenze hochfokussierten Lernens (Forschung: 3-4h optimal, Qualitaet faellt ab ~4-5h)
     PLAN_REST_WEEKDAYS: list[int] = field(default_factory=list)  # 0=Mo..6=So; Tagesbudget dort 0
     PLAN_BLOCK_MIN: int = 25               # Groesse eines Lernblocks (= 1 Pomodoro-Arbeitsblock)
-    PLAN_MAX_OUTLINE_SECTIONS: int = 15    # Obergrenze fuer die KI-Gliederung (Uebersichtlichkeit)
+    # Richtwert fuer die Zahl der Themen einer Gliederung (Uebersichtlichkeit). Betrifft der Stoff
+    # nur EINE Abschnittsgruppe, ist es die Obergrenze. Verteilt er sich auf mehrere Gruppen
+    # (siehe PLAN_OUTLINE_BATCH_ENTRIES: viele Abschnitte oder mehrere Dokumente), bekommt jede
+    # Gruppe ihren Anteil - mindestens ein Thema je 6 Abschnitte -, und die Gesamtzahl liegt dann
+    # ueber diesem Wert (Beispiel: 8 PDFs -> 38 Themen). Ein Thema stammt immer aus genau EINEM
+    # Dokument; zu grosse Themen werden zusaetzlich geteilt (PLAN_TOPIC_MAX_CHARS).
+    PLAN_MAX_OUTLINE_SECTIONS: int = 15
+    # Wie viele Abschnitts-Eintraege die KI in EINEM Durchlauf ordnen muss. Beobachtet
+    # (gemma3:4b, 8 PDFs = 165 Eintraege): in einem Rutsch wurden nur die ersten ~25
+    # zugeordnet, der Rest (85 % des Stoffs, 56 Stunden) landete im letzten Thema.
+    # Mehr Eintraege als hier werden dokumentweise in Gruppen geteilt (je ein Aufruf).
+    PLAN_OUTLINE_BATCH_ENTRIES: int = 30
+    # Groesse, ab der ein Thema in Teile gesplittet wird (Zeichen Quelltext; ~12 Min
+    # Lernzeit je 1000 Zeichen -> 12000 ~ 2,5 Std). Schuetzt gegen Sammelthemen, egal
+    # woher sie kommen. 0 = nie splitten.
+    PLAN_TOPIC_MAX_CHARS: int = 12000
     PLAN_MIN_GRANULAR_CHARS: int = 400     # kleinere Original-Abschnitte werden VOR der KI-Anfrage mit dem naechsten zusammengelegt (weniger Uebersegmentierung + kuerzerer Prompt)
     PLAN_MAX_TOC_CHARS: int = 10000        # Obergrenze fuer das Inhaltsverzeichnis im Gliederungs-Prompt: bei SEHR grossen/vielen Dokumenten wuerde die TOC sonst das Kontextfenster sprengen - das Modell sieht dann nur einen abgeschnittenen Rest und erfindet frei (beobachtet: Marketing-PDF -> Gliederung ueber Deutsch-Grammatik). Weit unter LLM_NUM_CTX, damit auch Systemprompt+Anweisung+Antwort sicher reinpassen.
     # Anders als eine reine Titel-Liste (bei der die Reihenfolge das einzige

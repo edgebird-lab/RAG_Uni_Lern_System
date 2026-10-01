@@ -122,6 +122,15 @@ def cards_for_prefill(prefill: dict) -> list[dict]:
             decks=prefill.get("decks"), deck=prefill.get("deck"),
             prefer=prefill.get("prefer") or "auto")
     card_ids = [c for c in (prefill.get("card_ids") or []) if c]
+    if prefill.get("source") == "plan":
+        # Lernplan: NUR die Karten dieses Themas bzw. Tages - nie auf Karten anderer
+        # Themen/Dokumente zurueckfallen (sonst taucht "Matrizen" auf, waehrend das
+        # Thema des Tages Vektormultiplikation ist). Gibt es keine, ist die Liste leer;
+        # die Oberflaeche sagt dann, dass die Karten erst erzeugt werden muessen.
+        found = (manifest.find_cards(card_ids=card_ids, exclude_suspended=True, limit=limit)
+                 if card_ids else [])
+        by_id = {c["card_id"]: c for c in found}
+        return [by_id[i] for i in card_ids if i in by_id][:limit]
     if card_ids:
         found = manifest.find_cards(
             card_ids=card_ids, exclude_suspended=True, limit=limit)
@@ -171,35 +180,21 @@ def prefill_from_plan_block(block_id: str, **extra) -> dict:
     out.setdefault("subject", plan.get("subject"))
     out.setdefault("doc_ids", doc_ids)
     out.setdefault("topics", topics)
+    if section:
+        # Die EXAKTEN Karten dieses Themas (Fundstellen der Quellen) - ohne sie zeigte
+        # der Karten-Knopf beliebige Karten des ganzen Dokuments, weil die Karten-
+        # ``topic``s Seiten sind und nicht den Titel des Plan-Themas tragen. Auch eine
+        # leere Liste wird gesetzt: ``cards_for_prefill`` faellt bei Plan-Sitzungen nie
+        # auf andere Karten zurueck.
+        try:
+            from ragapp import plan_cards
+            ids = plan_cards.study_card_ids(section, limit=int(out.get("limit") or 12))
+            out.setdefault("scope", f"Thema „{section.get('title') or ''}“ · 📄 "
+                           + (plan_cards.section_reference(section) or "Quelle unbekannt"))
+        except Exception:  # noqa: BLE001 - Komfort-Zuordnung, nie Grund fuer einen Absturz
+            ids = []
+        out.setdefault("card_ids", ids)
     return out
-
-
-def pick_existing_practice(*, subject: Optional[str] = None,
-                           topic: Optional[str] = None,
-                           doc_ids: Optional[list] = None) -> Optional[str]:
-    """Vorhandene Übung zum Abschnitt, sonst None – kein Generator-Zwang."""
-    rows = manifest.list_practice_problems(subject=subject, limit=80)
-    if not rows:
-        return None
-    topic_n = (topic or "").strip().lower()
-    wanted = {d for d in (doc_ids or []) if d}
-
-    def _topic(row: dict) -> str:
-        return (row.get("topic") or "").strip().lower()
-
-    if topic_n:
-        for row in rows:
-            if _topic(row) == topic_n:
-                return row.get("problem_id")
-        for row in rows:
-            t = _topic(row)
-            if t and (topic_n in t or t in topic_n):
-                return row.get("problem_id")
-    if wanted:
-        for row in rows:
-            if row.get("doc_id") in wanted:
-                return row.get("problem_id")
-    return None
 
 
 def mark_plan_block_done(block_id: str, via: str = "manual") -> None:

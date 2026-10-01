@@ -61,11 +61,14 @@ def _topic(meta: dict) -> "str | None":
 
 
 def harvest_cards(subject: "str | None" = None, max_per_chunk: "int | None" = None,
-                  progress=None, doc_ids: "list[str] | None" = None) -> dict:
+                  progress=None, doc_ids: "list[str] | None" = None,
+                  chunk_ids: "list[str] | None" = None) -> dict:
     """Erntet Karten aus dem Vektorstore und legt neue in manifest.db an.
     Vorhandene Karten behalten ihren Lernfortschritt. Optional nur ein ``subject`` und
     hoechstens ``max_per_chunk`` Fragen je Eltern-Chunk (verhindert zu viele aehnliche
-    Karten). Gibt {gefunden, neu} zurueck."""
+    Karten). ``chunk_ids``: nur Fragen zu genau diesen Eltern-Chunks (z. B. die eines
+    Lernplan-Themas); Klausur-Q&A hat keinen Eltern-Chunk und entfaellt dann. Gibt
+    {gefunden, neu, card_ids} zurueck (``card_ids``: die betrachteten Karten)."""
     store = get_vectorstore()
     col = store._col
     cards: list[dict] = []
@@ -75,11 +78,14 @@ def harvest_cards(subject: "str | None" = None, max_per_chunk: "int | None" = No
             return {"$and": [base, {"subject": subject}]}
         return base
 
+    wanted_chunks = set(chunk_ids) if chunk_ids else None
+
     # 1) Klausur-Q&A (beste Karten: Frage + Erklaerung schon vorhanden)
     if progress:
         progress("Suche Klausur-Q&A …")
     try:
-        res = col.get(where=_where({"kind": "exam_qa"}), include=["documents", "metadatas"])
+        res = (col.get(where=_where({"kind": "exam_qa"}), include=["documents", "metadatas"])
+               if wanted_chunks is None else {"ids": [], "documents": [], "metadatas": []})
     except Exception:
         res = {"ids": [], "documents": [], "metadatas": []}
     for i, cid in enumerate(res.get("ids", [])):
@@ -113,6 +119,8 @@ def harvest_cards(subject: "str | None" = None, max_per_chunk: "int | None" = No
         frage = (resq["documents"][i] or "").strip()
         meta = resq["metadatas"][i] or {}
         pid = meta.get("parent_id")
+        if wanted_chunks is not None and pid not in wanted_chunks:
+            continue
         if max_per_chunk:
             used = per_parent.get(pid, 0)
             if used >= max_per_chunk:
@@ -147,7 +155,8 @@ def harvest_cards(subject: "str | None" = None, max_per_chunk: "int | None" = No
             settings.save()
     except Exception:  # noqa: BLE001
         pass
-    return {"gefunden": len(cards), "neu": neu}
+    return {"gefunden": len(cards), "neu": neu,
+            "card_ids": [c["card_id"] for c in cards]}
 
 
 def mark_needs_card_harvest() -> None:
@@ -170,13 +179,15 @@ def needs_card_harvest() -> bool:
 
 def generate_answers(subject: "str | None" = None, deck: "str | None" = None,
                      limit: "int | None" = None, card_ids: "list[str] | None" = None,
-                     progress=None, check_grounding: bool = True) -> dict:
+                     progress=None, check_grounding: bool = True,
+                     should_cancel=None) -> dict:
     """Erzeugt fuer Karten aus generierten Fragen, die bisher nur den Chunk zeigen, eine
     echte KI-Musterloesung und speichert sie. Mit ``card_ids`` gezielt fuer eine Auswahl.
     Standard: zweite KI-Pruefung (``check_grounding``) verwirft nur Antworten, die
     der Judge klar als nicht gedeckt markiert. Modellfehler beim Gate lassen die
     Loesung stehen (``unchecked``). Ehrliches Ergebnis
-    (status/filled/errors/ungrounded/unchecked)."""
+    (status/filled/errors/ungrounded/unchecked). ``should_cancel``: wird vor jeder Karte
+    gefragt; True beendet den Lauf (``cancelled``), bereits gespeicherte Antworten bleiben."""
     from ragapp.config import settings
     from ragapp.hardware import probe_model
     from ragapp.ingestion.question_gen import generate_answer, QuestionGenError
@@ -192,7 +203,7 @@ def generate_answers(subject: "str | None" = None, deck: "str | None" = None,
         return {"status": "nothing_to_do", "processed": 0, "filled": 0,
                 "errors": 0, "error_msg": None}
 
-    from ragapp.llm import require_vram, release_llm, VramLowError
+    from ragapp.llm import require_vram, release_llm_unless_in_task, VramLowError
     try:
         require_vram(settings.LLM_MODEL_FAST)
     except VramLowError as exc:
@@ -206,8 +217,12 @@ def generate_answers(subject: "str | None" = None, deck: "str | None" = None,
 
     filled = errors = ungrounded = unchecked = 0
     error_msg = None
+    cancelled = False
     try:
         for i, card in enumerate(todo, 1):
+            if should_cancel is not None and should_cancel():
+                cancelled = True
+                break
             if progress:
                 progress(f"Antwort {i}/{len(todo)} · {(card.get('front') or '')[:50]} …")
             try:
@@ -241,11 +256,13 @@ def generate_answers(subject: "str | None" = None, deck: "str | None" = None,
                 filled += 1
 
         status = "ok" if filled > 0 else ("llm_error" if errors else "empty")
+        if cancelled and filled == 0:
+            status = "cancelled"
         return {"status": status, "processed": len(todo), "filled": filled,
                 "errors": errors, "ungrounded": ungrounded, "unchecked": unchecked,
-                "error_msg": error_msg}
+                "error_msg": error_msg, "cancelled": cancelled}
     finally:
-        release_llm()
+        release_llm_unless_in_task()
 
 
 def tidy_stored_answers(subject: "str | None" = None, deck: "str | None" = None,
@@ -299,7 +316,7 @@ def recheck_answers(subject: "str | None" = None, deck: "str | None" = None,
         return {"status": "nothing_to_do", "processed": 0, "kept": 0,
                 "cleared": 0, "unknown": 0, "tidied": 0, "error_msg": None}
 
-    from ragapp.llm import require_vram, release_llm, VramLowError
+    from ragapp.llm import require_vram, release_llm_unless_in_task, VramLowError
     try:
         require_vram(settings.LLM_MODEL_FAST)
     except VramLowError as exc:
@@ -336,7 +353,7 @@ def recheck_answers(subject: "str | None" = None, deck: "str | None" = None,
                 "cleared": cleared, "unknown": unknown, "tidied": tidied,
                 "error_msg": None}
     finally:
-        release_llm()
+        release_llm_unless_in_task()
 
 
 def _study_set_abort(error_msg: str | None) -> str:
@@ -350,12 +367,21 @@ def _study_set_abort(error_msg: str | None) -> str:
 def create_study_set(doc_ids: list[str], *, progress=None,
                      n_per_chunk: "int | None" = None,
                      max_per_chunk: "int | None" = None,
-                     with_answers: bool = True) -> dict:
+                     with_answers: bool = True,
+                     chunk_ids: "list[str] | None" = None,
+                     max_chunks: "int | None" = None,
+                     should_cancel=None) -> dict:
     """Ein Aufruf: Fragen anreichern, Karten ernten, Antworten fuellen.
 
     ``doc_ids`` ist Pflicht. Expertenparameter (Fragen je Chunk, Harvest-Deckel,
     Antworten ja/nein) bleiben optional. Bricht ehrlich ab bei leeren Docs,
     fehlendem Modell oder zu wenig VRAM – kein stiller Erfolg mit 0 Karten.
+    ``chunk_ids`` beschraenkt alles auf genau diese Textabschnitte (Lernplan-Thema),
+    ``max_chunks`` deckelt, wie viele davon neu bearbeitet werden (laengste zuerst).
+    ``should_cancel`` (Hintergrundauftrag): wird zwischen den Schritten gefragt; bei True bleibt
+    alles bis dahin Gespeicherte erhalten, ``status`` wird ``"cancelled"``.
+    ``rejected``/``duplicates`` im Ergebnis: wegen Qualitaetsmaengeln verworfene bzw. als
+    Dublette ausgelassene Fragen (siehe ``card_quality``).
     """
     from ragapp.ingestion.enrich import enrich_questions
 
@@ -377,7 +403,8 @@ def create_study_set(doc_ids: list[str], *, progress=None,
             progress(msg)
 
     _note("Fragen erzeugen …")
-    enrich = enrich_questions(doc_ids=ids, n_per_chunk=n_per_chunk, progress=progress)
+    enrich = enrich_questions(doc_ids=ids, n_per_chunk=n_per_chunk, progress=progress,
+                              limit=max_chunks, chunk_ids=chunk_ids, should_cancel=should_cancel)
     if enrich.get("status") == "llm_error":
         kind = _study_set_abort(enrich.get("error_msg"))
         return {
@@ -388,15 +415,22 @@ def create_study_set(doc_ids: list[str], *, progress=None,
         }
 
     _note("Karten ernten …")
-    harvest = harvest_cards(doc_ids=ids, max_per_chunk=max_per_chunk, progress=progress)
+    harvest = harvest_cards(doc_ids=ids, max_per_chunk=max_per_chunk, progress=progress,
+                            chunk_ids=chunk_ids)
     neu = int(harvest.get("neu") or 0)
 
     generate = None
     answers_n = 0
-    if with_answers:
+    cancelled = bool(enrich.get("cancelled"))
+    quality = {"rejected": int(enrich.get("rejected") or 0),
+               "duplicates": int(enrich.get("duplicates") or 0)}
+    if with_answers and not cancelled:
         _note("Antworten erzeugen …")
-        preview_ids = study_set_preview(doc_ids=ids).get("card_ids") or []
-        generate = generate_answers(card_ids=preview_ids, progress=progress)
+        preview_ids = (harvest.get("card_ids") if chunk_ids
+                       else study_set_preview(doc_ids=ids).get("card_ids")) or []
+        generate = generate_answers(card_ids=preview_ids, progress=progress,
+                                    should_cancel=should_cancel)
+        cancelled = bool(generate.get("cancelled"))
         if generate.get("status") == "llm_error":
             kind = _study_set_abort(generate.get("error_msg"))
             return {
@@ -408,18 +442,24 @@ def create_study_set(doc_ids: list[str], *, progress=None,
         answers_n = int(generate.get("filled") or 0)
 
     questions_n = int(enrich.get("questions") or 0)
+    if cancelled:
+        return {
+            "status": "cancelled", "questions": questions_n, "cards_new": neu,
+            "answers": answers_n, "error_msg": None, "enrich": enrich,
+            "harvest": harvest, "generate": generate, **quality,
+        }
     if questions_n == 0 and neu == 0 and (harvest.get("gefunden") or 0) == 0:
         return {
             "status": "empty", "questions": 0, "cards_new": 0, "answers": 0,
             "error_msg": "In diesen Dokumenten ist noch kein lernbarer Stoff "
                          "(keine Chunks, keine Fragen).",
-            "enrich": enrich, "harvest": harvest, "generate": generate,
+            "enrich": enrich, "harvest": harvest, "generate": generate, **quality,
         }
     return {
         "status": "ok", "questions": questions_n, "cards_new": neu,
         "answers": answers_n, "error_msg": None,
         "enrich": enrich, "harvest": harvest, "generate": generate,
-        "preview": study_set_preview(doc_ids=ids),
+        "preview": study_set_preview(doc_ids=ids), **quality,
     }
 
 

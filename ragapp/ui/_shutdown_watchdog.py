@@ -131,6 +131,30 @@ def request_quit(*, delay_sec: float = 2.0) -> None:
     ).start()
 
 
+def _background_job_running() -> bool:
+    """Laeuft ein Hintergrundauftrag (Lernplan -> Karten fuer alle Themen)? Dann ist die App
+    nicht "leer", auch wenn das Tab zu ist: erst nach dem Lauf beginnt die Karenzzeit."""
+    try:
+        from ragapp import jobs
+        return jobs.any_running()
+    except Exception:  # noqa: BLE001 - der Waechter darf an nichts scheitern
+        return False
+
+
+def _idle_step(n_clients: int, seen_client: bool, idle_since: "float | None",
+               now: float, grace: float, busy: bool) -> "tuple[bool, float | None, bool]":
+    """Ein Wachdurchlauf als reine Funktion: ``(seen_client, idle_since, beenden)``."""
+    if n_clients > 0:
+        return True, None, False
+    if not seen_client:
+        return seen_client, idle_since, False
+    if busy:                                   # Auftrag laeuft: Karenzzeit zaehlt noch nicht
+        return seen_client, now, False
+    if idle_since is None:
+        return seen_client, now, False
+    return seen_client, idle_since, (now - idle_since) >= grace
+
+
 def _watch_loop(grace: float) -> None:
     port = _ui_port()
     seen_client = False
@@ -139,16 +163,12 @@ def _watch_loop(grace: float) -> None:
         n = _connected_client_count(port)
         if n is None:
             return  # Verbindungszahl nicht lesbar -> Waechter beendet sich.
-        if n > 0:
-            seen_client = True
-            idle_since = None
-        elif seen_client:
-            now = time.monotonic()
-            if idle_since is None:
-                idle_since = now
-            elif now - idle_since >= grace:
-                _trigger_shutdown()
-                return
+        seen_client, idle_since, quit_now = _idle_step(
+            n, seen_client, idle_since, time.monotonic(), grace,
+            busy=(n == 0 and seen_client and _background_job_running()))
+        if quit_now:
+            _trigger_shutdown()
+            return
         time.sleep(_POLL_SECONDS)
 
 

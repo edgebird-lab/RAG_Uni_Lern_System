@@ -41,6 +41,28 @@ st.markdown("""
 .splan-tl-label {position:absolute; bottom:-18px; left:0; right:0; text-align:center;
   font-size:12px; white-space:nowrap;}
 html.rag-dark .splan-tl-seg {background:rgba(148,163,184,.2);}
+.splan-statebar {display:flex; gap:1px; height:6px; border-radius:3px; overflow:hidden;
+  margin:2px 0 6px 0; background:rgba(148,163,184,.25);}
+.splan-steps {display:flex; flex-wrap:wrap; gap:8px; margin:4px 0 10px 0;}
+.splan-step {flex:1 1 150px; min-width:140px; border-radius:10px; padding:8px 10px;
+  background:rgba(148,163,184,.10); border:1px solid rgba(148,163,184,.30);}
+.splan-step-title {font-weight:700; font-size:.88rem;}
+.splan-step-title .splan-step-n {display:inline-block; width:1.35em; height:1.35em; line-height:1.35em;
+  text-align:center; border-radius:50%; margin-right:6px; font-size:.78rem;
+  background:rgba(148,163,184,.35);}
+.splan-step-sub {font-size:.76rem; opacity:.85; margin-top:1px;}
+.splan-step-done {border-color:#16a34a; background:rgba(22,163,74,.10);}
+.splan-step-done .splan-step-n {background:#16a34a; color:#fff;}
+.splan-step-next {border-color:#2563eb; box-shadow:0 0 0 2px rgba(37,99,235,.25);}
+.splan-step-next .splan-step-n {background:#2563eb; color:#fff;}
+.splan-step-warn {border-color:#f59e0b; background:rgba(245,158,11,.12);}
+.splan-step-warn .splan-step-n {background:#f59e0b; color:#fff;}
+/* Laufender Hintergrundauftrag: bleibt beim Scrollen sichtbar. Sticky greift nur am
+   AEUSSERSTEN Wrapper des Fragments (direktes Kind des Seitencontainers) - die Leiste selbst hat
+   in ihrem Eltern-Element keinen Spielraum. */
+.stMainBlockContainer > div[data-testid="stVerticalBlock"] >
+  div[data-testid="stLayoutWrapper"]:has(.st-key-card_splan_jobbar) {
+  position:sticky; top:4rem; z-index:90;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -49,8 +71,9 @@ st.caption("Themen aus deinen Unterlagen auf Tage verteilen – mit Zeitbudget "
 
 with skeleton("Lernplan wird geladen …"):
     import html as _html
+    import re as _re
     import pandas as pd
-    from ragapp import manifest, study_plan, planner
+    from ragapp import card_quality, jobs, manifest, study_plan, planner, plan_cards
     from ragapp.config import SUBJECT_LABELS, settings
     from ragapp.ui._colors import PALETTE, text_color_for, subject_color
 
@@ -322,6 +345,25 @@ if _plan is None:
 _sections = manifest.list_plan_sections(_active_plan_id)
 _blocks = manifest.list_plan_blocks(_active_plan_id)
 _plan_color = subject_color(_plan["subject"], _plan_colors, _subjects_with_docs)
+_plan_rest_days = (
+    _plan.get("rest_weekdays")
+    if _plan.get("rest_weekdays") is not None
+    else settings.PLAN_REST_WEEKDAYS
+)
+
+# Einmal berechnet und von Schrittleiste, Kacheln und Zeitplan gemeinsam genutzt:
+# Kartenstand je Thema, Live-Vorschau des Zeitplans (mit dem aktuell GESPEICHERTEN Stand),
+# "passt der gespeicherte Zeitplan noch zur Gliederung?" und der laufende Hintergrundauftrag.
+_unit_stats = plan_cards.plan_unit_stats(_plan, _sections) if _sections else {}
+_preview = study_plan.build_schedule(
+    [{"section_id": s["section_id"], "est_minutes": s["est_minutes"]} for s in _sections],
+    daily_minutes=_plan["daily_minutes"], deadline=_plan.get("deadline"),
+    subject=_plan["subject"], rest_weekdays=set(_plan_rest_days))
+_stale = study_plan.plan_staleness(
+    _sections, _blocks, allow_shortfall=_preview["shortfall_minutes"] > 0)
+_job = jobs.get(plan_cards.job_key(_active_plan_id))
+_job_running = _job is not None and _job.status == jobs.RUNNING
+_today_str = date.today().isoformat()
 
 st.divider()
 with card("kopf"):
@@ -409,6 +451,84 @@ with card("kopf"):
     elif _total_planned_all:
         st.success("✅ Alle Blöcke dieses Plans sind erledigt.")
 
+# --------------------------------------------------------------------------- #
+# Schrittleiste: wo steht der Plan, was kommt als Nächstes?
+# --------------------------------------------------------------------------- #
+_STEP_HINT = {1: "„🧠 Gliederung“ unten", 2: "„📦 Lerneinheiten“ unten",
+              3: "„📐 Plan berechnen“ unten", 4: "„🗓️ Zeitplan“ unten"}
+
+
+def _steps_html(steps: list) -> str:
+    parts = []
+    for stp in steps:
+        cls = {"done": " splan-step-done", "warn": " splan-step-warn"}.get(stp["state"], "")
+        if stp["next"] and stp["state"] != "warn":
+            cls += " splan-step-next"
+        sub = _html.escape(stp["sub"]) + (
+            f" · <b>als Nächstes</b> → {_STEP_HINT[stp['n']]}" if stp["next"] else "")
+        mark = "✓" if stp["state"] == "done" else stp["n"]
+        parts.append(
+            f"<div class='splan-step{cls}'><div class='splan-step-title'>"
+            f"<span class='splan-step-n'>{mark}</span>{_html.escape(stp['title'])}</div>"
+            f"<div class='splan-step-sub'>{sub}</div></div>")
+    return "<div class='splan-steps'>" + "".join(parts) + "</div>"
+
+
+if _sections or _blocks:
+    st.markdown(_steps_html(plan_cards.plan_steps(
+        _sections, _unit_stats, _stale, _blocks, _today_str)), unsafe_allow_html=True)
+
+
+# --------------------------------------------------------------------------- #
+# Hintergrundauftrag (Karten/Übungen füllen): Fortschritt, Abbrechen, Ergebnis. Läuft in
+# einem eigenen Thread (ragapp/jobs.py), die Seite bleibt bedienbar und die Leiste folgt
+# beim Scrollen. Als Fragment, das sich alle 2 s selbst aktualisiert, solange etwas läuft.
+# --------------------------------------------------------------------------- #
+def _fmt_elapsed(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    return f"{seconds // 60}:{seconds % 60:02d} Min"
+
+
+def _render_job_panel() -> None:
+    import time as _time
+    job = jobs.get(plan_cards.job_key(_active_plan_id))
+    if job is None:
+        return
+    running_flag = f"_splan_job_seen_running_{job.job_id}"
+    if job.status == jobs.RUNNING:
+        st.session_state[running_flag] = True
+    elif st.session_state.pop(running_flag, False):
+        # Der Lauf ist gerade fertig geworden: ganze Seite neu aufbauen (Kacheln, Zähler).
+        st.rerun()
+    with card("splan_jobbar"):
+        if job.status == jobs.RUNNING:
+            jc1, jc2 = st.columns([4, 1.3])
+            jc1.markdown(f"**⏳ {_html.escape(job.title)}**")
+            jc1.progress(min(1.0, job.step / job.total) if job.total else 0.0,
+                         text=(job.message or "startet …")[:110])
+            jc1.caption(f"läuft seit {_fmt_elapsed(_time.time() - job.started)} · "
+                        "Fertiges ist schon gespeichert")
+            if job.cancel_requested:
+                jc2.button("⏳ Stoppt …", disabled=True, use_container_width=True,
+                           key=f"splan_job_stopping_{job.job_id}",
+                           help="Der Lauf hört nach dem aktuellen Schritt auf.")
+            elif jc2.button("⏹ Abbrechen", use_container_width=True,
+                            key=f"splan_job_cancel_{job.job_id}",
+                            help="Hört nach dem aktuellen Schritt auf. Was bis dahin fertig "
+                                 "ist, bleibt erhalten; ein erneuter Klick macht weiter."):
+                jobs.cancel(plan_cards.job_key(_active_plan_id))
+                st.rerun(scope="fragment")
+        else:
+            level, text = plan_cards.summarize_job(job)
+            getattr(st, level)(text)
+            if st.button("OK", key=f"splan_job_ok_{job.job_id}"):
+                jobs.dismiss(plan_cards.job_key(_active_plan_id))
+                st.rerun()
+
+
+if _job is not None:
+    st.fragment(run_every=2 if _job_running else None)(_render_job_panel)()
+
 # key= haelt den Auf/Zu-Zustand fest - ohne key faellt der Expander sonst bei
 # JEDEM Rerun (auch nur durch das "Zieldatum setzen"-Haekchen DARIN) auf
 # zugeklappt zurueck, bevor gespeichert wird.
@@ -427,11 +547,6 @@ with st.expander("⚙️ Einstellungen & Löschen", key=f"splan_settings_expande
         _edit_deadline = (st.date_input("Zieldatum", value=_dl_default,
                                         key=f"splan_edit_dl_{_active_plan_id}")
                           if _edit_has_deadline else None)
-    _plan_rest_days = (
-        _plan.get("rest_weekdays")
-        if _plan.get("rest_weekdays") is not None
-        else settings.PLAN_REST_WEEKDAYS
-    )
     _edit_rest_days = st.multiselect(
         "Ruhetage",
         options=list(range(7)),
@@ -445,7 +560,9 @@ with st.expander("⚙️ Einstellungen & Löschen", key=f"splan_settings_expande
             _active_plan_id, daily_minutes=int(_edit_daily),
             deadline=_edit_deadline.isoformat() if _edit_deadline else None,
             rest_weekdays=sorted(_edit_rest_days))
-        st.success("Gespeichert.")
+        st.session_state["_splan_flash"] = (
+            "Einstellungen gespeichert. Damit die Termine dazu passen, klicke auf "
+            "**📐 Plan berechnen**.")
         st.rerun()
     if delete_button("🗑️ Plan löschen", token=f"plan:{_active_plan_id}",
                      body=f"Lernplan **{_plan.get('title') or 'ohne Titel'}** wirklich löschen?",
@@ -453,8 +570,6 @@ with st.expander("⚙️ Einstellungen & Löschen", key=f"splan_settings_expande
         manifest.delete_study_plan(_active_plan_id)
         st.success("Plan gelöscht.")
         st.rerun()
-
-_plan = manifest.get_study_plan(_active_plan_id)  # ggf. aktualisierte Werte nachladen
 
 # --------------------------------------------------------------------------- #
 # Gliederung (editierbar)
@@ -470,7 +585,19 @@ st.caption(f"Geschätzte Wartezeit: ~{_regen_eta // 60} Min" if _regen_eta >= 90
           else f"Geschätzte Wartezeit: ~{_regen_eta} Sek.")
 st.caption(_time_factor_caption(_plan["subject"]))
 
-if st.button("🔄 Gliederung neu erzeugen", key=f"splan_regen_{_active_plan_id}"):
+with st.expander("ℹ️ Wie kommt die Zeitschätzung zustande?",
+                 key=f"splan_time_explain_{_active_plan_id}"):
+    import statistics as _statistics
+    _chars_known = [s["est_chars"] for s in _sections if s.get("est_chars")]
+    _example_chars = (max(1000, int(round(_statistics.median(_chars_known) / 500.0)) * 500)
+                      if _chars_known else 6000)
+    for _line in study_plan.explain_time_estimate(_plan["subject"], _example_chars):
+        st.markdown("- " + _line)
+
+if st.button("🔄 Gliederung neu erzeugen", key=f"splan_regen_{_active_plan_id}",
+             disabled=_job_running,
+             help="Läuft gerade ein Karten-Lauf? Erst abbrechen oder abwarten." if _job_running
+             else None):
     from ragapp.ui._progress import LlmWait
     with LlmWait("Suche in den Unterlagen …") as wait:
         wait.set("Formuliere die Gliederung …")
@@ -492,40 +619,290 @@ if st.button("🔄 Gliederung neu erzeugen", key=f"splan_regen_{_active_plan_id}
 _splan_gen_warning = st.session_state.pop("_splan_gen_warning", None)
 if _splan_gen_warning:
     st.warning(_splan_gen_warning)
+_splan_flash = st.session_state.pop("_splan_flash", None)
+if _splan_flash:
+    st.info(_splan_flash)
+
+# --------------------------------------------------------------------------- #
+# Lerneinheiten fuellen - HALBAUTOMATISCH: ein Klick erzeugt aus dem Dokument, aus dem
+# ein Thema entstanden ist, Karten + Uebungsaufgabe, und zwar NUR aus dem Text dieses
+# Themas (siehe ragapp/plan_cards.py). Nichts laeuft von allein. Das Fuellen mehrerer
+# Themen laeuft als Hintergrundauftrag (Fortschritt + "Abbrechen" in der Leiste oben, die
+# Seite bleibt bedienbar); einzelne Themen fuer "Karten ueben"/"Uebung" werden direkt unter
+# dem Knopf erzeugt, weil danach sofort die Lernseite aufgeht.
+# --------------------------------------------------------------------------- #
+_RUNNING_HELP = "Es läuft gerade ein Karten-Lauf (siehe oben) – erst abbrechen oder abwarten."
+
+
+def _unit_line(sec: dict) -> str:
+    """Fuellstand einer Lerneinheit: „🃏 12 Karten · 2 fällig · 🧮 1 Übung“."""
+    su = _unit_stats.get(sec["section_id"]) or {}
+    cards = su.get("cards", 0)
+    parts = [f"🃏 {cards} Karten" if cards else "🃏 keine Karten"]
+    if su.get("due"):
+        parts.append(f"{su['due']} fällig")
+    if su.get("unanswered"):
+        parts.append(f"{su['unanswered']} ohne Antwort")
+    parts.append(f"🧮 {su['problems']} Übung(en)" if su.get("problems") else "🧮 keine Übung")
+    return " · ".join(parts)
+
+
+def _ensure_cards(sec: dict, slot) -> bool:
+    """Karten zu EINEM Thema - nur wenn es noch keine hat. True, wenn danach welche da sind."""
+    if plan_cards.study_card_ids(sec, limit=1):
+        return True
+    if _job_running:
+        slot.warning("Für dieses Thema gibt es noch keine Karten, und gerade läuft ein "
+                     "Karten-Lauf. Erst abwarten oder abbrechen – dann klappt es.")
+        return False
+    with slot:
+        with st.status(f"Karten zu „{sec['title'][:50]}“ …", expanded=True) as _stat:
+            out = plan_cards.create_section_cards(
+                sec, progress=lambda m: _stat.update(label=f"„{sec['title'][:40]}“ – {m}"))
+            ok = out.get("status") == "ok" and int(out.get("cards_total") or 0) > 0
+            _stat.update(label="Fertig" if ok else "Nicht geklappt",
+                         state="complete" if ok else "error")
+    if not ok:
+        slot.error(out.get("error_msg") or "Es konnten keine Karten erzeugt werden.")
+    return ok
+
+
+def _ensure_practice(sec: dict, slot) -> "str | None":
+    """Uebungsaufgabe zu EINEM Thema: die neueste vorhandene, sonst eine neue (nur aus dem
+    Text des Themas). None, wenn die Erzeugung scheitert."""
+    have = plan_cards.section_problems(sec, _plan["subject"])
+    if have:
+        return have[0]["problem_id"]
+    if _job_running:
+        slot.warning("Für dieses Thema gibt es noch keine Übung, und gerade läuft ein "
+                     "Karten-Lauf. Erst abwarten oder abbrechen – dann klappt es.")
+        return None
+    with slot:
+        with st.status(f"Übungsaufgabe zu „{sec['title'][:50]}“ …", expanded=True) as _stat:
+            try:
+                pid = plan_cards.create_section_practice(sec, subject=_plan["subject"])
+            except Exception as exc:  # noqa: BLE001 - PracticeGenError, LLM, VRAM ...
+                _stat.update(label="Nicht geklappt", state="error")
+                slot.error(str(exc))
+                return None
+            _stat.update(label="Fertig", state="complete")
+    return pid
+
+
+def _fill_units(secs: list, *, with_practice: bool, title: str, repair: bool = False) -> None:
+    """Karten (+ Uebung) fuer mehrere Themen im HINTERGRUND starten (ein Auftrag je Plan);
+    Fortschritt und "Abbrechen" erscheinen in der Leiste oben. Jedes Thema wird einzeln
+    gespeichert - ein Abbruch verliert nichts, ein erneuter Klick macht dort weiter."""
+    _job_new, _started = plan_cards.start_fill_job(
+        _plan, secs, with_practice=with_practice, title=title, repair=repair)
+    if not _started:
+        st.toast("Es läuft schon ein Lauf für diesen Plan.", icon="⏳")
+    st.rerun()
+
 
 if not _sections:
     st.info("Noch keine Gliederung vorhanden.")
 else:
     _sec_orig = {s["section_id"]: s for s in _sections}
+    _sched = plan_cards.section_schedule(_blocks)
+
+    # Lerneinheiten-Leiste: wie voll sind die Themen, und alle auf einen Klick fuellen.
+    _mixed = [s for s in _sections if len(plan_cards.section_docs(s)) > 1]
+    _n_cards_all = sum(v["cards"] for v in _unit_stats.values())
+    _n_probs_all = sum(v.get("problems", 0) for v in _unit_stats.values())
+    _n_complete = len(_sections) - len(
+        plan_cards.sections_needing_cards(_unit_stats, _sections, with_practice=True))
+    _flawed_ids = [cid for v in _unit_stats.values() for cid in v.get("flawed_ids", [])]
+    with st.container(border=True):
+        _kc1, _kc2 = st.columns([3, 1.6])
+        _kc1.markdown(
+            f"**📦 Lerneinheiten:** {_n_complete} von {len(_sections)} Themen komplett · "
+            f"{_n_cards_all} Karten · {_n_probs_all} Übungen")
+        _with_pr = _kc1.checkbox(
+            "🧮 mit je einer Übungsaufgabe pro Thema", value=True,
+            key=f"splan_fill_pr_{_active_plan_id}",
+            help="Karten gibt es immer; die Übungsaufgabe dauert pro Thema etwa eine "
+                 "halbe Minute länger.")
+        _todo_units = plan_cards.sections_needing_cards(
+            _unit_stats, _sections, with_practice=_with_pr)
+        if _todo_units:
+            _miss_cards = plan_cards.estimate_missing_cards(_plan, _unit_stats)
+            _miss_pr = (sum(1 for s in _todo_units
+                            if (_unit_stats.get(s["section_id"]) or {}).get("problems", 0) == 0)
+                        if _with_pr else 0)
+            _kc1.caption(
+                f"{len(_todo_units)} Thema/Themen noch nicht komplett – grob {_miss_cards} "
+                f"Karten, etwa {plan_cards.estimate_fill_minutes(_miss_cards, _miss_pr)} Min "
+                "(hängt stark von Modell und Hardware ab). Der Lauf geht im Hintergrund: "
+                "du siehst den Fortschritt oben und kannst jederzeit abbrechen. Jedes Thema "
+                "wird einzeln gespeichert; ein erneuter Klick macht dort weiter.")
+        else:
+            _kc1.caption("✅ Alle Lerneinheiten sind gefüllt.")
+        if _todo_units and _kc2.button(
+                "📦 Alle Themen füllen", type="primary", use_container_width=True,
+                disabled=_job_running, key=f"splan_fill_{_active_plan_id}",
+                help=_RUNNING_HELP if _job_running else None):
+            _fill_units(_todo_units, with_practice=_with_pr,
+                        title="Alle Lerneinheiten werden gefüllt")
+
+    # Kartenqualität: Karten müssen OHNE das Dokument verständlich sein.
+    if _n_cards_all >= 2:
+        with st.expander(
+                "🧹 Kartenqualität – " + (f"{len(_flawed_ids)} Karte(n) mit Mängeln"
+                                          if _flawed_ids else "keine Mängel erkannt"),
+                key=f"splan_quality_{_active_plan_id}"):
+            st.caption(
+                "Eine Karte soll auch unterwegs ohne das Skript Sinn ergeben. Auffällig sind "
+                "Verweise („im Abschnitt“, „Abbildung 2“, „Definition 4“), kaputte PDF-Zeichen "
+                "und Fragen, die an einem Beweisschritt hängen. Neue Karten werden schon beim "
+                "Erzeugen so gefiltert (und bei Mängeln neu formuliert).")
+            _q_cards = {c["card_id"]: c for c in manifest.get_cards_by_ids(_flawed_ids)}
+            _q_audit = card_quality.audit_cards(list(_q_cards.values()))
+            _q_plan = plan_cards.split_repairs(list(_q_cards.values()), _q_audit)
+            _q_owner = {cid: s for s in _sections
+                        for cid in (_unit_stats.get(s["section_id"]) or {}).get("flawed_ids", [])}
+            _q_status = {**{c: "wird ersetzt" for c in _q_plan["replace"]},
+                         **{c: "Antwort wird neu formuliert" for c in _q_plan["answers"]},
+                         **{c: "bleibt (schon gelernt/bearbeitet)" for c in _q_plan["protected"]}}
+            if _q_audit:
+                # Liste statt Tabelle: bleibt auch auf dem Handy lesbar (keine Querscroll-Spalten).
+                _md_special = _re.compile(r"([\\`*_{}\[\]<>$#|~])")
+
+                def _esc(txt: str) -> str:
+                    return _md_special.sub(r"\\\1", txt or "")
+
+                _q_items = list(_q_audit.items())
+                st.markdown("\n".join(
+                    f"- **{_esc((_q_owner.get(cid) or {}).get('title', ''))}** · "
+                    f"„{_esc((_q_cards[cid].get('front') or '')[:140])}“  \n"
+                    f"  ↳ {_esc(card_quality.describe_audit(entry))} · **{_q_status.get(cid, '')}**"
+                    for cid, entry in _q_items[:30]))
+                if len(_q_items) > 30:
+                    st.caption(f"… und {len(_q_items) - 30} weitere.")
+            st.caption(
+                "„Mängel beheben“ prüft zusätzlich auf **doppelte Fragen**, ersetzt unberührte "
+                "Karten mit Mängeln (die Lücke wird mit dem Qualitätsfilter neu gefüllt) und "
+                "formuliert Antworten mit Mängeln neu. Karten, die du schon gelernt oder "
+                "selbst bearbeitet hast, bleiben unangetastet. Vorher legt die App eine "
+                "Sicherung an. Das Ergebnis siehst du oben in der Leiste.")
+            _q_flag = f"_splan_quality_confirm_{_active_plan_id}"
+            if not st.session_state.get(_q_flag):
+                if st.button("🧹 Mängel beheben …", disabled=_job_running,
+                             key=f"splan_quality_ask_{_active_plan_id}",
+                             help=_RUNNING_HELP if _job_running else None):
+                    st.session_state[_q_flag] = True
+                    st.rerun()
+            else:
+                st.warning(
+                    f"Wirklich beheben? {len(_q_plan['replace'])} Karte(n) werden ersetzt, "
+                    f"bei {len(_q_plan['answers'])} wird nur die Antwort neu formuliert, "
+                    f"{len(_q_plan['protected'])} bleiben. Dazu kommen ggf. doppelte Fragen.")
+                _qa, _qb = st.columns(2)
+                if _qa.button("Ja, beheben", type="primary", use_container_width=True,
+                              key=f"splan_quality_go_{_active_plan_id}"):
+                    st.session_state.pop(_q_flag, None)
+                    _fill_units(_sections, with_practice=False, repair=True,
+                                title="Kartenqualität: Mängel beheben")
+                if _qb.button("Abbrechen", use_container_width=True,
+                              key=f"splan_quality_no_{_active_plan_id}"):
+                    st.session_state.pop(_q_flag, None)
+                    st.rerun()
+
+    st.caption("Karten und Übungen entstehen ausschließlich aus dem Dokument, aus dem das "
+               "jeweilige Thema stammt – und nur aus dem Text dieses Themas. Im Lernplan "
+               "kommt beim Üben nur der Stoff dran, der für das Thema bzw. den Tag gedacht "
+               "ist; die normalen Karteikarten bleiben unverändert.")
+    if _mixed:
+        st.warning(
+            f"⚠️ {len(_mixed)} Thema/Themen stammen aus mehreren Dokumenten (Karten und "
+            "Übungen mischen dort deren Stoff). **🔄 Gliederung neu erzeugen** bildet "
+            "dokumentreine Themen: ein Thema = ein Dokument.")
 
     st.markdown("###### Themen im Überblick")
-    _tile_cols = st.columns(3)
-    for _ti, _s in enumerate(_sections):
-        with _tile_cols[_ti % 3]:
-            _s_done = bool(_s.get("done"))
-            _card_bg = "rgba(22,163,74,.12)" if _s_done else "rgba(148,163,184,.10)"
-            _card_border = "#16a34a" if _s_done else _plan_color
-            _summary = (_s.get("summary") or "").strip()
-            _summary_short = (_summary[:90] + "…") if len(_summary) > 90 else _summary
-            st.markdown(
-                f"<div class='splan-topic-card' style='background:{_card_bg};"
-                f"border-left:4px solid {_card_border};'>"
-                f"<div class='splan-topic-title'>{'✅ ' if _s_done else ''}"
-                f"{_s['order_index'] + 1}. {_html.escape(_s['title'])}</div>"
-                f"<div class='splan-topic-meta'>{_fmt_min(_s['est_minutes'])}"
-                + (f" · {_html.escape(_summary_short)}" if _summary_short else "")
-                + "</div></div>", unsafe_allow_html=True)
-            if st.button("🧮 Übungsaufgabe", key=f"splan_practice_{_s['section_id']}",
-                        use_container_width=True):
-                _section_docs = [
-                    ref["doc_id"] for ref in _s.get("source_refs", [])
-                    if ref.get("doc_id")
-                ] or _plan["doc_ids"]
-                st.session_state["practice_prefill"] = {
-                    "subject": _plan["subject"], "doc_ids": _section_docs,
-                    "topic": _s["title"],
-                }
-                st.switch_page("pages/13_🧮_Übungsaufgaben.py")
+    _WHEN_COLOR = {"overdue": "#dc2626", "today": "#2563eb", "done": "#16a34a",
+                   "later": "inherit", "none": "inherit"}
+    for _row_start in range(0, len(_sections), 3):
+        _row_cols = st.columns(3)
+        _row_slot = st.container()      # Rueckmeldung direkt unter der Kachelreihe
+        for _col, _s in zip(_row_cols, _sections[_row_start:_row_start + 3]):
+            with _col:
+                _sid = _s["section_id"]
+                _s_done = bool(_s.get("done"))
+                _su = _unit_stats.get(_sid) or {}
+                _kind, _when = plan_cards.schedule_label(_sched.get(_sid), _today_str)
+                _card_bg = "rgba(22,163,74,.12)" if _s_done else "rgba(148,163,184,.10)"
+                _card_border = "#16a34a" if _s_done else _plan_color
+                _summary = (_s.get("summary") or "").strip()
+                _summary_short = (_summary[:90] + "…") if len(_summary) > 90 else _summary
+                st.markdown(
+                    f"<div class='splan-topic-card' style='background:{_card_bg};"
+                    f"border-left:4px solid {_card_border};'>"
+                    f"<div class='splan-topic-title'>{'✅ ' if _s_done else ''}"
+                    f"{_s['order_index'] + 1}. {_html.escape(_s['title'])}</div>"
+                    f"<div class='splan-topic-meta'>{_fmt_min(_s['est_minutes'])} · "
+                    f"<span style='color:{_WHEN_COLOR[_kind]};font-weight:"
+                    f"{'650' if _kind in ('today', 'overdue') else '400'}'>"
+                    f"{_html.escape(_when)}</span>"
+                    + (f"<br>{_html.escape(_summary_short)}" if _summary_short else "")
+                    + "</div></div>", unsafe_allow_html=True)
+                st.caption("📄 " + (plan_cards.section_reference(_s) or "Quelle unbekannt"))
+                st.caption(_unit_line(_s))
+                _learn = plan_cards.learning_line(_su)
+                if _learn:
+                    st.markdown(plan_cards.learning_bar_html(_su), unsafe_allow_html=True)
+                    st.caption(_learn)
+                if _su.get("flawed"):
+                    st.caption(f"🧹 {_su['flawed']} Karte(n) mit Mängeln")
+                _incomplete = (_su.get("cards", 0) == 0 or _su.get("unanswered", 0) > 0
+                               or _su.get("problems", 0) == 0)
+                if _incomplete and st.button(
+                        "📦 Einheit füllen",
+                        type="primary" if _kind in ("today", "overdue") else "secondary",
+                        use_container_width=True, disabled=_job_running,
+                        key=f"splan_unit_{_sid}",
+                        help=_RUNNING_HELP if _job_running else
+                        "Erzeugt aus dem Dokument dieses Themas die fehlenden Karten "
+                        "und eine Übungsaufgabe - ein Klick, nur dieser Stoff."):
+                    _fill_units([_s], with_practice=True,
+                                title=f"„{_s['title'][:40]}“ wird gefüllt")
+                _bc1, _bc2 = st.columns(2)
+                if _bc1.button("▶ Karten", key=f"splan_cardstudy_{_sid}",
+                               use_container_width=True,
+                               help="Karten NUR zu diesem Thema üben - gibt es noch keine, "
+                                    "werden sie jetzt erzeugt."):
+                    if _ensure_cards(_s, _row_slot):
+                        st.session_state["study_prefill"] = {
+                            "source": "plan", "subject": _plan["subject"], "mode": "reveal",
+                            "limit": 16, "card_ids": plan_cards.study_card_ids(_s, limit=16),
+                            "scope": f"Thema „{_s['title']}“ · 📄 "
+                                     + (plan_cards.section_reference(_s) or "Quelle unbekannt"),
+                        }
+                        st.switch_page("pages/4_🎓_Lernen.py")
+                if _bc2.button("🧮 Übung", key=f"splan_practice_{_sid}",
+                               use_container_width=True,
+                               help="Übungsaufgabe zu diesem Thema - gibt es noch keine, "
+                                    "wird sie jetzt aus dem Text des Themas erzeugt."):
+                    _pid = _ensure_practice(_s, _row_slot)
+                    if _pid:
+                        st.session_state["practice_prefill"] = {
+                            "source": "plan", "subject": _plan["subject"],
+                            "doc_ids": [d for d, _n in plan_cards.section_docs(_s)]
+                                       or list(_plan["doc_ids"]),
+                            "topic": _s["title"], "problem_ids": [_pid],
+                        }
+                        st.switch_page("pages/13_🧮_Übungsaufgaben.py")
+                if _su.get("due") and st.button(
+                        f"🔁 Wiederholen · {_su['due']} fällig", use_container_width=True,
+                        key=f"splan_review_{_sid}",
+                        help="Nur die FÄLLIGEN Karten dieses Themas auffrischen - Gelerntes "
+                             "wiederholen, keine neuen Karten."):
+                    st.session_state["study_prefill"] = {
+                        "source": "plan", "subject": _plan["subject"], "mode": "reveal",
+                        "limit": 16, "card_ids": plan_cards.review_card_ids(_s, limit=16),
+                        "scope": f"Wiederholung: Thema „{_s['title']}“ · 📄 "
+                                 + (plan_cards.section_reference(_s) or "Quelle unbekannt"),
+                    }
+                    st.switch_page("pages/4_🎓_Lernen.py")
 
     _sec_df = pd.DataFrame([{
         "🗑️": False, "Reihenfolge": s["order_index"], "Titel": s["title"],
@@ -561,14 +938,9 @@ else:
     _total_min = sum(s["est_minutes"] for s in _sections)
     st.caption(f"Geschätzter Gesamtaufwand: **{_fmt_min(_total_min)}** für {len(_sections)} Themen.")
 
-    # Live-Vorschau: rechnet bei JEDEM Rendern mit dem aktuell GESPEICHERTEN Stand
-    # (Zeit/Tag, Zieldatum, Gliederung) - so ist die Engpass-/Deckelungs-Warnung
-    # immer sichtbar, nicht nur direkt nach einem Klick auf "Plan berechnen".
-    _preview = study_plan.build_schedule(
-        [{"section_id": s["section_id"], "est_minutes": s["est_minutes"]} for s in _sections],
-        daily_minutes=_plan["daily_minutes"], deadline=_plan.get("deadline"),
-        subject=_plan["subject"],
-        rest_weekdays=set(_plan_rest_days))
+    # Live-Vorschau (oben berechnet, siehe ``_preview``): rechnet bei JEDEM Rendern mit dem
+    # aktuell GESPEICHERTEN Stand (Zeit/Tag, Zieldatum, Gliederung) - so ist die Engpass-/
+    # Deckelungs-Warnung immer sichtbar, nicht nur direkt nach einem Klick auf "Plan berechnen".
     if _preview["capped_daily"]:
         st.caption(
             f"⏱️ {_plan['daily_minutes']} Min/Tag sind mehr, als nachhaltig hochfokussiert "
@@ -596,6 +968,33 @@ else:
             f"✅ Passt: {_fmt_min(_preview['total_minutes'])} über "
             f"{_preview['days_needed_total']} Tag(e)"
             + (" bis zum Zieldatum." if _plan.get("deadline") else " in deinen Zeitrahmen."))
+
+    # Zieldatum/Klausur/Tempo in Klartext - mit den echten Zahlen der Vorschau.
+    from ragapp.student_flow import default_plan_deadline
+    _exam_iso = default_plan_deadline(_plan["subject"])
+    for _hi, _hint in enumerate(study_plan.deadline_hints(_plan, _preview, exam_iso=_exam_iso)):
+        if _hint["level"] == "warning":
+            st.warning("⚠️ " + _hint["text"])
+        else:
+            st.caption("ℹ️ " + _hint["text"])
+        if _hint["action"] == "use_exam_date" and _exam_iso and st.button(
+                "📅 Klausurdatum als Zieldatum übernehmen",
+                key=f"splan_use_exam_{_active_plan_id}_{_hi}",
+                help="Setzt das Zieldatum dieses Plans auf das Klausurdatum des Fachs. Danach "
+                     "„📐 Plan berechnen“ klicken, damit die Termine dazu passen."):
+            manifest.update_study_plan(_active_plan_id, deadline=_exam_iso)
+            st.session_state["_splan_flash"] = (
+                "Zieldatum auf das Klausurdatum gesetzt. Klicke jetzt auf **📐 Plan berechnen**, "
+                "damit die Termine dazu passen.")
+            st.rerun()
+
+    if _stale["state"] == "stale":
+        st.warning("⚠️ **Der Zeitplan ist veraltet** – " + " ".join(_stale["reasons"])
+                   + " Klicke auf **📐 Plan berechnen**, damit er wieder zur Gliederung passt. "
+                   "Erledigte Blöcke bleiben dabei erhalten.")
+    elif _stale["state"] == "missing":
+        st.info("Der Zeitplan ist noch nicht berechnet – **📐 Plan berechnen** verteilt die "
+                "Themen auf Tage.")
 
     if st.button("📐 Plan berechnen", type="primary", key=f"splan_build_{_active_plan_id}"):
         manifest.replace_plan_blocks(_active_plan_id, _preview["blocks"])
@@ -650,6 +1049,74 @@ with card("zeitplan"):
 
         st.markdown(_render_timeline(_by_date, _plan_color), unsafe_allow_html=True)
 
+        # Der Tag: nur der Stoff, der fuer ihn geplant ist. "Karten fuer diesen Tag" nimmt
+        # ausschliesslich die Themen der Bloecke dieses Tages - nichts aus spaeteren Themen
+        # (kein "Matrizen", solange Vektormultiplikation dran ist).
+        _today_iso = date.today().isoformat()
+        _day_iso = (_today_iso if any(b["planned_date"] == _today_iso for b in _blocks)
+                    else plan_cards.next_study_day(_blocks, _today_iso))
+        _day_secs = (plan_cards.sections_for_day(_blocks, _sections, _day_iso)
+                     if _day_iso else [])
+        if _day_secs:
+            _day_name = ("Heute" if _day_iso == _today_iso
+                         else f"Nächster Lerntag ({plan_cards.fmt_day(_day_iso)})")
+            with st.container(border=True):
+                st.markdown(f"**📅 {_day_name}** · {len(_day_secs)} Thema/Themen")
+                for _ds in _day_secs:
+                    st.markdown(f"<b>{_html.escape(_ds['title'])}</b>", unsafe_allow_html=True)
+                    st.caption(f"📄 {plan_cards.section_reference(_ds) or 'Quelle unbekannt'}"
+                               f" · {_unit_line(_ds)}")
+                _dc1, _dc2, _dc3 = st.columns(3)
+                _day_slot = st.container()
+                _day_need = plan_cards.sections_needing_cards(
+                    _unit_stats, _day_secs, with_practice=True)
+                if _day_need and _dc1.button(
+                        "📦 Tag vorbereiten", use_container_width=True,
+                        disabled=_job_running, key=f"splan_dayfill_{_day_iso}",
+                        help=_RUNNING_HELP if _job_running else
+                        "Erzeugt die fehlenden Karten und Übungen für die Themen "
+                        "dieses Tages - ein Klick, nur dieser Stoff."):
+                    _fill_units(_day_need, with_practice=True,
+                                title=f"{_day_name} wird vorbereitet")
+                # Wiederholen: nur FAELLIGE Karten aus bisherigen/angefangenen Themen - nie aus
+                # Themen, die noch nicht dran waren.
+                _past = plan_cards.started_sections(_blocks, _sections, _unit_stats, _today_iso)
+                _past_due = sum((_unit_stats.get(x["section_id"]) or {}).get("due", 0)
+                                for x in _past)
+                if _past_due and _dc3.button(
+                        f"🔁 Wiederholen · {_past_due} fällig", use_container_width=True,
+                        key=f"splan_dayreview_{_day_iso}",
+                        help="Fällige Karten aus den Themen, die schon dran waren oder "
+                             "angefangen sind - Gelerntes auffrischen, nichts Neues."):
+                    _past_with_due = [x for x in _past
+                                      if (_unit_stats.get(x["section_id"]) or {}).get("due")]
+                    st.session_state["study_prefill"] = {
+                        "source": "plan", "subject": _plan["subject"], "mode": "reveal",
+                        "limit": 30,
+                        "card_ids": plan_cards.review_card_ids_for(
+                            _past_with_due, _unit_stats, per_topic=8, total=30),
+                        "scope": (f"Wiederholung bisheriger Themen: "
+                                  + ", ".join(x["title"] for x in _past_with_due))[:200],
+                    }
+                    st.switch_page("pages/4_🎓_Lernen.py")
+                if _dc2.button("▶ Karten für diesen Tag", type="primary",
+                               use_container_width=True, key=f"splan_daystudy_{_day_iso}",
+                               help="Nur die Karten der Themen, die für diesen Tag geplant "
+                                    "sind - fehlende werden jetzt erzeugt."):
+                    _day_ok = True
+                    for _ds in _day_secs:
+                        if not _ensure_cards(_ds, _day_slot):
+                            _day_ok = False
+                            break
+                    if _day_ok and _day_secs:
+                        st.session_state["study_prefill"] = {
+                            "source": "plan", "subject": _plan["subject"], "mode": "reveal",
+                            "limit": 30, "card_ids": plan_cards.day_card_ids(_day_secs),
+                            "scope": (f"{_day_name}: "
+                                      + ", ".join(s["title"] for s in _day_secs))[:200],
+                        }
+                        st.switch_page("pages/4_🎓_Lernen.py")
+
         _focus_blocks = set(st.session_state.get("splan_focus_block_ids") or [])
 
         for d in sorted(_by_date.keys()):
@@ -675,15 +1142,17 @@ with card("zeitplan"):
                     # Wege bleiben gleichwertig moeglich, siehe Verbesserungsvorschlag).
                     _via = {"pomodoro": " 🍅", "manual": " ✍️"}.get(bl.get("done_via"), "")
                     _mark = f"✅{_via}" if bl["done"] else "⬜"
-                    _src_titles = [
-                        ref.get("section") for ref in section.get("source_refs") or []
-                        if ref.get("section") and ref.get("section") != title
-                    ]
-                    _src_txt = f" · {', '.join(_src_titles[:2])}" if _src_titles else ""
+                    # Referenz des Themas: das Dokument, aus dem es entstanden ist.
+                    _src_txt = (f" · 📄 {plan_cards.section_reference(section)}"
+                                if section else "")
+                    _su_b = _unit_stats.get(bl["section_id"]) or {}
+                    _fill_txt = (f" · 🃏 {_su_b.get('cards', 0)} · 🧮 {_su_b.get('problems', 0)}"
+                                 if section else "")
                     _focus_mark = " · 👈 Fokus" if bl["block_id"] in _focus_blocks else ""
                     bcol1, bcol2 = st.columns([4.2, 1])
                     bcol1.write(
-                        f"{_mark} {title}{_src_txt} · {_fmt_min(bl['planned_min'])}{_focus_mark}")
+                        f"{_mark} {title}{_src_txt} · {_fmt_min(bl['planned_min'])}"
+                        f"{_fill_txt}{_focus_mark}")
                     if bcol2.button("Erledigt" if not bl["done"] else "↩️",
                                    key=f"splan_block_{bl['block_id']}", use_container_width=True):
                         manifest.set_block_done(bl["block_id"], not bl["done"],
@@ -694,6 +1163,7 @@ with card("zeitplan"):
                         st.rerun()
                     if not bl["done"]:
                         a1, a2, a3, a4, a5 = st.columns(5)
+                        _blk_slot = st.container()   # Fortschritt direkt unter den Knoepfen
                         if a1.button("🍅 Pomodoro", key=f"splan_pomo_{bl['block_id']}",
                                      use_container_width=True,
                                      help="Startet einen Pomodoro-Arbeitsblock auf der "
@@ -706,27 +1176,27 @@ with card("zeitplan"):
                             st.switch_page("pages/10_⏱️_Lernzeit.py")
                         if a2.button("Karten", key=f"splan_cards_{bl['block_id']}",
                                      use_container_width=True,
-                                     help="Karten zu diesem Stoffabschnitt"):
+                                     help="Karten zu diesem Stoffabschnitt - gibt es noch keine, "
+                                          "werden sie jetzt erzeugt"):
                             from ragapp.student_flow import prefill_from_plan_block
+                            if section and not _ensure_cards(section, _blk_slot):
+                                st.stop()
                             st.session_state["study_prefill"] = prefill_from_plan_block(
                                 bl["block_id"], limit=12, mode="reveal")
                             st.switch_page("pages/4_🎓_Lernen.py")
                         if a3.button("Übung", key=f"splan_prac_{bl['block_id']}",
                                      use_container_width=True,
-                                     help="Vorhandene Übung zu diesem Abschnitt, sonst Generator"):
-                            from ragapp.student_flow import (
-                                pick_existing_practice, prefill_from_plan_block)
-                            _pre = prefill_from_plan_block(bl["block_id"])
-                            _topic = ((_pre.get("topics") or [title])[0]
-                                      if (_pre.get("topics") or [title]) else title)
-                            _pid = pick_existing_practice(
-                                subject=_pre.get("subject"), topic=_topic,
-                                doc_ids=_pre.get("doc_ids") or source_doc_ids)
+                                     help="Übung zu diesem Abschnitt - gibt es noch keine, "
+                                          "wird sie jetzt aus dem Text des Themas erzeugt"):
+                            _pid = _ensure_practice(section, _blk_slot) if section else None
+                            if section and not _pid:
+                                st.stop()
                             _prac = {
                                 "source": "plan",
-                                "subject": _pre.get("subject"),
-                                "doc_ids": _pre.get("doc_ids") or [],
-                                "topic": _topic,
+                                "subject": _plan.get("subject"),
+                                "doc_ids": ([d for d, _n in plan_cards.section_docs(section)]
+                                            if section else list(source_doc_ids)),
+                                "topic": title,
                                 "block_id": bl["block_id"],
                             }
                             if _pid:
@@ -736,11 +1206,14 @@ with card("zeitplan"):
                         if a4.button("Skript", key=f"splan_docs_{bl['block_id']}",
                                      use_container_width=True,
                                      help="20 Minuten in der Unterlage zu diesem Abschnitt"):
-                            _did = source_doc_ids[0] if source_doc_ids else None
+                            # Das Dokument UND die Seite, an der das Thema beginnt.
+                            _did, _pg = (plan_cards.section_start(section) if section
+                                         else (None, None))
                             st.session_state["skript_prefill"] = {
                                 "subject": _plan.get("subject"),
-                                "doc_id": _did,
+                                "doc_id": _did or (source_doc_ids[0] if source_doc_ids else None),
                                 "heading": title,
+                                "page": _pg or 0,
                                 "block_id": bl["block_id"],
                                 "minutes": 20,
                             }
@@ -753,5 +1226,10 @@ with card("zeitplan"):
                                 "topic": title,
                                 "minutes": 20,
                                 "block_id": bl["block_id"],
+                                # Der Dialog sucht NUR im Dokument des Themas.
+                                "doc_ids": ([d for d, _n in plan_cards.section_docs(section)]
+                                            if section else []),
+                                "reference": (plan_cards.section_reference(section)
+                                              if section else ""),
                             }
                             st.switch_page("pages/0_💬_Chat.py")

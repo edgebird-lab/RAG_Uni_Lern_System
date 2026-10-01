@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 
+from ragapp import card_quality
 from ragapp.config import settings
 from ragapp.llm import get_llm
 
@@ -140,23 +141,9 @@ Abschnitt:
 Musterlösung:"""
 
 
-def generate_answer(chunk_text: str, question: str, model: str | None = None) -> str:
-    """Erzeugt aus Frage + Eltern-Chunk eine echte Musterlösung (statt den rohen Chunk
-    als 'Antwort' zu zeigen). Gibt '' zurück, wenn die Antwort nicht im Text steht oder
-    leer bleibt. Wirft QuestionGenError bei echtem LLM-/Backend-Fehler."""
-    if not (question or "").strip() or not (chunk_text or "").strip():
-        return ""
-    llm = get_llm(model or settings.LLM_MODEL_FAST)
-    try:
-        raw = llm.generate(
-            _ANSWER_PROMPT.format(frage=question.strip(), chunk=chunk_text[:2800]),
-            system=_ANSWER_SYSTEM,
-            temperature=0.2,
-        )
-    except Exception as exc:  # echter LLM-/Backend-Fehler -> NICHT verschlucken
-        raise QuestionGenError(str(exc)) from exc
+def _clean_answer(raw: str) -> str:
+    """Vorspann-/Codefence-Reste entfernen; '' wenn leer oder NICHT_IM_TEXT."""
     ans = (raw or "").strip()
-    # gelegentliche Vorspann-/Codefence-Reste entfernen
     if ans.startswith("```"):
         ans = ans.strip("`").split("\n", 1)[-1].strip()
     for pref in ("Antwort:", "Musterlösung:", "Lösung:"):
@@ -167,31 +154,95 @@ def generate_answer(chunk_text: str, question: str, model: str | None = None) ->
     return ans
 
 
-def generate_questions(chunk_text: str, n: int | None = None, model: str | None = None) -> list[str]:
+def generate_answer(chunk_text: str, question: str, model: str | None = None) -> str:
+    """Erzeugt aus Frage + Eltern-Chunk eine echte Musterlösung (statt den rohen Chunk
+    als 'Antwort' zu zeigen). Gibt '' zurück, wenn die Antwort nicht im Text steht oder
+    leer bleibt. Wirft QuestionGenError bei echtem LLM-/Backend-Fehler.
+
+    Hat die Antwort Mängel (Verweis auf „Definition 4“/„im Kapitel 1.2“, kaputte PDF-Zeichen,
+    nur die Frage wiederholt, siehe ``card_quality``), gibt es einen Neuversuch mit gezieltem
+    Hinweis; behalten wird der Versuch mit weniger Mängeln."""
+    if not (question or "").strip() or not (chunk_text or "").strip():
+        return ""
+    llm = get_llm(model or settings.LLM_MODEL_FAST)
+    prompt = _ANSWER_PROMPT.format(frage=question.strip(), chunk=chunk_text[:2800])
+
+    def _ask(extra: str = "", temperature: float = 0.2) -> str:
+        try:
+            raw = llm.generate(prompt + extra, system=_ANSWER_SYSTEM, temperature=temperature)
+        except Exception as exc:  # echter LLM-/Backend-Fehler -> NICHT verschlucken
+            raise QuestionGenError(str(exc)) from exc
+        return _clean_answer(raw)
+
+    ans = _ask()
+    retries = int(getattr(settings, "CARD_QUALITY_RETRIES", 0) or 0)
+    problems = card_quality.answer_problems(ans, question) if ans else []
+    for attempt in range(retries):
+        if not problems:
+            break
+        try:
+            again = _ask(card_quality.retry_hint(problems), temperature=0.3 + 0.1 * attempt)
+        except QuestionGenError:
+            break                    # Neuversuch scheitert: die erste Antwort bleibt
+        again_problems = card_quality.answer_problems(again, question) if again else problems
+        if again and len(again_problems) < len(problems):
+            ans, problems = again, again_problems
+    return ans
+
+
+def generate_questions(chunk_text: str, n: int | None = None, model: str | None = None,
+                       stats: dict | None = None) -> list[str]:
+    """Fragen zu einem Abschnitt. Fragen mit Mängeln (siehe ``card_quality``: Quellenbezug,
+    kaputte PDF-Zeichen, fehlender Kontext, zu vage) werden verworfen; fehlen dadurch Fragen,
+    gibt es bis zu ``CARD_QUALITY_RETRIES`` Neuversuche mit gezieltem Hinweis. ``stats``
+    (optional) sammelt ``rejected`` (verworfene Fragen) und ``retries`` (Neuversuche)."""
     n = n or settings.NUM_INDEX_QUESTIONS
     # Für die Bulk-Fragenerzeugung nutzen wir standardmäßig das schnellere Modell.
     llm = get_llm(model or settings.LLM_MODEL_FAST)
     # sehr kurze Chunks lohnen keine Fragen
     if len(chunk_text.strip()) < settings.MIN_CHUNK_CHARS:
         return []
-    try:
-        data = llm.generate_json(
-            _PROMPT.format(n=n, chunk=chunk_text[:2500]),
-            system=_SYSTEM,
-            temperature=0.3,
-        )
-    except Exception as exc:  # echter LLM-/Backend-Fehler -> NICHT verschlucken
-        raise QuestionGenError(str(exc)) from exc
-    if not isinstance(data, dict):
-        return []
-    questions = data.get("questions", [])
+    retries = max(0, int(getattr(settings, "CARD_QUALITY_RETRIES", 0) or 0))
     out: list[str] = []
-    seen = set()
-    for q in questions:
-        if isinstance(q, str):
+    seen: set[str] = set()
+    rejected_keys: set[str] = set()
+    hint = ""
+    for attempt in range(retries + 1):
+        want = n - len(out)
+        try:
+            data = llm.generate_json(
+                _PROMPT.format(n=want, chunk=chunk_text[:2500]) + hint,
+                system=_SYSTEM,
+                temperature=0.3 + 0.15 * attempt,
+            )
+        except Exception as exc:  # echter LLM-/Backend-Fehler -> NICHT verschlucken
+            if attempt == 0:
+                raise QuestionGenError(str(exc)) from exc
+            break                    # Neuversuch scheitert: behalten, was schon gut ist
+        questions = data.get("questions", []) if isinstance(data, dict) else []
+        codes: list[str] = []
+        for q in questions:
+            if not isinstance(q, str):
+                continue
             q = q.strip()
             key = q.lower()
-            if q and key not in seen and _is_frage(q) and not is_heading_echo(q, chunk_text):
-                seen.add(key)
-                out.append(q)
+            if not q or key in seen or not _is_frage(q) or is_heading_echo(q, chunk_text):
+                continue
+            problems = card_quality.question_problems(q)
+            if problems:
+                # Auch eine WIEDERHOLTE schlechte Frage zaehlt als Mangel (Neuversuch noetig),
+                # in der Statistik aber nur einmal.
+                codes += problems
+                if key not in rejected_keys:
+                    rejected_keys.add(key)
+                    if stats is not None:
+                        stats["rejected"] = stats.get("rejected", 0) + 1
+                continue
+            seen.add(key)
+            out.append(q)
+        if len(out) >= n or not codes:
+            break                    # genug, oder das Modell hat von sich aus zu wenige geliefert
+        hint = card_quality.retry_hint(codes)
+        if stats is not None and attempt < retries:
+            stats["retries"] = stats.get("retries", 0) + 1
     return out[:n]

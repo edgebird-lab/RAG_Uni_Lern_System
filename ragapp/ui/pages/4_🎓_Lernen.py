@@ -336,8 +336,17 @@ if _prefill and not st.session_state.get(ACTIVE):
     _lim = int(_prefill.get("limit") or 16)
     with st.container(border=True):
         st.markdown("##### Sitzung vorbereitet")
-        st.caption(f"{_src} · {_subj_txt} · bis zu {_lim} Karten. "
-                   "Startest du jetzt, oder wählst du unten selbst einen Stapel?")
+        if _prefill.get("source") == "plan":
+            # Lernplan: genau dieser Stoff, nichts anderes (siehe cards_for_prefill).
+            _n_plan = len(_prefill.get("card_ids") or [])
+            st.caption(
+                f"📋 Lernplan · {_prefill.get('scope') or _subj_txt} · "
+                + (f"{_n_plan} Karte(n) – nur dieser Stoff, keine Karten anderer Themen. "
+                   if _n_plan else "noch keine Karten zu diesem Stoff. ")
+                + "Startest du jetzt, oder wählst du unten selbst einen Stapel?")
+        else:
+            st.caption(f"{_src} · {_subj_txt} · bis zu {_lim} Karten. "
+                       "Startest du jetzt, oder wählst du unten selbst einen Stapel?")
         _pf1, _pf2 = st.columns(2)
         if _pf1.button("▶️ Jetzt starten", type="primary", key="prefill_go",
                        use_container_width=True):
@@ -355,6 +364,10 @@ if _prefill and not st.session_state.get(ACTIVE):
             if _pk:
                 _start_study(_pk, _pmode if _pmode in ("reveal", "type", "cloze", "mcq") else "reveal")
                 st.rerun()
+            elif _prefill.get("source") == "plan":
+                st.info("Zu diesem Stoff gibt es noch keine Karten. Im Lernplan auf "
+                        "„Karten erzeugen“ klicken – andere Karten werden hier bewusst "
+                        "nicht untergemischt. Unten kannst du stattdessen einen Stapel wählen.")
             else:
                 st.info("Keine passenden Karten für diesen Start – wähle unten einen Stapel.")
         if _pf2.button("Stapel selbst wählen", key="prefill_skip",
@@ -799,7 +812,10 @@ else:
     # Toast direkt nach der Bewertung) - erst ab 2 in Folge, damit nicht schon
     # die allererste Karte einer neuen Serie eine Anzeige bekommt.
     _combo_suffix = f"  ·  🔥 {_combo_now}x in Folge" if _combo_now >= 2 else ""
-    _capc.caption(f"📚 {_tt}" + (f" · {_topic}" if _topic else "") + _combo_suffix)
+    # Quelldokument der Karte: bei Lernplan-Karten ist es die Referenz des Themas.
+    _doc_row = manifest.get_document(karte["doc_id"]) if karte.get("doc_id") else None
+    _doc_txt = f" · 📄 {_doc_row['filename']}" if _doc_row else ""
+    _capc.caption(f"📚 {_tt}" + _doc_txt + (f" · {_topic}" if _topic else "") + _combo_suffix)
     # Runde JEDERZEIT beenden bzw. Fach/Stapel wechseln (z. B. nach 5 Karten oder wenn
     # das Tagesziel erreicht ist). Schon bewertete Karten sind bereits gespeichert.
     if _stopc.button("⏹ Runde beenden", use_container_width=True,

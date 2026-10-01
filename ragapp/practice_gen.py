@@ -241,9 +241,17 @@ def _repair_problem(data: object) -> Optional[dict]:
 def generate_practice_problem(
     *, subject: Optional[str], doc_ids: list[str], topic: Optional[str] = None,
     kind: Optional[str] = None, model: Optional[str] = None,
+    source_sections: Optional[list[tuple[str, str, str]]] = None,
 ) -> str:
     """Erzeugt EINE Uebungsaufgabe aus den gewaehlten (bereits im RAG indexierten)
     Dokumenten und speichert sie. Gibt die neue ``problem_id`` zurueck.
+
+    ``source_sections``: ``[(Quelle, Titel, Text), …]`` - dann wird AUSSCHLIESSLICH
+    dieser Text verwendet (Lernplan: genau die Abschnitte des Themas, aus dem Dokument,
+    aus dem das Thema entstanden ist). Ohne sie waehlt ``_pick_source_text`` ueber den
+    Freitext-``topic`` passende Abschnittstitel und fuellt sonst mit dem Dokumentanfang
+    auf - fuer ein Lernplan-Thema "Skalarprodukt" (Abschnittstitel nur "Seite 11") hiess
+    das: eine Aufgabe zu den ersten Seiten statt zum Thema.
 
     ``kind``: ``None`` -> automatische Erkennung (siehe ``_pick_kind``), sonst
     explizit ``"numeric"`` / ``"proof"`` / ``"scenario"`` erzwingen.
@@ -255,14 +263,18 @@ def generate_practice_problem(
     if not doc_ids:
         raise PracticeGenError("Keine Dokumente ausgewählt.")
 
-    sections = _gather_source_sections(doc_ids)
+    scoped = source_sections is not None
+    sections = list(source_sections) if scoped else _gather_source_sections(doc_ids)
     if not sections:
         raise PracticeGenError(
             "Keine indexierten Abschnitte gefunden. Die gewählten Dokumente "
             "müssen im RAG sein (Seite Ingestion -> 'Im RAG'-Häkchen).")
 
+    # Bei vorgegebenem Quelltext zaehlt NUR dieser (Reihenfolge wie uebergeben); das
+    # Freitext-Thema steuert dann nur noch die Aufgabenstellung, nicht die Textwahl.
     source, _titles = _pick_source_text(
-        sections, topic, max(500, int(settings.PRACTICE_MAX_SOURCE_CHARS)))
+        sections, None if scoped else topic,
+        max(500, int(settings.PRACTICE_MAX_SOURCE_CHARS)))
     if not source:
         raise PracticeGenError("Kein Textinhalt in den gewählten Abschnitten gefunden.")
 

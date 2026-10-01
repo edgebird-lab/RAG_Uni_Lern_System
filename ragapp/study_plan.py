@@ -242,6 +242,18 @@ def time_factor_info(subject: Optional[str] = None) -> dict:
     return {"factor": settings.PLAN_TIME_FACTOR, "source": "default"}
 
 
+def time_breakdown(chars: int, subject: Optional[str] = None) -> dict:
+    """Bausteine der Zeitschätzung für ``chars`` Zeichen (ohne den lokalen Formel-Aufschlag):
+    ``reading_min`` (verstehendes Lesen), ``practice_min`` (aktives Üben der Konzepte),
+    ``factor`` (Zeit-Korrekturfaktor) mit seiner Herkunft ``source``."""
+    reading_min = chars / settings.PLAN_CHARS_PER_PAGE * (60.0 / settings.PLAN_PAGES_PER_HOUR)
+    concepts = chars / settings.PLAN_CHARS_PER_CONCEPT
+    practice_min = concepts * (60.0 / settings.PLAN_ITEMS_PER_HOUR)
+    info = time_factor_info(subject)
+    return {"reading_min": reading_min, "practice_min": practice_min,
+            "factor": info["factor"], "source": info["source"]}
+
+
 def estimate_minutes(chars: int, subject: Optional[str] = None,
                      content_multiplier: float = 1.0) -> int:
     """Formel-basierte Zeitschaetzung (Minuten) aus Zeichenzahl - siehe
@@ -249,11 +261,35 @@ def estimate_minutes(chars: int, subject: Optional[str] = None,
     Formel wird mit dem Zeit-Korrekturfaktor (kalibriert oder statisch, siehe
     ``time_factor_info``) und einem lokalen Inhalts-Aufschlag fuer rechenlastige
     Abschnitte (siehe ``_content_multiplier``) skaliert."""
-    reading_min = chars / settings.PLAN_CHARS_PER_PAGE * (60.0 / settings.PLAN_PAGES_PER_HOUR)
-    concepts = chars / settings.PLAN_CHARS_PER_CONCEPT
-    practice_min = concepts * (60.0 / settings.PLAN_ITEMS_PER_HOUR)
-    factor = time_factor_info(subject)["factor"] * max(1.0, content_multiplier)
-    return max(5, round((reading_min + practice_min) * factor))
+    b = time_breakdown(chars, subject)
+    factor = b["factor"] * max(1.0, content_multiplier)
+    return max(5, round((b["reading_min"] + b["practice_min"]) * factor))
+
+
+def explain_time_estimate(subject: Optional[str] = None, example_chars: int = 6000) -> list[str]:
+    """Die Zeitschätzung in Klartext (Aufzählungspunkte für die Oberfläche): welche Annahmen
+    stecken drin, woher kommt der Korrekturfaktor, und ein durchgerechnetes Beispiel. Alles aus
+    den echten Einstellungen - keine festen Zahlen im Text."""
+    b = time_breakdown(example_chars, subject)
+    pages = example_chars / settings.PLAN_CHARS_PER_PAGE
+    base = b["reading_min"] + b["practice_min"]
+    src = {"subject": "aus deinen echten Pomodoro-Zeiten für dieses Fach kalibriert",
+           "global": "aus deinen echten Pomodoro-Zeiten (alle Fächer) kalibriert",
+           "default": "Standardwert - es gibt noch zu wenige echte Zeitmessungen"}.get(
+        b["source"], "Standardwert")
+    return [
+        f"**Lesen:** {settings.PLAN_PAGES_PER_HOUR:g} Seiten pro Stunde (verstehendes Lesen "
+        f"dichten Stoffs), eine Seite ≈ {settings.PLAN_CHARS_PER_PAGE} Zeichen.",
+        f"**Üben:** ein lernbares Konzept je ≈ {settings.PLAN_CHARS_PER_CONCEPT} Zeichen, "
+        f"{settings.PLAN_ITEMS_PER_HOUR:g} Konzepte pro Stunde aktiver Übung.",
+        f"**Korrekturfaktor:** {b['factor']:.2f}× ({src}).",
+        "**Formeln und Zahlen:** Abschnitte mit vielen Formeln/Zahlen bekommen bis zu +40 % extra.",
+        f"**Beispiel:** {example_chars} Zeichen (≈ {pages:.1f} Seiten) → Lesen "
+        f"{b['reading_min']:.0f} Min + Üben {b['practice_min']:.0f} Min = {base:.0f} Min, "
+        f"× {b['factor']:.2f} ≈ **{base * b['factor']:.0f} Min**.",
+        "Das ist eine Faustformel, kein Messwert: Die Minuten pro Thema lassen sich in der "
+        "Gliederung selbst ändern, und mit jedem echten Pomodoro wird der Faktor genauer.",
+    ]
 
 
 def _repair_outline(data: object, n: int) -> "list[dict] | None":
@@ -290,6 +326,122 @@ def _repair_outline(data: object, n: int) -> "list[dict] | None":
     return cleaned
 
 
+def _outline_batches(capped: list[tuple[str, str, str]], max_entries: int) -> list[list[int]]:
+    """Teilt die Abschnittsliste in Gruppen von hoechstens ``max_entries`` Eintraegen
+    (Indizes in ``capped``) - DOKUMENTWEISE: eine Gruppe enthaelt nie Abschnitte
+    verschiedener Quellen, grosse Dokumente werden in gleich grosse Stuecke geteilt.
+    Zwei Gruende: (1) Kleine lokale Modelle ordnen bei ~150 Eintraegen in einem Rutsch
+    nur die ersten (beobachtet: 25 von 165); der Rest ginge sonst ins letzte Thema.
+    (2) Jedes Thema soll aus GENAU EINEM Dokument entstehen - das ist die Referenz fuer
+    Karten, Uebungen und Skript (die KI konnte Themen sonst ueber Dokumentgrenzen
+    bilden, z. B. Vektorrechnung + LGS). ``capped`` ist nach Dokument sortiert (siehe
+    ``_granular_sections``)."""
+    max_entries = max(1, int(max_entries))
+    runs: list[tuple[str, list[int]]] = []          # zusammenhaengende Bloecke je Quelle
+    for i, (label, _title, _body) in enumerate(capped):
+        if runs and runs[-1][0] == label:
+            runs[-1][1].append(i)
+        else:
+            runs.append((label, [i]))
+    batches: list[list[int]] = []
+    for _label, idx in runs:
+        parts = math.ceil(len(idx) / max_entries)
+        size = math.ceil(len(idx) / parts)
+        batches += [idx[k:k + size] for k in range(0, len(idx), size)]
+    return batches or [[]]
+
+
+_PAGE_TITLE_RE = re.compile(r"^\s*(?:Seite|Folie|Slide|Page)\s*(\d+)\s*$", re.IGNORECASE)
+
+
+def _pages_label(titles: list[str]) -> str:
+    """„S. 4–5, 7“ aus Abschnittstiteln der Form „Seite N“ ('' wenn irgendein Titel anders
+    lautet). Luecken bleiben sichtbar (Seiten 12–13 und 16–19 sind NICHT „S. 12–19“)."""
+    nums: list[int] = []
+    for t in titles:
+        m = _PAGE_TITLE_RE.match(t or "")
+        if not m:
+            return ""
+        nums.append(int(m.group(1)))
+    nums = sorted(set(nums))
+    if not nums:
+        return ""
+    ranges: list[str] = []
+    start = prev = nums[0]
+    for n in nums[1:] + [None]:                       # type: ignore[list-item]
+        if n is not None and n == prev + 1:
+            prev = n
+            continue
+        ranges.append(str(start) if start == prev else f"{start}–{prev}")
+        if n is not None:
+            start = prev = n
+    return "S. " + ", ".join(ranges)
+
+
+def _split_oversized(topics: list[dict], capped: list[tuple[str, str, str]],
+                     max_chars: int) -> list[dict]:
+    """Teilt Themen, deren Quelltext ``max_chars`` uebersteigt, in gleich grosse,
+    zusammenhaengende Teile ("Titel (Teil 1/3)"). Ein Thema mit 56 Stunden Stoff ist
+    kein Lern-Thema, egal ob die KI es so zugeschnitten hat oder ein Rest dort
+    gelandet ist. Ein einzelner, unteilbarer Abschnitt bleibt wie er ist."""
+    if max_chars <= 0:
+        return topics
+    out: list[dict] = []
+    for t in topics:
+        idx = sorted(t["indices"])
+        sizes = [len(capped[i][2]) for i in idx]
+        total = sum(sizes)
+        if total <= max_chars or len(idx) < 2:
+            out.append(t)
+            continue
+        parts = min(len(idx), math.ceil(total / max_chars))
+        target = total / parts
+        groups: list[list[int]] = [[]]
+        acc = 0
+        for i, c in zip(idx, sizes):
+            if groups[-1] and acc + c / 2 > target * (len(groups)) and len(groups) < parts:
+                groups.append([])
+            groups[-1].append(i)
+            acc += c
+        for k, g in enumerate(groups, 1):
+            # Seitenbereich statt "Teil 1/3": zeigt, WO im Dokument das Teilthema liegt.
+            label = _pages_label([capped[i][1] for i in g]) or f"Teil {k}/{len(groups)}"
+            out.append({"title": f"{t['title']} ({label})",
+                        "summary": t.get("summary") or "", "indices": g})
+    return out
+
+
+def _disambiguate_titles(topics: list[dict], capped: list[tuple[str, str, str]]) -> list[dict]:
+    """Macht gleiche Themen-Titel eindeutig (Vergleich ohne Gross-/Kleinschreibung): die KI vergibt
+    gelegentlich denselben Titel zweimal („Geometrische und Algebraische Erweiterungen“ für S. 8-11
+    und S. 12-15). Übungen werden über den Titel dem Thema zugeordnet - bei gleichem Titel im
+    selben Dokument würden sich zwei Themen ihre Übungen teilen, und in der Übersicht lassen sie
+    sich nicht auseinanderhalten. Angehängt wird der Seitenbereich („(S. 8–11)“), sonst eine Zählung."""
+    def key(t: dict) -> str:
+        return t["title"].strip().casefold()
+
+    counts: dict[str, int] = {}
+    for t in topics:
+        counts[key(t)] = counts.get(key(t), 0) + 1
+    if all(n == 1 for n in counts.values()):
+        return topics
+    taken: set[str] = set()
+    out: list[dict] = []
+    for t in topics:
+        if counts[key(t)] > 1:
+            label = _pages_label([capped[i][1] for i in sorted(t["indices"]) if 0 <= i < len(capped)])
+            title = f"{t['title']} ({label})" if label else t["title"]
+            n = 2
+            while title.strip().casefold() in taken or (
+                    title.strip().casefold() != key(t) and counts.get(title.strip().casefold())):
+                title = f"{t['title']} ({label + ', ' if label else ''}{n})"
+                n += 1
+            t = {**t, "title": title}
+        taken.add(key(t))
+        out.append(t)
+    return out
+
+
 def generate_outline(
     doc_ids: list[str], subject: Optional[str], model: Optional[str] = None,
 ) -> tuple[list[dict], Optional[str]]:
@@ -302,6 +454,11 @@ def generate_outline(
     ``model``: None -> grosses Autoren-Modell (gruendlicher, langsamer); explizit
     z. B. ``settings.LLM_MODEL_FAST`` uebergeben fuer eine schnellere, dafuer
     groebere Gliederung (Geschwindigkeit/Qualitaet-Abwaegung fuer die UI).
+
+    Bei vielen Abschnitten (mehr als PLAN_OUTLINE_BATCH_ENTRIES) ordnet die KI sie
+    in Gruppen (siehe ``_outline_batches``), und zu grosse Themen werden danach
+    geteilt (``_split_oversized``) - sonst landete bei 8 PDFs fast der gesamte
+    Stoff in EINEM Thema (beobachtet: 3396 Minuten).
 
     Rueckgabe ``(sections, warning)``: ``sections`` eine Liste ``{title,
     summary, source_refs, est_chars, est_minutes}`` in Lernreihenfolge; ``warning`` ist
@@ -324,23 +481,45 @@ def generate_outline(
     # UNGEKUERZTEN Original bemessen (echtes Zeichenvolumen fuer die ETA-Messung).
     capped = _cap_granular_for_prompt(granular, settings.PLAN_MAX_TOC_CHARS)
 
-    max_sections = max(1, int(settings.PLAN_MAX_OUTLINE_SECTIONS))
-    toc = _toc_with_excerpts(capped, settings.PLAN_PROMPT_BUDGET_CHARS)
+    max_total = max(1, int(settings.PLAN_MAX_OUTLINE_SECTIONS))
     fach = subject or "unbekannt"
     used_model = model or _author_model()
+    batches = _outline_batches(capped, settings.PLAN_OUTLINE_BATCH_ENTRIES)
+    capped_chars = max(1, sum(len(b) for _, _, b in capped))
 
-    last_reason = None
-    last_tokens = None
+    topics: list[dict] = []          # {title, summary, indices (global in capped)}
+    failed_batches = 0
+    truncated: Optional[tuple[str, int]] = None   # (Modell, Token) des ersten Abbruchs
     _t0 = time.monotonic()
     try:
         with llm_task(used_model):
             llm = get_llm(used_model)
-            data = llm.generate_json(
-                _OUTLINE_PROMPT.format(fach=fach, n=len(capped), toc=toc,
-                                       max_sections=max_sections, max_idx=len(capped) - 1),
-                system=_OUTLINE_SYSTEM, temperature=0.2)
-            last_reason = llm.last_done_reason
-            last_tokens = llm.last_completion_tokens
+            for batch in batches:
+                sub = [capped[i] for i in batch]
+                # Anteil am Gesamtstoff -> Themenkontingent (bei EINER Gruppe: alles).
+                # Mindestens ~1 Thema je 6 Abschnitte: ein Dokument soll nicht zu einem
+                # einzigen Riesenthema zusammengeschoben werden, nur weil es einen
+                # kleinen Anteil am Gesamtstoff hat.
+                share = sum(len(b) for _, _, b in sub) / capped_chars
+                max_sections = (max_total if len(batches) == 1
+                                else max(1, math.ceil(len(sub) / 6),
+                                         round(max_total * share)))
+                toc = _toc_with_excerpts(sub, settings.PLAN_PROMPT_BUDGET_CHARS)
+                data = llm.generate_json(
+                    _OUTLINE_PROMPT.format(fach=fach, n=len(sub), toc=toc,
+                                           max_sections=max_sections, max_idx=len(sub) - 1),
+                    system=_OUTLINE_SYSTEM, temperature=0.2)
+                repaired = _repair_outline(data, len(sub))
+                if repaired is None:
+                    failed_batches += 1
+                    if data is None and llm.last_done_reason == "length" and truncated is None:
+                        truncated = (used_model, llm.last_completion_tokens)
+                    # Nie ganz scheitern: Abschnitte dieser Gruppe 1:1 uebernehmen.
+                    repaired = [{"title": t, "summary": "", "indices": [k]}
+                                for k, (_, t, _) in enumerate(sub)]
+                for r in repaired:
+                    topics.append({"title": r["title"], "summary": r.get("summary") or "",
+                                   "indices": [batch[k] for k in r["indices"]]})
     except Exception as exc:  # noqa: BLE001
         raise OutlineError(f"KI-Gliederung fehlgeschlagen: {exc}") from exc
     # Echte Dauer als Messwert sichern -> kalibriert die ETA-Schaetzung der
@@ -352,18 +531,18 @@ def generate_outline(
         pass
 
     warning: Optional[str] = None
-    sections = _repair_outline(data, len(capped))
-    if sections is None:
-        if data is None and last_reason == "length":
-            warning = (
-                f"Das Modell „{used_model}“ ist bei {len(capped)} Abschnitten "
-                f"nicht fertig geworden (zu viel interne Verarbeitung, nach "
-                f"{last_tokens} Tokens abgebrochen) - "
-                "stattdessen wird jeder Abschnitt einzeln aufgeführt. Versuche "
-                "ein anderes Modell oder wähle weniger Dokumente.")
-        # Nie ganz scheitern: granulare Abschnitte 1:1 als Gliederung uebernehmen.
-        sections = [{"title": t, "summary": "", "indices": [i]}
-                    for i, (_, t, _) in enumerate(capped)]
+    if truncated is not None:
+        what = (f"bei {len(capped)} Abschnitten" if len(batches) == 1
+                else f"bei {failed_batches} von {len(batches)} Abschnittsgruppen")
+        warning = (
+            f"Das Modell „{truncated[0]}“ ist {what} "
+            f"nicht fertig geworden (zu viel interne Verarbeitung, nach "
+            f"{truncated[1]} Tokens abgebrochen) - "
+            "stattdessen wird jeder Abschnitt einzeln aufgeführt. Versuche "
+            "ein anderes Modell oder wähle weniger Dokumente.")
+
+    topics = _split_oversized(topics, capped, int(settings.PLAN_TOPIC_MAX_CHARS))
+    topics = _disambiguate_titles(topics, capped)
 
     out = []
     docs = [
@@ -378,7 +557,7 @@ def generate_outline(
         d["filename"]: d for d in docs
         if filename_counts[d["filename"]] == 1
     })
-    for s in sections:
+    for s in topics:
         bodies = [capped[i][2] for i in s["indices"] if 0 <= i < len(capped)]
         chars = sum(len(b) for b in bodies)
         cm = _content_multiplier("\n".join(bodies))
@@ -566,6 +745,119 @@ def build_schedule(sections: list[dict], daily_minutes: int,
         "review_minutes_reserved": review_reserved_total,
         "class_minutes_reserved": round(class_reserved_total),
     }
+
+
+def plan_staleness(sections: list[dict], blocks: list[dict], *,
+                   allow_shortfall: bool = False) -> dict:
+    """Passt der gespeicherte Zeitplan noch zur Gliederung?
+
+    ``state``: ``empty`` (keine Themen), ``missing`` (Themen, aber noch kein Zeitplan),
+    ``stale`` (veraltet: z. B. nach „Gliederung neu erzeugen“) oder ``ok``; ``reasons`` nennt
+    die Gründe in Klartext. Geprüft wird nur, was sich zuverlässig feststellen lässt - nicht
+    der Vergleich mit einer heutigen Neuberechnung (die ändert sich täglich allein durch fällige
+    Karten und den Starttag). Blöcke eines nicht mehr vorhandenen Themas, Themen ohne Termine
+    und Themen, deren geplante Minuten von der Gliederung abweichen, machen den Plan veraltet.
+
+    ``allow_shortfall``: bei einem zu knappen Zieldatum fehlen Blöcke absichtlich (der Rest
+    steht als „fehlt“ in der Vorschau) - dann zählen fehlende Minuten nicht als veraltet."""
+    if not sections:
+        return {"state": "empty", "reasons": [], "orphans": 0, "uncovered": 0, "mismatch": 0}
+    if not blocks:
+        return {"state": "missing", "reasons": ["Der Zeitplan ist noch nicht berechnet."],
+                "orphans": 0, "uncovered": 0, "mismatch": 0}
+    ids = {sec["section_id"] for sec in sections}
+    planned: dict[str, int] = {}
+    orphans = 0
+    for b in blocks:
+        sid = b.get("section_id")
+        if sid in ids:
+            planned[sid] = planned.get(sid, 0) + int(b.get("planned_min") or 0)
+        else:
+            orphans += 1
+    uncovered = mismatch = 0
+    for sec in sections:
+        est = int(sec.get("est_minutes") or 0)
+        got = planned.get(sec["section_id"], 0)
+        if est <= 0:
+            continue
+        if got == 0:
+            if not sec.get("done") and not allow_shortfall:
+                uncovered += 1
+            continue
+        tolerance = max(10, round(0.2 * est))
+        if got - est > tolerance or (est - got > tolerance and not allow_shortfall
+                                     and not sec.get("done")):
+            mismatch += 1
+    reasons = []
+    if orphans:
+        reasons.append(f"{orphans} Block/Blöcke gehören zu Themen, die es nicht mehr gibt.")
+    if uncovered:
+        reasons.append(f"{uncovered} Thema/Themen haben noch keine Termine.")
+    if mismatch:
+        reasons.append(f"Bei {mismatch} Thema/Themen weichen die geplanten Minuten von der "
+                       "Gliederung ab.")
+    return {"state": "stale" if reasons else "ok", "reasons": reasons,
+            "orphans": orphans, "uncovered": uncovered, "mismatch": mismatch}
+
+
+def _de_date(d: date) -> str:
+    return f"{d.day:02d}.{d.month:02d}.{d.year}"
+
+
+def deadline_hints(plan: dict, preview: dict, *, exam_iso: Optional[str],
+                   today: Optional[date] = None) -> list[dict]:
+    """Klartext-Hinweise zu Zieldatum, Klausur und Tempo - mit den echten Zahlen aus der
+    Vorschau (``build_schedule``). Jeder Hinweis: ``{level: info|warning, text, action}``;
+    ``action == "use_exam_date"`` heißt: die Oberfläche kann „Klausurdatum übernehmen“ anbieten.
+    Leer, wenn es nichts zu sagen gibt."""
+    today = today or date.today()
+    deadline = parse_iso_date(plan.get("deadline"))
+    exam = parse_iso_date(exam_iso)
+    exam_ahead = exam if (exam is not None and exam >= today) else None
+    blocks = preview.get("blocks") or []
+    last = max((b["planned_date"] for b in blocks), default=None)
+    last_date = parse_iso_date(last)
+    total = int(preview.get("total_minutes") or 0)
+    eff = int(preview.get("effective_daily_min") or 0)
+    hints: list[dict] = []
+
+    if deadline is None:
+        if last_date is not None and total:
+            n_days = (last_date - today).days + 1
+            hints.append({"level": "info", "action": None, "text": (
+                f"Ohne Zieldatum verteilt die App den Stoff ab heute Tag für Tag: {total} Min bei "
+                f"{eff} Min/Tag ergeben {n_days} Kalendertage - der letzte geplante Tag ist der "
+                f"{_de_date(last_date)}.")})
+        if exam_ahead is not None:
+            hints.append({"level": "info", "action": "use_exam_date", "text": (
+                f"Für dieses Fach ist eine Klausur am {_de_date(exam_ahead)} eingetragen "
+                f"(in {(exam_ahead - today).days} Tagen), der Plan kennt sie aber nicht.")})
+            if last_date is not None and last_date > exam_ahead:
+                hints.append({"level": "warning", "action": None, "text": (
+                    f"Bei diesem Tempo reicht der Plan nicht bis zur Klausur: der letzte geplante "
+                    f"Tag ({_de_date(last_date)}) liegt nach dem {_de_date(exam_ahead)}.")})
+    else:
+        if deadline < today:
+            hints.append({"level": "warning", "action": None, "text": (
+                f"Das Zieldatum ({_de_date(deadline)}) liegt in der Vergangenheit.")})
+        if exam_ahead is not None:
+            if deadline > exam_ahead:
+                hints.append({"level": "warning", "action": "use_exam_date", "text": (
+                    f"Das Zieldatum ({_de_date(deadline)}) liegt nach der Klausur "
+                    f"({_de_date(exam_ahead)}).")})
+            elif deadline < exam_ahead:
+                hints.append({"level": "info", "action": None, "text": (
+                    f"Das Zieldatum liegt {(exam_ahead - deadline).days} Tage vor der Klausur "
+                    f"({_de_date(exam_ahead)}) - der Puffer bleibt zum Wiederholen.")})
+    if preview.get("shortfall_minutes", 0) > 0 and preview.get("deadline_days"):
+        need = math.ceil(total / max(1, int(preview["deadline_days"])))
+        limit = int(settings.PLAN_MAX_DAILY_FOCUS_MIN)
+        hints.append({"level": "warning", "action": None, "text": (
+            f"Um bis zum Zieldatum fertig zu werden, bräuchtest du mindestens etwa {need} Min pro "
+            f"Kalendertag (Ruhetage und reservierte Zeit nicht eingerechnet)"
+            + (f" - das ist mehr als die empfohlene Obergrenze von {limit} Min/Tag." if need > limit
+               else ".") )})
+    return hints
 
 
 def repair_overdue_blocks(plan_id: str, *, start: Optional[date] = None,
