@@ -9,8 +9,9 @@ from __future__ import annotations
 import zipfile
 
 import pytest
-import torch
-import torchaudio
+
+torch = pytest.importorskip("torch")          # schwer: fehlt in der schlanken CI -> Modul wird uebersprungen
+torchaudio = pytest.importorskip("torchaudio")
 
 from ragapp import audiobook, manifest
 

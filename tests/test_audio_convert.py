@@ -4,12 +4,17 @@ GENUINE konvertieren (kein Mock) - Audio-Qualität/Funktionsfähigkeit lässt
 sich nicht durch Mocken verifizieren (Session-Konvention)."""
 from __future__ import annotations
 
+import importlib.util
 import io
 import wave
 
 import pytest
 
 from ragapp import audio_convert
+
+# Das echte Enkodieren laeuft ueber torchaudio (schwer: fehlt in der schlanken CI).
+needs_torchaudio = pytest.mark.skipif(
+    importlib.util.find_spec("torchaudio") is None, reason="torchaudio nicht installiert")
 
 
 @pytest.fixture()
@@ -38,6 +43,7 @@ def test_convert_wav_bytes_unbekanntes_format_wirft_fehler(tiny_wav_bytes):
         audio_convert.convert_wav_bytes(tiny_wav_bytes, "ogg")
 
 
+@needs_torchaudio
 def test_convert_wav_bytes_nach_m4a_liefert_kleinere_valide_datei(tiny_wav_bytes):
     out = audio_convert.convert_wav_bytes(tiny_wav_bytes, "m4a")
     assert isinstance(out, bytes)
@@ -46,12 +52,14 @@ def test_convert_wav_bytes_nach_m4a_liefert_kleinere_valide_datei(tiny_wav_bytes
     assert b"ftyp" in out[:64]
 
 
+@needs_torchaudio
 def test_convert_wav_bytes_nach_mp3_liefert_valide_datei(tiny_wav_bytes):
     out = audio_convert.convert_wav_bytes(tiny_wav_bytes, "mp3")
     assert isinstance(out, bytes)
     assert len(out) > 0
 
 
+@needs_torchaudio
 def test_convert_wav_bytes_kaputte_bytes_wirft_audioconverterror():
     with pytest.raises(audio_convert.AudioConvertError):
         audio_convert.convert_wav_bytes(b"das ist keine WAV-Datei", "m4a")

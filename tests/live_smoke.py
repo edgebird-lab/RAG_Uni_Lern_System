@@ -32,7 +32,7 @@ PAGES = [
     ("/Organisation", "Kurse"),
     ("/Dokumentenmanager", "Kurs-Inbox"),
     ("/Semesterplan", "Semester einrichten"),
-    ("/Fortschritt", "Lernstand"),
+    ("/Fortschritt", "Was sitzt, was wackelt"),   # Seitenbeschreibung: auch im Leer-Zustand ohne Daten (CI) da
     ("/Lernplan", "Lernplan"),
     ("/Übungsaufgaben", "Übungsaufgaben"),
     ("/Prüfung", "Prüfung"),

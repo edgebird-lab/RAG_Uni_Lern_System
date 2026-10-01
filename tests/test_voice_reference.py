@@ -5,8 +5,8 @@ import io
 import math
 
 import pytest
-import torch
-import torchaudio
+torch = pytest.importorskip("torch")          # schwer: fehlt in der schlanken CI -> Modul wird uebersprungen
+torchaudio = pytest.importorskip("torchaudio")
 
 from ragapp import student_flow
 from ragapp.config import settings

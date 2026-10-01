@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import math
 
-import torch
+import pytest
+
+torch = pytest.importorskip("torch")          # schwer: fehlt in der schlanken CI -> Modul wird uebersprungen
 
 from ragapp.audio_loudness import LOUDNORM_FILTER, loudnorm_waveform
 

@@ -72,3 +72,38 @@ def load_functions():
 def ragapp_dir():
     """Absoluter Pfad zum ``ragapp``-Paket (fuer den Quelltext-Loader)."""
     return ROOT / "ragapp"
+
+
+@pytest.fixture(autouse=True)
+def _tests_never_touch_real_backups(tmp_path_factory, monkeypatch):
+    """Kein Test darf Snapshots der ECHTEN ``manifest.db`` ziehen oder die echten Sicherungen
+    in ``data/backups`` rotieren.
+
+    Hintergrund: ``manifest.delete_card_ids`` & Co. rufen vor dem Loeschen ``backup.snapshot``
+    auf. Das nutzt die Pfade des ``backup``-Moduls - nicht die, die ein Test fuer ``manifest``
+    umbiegt. Jeder Testlauf, der Karten loescht, legte so eine Kopie der echten Datenbank an und
+    verdraengte mit der Rotation (``BACKUP_KEEP``) aeltere echte Sicherungen. Hier zeigt
+    ``backup`` waehrend jedes Tests auf ein Wegwerf-Verzeichnis und eine nicht vorhandene
+    Datenbank (``snapshot`` kehrt dann sofort mit None zurueck)."""
+    try:
+        from ragapp import backup
+    except Exception:  # noqa: BLE001 - Modul nicht importierbar (schlanke Umgebung): nichts zu schuetzen
+        return
+    scratch = tmp_path_factory.mktemp("backups_isolated")
+    monkeypatch.setattr(backup, "BACKUP_DIR", scratch)
+    monkeypatch.setattr(backup, "MANIFEST_DB", scratch / "keine-echte-manifest.db")
+
+
+@pytest.fixture(autouse=True)
+def _tests_ignore_the_users_daily_goal_file(tmp_path_factory, monkeypatch):
+    """Das Tagesziel liegt in ``data/daily_goal.json``. Ein Test, der ``daily_goal_status`` ohne
+    eigene Datei aufruft, las bisher die ECHTE Datei: Hat die Nutzerin dort „minutes“ gewählt,
+    scheiterte ein Test, der die Standardart („reviews“) erwartet - nur auf ihrem Rechner, nicht in
+    der CI. Jetzt zeigt ``analytics`` in jedem Test auf eine nicht vorhandene Datei (= Standard);
+    Tests, die das Tagesziel prüfen, biegen den Pfad wie bisher selbst um."""
+    try:
+        from ragapp import analytics
+    except Exception:  # noqa: BLE001 - Modul nicht importierbar (schlanke Umgebung)
+        return
+    monkeypatch.setattr(analytics, "_DAILY_GOAL_FILE",
+                        tmp_path_factory.mktemp("goal_isolated") / "daily_goal.json")

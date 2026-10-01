@@ -11,7 +11,8 @@ import re
 import types
 
 import pytest
-import torch
+
+torch = pytest.importorskip("torch")          # schwer: fehlt in der schlanken CI -> Modul wird uebersprungen
 
 
 class _FakeForcedEosCapture(logging.Handler):

@@ -1,7 +1,8 @@
 name: CI
 
-# Automatisierte Tests: reine, torch-/ollama-/GPU-freie Offline-Logik.
-# Es werden KEINE Modelle geladen und KEIN Ollama gestartet.
+# Automatisierte Tests: Offline-Logik mit Attrappen, ohne GPU und ohne torch.
+# Es werden KEINE Modelle geladen und KEIN Ollama-Server gestartet (das Python-Paket "ollama"
+# wird nur importiert). Tests, die torch/torchaudio oder einen Browser brauchen, ueberspringen sich.
 
 on:
   push:

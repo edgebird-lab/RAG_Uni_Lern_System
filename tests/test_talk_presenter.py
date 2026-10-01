@@ -1,10 +1,25 @@
 """Presenter: seek(t) blendet Titel/Bullets suchbar ein."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+import pytest
 
 from ragapp.talk_cues import build_talk_cues
 from ragapp.talk_presenter import inject_talk_presenter
+
+
+def _launch_chromium(p):
+    """Startet Chromium fuer die Browser-Tests - oder ueberspringt den Test, wenn keiner
+    startbar ist (``playwright install chromium`` nicht gelaufen, oder die installierte
+    Revision passt nicht zur Playwright-Version). ``RAG_CHROMIUM_PATH`` zeigt auf eine
+    vorhandene Chromium-/Chrome-Datei (praktisch auf Entwicklungsrechnern)."""
+    path = os.environ.get("RAG_CHROMIUM_PATH") or None
+    try:
+        return p.chromium.launch(headless=True, executable_path=path)
+    except Exception as exc:  # noqa: BLE001 - jeder Startfehler heisst: kein nutzbarer Browser
+        pytest.skip(f"Chromium nicht startbar ({str(exc).splitlines()[0][:120]})")
 
 FIXTURE = Path("tests/fixtures/talk_presenter.html")
 MARP = """\
@@ -51,7 +66,7 @@ def test_seek_reveals_title_then_bullets(tmp_path):
     after_bullet = first_bullet_t + 0.02
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = _launch_chromium(p)
         page = browser.new_page(viewport={"width": 1280, "height": 720})
         page.goto(path.as_uri(), wait_until="load")
         page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
@@ -124,7 +139,7 @@ def test_seek_keyword_and_merksatz_punch(tmp_path):
     kw_bullet = next(e for e in content["events"] if e["type"] == "keyword")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = _launch_chromium(p)
         page = browser.new_page(viewport={"width": 1280, "height": 720})
         page.goto(path.as_uri(), wait_until="load")
         page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
@@ -163,7 +178,7 @@ def test_seek_title_letters_and_slide_fade(tmp_path):
         if e.get("type") == "bullet" and e.get("i") == 0)
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = _launch_chromium(p)
         page = browser.new_page(viewport={"width": 1280, "height": 720})
         page.goto(path.as_uri(), wait_until="load")
         page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
@@ -242,7 +257,7 @@ def test_seek_split_columns(tmp_path):
     col1 = next(e for e in cues["events"] if e["type"] == "col" and e["i"] == 1)
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = _launch_chromium(p)
         page = browser.new_page(viewport={"width": 1280, "height": 720})
         page.goto(path.as_uri(), wait_until="load")
         page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
@@ -292,7 +307,7 @@ marp: true
         return float(m.group(1)) if m else 0.0
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = _launch_chromium(p)
         page = browser.new_page(viewport={"width": 1280, "height": 720})
         page.goto(path.as_uri(), wait_until="load")
         page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
@@ -337,7 +352,7 @@ def test_seek_lower_third_caption(tmp_path):
     path.write_text(html, encoding="utf-8")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = _launch_chromium(p)
         page = browser.new_page(viewport={"width": 1280, "height": 720})
         page.goto(path.as_uri(), wait_until="load")
         page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
@@ -374,7 +389,7 @@ marp: true
     punch = next(e for e in cues["events"] if e["type"] == "punch")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = _launch_chromium(p)
         page = browser.new_page(viewport={"width": 1280, "height": 720})
         page.goto(path.as_uri(), wait_until="load")
         page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
@@ -432,7 +447,7 @@ marp: true
     count_t = next(e["t"] for e in card["events"] if e["type"] == "count")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = _launch_chromium(p)
         page = browser.new_page(viewport={"width": 1280, "height": 720})
         page.goto(path.as_uri(), wait_until="load")
         page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
@@ -487,7 +502,7 @@ def test_seek_youtube_shot_overlay_changes(tmp_path):
     assert len(shots) >= 2
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = _launch_chromium(p)
         page = browser.new_page(viewport={"width": 1280, "height": 720})
         page.goto(path.as_uri(), wait_until="load")
         page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
@@ -530,7 +545,7 @@ def test_seek_youtube_hides_shot_on_lead(tmp_path):
     path = tmp_path / "lead.html"
     path.write_text(html, encoding="utf-8")
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = _launch_chromium(p)
         page = browser.new_page(viewport={"width": 900, "height": 500})
         page.goto(path.as_uri(), wait_until="load")
         page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
@@ -567,7 +582,7 @@ def test_seek_youtube_karaoke_highlights_words(tmp_path):
     assert len(words) >= 2
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = _launch_chromium(p)
         page = browser.new_page(viewport={"width": 1280, "height": 720})
         page.goto(path.as_uri(), wait_until="load")
         page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
@@ -601,7 +616,7 @@ def test_seek_youtube_title_letters_on_immediately(tmp_path):
     path.write_text(html, encoding="utf-8")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = _launch_chromium(p)
         page = browser.new_page(viewport={"width": 1280, "height": 720})
         page.goto(path.as_uri(), wait_until="load")
         page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")
@@ -646,7 +661,7 @@ def test_seek_youtube_hides_shot_on_card_and_takeaway(tmp_path):
     path.write_text(html, encoding="utf-8")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = _launch_chromium(p)
         page = browser.new_page(viewport={"width": 1280, "height": 720})
         page.goto(path.as_uri(), wait_until="load")
         page.wait_for_function("window.TalkPresenter && window.TalkPresenter.prepared")

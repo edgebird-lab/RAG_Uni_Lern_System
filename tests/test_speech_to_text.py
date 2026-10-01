@@ -9,9 +9,11 @@ from ragapp import speech_to_text
 
 
 def test_is_available_meldet_installierte_pakete():
-    # In dieser Testumgebung sind transformers/librosa installiert (siehe
-    # requirements.txt) - is_available() soll das korrekt erkennen.
-    assert speech_to_text.is_available() is True
+    # is_available() soll genau dann True melden, wenn transformers UND librosa importierbar
+    # sind - in der vollen Umgebung (requirements.txt) und in der schlanken CI gleichermassen.
+    import importlib.util
+    expected = all(importlib.util.find_spec(m) is not None for m in ("transformers", "librosa"))
+    assert speech_to_text.is_available() is expected
 
 
 def test_transcribe_audio_mit_leeren_bytes_liefert_leeren_string():

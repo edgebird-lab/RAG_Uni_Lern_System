@@ -1,6 +1,8 @@
 # Entwicklungs-/Test-Abhaengigkeiten fuer die CI.
-# BEWUSST leichtgewichtig: KEIN torch/ollama/chromadb/sentence-transformers -
-# die Tests pruefen ausschliesslich reine, offline berechenbare Logik.
+# BEWUSST schlank: KEIN torch/sentence-transformers/langchain und KEINE GPU/Modelle - die Tests
+# pruefen offline berechenbare Logik mit Attrappen. Tests, die torch/torchaudio brauchen,
+# ueberspringen sich selbst (pytest.importorskip); Browser-Tests ohne startbaren Chromium
+# ebenfalls (siehe tests/test_talk_presenter.py).
 
 pytest>=7.0
 
@@ -16,3 +18,12 @@ fsrs>=6.3.0,<7.0
 # (ragapp/ingestion/textquality.py). Reines Python, klein - dieselbe Bibliothek
 # nutzt die App zur Laufzeit. Fehlt sie, ueberspringen die betroffenen Tests sauber.
 pyspellchecker>=0.7
+
+# Reine Python-Pakete, die die getesteten ragapp-Module beim Import brauchen (Clients/Index).
+# Es wird nur importiert und mit Attrappen getestet - es laeuft weder Ollama noch ein Index-Server.
+ollama>=0.4.0,<1.0
+httpx>=0.27,<1.0
+rank-bm25>=0.2.2,<1.0
+chromadb>=0.5.5,<2.0
+icalendar>=5.0,<7.0        # .ics-Import (tests/test_ics_import.py)
+pymupdf>=1.24.0,<2.0       # PDF-Seiten/Abbildungen (tests/test_student_flow.py, test_talk_figures.py)
