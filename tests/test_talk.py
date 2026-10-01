@@ -527,7 +527,17 @@ def test_mux_video_with_talk_audio_uses_loudnorm():
     assert "bool(_broll) or bool(_youtube)" in ui
 
 
+def _pretend_ffmpeg_is_installed(monkeypatch):
+    """``render_talk_video`` prueft zuerst ``shutil.which("ffmpeg")``; alles Weitere ersetzen die
+    Tests durch Attrappen. Auf dem CI-Runner gibt es kein ffmpeg - der Test darf nicht davon abhaengen."""
+    real_which = talk.shutil.which
+    monkeypatch.setattr(
+        talk.shutil, "which",
+        lambda name, *a, **k: "/fake/bin/ffmpeg" if name == "ffmpeg" else real_which(name, *a, **k))
+
+
 def test_render_talk_video_falls_back_when_record_fails(isolated_db, tmp_path, monkeypatch):
+    _pretend_ffmpeg_is_installed(monkeypatch)
     talks_dir = tmp_path / "talks"
     talks_dir.mkdir()
     monkeypatch.setattr(talk, "TALK_DIR", talks_dir)
@@ -644,6 +654,7 @@ def test_trim_talk_wav_drops_long_pauses(tmp_path):
 
 
 def test_render_talk_video_trims_silence_only_for_youtube(isolated_db, tmp_path, monkeypatch):
+    _pretend_ffmpeg_is_installed(monkeypatch)
     talks_dir = tmp_path / "talks"
     talks_dir.mkdir()
     monkeypatch.setattr(talk, "TALK_DIR", talks_dir)
