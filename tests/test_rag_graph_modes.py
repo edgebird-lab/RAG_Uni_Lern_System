@@ -261,52 +261,48 @@ def test_log_token_sample_schluckt_fehler_beim_speichern(history_funcs):
 
 
 # ---------------------------------------------------------------------------
-# Sokratischer Dialog: erzwungene Aufloesung statt endlosem Rueckfragen-Loop
-# (_looks_like_giving_up / _is_open_question / _consecutive_open_questions /
-# _sokratisch_force_resolve). Regressionstest fuer einen real beobachteten
-# Dialog, in dem eine fast identische Rueckfrage 4x in Folge gestellt wurde,
-# sogar nach explizitem "Ich weiß es nicht".
+# Sokratischer Dialog: Absicht + Phase deterministisch im Code (_sokratisch_intent,
+# _consecutive_open_questions, _sokratisch_hint_count ...). Regressionstests fuer
+# real beobachtete Faelle: (a) eine fast identische Rueckfrage 4x in Folge, sogar
+# nach explizitem "Ich weiß es nicht"; (b) dieselbe Antwort sechsmal in Folge,
+# egal ob "Hinweis", "Löse es auf" oder "Nächster Aspekt" gedrueckt wurde.
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
 def sokratisch_funcs(load_functions, ragapp_dir):
     def _make(resolve_after_questions=3):
+        from ragapp.graph import socratic_turn
         settings_obj = types.SimpleNamespace(
             SOKRATISCH_RESOLVE_AFTER_QUESTIONS=resolve_after_questions)
         return load_functions(
             ragapp_dir / "graph" / "rag_graph.py",
             ["_looks_like_giving_up", "_looks_like_partial",
              "_looks_like_hint_request", "_looks_like_next_aspect",
-             "_looks_like_socratic_start", "_sokratisch_is_control",
-             "_sokratisch_search_query", "_sokratisch_extra_prompt",
-             "_marker_hit", "_is_open_question",
-             "_consecutive_open_questions", "_sokratisch_force_resolve"],
-            {"settings": settings_obj, "Optional": Optional,
-             "re": __import__("re"),
-             "SOKRATISCH_TOPIC_HINWEIS": __import__(
-                 "ragapp.graph.prompts", fromlist=["SOKRATISCH_TOPIC_HINWEIS"]
-             ).SOKRATISCH_TOPIC_HINWEIS,
-             "SOKRATISCH_START_HINWEIS": __import__(
-                 "ragapp.graph.prompts", fromlist=["SOKRATISCH_START_HINWEIS"]
-             ).SOKRATISCH_START_HINWEIS,
-             "SOKRATISCH_PARTIAL_HINWEIS": __import__(
-                 "ragapp.graph.prompts", fromlist=["SOKRATISCH_PARTIAL_HINWEIS"]
-             ).SOKRATISCH_PARTIAL_HINWEIS,
-             "SOKRATISCH_HINT_HINWEIS": __import__(
-                 "ragapp.graph.prompts", fromlist=["SOKRATISCH_HINT_HINWEIS"]
-             ).SOKRATISCH_HINT_HINWEIS,
-             "SOKRATISCH_NEXT_ASPECT_HINWEIS": __import__(
-                 "ragapp.graph.prompts", fromlist=["SOKRATISCH_NEXT_ASPECT_HINWEIS"]
-             ).SOKRATISCH_NEXT_ASPECT_HINWEIS,
-             "SOKRATISCH_RESOLVE_HINWEIS": __import__(
-                 "ragapp.graph.prompts", fromlist=["SOKRATISCH_RESOLVE_HINWEIS"]
-             ).SOKRATISCH_RESOLVE_HINWEIS,
-             },
-            const_names=["_GIVE_UP_MARKERS", "_TRAILING_SOURCE_TAGS_RE",
-                         "_PARTIAL_MARKERS", "_HINT_MARKERS",
-                         "_NEXT_ASPECT_MARKERS", "_START_MARKERS"],
+             "_looks_like_socratic_start", "_looks_like_complaint",
+             "_sokratisch_is_control", "_sokratisch_search_query", "_marker_hit",
+             "_is_open_question", "_consecutive_open_questions",
+             "_sokratisch_hint_count", "_sokratisch_intent", "_history_turns_raw",
+             "_used_source_keys", "_prefer_unused"],
+            {"settings": settings_obj, "Optional": Optional, "socratic_turn": socratic_turn},
+            const_names=["_GIVE_UP_MARKERS", "_PARTIAL_MARKERS", "_HINT_MARKERS",
+                         "_NEXT_ASPECT_MARKERS", "_START_MARKERS", "_COMPLAINT_MARKERS"],
         )
     return _make
+
+
+HINT = "Gib mir einen Hinweis, ohne die Antwort zu verraten."
+START = "Lass uns über Vektoren sprechen. Stelle eine klausurtypische Einstiegsfrage."
+LOOP = ("Das ist ein guter erster Schritt. Können Sie mir noch sagen, was die Länge "
+        "dieses Pfeils bedeutet?")
+
+
+def _turn(role, content):
+    return {"role": role, "content": content}
+
+
+OPEN = [_turn("user", START), _turn("assistant", "Was ist ein Vektor?")]
+RESOLVED = OPEN + [_turn("user", "Löse es auf."),
+                   _turn("assistant", "Ein Vektor hat Länge und Richtung [Quelle 1].")]
 
 
 def test_looks_like_giving_up_erkennt_typische_aufgeben_phrasen(sokratisch_funcs):
@@ -320,18 +316,24 @@ def test_looks_like_giving_up_erkennt_typische_aufgeben_phrasen(sokratisch_funcs
     assert not f("")
 
 
+def test_looks_like_complaint_erkennt_beschwerden_ueber_den_dialog(sokratisch_funcs):
+    f = sokratisch_funcs()["_looks_like_complaint"]
+    assert f("Kannst du bitte weitermachen, du wiederholst dich dauerhaft")
+    assert f("Das ist immer dasselbe")
+    assert f("Stell mir eine andere Frage")
+    assert not f("Ein Vektor hat Länge, Richtung und Richtungssinn")
+    assert not f("")
+
+
 def test_is_open_question_erkennt_fragezeichen_auch_vor_quellenangaben(sokratisch_funcs):
     f = sokratisch_funcs()["_is_open_question"]
     assert f("Welche Schutzziele werden genannt? [Quelle 6]")
     assert f("Welche Punkte ergänzen das? [Quelle 1, 2, 4]")
     assert f("Was denkst du dazu?")
+    assert f("Können Sie mir noch sagen, wie das aussieht? Konzentrieren wir uns auf den Pfeil.")
     assert not f("Die Antwort ist X, Y und Z laut [Quelle 1].")
     assert not f("")
     assert not f(None)
-
-
-def _turn(role, content):
-    return {"role": role, "content": content}
 
 
 def test_consecutive_open_questions_zaehlt_regressionsdialog_korrekt(sokratisch_funcs):
@@ -371,35 +373,80 @@ def test_consecutive_open_questions_bricht_kette_bei_aufloesung(sokratisch_funcs
     assert f(history) == 1  # nur die juengste Frage zaehlt, Aufloesung bricht die Kette
 
 
-def test_force_resolve_bei_expliziter_aufgeben_phrase(sokratisch_funcs):
-    f = sokratisch_funcs()["_sokratisch_force_resolve"]
-    history = [_turn("user", "x"), _turn("assistant", "Frage 1?")]
-    assert f("Ich weiß es nicht", history) is True
+def test_intent_start_ohne_verlauf_und_bei_neuer_dialoglinie(sokratisch_funcs):
+    f = sokratisch_funcs()["_sokratisch_intent"]
+    assert f(START, []) == ("start", None)
+    assert f("Vektoren sind Pfeile", None) == ("start", None)      # erste freie Eingabe
+    # "Neues Thema" im selben Chat: der Verlauf bleibt, die Linie beginnt neu.
+    assert f("Lass uns über Matrizen sprechen. Stelle eine Einstiegsfrage.", RESOLVED) \
+        == ("start", None)
 
 
-def test_force_resolve_unterhalb_der_schwelle_bleibt_aus(sokratisch_funcs):
-    f = sokratisch_funcs(resolve_after_questions=3)["_sokratisch_force_resolve"]
-    history = [
-        _turn("user", "x"), _turn("assistant", "Frage 1?"),
-        _turn("user", "y"), _turn("assistant", "Frage 2?"),
-    ]
-    assert f("Verfügbarkeit", history) is False
+def test_intent_steuerimpulse_bei_offener_frage(sokratisch_funcs):
+    f = sokratisch_funcs()["_sokratisch_intent"]
+    assert f("Löse es auf.", OPEN) == ("resolve", None)
+    assert f("Ich weiß es nicht", OPEN) == ("resolve", None)
+    assert f(HINT, OPEN) == ("hint", None)
+    assert f("Ich weiß es teilweise.", OPEN) == ("partial", None)
+    assert f("Nächster Aspekt desselben Themas.", OPEN) == ("next", None)
+    assert f("Ein Vektor ist ein Pfeil", OPEN) == ("answer", None)
 
 
-def test_force_resolve_bei_erreichen_der_schwelle_auch_ohne_aufgeben_phrase(sokratisch_funcs):
-    f = sokratisch_funcs(resolve_after_questions=3)["_sokratisch_force_resolve"]
-    history = [
-        _turn("user", "x"), _turn("assistant", "Frage 1?"),
-        _turn("user", "y"), _turn("assistant", "Frage 2?"),
-        _turn("user", "z"), _turn("assistant", "Frage 3?"),
-    ]
-    assert f("Verfügbarkeit", history) is True
+def test_intent_zweiter_hinweis_wird_konkreter_dritter_loest_auf(sokratisch_funcs):
+    f = sokratisch_funcs()["_sokratisch_intent"]
+    one = OPEN + [_turn("user", HINT), _turn("assistant", "Denk an den Pfeil. Was ist ein Vektor?")]
+    two = one + [_turn("user", HINT), _turn("assistant", "Denk an Länge. Was ist ein Vektor?")]
+    assert f(HINT, one) == ("hint", "hint_again")
+    assert f(HINT, two) == ("resolve", "hint_limit")
+    # Eine eigene Antwort dazwischen setzt den Hinweis-Zaehler zurueck.
+    with_answer = one + [_turn("user", "Ein Pfeil"), _turn("assistant", "Und was noch?")]
+    assert f(HINT, with_answer) == ("hint", None)
 
 
-def test_force_resolve_schwelle_ist_konfigurierbar(sokratisch_funcs):
-    f = sokratisch_funcs(resolve_after_questions=1)["_sokratisch_force_resolve"]
-    history = [_turn("user", "x"), _turn("assistant", "Frage 1?")]
-    assert f("Verfügbarkeit", history) is True
+def test_intent_nach_aufloesung_werden_hinweis_und_aufloesen_zum_naechsten_aspekt(sokratisch_funcs):
+    # Das war der Kern des gemeldeten Haengers: "Hinweis"/"Löse es auf" ohne offene
+    # Frage liess das Modell denselben Text von vorn erzeugen.
+    f = sokratisch_funcs()["_sokratisch_intent"]
+    assert f(HINT, RESOLVED) == ("next", "already_resolved")
+    assert f("Löse es auf.", RESOLVED) == ("next", "already_resolved")
+    assert f("Ich weiß es teilweise.", RESOLVED) == ("next", "already_resolved")
+    assert f("Nächster Aspekt desselben Themas.", RESOLVED) == ("next", None)
+
+
+def test_intent_beschwerde_fuehrt_immer_zu_einer_neuen_frage(sokratisch_funcs):
+    f = sokratisch_funcs()["_sokratisch_intent"]
+    beschwerde = "Kannst du bitte weitermachen, du wiederholst dich dauerhaft"
+    assert f(beschwerde, OPEN) == ("next", "complaint")
+    assert f(beschwerde, RESOLVED) == ("next", "complaint")
+
+
+def test_intent_automatisch_aufloesen_nur_bei_freier_antwort_und_ab_schwelle(sokratisch_funcs):
+    f = sokratisch_funcs(resolve_after_questions=3)["_sokratisch_intent"]
+    two = [_turn("user", "x"), _turn("assistant", "Frage 1?"),
+           _turn("user", "y"), _turn("assistant", "Frage 2?")]
+    three = two + [_turn("user", "z"), _turn("assistant", "Frage 3?")]
+    assert f("Verfügbarkeit", two) == ("answer", None)
+    assert f("Verfügbarkeit", three) == ("resolve", "streak")
+    # Ein ausdruecklicher Impuls sticht die automatische Aufloesung (frueher wurde
+    # "Nächster Aspekt" hier faelschlich in eine Aufloesung umgebogen).
+    assert f("Nächster Aspekt desselben Themas.", three) == ("next", None)
+    assert f(HINT, three) == ("hint", None)
+    assert sokratisch_funcs(resolve_after_questions=1)["_sokratisch_intent"](
+        "Verfügbarkeit", two[:2]) == ("resolve", "streak")
+
+
+def test_intent_regression_dieselbe_antwort_sechsmal_in_folge(sokratisch_funcs):
+    """Der gemeldete Chat: Die KI-Antworten endeten (fast) immer mit derselben Frage.
+    Egal welcher Impuls kommt - der Code bestimmt die Absicht eindeutig und unabhaengig
+    vom Text der Wiederholung."""
+    f = sokratisch_funcs()["_sokratisch_intent"]
+    history = [_turn("user", START), _turn("assistant", LOOP)]
+    for q in ("Löse es auf.", HINT, "Nächster Aspekt desselben Themas."):
+        history += [_turn("user", q), _turn("assistant", LOOP)]
+    assert f("Löse es auf.", history) == ("resolve", None)
+    assert f("Nächster Aspekt desselben Themas.", history) == ("next", None)
+    assert f("Kannst du bitte weitermachen, du wiederholst dich dauerhaft", history) \
+        == ("next", "complaint")
 
 
 def test_partial_ist_kein_aufgeben(sokratisch_funcs):
@@ -421,29 +468,38 @@ def test_sokratisch_search_query_ankert_steuerimpulse_am_thema(sokratisch_funcs)
     assert f("Ich weiß es teilweise.", history, topic) == topic
     assert f("Gib mir einen Hinweis, ohne die Antwort zu verraten.",
              history, topic) == topic
+    assert f("Du wiederholst dich", history, topic) == topic
     assert f("Vertraulichkeit", history, topic) == f"{topic}: Vertraulichkeit"
 
 
-def test_sokratisch_extra_prompt_start_partial_hint_resolve(sokratisch_funcs):
-    extra = sokratisch_funcs()["_sokratisch_extra_prompt"]
-    topic = "Schutzziele"
-    start = extra("Lass uns über Schutzziele sprechen. Stelle eine Einstiegsfrage dazu.",
-                  [], topic)
-    assert "Schutzziele" in start
-    assert "Start" in start or "Einstiegsfrage" in start
-    assert "vollständig auf" not in start
-    assert "Dateiname" in start or "Dokumenttitel" in start
+def test_used_source_keys_liest_quellen_aus_dem_verlauf(sokratisch_funcs):
+    f = sokratisch_funcs()["_used_source_keys"]
+    history = [
+        {"role": "user", "content": "x"},
+        {"role": "assistant", "content": "y", "sources": [
+            {"filename": "a.pdf", "location": "Seite 1"},
+            {"filename": "a.pdf", "location": "Seite 2"}]},
+        {"role": "assistant", "content": "z"},                 # ohne Quellen
+    ]
+    assert f(history) == {("a.pdf", "Seite 1"), ("a.pdf", "Seite 2")}
+    assert f(None) == set()
 
-    history = [_turn("user", "x"), _turn("assistant", "Was gehört dazu?")]
-    part = extra("Ich weiß es teilweise.", history, topic)
-    assert "TEIL" in part
-    assert "vollständig auf" not in part
 
-    hint = extra("Gib mir einen Hinweis, ohne die Antwort zu verraten.", history, topic)
-    assert "Hinweis" in hint
-    assert extra("Tipp bitte.", history, topic) == hint or "Hinweis" in extra(
-        "Tipp bitte.", history, topic)
+def _cand(filename, location):
+    return {"document": "t", "meta": {"filename": filename, "location": location}}
 
-    resolve = extra("Löse es auf.", history, topic)
-    assert "vollständig auf" in resolve
-    assert "vollständig auf" in extra("Zeig die Lösung.", history, topic)
+
+def test_prefer_unused_stellt_noch_nicht_besprochene_stellen_nach_vorn(sokratisch_funcs):
+    f = sokratisch_funcs()["_prefer_unused"]
+    cands = [_cand("a.pdf", "Seite 1"), _cand("a.pdf", "Seite 2"), _cand("a.pdf", "Seite 3"),
+             _cand("a.pdf", "Seite 4")]
+    used = {("a.pdf", "Seite 1"), ("a.pdf", "Seite 2")}
+    out = f(cands, used, 3)
+    assert [c["meta"]["location"] for c in out] == ["Seite 3", "Seite 4", "Seite 1"]
+
+
+def test_prefer_unused_bleibt_bei_zu_wenig_neuem_in_urspruenglicher_reihenfolge(sokratisch_funcs):
+    f = sokratisch_funcs()["_prefer_unused"]
+    cands = [_cand("a.pdf", "Seite 1"), _cand("a.pdf", "Seite 2"), _cand("a.pdf", "Seite 3")]
+    used = {("a.pdf", "Seite 1"), ("a.pdf", "Seite 2")}      # nur EINE neue Stelle
+    assert [c["meta"]["location"] for c in f(cands, used, 2)] == ["Seite 1", "Seite 2"]

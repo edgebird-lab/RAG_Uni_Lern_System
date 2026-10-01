@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -132,17 +133,20 @@ class LLM:
         json_mode: bool = False,
         think: bool | str = False,          # gpt-oss & Co.: "low"/"medium"/"high" moeglich
         retries: int = 2,
+        options: dict[str, Any] | None = None,   # zusaetzliche Ollama-Optionen, z. B. repeat_penalty
         _thinking_fallback: bool = False,   # nur JSON-Pfad: leeren content aus dem Denk-Kanal retten
     ) -> str:
-        options = {
+        opts = {
             "temperature": settings.LLM_TEMPERATURE if temperature is None else temperature,
             "num_ctx": num_ctx or settings.LLM_NUM_CTX,
             "num_predict": num_predict or settings.LLM_NUM_PREDICT,
         }
+        if options:
+            opts.update(options)
         kwargs: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
-            "options": options,
+            "options": opts,
             "think": think,
             "keep_alive": settings.keep_alive_seconds(),
         }
@@ -568,6 +572,18 @@ def release_llm() -> int:
         return 0
 
 
+def release_llm_unless_in_task() -> int:
+    """Wie ``release_llm``, aber NICHT innerhalb eines aeusseren ``llm_task``: Batch-
+    Laeufe, die dieselbe Aufgabe fuer viele Themen wiederholen (Lernplan -> Karten fuer
+    alle Themen), behalten so das Modell, statt es nach jedem Thema zu entladen und neu
+    zu laden (bei grossen Modellen 10-20 s je Thema). Der aeussere ``llm_task`` entlaedt
+    am Ende. Ebenso nicht, solange ein ``llm_task`` in einem ANDEREN Thread laeuft
+    (Hintergrundauftrag neben dem Chat): das Modell gehoert dann dem anderen Auftrag."""
+    if _llm_task_depth.get() > 0 or llm_tasks_active() > 0:
+        return 0
+    return release_llm()
+
+
 def require_vram(model: str | None = None) -> dict:
     """Vor dem Laden: eigene Reste freigeben, dann pruefen ob genug VRAM frei ist.
 
@@ -583,15 +599,40 @@ def require_vram(model: str | None = None) -> dict:
     model = model or settings.LLM_MODEL
     if not _model_resident(model):
         # Messung nur auf wirklich freiem Speicher: was die letzte Aufgabe
-        # noch haelt, zaehlt nicht als "verfuegbar".
-        release_llm()
+        # noch haelt, zaehlt nicht als "verfuegbar". Laeuft aber gerade ein anderer
+        # llm_task (Hintergrundauftrag), wird dessen Modell NICHT entladen - der
+        # Preflight meldet dann ehrlich, was wirklich frei ist.
+        release_llm_unless_in_task()
     pf = vram_preflight(model)
+    if pf.get("status") == "low" and _VRAM_SETTLE_SECONDS > 0:
+        # Ollama/der Treiber geben den Speicher eines gerade entladenen Modells
+        # verzoegert frei (beobachtet: zwei Aufgaben direkt nacheinander - die zweite
+        # sah "nur 3.8 GB frei", kurz darauf waren es ~20). Kurz nachmessen, bevor ein
+        # Fehler gemeldet wird; ist der Speicher wirklich belegt (zweite GPU-App),
+        # kostet das nur diese wenigen Sekunden, bis die Meldung kommt.
+        deadline = time.monotonic() + _VRAM_SETTLE_SECONDS
+        while pf.get("status") == "low" and time.monotonic() < deadline:
+            time.sleep(0.5)
+            pf = vram_preflight(model)
     if pf.get("status") == "low":
         raise VramLowError(vram_low_message(pf))
     return pf
 
 
+_VRAM_SETTLE_SECONDS = 6.0   # so lange darf ein frisch entladenes Modell den VRAM noch halten
 _llm_task_depth: ContextVar[int] = ContextVar("llm_task_depth", default=0)
+# Der ContextVar sieht nur den EIGENEN Thread. Ein Hintergrundauftrag (Lernplan -> Karten
+# fuer alle Themen, siehe ragapp/jobs.py) laeuft aber neben dem Chat im Hauptthread:
+# Wuerde dessen llm_task am Ende entladen, lagen dem Auftrag mittendrin die Modelle weg.
+# Deshalb zaehlt dieser Zaehler die aeusseren llm_task-Bloecke ueber ALLE Threads - nur
+# der letzte entlaedt ("wer zuletzt geht, macht das Licht aus").
+_active_tasks = 0
+_active_tasks_lock = threading.Lock()
+
+
+def llm_tasks_active() -> int:
+    """Zahl der gerade laufenden aeusseren ``llm_task``-Bloecke (alle Threads)."""
+    return _active_tasks
 
 
 def _unload_tts_for_llm() -> None:
@@ -614,17 +655,24 @@ def llm_task(model: str | None = None):
     nach Aufgabe 1 aus und Bewertung 2/3 lief in den VRAM-Abbruch (Live-Test:
     100 % Gesamt aus einer Note, zwei Aufgaben mit — %).
     """
+    global _active_tasks
     depth = _llm_task_depth.get()
     if depth == 0:
         require_vram(model)
         _unload_tts_for_llm()
+        with _active_tasks_lock:
+            _active_tasks += 1
     token = _llm_task_depth.set(depth + 1)
     try:
         yield
     finally:
         _llm_task_depth.reset(token)
         if depth == 0:
-            release_llm()
+            with _active_tasks_lock:
+                _active_tasks -= 1
+                last_one_out = _active_tasks <= 0
+            if last_one_out:
+                release_llm()
 
 
 # --------------------------------------------------------------------------- #

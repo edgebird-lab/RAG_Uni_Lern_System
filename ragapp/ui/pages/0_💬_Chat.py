@@ -102,6 +102,9 @@ if _verstehen_prefill:
         "topic": _vs_topic,
         "minutes": int(_verstehen_prefill.get("minutes") or 20),
         "started_at": time.time(),
+        # Lernplan: NUR im Dokument des Themas suchen (nicht im ganzen Fach).
+        "doc_ids": [d for d in (_verstehen_prefill.get("doc_ids") or []) if d],
+        "reference": (_verstehen_prefill.get("reference") or "").strip(),
     }
     st.session_state.messages = []
 
@@ -463,15 +466,22 @@ def _followup_chips(idx: int) -> None:
             st.rerun()
 
 
-def _socratic_chips(idx: int) -> None:
-    """Steuerung auf derselben Dialoglinie statt thematisch zu springen."""
+def _socratic_chips(idx, answer: str = "") -> None:
+    """Steuerung auf derselben Dialoglinie statt thematisch zu springen. Welche Impulse
+    sinnvoll sind, hängt vom Stand ab: Endet die letzte KI-Antwort mit einer offenen
+    Frage, gibt es Hinweis/Teilweise/Auflösen/Nächster Aspekt; war sie schon eine
+    Auflösung, bleibt nur „Nächster Aspekt“ (ein „Hinweis“ ohne Frage führte früher
+    zu demselben Text von vorn). Die Texte bleiben unverändert - Verstehen-Sitzungen
+    erkennen die Steuerzeilen daran (student_flow._VERSTEHEN_CTRL)."""
+    from ragapp.graph.socratic_turn import is_open_question
     cols = st.columns(4)
-    prompts = (
+    next_aspect = ("Nächster Aspekt", "Nächster Aspekt desselben Themas.")
+    prompts = ((
         ("Hinweis", "Gib mir einen Hinweis, ohne die Antwort zu verraten."),
         ("Teilweise", "Ich weiß es teilweise."),
         ("Auflösen", "Löse es auf."),
-        ("Nächster Aspekt", "Nächster Aspekt desselben Themas."),
-    )
+        next_aspect,
+    ) if is_open_question(answer) else (next_aspect,))
     for col, (label, q) in zip(cols, prompts):
         if col.button(label, key=f"soc_{idx}_{label}"):
             st.session_state["_pending_prompt"] = q
@@ -541,7 +551,7 @@ for _mi, msg in enumerate(st.session_state.messages):
             _save_note_button(_q, msg["content"], msg.get("sources"), key=f"note_h{_mi}")
             if _chat_mode == "sokratisch":
                 if _mi == len(st.session_state.messages) - 1:
-                    _socratic_chips(_mi)
+                    _socratic_chips(_mi, msg["content"])
             else:
                 _followup_chips(_mi)
         if msg.get("sources"):
@@ -677,7 +687,8 @@ if _chat_mode == "sokratisch" and st.session_state.get("socratic_topic"):
     if _vs_sess.get("topic") == _topic_now:
         _left = max(0, int(_vs_sess.get("minutes") or 20) - int(
             (time.time() - float(_vs_sess.get("started_at") or time.time())) / 60))
-        st.info(f"Verstehen-Sitzung · **{_topic_now}** · noch etwa {_left} Min")
+        st.info(f"Verstehen-Sitzung · **{_topic_now}** · noch etwa {_left} Min"
+                + (f" · 📄 nur aus {_vs_sess['reference']}" if _vs_sess.get("reference") else ""))
         _has_msgs = bool(st.session_state.get("messages"))
         _pending = bool(st.session_state.get("_pending_prompt"))
         _end_clicked = False
@@ -852,7 +863,9 @@ else:
                 _apply_chat_mascot(waiting=True, waiting_stage="retrieve",
                                    last_user=prompt)
 
-        # Schnell-Modus (Gegenprüfung AUS) / Tutor UND Quellen-Anzeige AN -> streamen
+        # Schnell-Modus (Gegenprüfung AUS) / Tutor -> streamen. Der Sokratische Dialog
+        # streamt NICHT: seine Antwort wird als Ganzes geprüft (Wiederholung, unaufgelöst)
+        # und bei Mängeln neu erzeugt - answer_query_stream liefert dann (None, {}).
         if not _vram_low and _faith_for_call is False:
             try:
                 _stream, _holder = answer_query_stream(
@@ -862,7 +875,6 @@ else:
                     history=st.session_state.messages[:-1],
                     chat_mode=_chat_mode,
                     include_notes=bool(st.session_state.get("chat_include_notes")),
-                    socratic_topic=_soc_topic,
                     on_stage=_on_stage)
             except Exception:  # noqa: BLE001 - Setup-Fehler -> blockierender Fallback
                 _stream, _holder = None, {}
@@ -882,13 +894,20 @@ else:
         if result is None:
             _on_stage("retrieve")
             try:
+                # Verstehen aus dem Lernplan: Retrieval nur im Dokument des Themas.
+                _vs_now = st.session_state.get("verstehen_session") or {}
+                _vs_doc_ids = (list(_vs_now.get("doc_ids") or [])
+                               if (_chat_mode == "sokratisch"
+                                   and _vs_now.get("topic") == _soc_topic) else [])
                 result = answer_query(prompt, subject=subject_filter,
+                                      doc_ids=_vs_doc_ids or None,
                                       use_reranker=use_reranker_ui,
                                       check_faithfulness=_faith_for_call,
                                       history=st.session_state.messages[:-1],
                                       chat_mode=_chat_mode,
                                       include_notes=bool(st.session_state.get("chat_include_notes")),
-                                      socratic_topic=_soc_topic)
+                                      socratic_topic=_soc_topic,
+                                      on_stage=_on_stage)
             except Exception as exc:  # noqa: BLE001 - rohe Fehler nie roh anzeigen
                 result = {"answer": _friendly_error(exc), "mode": "fallback",
                           "sources": [], "total_time": 0}
@@ -921,7 +940,7 @@ else:
             _save_card_button(prompt, _answer, meta, sources, key="card_new")
             _save_note_button(prompt, _answer, sources, key="note_new")
             if _chat_mode == "sokratisch":
-                _socratic_chips("new")
+                _socratic_chips("new", _answer)
             else:
                 _followup_chips("new")
             _apply_chat_mascot(
