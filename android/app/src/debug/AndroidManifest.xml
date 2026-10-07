@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Nur im Debug-Build: Mess-Spike (Phase 1), per adb gestartet. -->
+        <activity android:name=".spike.SpikeActivity" android:exported="true" />
+        <activity android:name=".spike.SpikeEmbedActivity" android:exported="true" />
+        <activity android:name=".spike.DebugImportActivity" android:exported="true" />
+    </application>
+</manifest>
