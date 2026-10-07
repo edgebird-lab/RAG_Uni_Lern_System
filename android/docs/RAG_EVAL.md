@@ -36,6 +36,30 @@ Die Gerätewerte decken sich mit der Offline-Schätzung aus dem Spike (Hybrid @4
 
 Fazit: Für Chat mit Quellen taugt E2B. Die wichtigste Schutzfunktion, „Nicht im Material gefunden“ bei fehlender Antwort, hat auf allen 19 Testfällen funktioniert. Die Schwächen liegen bei umformulierten Fragen mit juristischen Fachwörtern (falsche Verweigerung). Hebel: Rückfrage an den Nutzer statt Verweigerung, Top-6 statt Top-4 bei kurzem Kontext, Prompt-Feinschliff.
 
+## Experimente gegen falsche Verweigerungen (alle 102 Fragen, Pixel 9 Pro XL)
+
+| Konfiguration | Beleg in den Quellen | falsch verweigert | Unbeantwortbare korrekt verweigert | Antwort deckt erwartete Begriffe* |
+|---|---|---|---|---|
+| **streng, 4 Quellen (Standard)** | 79/83 | 3 | **19/19** | 63/76 |
+| tolerant, 4 Quellen | 79/83 | 1 | 16/19 | 63/78 |
+| streng, 6 Quellen | 80/83 | 2 | 18/19 | 59/78 |
+| tolerant, 6 Quellen | 80/83 | 0 | 17/19 | 64/80 |
+
+\* grober Wortabgleich mit der erwarteten Antwort, nur Orientierung.
+
+Der „tolerante“ Prompt erlaubt Umschreibungen; 6 statt 4 Quellen liefern mehr Kontext. Beides senkt die falschen Verweigerungen, **erhöht aber die erfundenen Antworten auf unbeantwortbare Fragen** (bis zu 3 von 19). Mehr Quellen verschlechtern bei E2B außerdem die Treffsicherheit des Wortabgleichs (59 statt 63), vermutlich weil das kleine Modell durch mehr Text abgelenkt wird.
+
+**Entscheidung:** Strenger Standard mit 4 Quellen bleibt. Eine erfundene Antwort schadet in einer Lern-App mehr als eine Verweigerung. Als Ausgleich bietet der Chat nach „Nicht im Material gefunden“ den Knopf **„Mit mehr Quellen erneut versuchen“** (6 Quellen, toleranter Prompt, Antwort mit Hinweis „bitte Quellen prüfen“). So entscheidet die Nutzerin, wann sie das Risiko eingeht.
+
+## Vektorsuche bei großen Bibliotheken (Plan 4.2)
+
+| Abschnitte | Erste Suche inkl. Laden aus der Datenbank | Folgesuchen (Median) | Heap |
+|---|---|---|---|
+| 10.000 | 2,0 s | 190 ms | ca. 63 MB |
+| 50.000 | 23,9 s | 382 ms | ca. 159 MB |
+
+Bis ca. 20.000 Abschnitte (ca. 60–100 Bücher) ist das unproblematisch. Darüber lohnen sich Int8-Quantisierung (4-mal weniger Speicher, schnelleres Laden) oder ein Vektor-Cache als Datei. Nicht vorab optimiert.
+
 ## Befunde aus der Integration (wichtig für die weitere Arbeit)
 
 1. **Lange Prompts scheitern nach dem Laden des Embedders** ("Failed to invoke the compiled model", OpenCL, `cl_arguments.cc`), wenn das Sprachmodell vorher noch nie mit einem langen Prompt gelaufen ist. Die GPU-Kerne für lange Eingaben entstehen erst beim ersten passenden Aufruf. Prompts bis ca. 1300 Zeichen liefen, ab ca. 1800 Zeichen scheiterten sie. **Abhilfe:** `LiteRtLmEngine.load()` macht direkt nach dem Laden einen Aufwärmlauf mit ca. 4500 Zeichen. Danach laufen Sprachmodell und Embedder im selben Prozess in beliebiger Reihenfolge.

@@ -9,6 +9,8 @@ import de.edgebird.lernsystem.data.chat.RagChat
 import de.edgebird.lernsystem.data.search.HybridRetriever
 import de.edgebird.lernsystem.data.search.KeywordSearch
 import de.edgebird.lernsystem.data.search.VectorIndex
+import de.edgebird.lernsystem.data.study.StudyRepository
+import de.edgebird.lernsystem.data.study.StudySettings
 import de.edgebird.lernsystem.ingest.ImportPipeline
 import de.edgebird.lernsystem.ingest.Loaders
 import java.io.File
@@ -36,9 +38,28 @@ class AppGraph(private val context: Context) {
         LiteRtLmEngine(llmModelFile.absolutePath, litertCache.absolutePath, LlmBackend.GPU, maxNumTokens = 4096, speculativeDecoding = true)
     }
 
-    private val queryEmbedder by lazy { newEmbedder() }
+    /** Ein gemeinsamer Embedder für Suchanfragen und die Dublettenprüfung der Kartenerzeugung. */
+    val sharedEmbedder by lazy { newEmbedder() }
     val retriever: HybridRetriever by lazy {
-        HybridRetriever(db, KeywordSearch(db), VectorIndex(db, embeddingModelId), if (embeddingModelFile.exists()) queryEmbedder else null)
+        HybridRetriever(db, KeywordSearch(db), VectorIndex(db, embeddingModelId), if (embeddingModelFile.exists()) sharedEmbedder else null)
     }
+    /** Gibt es schon einen GPU-Cache des Sprachmodells? Ohne ihn dauert der erste Start mehrere Minuten. */
+    fun llmCacheWarm(): Boolean = litertCache.listFiles { f -> f.name.startsWith(llmModelFile.name) && "mldrift" in f.name }.orEmpty().isNotEmpty()
+
     val chat: RagChat by lazy { RagChat(retriever, llm) }
+
+    val prefs by lazy { context.getSharedPreferences("settings", Context.MODE_PRIVATE) }
+
+    fun studySettings() = StudySettings(prefs.getInt(PREF_DAILY_GOAL, 40), prefs.getInt(PREF_NEW_PER_DAY, 20))
+
+    fun saveStudySettings(s: StudySettings) {
+        prefs.edit().putInt(PREF_DAILY_GOAL, s.dailyReviewGoal).putInt(PREF_NEW_PER_DAY, s.newCardsPerDay).apply()
+    }
+
+    val study: StudyRepository by lazy { StudyRepository(db, settings = ::studySettings) }
+
+    private companion object {
+        const val PREF_DAILY_GOAL = "daily_goal"
+        const val PREF_NEW_PER_DAY = "new_per_day"
+    }
 }

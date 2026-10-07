@@ -7,6 +7,8 @@
         <activity android:name=".spike.DebugImportActivity" android:exported="true" />
         <activity android:name=".spike.SpikeRetrievalActivity" android:exported="true" />
         <activity android:name=".spike.SpikeRagEvalActivity" android:exported="true" />
+        <activity android:name=".spike.DebugCardsActivity" android:exported="true" />
+        <activity android:name=".spike.DebugSimilarityActivity" android:exported="true" />
         <activity android:name=".spike.SpikeComboActivity" android:exported="true" />
     </application>
 </manifest>

@@ -104,7 +104,7 @@ Jeder Schritt ist klein, einzeln testbar und endet mit einem überprüfbaren Erg
 ### Phase 4: Suche und Chat (RAG)
 
 - [x] 4.1 (Snowball-German-Port mit Paritätstest gegen Python: 9022 Wörter, 3847 Tokens identisch) FTS5-Suche inkl. deutscher Vorverarbeitung (Stemming/Normalisierung, Ersatz für Snowball).
-- [~] 4.2 Vektor-Suche (Brute-Force-Cosinus), umgesetzt und mit 5462 Chunks gemessen (ca. 200 ms inkl. Anfrage-Embedding); Benchmark bei 10k/50k Chunks fehlt.
+- [x] 4.2 Vektor-Suche (Brute-Force-Cosinus), gemessen bei 5k/10k/50k Abschnitten (siehe `docs/RAG_EVAL.md`: 190 ms bei 10k, 382 ms bei 50k).
 - [x] 4.3 Fusion per RRF (Formel aus `ARCHITEKTUR.md` übernehmen), Top-K auf 3–4.
 - [x] 4.4 Prompt-Vorlage „nur aus dem Material antworten, Quelle nennen, sonst ‚Nicht im Material gefunden‘“. Prompts aus `graph/prompts.py` als Ausgangsbasis, gekürzt.
 - [x] 4.5 Chat-UI: Streaming-Antwort, Abbrechen, klickbare Quellen mit Textstelle und Seite.
@@ -113,12 +113,12 @@ Jeder Schritt ist klein, einzeln testbar und endet mit einem überprüfbaren Erg
 
 ### Phase 5: Karteikarten und Lernen
 
-- [ ] 5.1 FSRS nach Kotlin portieren (Vorlage: Python-`fsrs`, Tests mit festen Referenzwerten).
-- [ ] 5.2 Karten-Erzeugung aus Chunks: strikt strukturierte JSON-Ausgabe (Frage/Antwort/Cloze), Retry bei kaputtem JSON (wie `generate_json` in `llm.py`).
-- [ ] 5.3 Qualitätsfilter für Karten (Vorlage: `card_quality.py`), Duplikat-Erkennung.
-- [ ] 5.4 Lern-UI: Karte zeigen, bewerten (Nochmal/Schwer/Gut/Leicht), nächste Fälligkeit.
-- [ ] 5.5 Tagesziel, Streak, einfache Fortschrittsansicht.
-- [ ] 5.6 Karten manuell anlegen/bearbeiten/löschen; Anki-Export (CSV) optional.
+- [x] 5.1 (Parität: 2553 zufällige Bewertungen identisch zu py-fsrs 6.3, auf JVM und auf dem Gerät) FSRS nach Kotlin portieren (Vorlage: Python-`fsrs`, Tests mit festen Referenzwerten).
+- [x] 5.2 Karten-Erzeugung aus Chunks: zweistufig wie in der PC-App (Fragen als JSON, dann je Frage eine Musterlösung; Retry bei Mängeln; Cloze-Karten gibt es auch dort nicht) (wie `generate_json` in `llm.py`).
+- [x] 5.3 (Parität mit `card_quality.py`: 133 Fragen, 213 Antworten identisch; Dubletten per Embedding, Schwelle 0,89 an EmbeddingGemma geprüft) Qualitätsfilter für Karten (Vorlage: `card_quality.py`), Duplikat-Erkennung.
+- [x] 5.4 Lern-UI: Karte zeigen, mit drei Tasten bewerten (Nicht gewusst / Halb / Gewusst wie in der PC-App), Vorschau der nächsten Fälligkeit je Taste.
+- [x] 5.5 Tagesziel, Serie, Wochenansicht und Zahl gefestigter Karten.
+- [x] 5.6 Karten manuell anlegen/bearbeiten/löschen; Anki-Export (TSV).
 
 ### Phase 6: Zusammenfassungen
 
@@ -165,6 +165,7 @@ Jeder Schritt ist klein, einzeln testbar und endet mit einem überprüfbaren Erg
 | E2B liefert zu schwache deutsche Antworten | Eval früh (Phase 2), kurzer Kontext, JSON-Constrained-Decoding, optional E4B, ggf. LoRA-Finetuning |
 | Tempo/Akku/Hitze | Spike-Messungen, Drosselung beim Embedding, Streaming-UI |
 | Speicherfehler (OOM) bei großem Modell | Mindest-RAM im Manifest, Geräteprüfung im Erststart, E2B als Standard |
+| Android-Regex (ICU) weicht von der JVM ab (Flag `U`, einzelnes `}`): JVM-Tests fanden zwei App-Abstürze nicht | Paritätstests laufen zusätzlich auf dem Gerät (`CoreParityOnDeviceTest`) |
 | Lange Prompts scheitern, wenn Embedder und Sprachmodell die GPU teilen (gefunden und behoben, siehe `RAG_EVAL.md`) | Aufwärmlauf mit langem Prompt in `LiteRtLmEngine.load()`; Regressionstest bei jeder LiteRT-LM-Aktualisierung |
 | LiteRT-LM-API ändert sich | Interface-Schicht, Modell und Version im eigenen Release eingefroren |
 | GitHub-Release nicht erreichbar | Mehrere URLs im Manifest, Wiederaufnahme, Offline nach erstem Download |

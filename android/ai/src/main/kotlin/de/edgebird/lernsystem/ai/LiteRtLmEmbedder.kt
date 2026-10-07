@@ -7,6 +7,8 @@ import com.google.ai.edge.litertlm.EmbeddingOptions
 import com.google.ai.edge.litertlm.InputData
 import de.edgebird.lernsystem.core.ai.Embedder
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /** [Embedder] auf Basis von LiteRT-LM (EmbeddingGemma 2, `.litertlm`). Vektoren sind L2-normalisiert. */
@@ -18,6 +20,7 @@ class LiteRtLmEmbedder(
     private val maxInputLength: Int = 512,
 ) : Embedder {
     private var engine: EmbeddingEngine? = null
+    private val gate = Mutex()
 
     override suspend fun load() {
         if (engine != null) return
@@ -32,7 +35,9 @@ class LiteRtLmEmbedder(
         }
     }
 
-    override suspend fun embed(texts: List<String>): List<FloatArray> = withContext(Dispatchers.Default) {
+    override suspend fun embed(texts: List<String>): List<FloatArray> = gate.withLock { embedLocked(texts) }
+
+    private suspend fun embedLocked(texts: List<String>): List<FloatArray> = withContext(Dispatchers.Default) {
         val e = checkNotNull(engine) { "load() wurde nicht aufgerufen" }
         val options = EmbeddingOptions(normalize = true, outputSize = dimensions)
         try {

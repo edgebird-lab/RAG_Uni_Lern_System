@@ -1,0 +1,56 @@
+[
+ {
+  "front": "Was geschieht mit der Photosyntheseleistung, wenn thermophile Cyanobakterien ihr Temperaturoptimum von 70 °C überschreiten?",
+  "answer": "Nach Erreichen des Temperaturoptimums von 70 °C fällt die Photosyntheseleistung aufgrund der beginnenden Denaturierung der für die Photosynthese zuständigen Enzyme wieder ab. Bei thermophilen Cyanobakterien kommt die Photosyntheseleistung schließlich ganz zum Erliegen.",
+  "doc": "wiki_photosynthese",
+  "chunk": 147
+ },
+ {
+  "front": "Welche Temperaturbereiche sind für Pflanzen in unseren Breiten optimal für die Photosynthese, und wie unterscheidet sich dies vom Temperaturoptimum thermophiler Cyanobakterien?",
+  "answer": "Bei den Pflanzen in unseren Breiten liegen die Optima für die Photosynthese bei $20$ bis $30$ °C. Das Temperaturoptimum thermophiler Cyanobakterien liegt jedoch bei $70$ °C. Nach Erreichen dieses Optimums fällt die Photosyntheseleistung bei Cyanobakterien ab, da die Proteine der für die Photosynthese zuständigen Enzyme denaturieren.",
+  "doc": "wiki_photosynthese",
+  "chunk": 147
+ },
+ {
+  "front": "Welche beiden Energiekomponenten bilden das Verhältnis, das die chemische Energie der Photosynthese ergibt?",
+  "answer": "Das Verhältnis, das die chemische Energie der Photosynthese ergibt, ist das Verhältnis der gewonnenen chemischen Energie $E_{\\text{chem}}$ zur absorbierten Energie der elektromagnetischen Strahlung $E_{\\text{abs}}$. Das Verhältnis wird als $\\frac{E_{\\text{chem}}}{E_{\\text{abs}}}$ bezeichnet.",
+  "doc": "wiki_photosynthese",
+  "chunk": 120
+ },
+ {
+  "front": "Wie wird die chemische Energie der Photosynthese im Verhältnis zur absorbierten Energie der elektromagnetischen Strahlung definiert?",
+  "answer": "Die chemische Energie der Photosynthese ergibt sich aus dem Verhältnis der gewonnenen chemischen Energie $E_{\\text{chem}}$ zu der absorbierten Energie der elektromagnetischen Strahlung $E_{\\text{abs}}$. Die Definition lautet somit $\\frac{E_{\\text{chem}}}{E_{\\text{abs}}}$.",
+  "doc": "wiki_photosynthese",
+  "chunk": 120
+ },
+ {
+  "front": "Welche Anpassung muss der Elektronentransport der oxygenen Photosynthese berücksichtigen?",
+  "answer": "Eine Regulation des Elektronentransports ist wichtig, um Schädigungen des Photosyntheseapparates, der Membransysteme und der Proteine zu vermeiden, die durch unkontrollierte Übertragung von Elektronen oder Anregungszuständen auf Sauerstoff entstehen können. Der Elektronentransport muss zudem an den Bedarf der Pflanze an NADPH und ATP angepasst werden.",
+  "doc": "wiki_photosynthese",
+  "chunk": 93
+ },
+ {
+  "front": "Welche Konsequenzen ergeben sich aus einer unkontrollierten Übertragung von Elektronen oder Anregungszuständen auf Sauerstoff?",
+  "answer": "Werden Elektronen oder Anregungszustände unkontrolliert auf Sauerstoff übertragen, können Schädigungen des Photosyntheseapparates, der Membransysteme und der Proteine entstehen. Daher ist eine Regulation des Elektronentransports äußerst wichtig. Zudem muss dieser Prozess auf den Bedarf der Pflanze an NADPH und ATP abgestimmt werden.",
+  "doc": "wiki_photosynthese",
+  "chunk": 93
+ },
+ {
+  "front": "Wie wird das gewonnene NADPH im Calvin-Zyklus verwendet, und welche spezifische Reduktionsreaktion findet dabei statt?",
+  "answer": "Das gewonnene NADPH wird im Calvin-Zyklus verwendet, um 1,3-Bisphosphoglycerat zu Glycerinaldehyd-3-phosphat zu reduzieren. Diese spezifische Reduktionsreaktion findet statt.",
+  "doc": "wiki_photosynthese",
+  "chunk": 66
+ },
+ {
+  "front": "Welche chemische Reaktion stellt die vereinfachte Teilgleichung der Lichtreaktion dar, und welche Rolle spielt das Reduktionsäquivalent [H] in dieser Reaktion?",
+  "answer": "Die vereinfachte Teilgleichung der Lichtreaktion stellt die Reaktion dar: $\\mathrm{12\\ H_{2}O\\ {\\xrightarrow {h\\nu }}\\ 24\\ [H]+6\\ O_{2}}$. Das Reduktionsäquivalent $[\\mathrm{H}]$ stellt in dieser Reaktion ein Reduktionsmittel dar.",
+  "doc": "wiki_photosynthese",
+  "chunk": 66
+ },
+ {
+  "front": "Welche Lizenz ist für den Wikipedia-Artikel zur Photosynthese hinterlegt?",
+  "answer": "Lizenz: CC BY-SA 4.0 (https:\/\/creativecommons.org\/licenses\/by-sa\/4.0\/deed.de).",
+  "doc": "wiki_photosynthese",
+  "chunk": 38
+ }
+]

@@ -8,8 +8,8 @@ kotlin {
 
 dependencies {
     api(libs.kotlinx.coroutines.core)
+    implementation(libs.gson)
     testImplementation(libs.junit.jupiter)
-    testImplementation(libs.gson)
     testImplementation(libs.kotlinx.coroutines.test)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
