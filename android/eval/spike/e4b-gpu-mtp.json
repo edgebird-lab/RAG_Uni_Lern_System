@@ -1,0 +1,412 @@
+{
+ "tag": "e4b-gpu-mtp",
+ "model": "gemma-4-E4B-it.litertlm",
+ "backend": "GPU",
+ "mtp": true,
+ "env_before": {
+  "rss_mb": 164,
+  "hwm_mb": 164,
+  "avail_ram_mb": 5245,
+  "thermal": 0,
+  "batt_temp_c": 31.7,
+  "batt_pct": 63
+ },
+ "load_ms": 310850,
+ "env_after_load": {
+  "rss_mb": 2603,
+  "hwm_mb": 2663,
+  "avail_ram_mb": 1374,
+  "thermal": 0,
+  "batt_temp_c": 31.2,
+  "batt_pct": 64
+ },
+ "results": [
+  {
+   "id": "gg-dire-09",
+   "typ": "direkt",
+   "frage": "Welche Anordnungen und Verfügungen des Bundespräsidenten benötigen zur Gültigkeit eine Gegenzeichnung?",
+   "erwartet": "Alle Anordnungen und Verfügungen des Bundespräsidenten, außer der Ernennung und Entlassung des Bundeskanzlers, der Auflösung des Bundestages nach Artikel 63 und dem Ersuchen nach Artikel 69 Abs. 3.",
+   "antwort": "Anordnungen und Verfügungen des Bundespräsidenten bedürfen zu ihrer Gültigkeit der Gegenzeichnung durch den Bundeskanzler oder durch den zuständigen Bundesminister [4].",
+   "ttft_ms": 6114,
+   "total_ms": 8249,
+   "chunks": 12,
+   "prompt_chars": 3381,
+   "bench": {
+    "ttft_s": 5.6599723832499995,
+    "prefill_tok": 841,
+    "prefill_tps": 150.42726683860704,
+    "decode_tok": 37,
+    "decode_tps": 14.444471334150826
+   }
+  },
+  {
+   "id": "hgb-dire-03",
+   "typ": "direkt",
+   "frage": "Welche Unterlagen müssen Kreditinstitute in deutscher Sprache offenlegen, sofern sie zu erstellen sind?",
+   "erwartet": "Kreditinstitute müssen den Jahresabschluß, den Lagebericht sowie den Konzernabschluß und den Konzernlagebericht und die in § 325 bezeichneten Unterlagen offenlegen.",
+   "antwort": "Kreditinstitute müssen den Jahresabschluß, den Lagebericht sowie den Konzernabschluß und den Konzernlagebericht und die anderen in § 325 bezeichneten Unterlagen in deutscher Sprache offenlegen, sofern sie zu erstellen sind [4].",
+   "ttft_ms": 4337,
+   "total_ms": 7537,
+   "chunks": 17,
+   "prompt_chars": 4446,
+   "bench": {
+    "ttft_s": 3.9592860082500003,
+    "prefill_tok": 1161,
+    "prefill_tps": 298.3124347627994,
+    "decode_tok": 53,
+    "decode_tps": 14.83827791694745
+   }
+  },
+  {
+   "id": "wiki_klimawandel-dire-05",
+   "typ": "direkt",
+   "frage": "Wer lieferte ab 1958 direkte Belege für eine stetig steigende CO2-Konzentration und damit verbundene Erwärmung?",
+   "erwartet": "Charles David Keeling",
+   "antwort": "Charles David Keeling [3]",
+   "ttft_ms": 4094,
+   "total_ms": 4489,
+   "chunks": 3,
+   "prompt_chars": 4504,
+   "bench": {
+    "ttft_s": 3.7296067080000004,
+    "prefill_tok": 1186,
+    "prefill_tps": 327.96508432167036,
+    "decode_tok": 7,
+    "decode_tps": 8.820823483324519
+   }
+  },
+  {
+   "id": "wiki_photosynthese-dire-05",
+   "typ": "direkt",
+   "frage": "Welche Art von Bakterien nutzt bei der anoxygenen Photosynthese ein Reaktionszentrum des Typs II und welche Absorptionswellenlänge hat das Bakteriochlorophyll?",
+   "erwartet": "Grüne Nichtschwefelbakterien (Chloroflexi) und Purpurbakterien verwenden dieses Zentrum, dessen Absorptionsmaximum bei 870 nm liegt.",
+   "antwort": "Grüne Nichtschwefelbakterien (Chloroflexi) und Purpurbakterien (Schwefelpurpurbakterien und schwefelfreie Purpurbakterien) nutzen bei der anoxygenen Photosynthese ein Reaktionszentrum des Typs II, und das Absorptionsmaximum des Bakteriochlorophylls a bzw. b liegt bei 870 nm [1].",
+   "ttft_ms": 4649,
+   "total_ms": 9262,
+   "chunks": 24,
+   "prompt_chars": 5412,
+   "bench": {
+    "ttft_s": 4.18910899825,
+    "prefill_tok": 1367,
+    "prefill_tps": 331.02090723909333,
+    "decode_tok": 85,
+    "decode_tps": 16.81789387074681
+   }
+  },
+  {
+   "id": "wiki_industrielle_revolution-dire-03",
+   "typ": "direkt",
+   "frage": "Welches Land verfügte um 1848 über ein örtlich massenhaft konzentriertes und teilweise organisiertes Industrieproletariat?",
+   "erwartet": "England verfügte zu dieser Zeit über ein Industrieproletariat, das in größerem Umfang organisiert war.",
+   "antwort": "In England [3].",
+   "ttft_ms": 3525,
+   "total_ms": 4116,
+   "chunks": 4,
+   "prompt_chars": 4658,
+   "bench": {
+    "ttft_s": 3.260862811,
+    "prefill_tok": 1067,
+    "prefill_tps": 348.17899520454995,
+    "decode_tok": 5,
+    "decode_tps": 5.093021413206183
+   }
+  },
+  {
+   "id": "wiki_roemisches_reich-dire-05",
+   "typ": "direkt",
+   "frage": "Wie hoch war die geschätzte durchschnittliche Lebenserwartung im Römischen Reich, wenn die hohe Kindersterblichkeit berücksichtigt wird?",
+   "erwartet": "Die geschätzte Lebenserwartung, bereinigt um die hohe Kindersterblichkeit, lag zwischen 40 und 45 Jahren.",
+   "antwort": "Die durchschnittliche Lebenserwartung wird auf 20 bis 30 Jahre geschätzt, wobei sie je nach Zeitalter und Ort schwankte [4]. Bereinigt um die hohe Kindersterblichkeit lag die Lebenserwartung bei 40 bis 45 Jahre [4].",
+   "ttft_ms": 2843,
+   "total_ms": 6556,
+   "chunks": 20,
+   "prompt_chars": 3378,
+   "bench": {
+    "ttft_s": 2.43582742125,
+    "prefill_tok": 886,
+    "prefill_tps": 373.63184778291827,
+    "decode_tok": 64,
+    "decode_tps": 15.50165926926921
+   }
+  },
+  {
+   "id": "wiki_klimawandel-dire-03",
+   "typ": "direkt",
+   "frage": "Wie lange wird voraussichtlich ein signifikanter Anteil des anthropogenen CO2-Eintrags in der Atmosphäre verbleiben, selbst bei einem Emissionsstopp?",
+   "erwartet": "Der zusätzliche anthropogene CO2-Eintrag wird selbst bei einem weitgehenden Emissionsstopp nur allmählich verringern und in signifikantem Umfang noch in mehreren tausend Jahren nachweisbar sein.",
+   "antwort": "Ein signifikanter Anteil des anthropogenen CO2-Eintrags wird selbst bei einem weitgehenden Emissionsstopp noch in mehreren tausend Jahren nachweisbar sein, da Kohlenstoffdioxid in der Erdatmosphäre nur sehr langsam abgebaut wird [3]. Das deutsche Bundesumweltamt geht davon aus, dass nach 1000 Jahren noch etwa 15 bis 40 Prozent in der Atmosphäre verbleiben [3].",
+   "ttft_ms": 4704,
+   "total_ms": 10079,
+   "chunks": 28,
+   "prompt_chars": 5761,
+   "bench": {
+    "ttft_s": 4.29552805325,
+    "prefill_tok": 1427,
+    "prefill_tps": 337.1315007637968,
+    "decode_tok": 92,
+    "decode_tps": 15.934132776059025
+   }
+  },
+  {
+   "id": "wiki_zelle_biologie-dire-02",
+   "typ": "direkt",
+   "frage": "Welche Funktion erfüllen die Mitochondrien für die Zelle und welche Art von Reaktion findet dort statt?",
+   "erwartet": "Die Mitochondrien werden als „Energiekraftwerke“ bezeichnet, da dort die Oxidation organischer Stoffe mit molekularem Sauerstoff stattfindet, wodurch Energie als ATP gespeichert wird.",
+   "antwort": "Die Mitochondrien werden als „Energiekraftwerke“ der Zelle bezeichnet. In ihnen findet die Oxidation organischer Stoffe mit molekularem Sauerstoff statt, wobei Energie freigesetzt und in Form von chemischer Energie (als ATP) gespeichert wird [3].",
+   "ttft_ms": 3319,
+   "total_ms": 6120,
+   "chunks": 15,
+   "prompt_chars": 4301,
+   "bench": {
+    "ttft_s": 2.90024088125,
+    "prefill_tok": 1032,
+    "prefill_tps": 363.29597924192115,
+    "decode_tok": 54,
+    "decode_tps": 16.78363109764835
+   }
+  },
+  {
+   "id": "wiki_blutkreislauf-umfo-33",
+   "typ": "umformuliert",
+   "frage": "Welche Funktion übernimmt das Blutkreislaufsystem bei Käfern, wenn es nicht für den Gasaustausch zuständig ist?",
+   "erwartet": "Es dient dem Transport von Nährstoffen, Abwehrzellen und Botenstoffen.",
+   "antwort": "Das Blutkreislaufsystem bei Insekten dient dem Transport von Nährstoffen, Immunzellen, Signalmolekülen und ähnlichem [3].",
+   "ttft_ms": 3347,
+   "total_ms": 5524,
+   "chunks": 12,
+   "prompt_chars": 4372,
+   "bench": {
+    "ttft_s": 2.945636842,
+    "prefill_tok": 1134,
+    "prefill_tps": 396.2546228299538,
+    "decode_tok": 31,
+    "decode_tps": 11.927398944533387
+   }
+  },
+  {
+   "id": "gg-umfo-45",
+   "typ": "umformuliert",
+   "frage": "Welche Organe sind befugt, eine strafrechtliche Verfolgung gegen den höchsten Staatsvertreter wegen schwerwiegender Rechtsbrüche einzuleiten, und mit welcher Mehrheit muss dies beschlossen werden?",
+   "erwartet": "Der Bundestag oder der Bundesrat können dies beantragen. Der Beschluss erfordert die Zustimmung von zwei Dritteln der Mitglieder des jeweiligen Gremiums.",
+   "antwort": "Der Bundestag oder der Bundesrat können den Bundespräsidenten wegen vorsätzlicher Verletzung des Grundgesetzes oder eines anderen Bundesgesetzes vor dem Bundesverfassungsgericht anklagen [4]. Der Antrag auf Erhebung der Anklage muss von mindestens einem Viertel der Mitglieder des Bundestages oder einem Viertel der Stimmen des Bundesrates gestellt werden, und der Beschluss auf Erhebung der Anklage bedarf der Mehrheit von zwei Dritteln der Mitglieder des Bundestages oder von zwei Dritteln der Stimmen des Bundesrates [4].",
+   "ttft_ms": 2801,
+   "total_ms": 9465,
+   "chunks": 35,
+   "prompt_chars": 3518,
+   "bench": {
+    "ttft_s": 2.3983216755,
+    "prefill_tok": 870,
+    "prefill_tps": 372.56850344593295,
+    "decode_tok": 112,
+    "decode_tps": 15.827632608457144
+   }
+  },
+  {
+   "id": "bgb-umfo-31",
+   "typ": "umformuliert",
+   "frage": "Wie wird der Anspruch auf Rückkauf wirksam, wenn der Verkäufer sich dieses Recht vorbehalten hat?",
+   "erwartet": "Der Anspruch entsteht durch eine direkte Mitteilung des Verkäufers an den Käufer, dass er das Recht geltend macht.",
+   "antwort": "Der Wiederkauf kommt mit der Erklärung des Verkäufers gegenüber dem Käufer zustande, dass er das Wiederkaufsrecht ausübe. Diese Erklärung bedarf nicht der für den Kaufvertrag bestimmten Form [1].",
+   "ttft_ms": 2725,
+   "total_ms": 5311,
+   "chunks": 14,
+   "prompt_chars": 2966,
+   "bench": {
+    "ttft_s": 2.33743943675,
+    "prefill_tok": 749,
+    "prefill_tps": 329.60134545645514,
+    "decode_tok": 46,
+    "decode_tps": 15.3852646479291
+   }
+  },
+  {
+   "id": "hgb-umfo-36",
+   "typ": "umformuliert",
+   "frage": "Welcher Wechselkurs ist für die Umrechnung der Umsatzerlöse und Aufwendungen zu verwenden?",
+   "erwartet": "Der Durchschnittskurs in Euro ist für die Umrechnung der Gewinn- und Verlustrechnungsposten zu nutzen.",
+   "antwort": "Die Posten der Gewinn- und Verlustrechnung sind zum Durchschnittskurs in Euro umzurechnen [3].",
+   "ttft_ms": 2735,
+   "total_ms": 3907,
+   "chunks": 7,
+   "prompt_chars": 3348,
+   "bench": {
+    "ttft_s": 2.359480289,
+    "prefill_tok": 841,
+    "prefill_tps": 366.53256170003544,
+    "decode_tok": 24,
+    "decode_tps": 15.383493070045004
+   }
+  },
+  {
+   "id": "wiki_zelle_biologie-mehr-03",
+   "typ": "mehrstufig",
+   "frage": "Welche molekularen Komponenten sind für die Speicherung genetischer Informationen und für die Proteinbiosynthese verantwortlich?",
+   "erwartet": "Die DNA speichert die genetischen Informationen, während die Ribosomen, die aus RNA und Proteinen bestehen, für die Proteinbiosynthese verantwortlich sind.",
+   "antwort": "Die Speicherung genetischer Informationen erfolgt durch Desoxyribonukleinsäuren (DNA) [1, 2]. Die Proteinbiosynthese wird durch Ribosomen, die aus RNA und Proteinen bestehen, durchgeführt, wobei die mRNA als Information für die Aminosäuresequenz dient [3].",
+   "ttft_ms": 2832,
+   "total_ms": 7097,
+   "chunks": 23,
+   "prompt_chars": 4006,
+   "bench": {
+    "ttft_s": 2.4252598525,
+    "prefill_tok": 959,
+    "prefill_tps": 407.73995035085403,
+    "decode_tok": 64,
+    "decode_tps": 13.648047551517324
+   }
+  },
+  {
+   "id": "wiki_blutkreislauf-mehr-03",
+   "typ": "mehrstufig",
+   "frage": "Welche Transportmechanismen nutzen Tiere, um Flüssigkeiten zu bewegen, wenn die Diffusion über große Entfernungen zu langsam ist, und welche spezifischen Mechanismen nutzen Schwämme, Nesseltiere und Plattwürmer, um einen Flüssigkeitsstrom zu erzeugen?",
+   "erwartet": "Generell entwickeln vielzellige Tiere, die größer sind als wenige Zellschichten, Mechanismen zur Erzeugung eines Flüssigkeitsstroms per Konvektion. Spezifisch erzeugen Schwämme diesen Strom durch Flagellen, Nesseltiere durch Muskelkontraktionen und Plattwürmer durch Zilien.",
+   "antwort": "Tiere nutzen einen Flüssigkeitsstrom, der einen Transport per Konvektion erlaubt, wenn Diffusion über längere Entfernungen zu langsam ist [2].\n\n*   **Schwämme:** Erzeugen einen Strom durch die Körperhöhle mit Hilfe von sich bewegenden Flagellen [3].\n*   **Nesseltiere:** Erzeugen den Strom durch Muskelkontraktionen [3].\n*   **Plattwürmer:** Setzen ihre Gewebsflüssigkeit mit der Hilfe von Zilien in Bewegung [3].",
+   "ttft_ms": 2827,
+   "total_ms": 9794,
+   "chunks": 37,
+   "prompt_chars": 3819,
+   "bench": {
+    "ttft_s": 2.4512656977500002,
+    "prefill_tok": 962,
+    "prefill_tps": 403.45263136446715,
+    "decode_tok": 110,
+    "decode_tps": 14.959535604673704
+   }
+  },
+  {
+   "id": "bgb-mehr-02",
+   "typ": "mehrstufig",
+   "frage": "Wann haftet das Gesamtgut nicht für Verbindlichkeiten, die durch den Erwerb einer Erbschaft entstehen, wenn der Ehegatte das Gesamtgut nicht verwaltet, und wann haftet es nicht für eine Verbindlichkeit, die während der Gütergemeinschaft infolge eines zum Vorbehaltsgut oder Sondergut gehörenden Rechts entsteht, wenn der Ehegatte das Gesamtgut nicht verwaltet?",
+   "erwartet": "Das Gesamtgut haftet nicht für Verbindlichkeiten aus Erbschaften, wenn der Ehegatte das Gesamtgut nicht verwaltet und die Erbschaft als Vorbehaltsgut oder Sondergut erwirbt. Ebenso haftet es nicht für Verbindlichkeiten, die infolge eines Rechts, das zu einem Vorbehaltsgut oder Sondergut gehört, entstehen, wenn der Ehegatte das Gesamtgut nicht verwaltet.",
+   "antwort": "Das Gesamtgut haftet nicht für Verbindlichkeiten, die durch den Erwerb einer Erbschaft entstehen, wenn der Ehegatte, der Erbe ist, das Gesamtgut nicht verwaltet und die Erbschaft während der Gütergemeinschaft als Vorbehaltsgut oder als Sondergut erwirbt; das Gleiche gilt beim Erwerb eines Vermächtnisses [4].\n\nDas Gesamtgut haftet nicht für eine Verbindlichkeit, die während der Gütergemeinschaft infolge eines zum Vorbehaltsgut oder Sondergut gehörenden Rechts oder des Besitzes einer dazu gehörenden Sache in der Person des Ehegatten entsteht, der das Gesamtgut nicht verwaltet [3].",
+   "ttft_ms": 2807,
+   "total_ms": 10199,
+   "chunks": 39,
+   "prompt_chars": 3816,
+   "bench": {
+    "ttft_s": 2.40060819825,
+    "prefill_tok": 944,
+    "prefill_tps": 402.5733464030704,
+    "decode_tok": 140,
+    "decode_tps": 17.955290835128086
+   }
+  },
+  {
+   "id": "bgb-unbe-07",
+   "typ": "unbeantwortbar",
+   "frage": "Welche Rechte hat ein Käufer bei einem Defekt der Batterie seines Elektroautos?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "ttft_ms": 2669,
+   "total_ms": 2871,
+   "chunks": 2,
+   "prompt_chars": 2160,
+   "bench": {
+    "ttft_s": 2.346458611,
+    "prefill_tok": 583,
+    "prefill_tps": 261.89615415703935,
+    "decode_tok": 5,
+    "decode_tps": 8.306651731129644
+   }
+  },
+  {
+   "id": "wiki_klimawandel-unbe-15",
+   "typ": "unbeantwortbar",
+   "frage": "Wie viel kostet eine Tonne CO2 im europäischen Emissionshandel aktuell?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "ttft_ms": 4582,
+   "total_ms": 4783,
+   "chunks": 2,
+   "prompt_chars": 5520,
+   "bench": {
+    "ttft_s": 4.23822195,
+    "prefill_tok": 1440,
+    "prefill_tps": 349.9956685970065,
+    "decode_tok": 5,
+    "decode_tps": 8.071981475060818
+   }
+  },
+  {
+   "id": "wiki_roemisches_reich-unbe-16",
+   "typ": "unbeantwortbar",
+   "frage": "Wie viele Soldaten umfasste die Legio X Gemina?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "ttft_ms": 4145,
+   "total_ms": 4360,
+   "chunks": 2,
+   "prompt_chars": 5065,
+   "bench": {
+    "ttft_s": 3.80799675425,
+    "prefill_tok": 1406,
+    "prefill_tps": 381.7400490391249,
+    "decode_tok": 5,
+    "decode_tps": 8.008834744225457
+   }
+  },
+  {
+   "id": "wiki_blutkreislauf-unbe-18",
+   "typ": "unbeantwortbar",
+   "frage": "Wie hoch ist der normale Ruhepuls eines erwachsenen Hundes?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "ttft_ms": 3222,
+   "total_ms": 3421,
+   "chunks": 2,
+   "prompt_chars": 4245,
+   "bench": {
+    "ttft_s": 2.91201284225,
+    "prefill_tok": 1112,
+    "prefill_tps": 397.6736526187953,
+    "decode_tok": 5,
+    "decode_tps": 8.639297928352338
+   }
+  },
+  {
+   "id": "hgb-unbe-08",
+   "typ": "unbeantwortbar",
+   "frage": "Wie viel Stammkapital braucht man zur Gründung einer GmbH?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "ttft_ms": 2749,
+   "total_ms": 2952,
+   "chunks": 2,
+   "prompt_chars": 3286,
+   "bench": {
+    "ttft_s": 2.4166241145000003,
+    "prefill_tok": 854,
+    "prefill_tps": 372.2859081107862,
+    "decode_tok": 5,
+    "decode_tps": 8.150740406004322
+   }
+  },
+  {
+   "id": "hgb-unbe-09",
+   "typ": "unbeantwortbar",
+   "frage": "Wie läuft die Gewerbeanmeldung beim Gewerbeamt ab?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "ttft_ms": 2842,
+   "total_ms": 3041,
+   "chunks": 2,
+   "prompt_chars": 3554,
+   "bench": {
+    "ttft_s": 2.4400841565,
+    "prefill_tok": 876,
+    "prefill_tps": 380.50247727223734,
+    "decode_tok": 5,
+    "decode_tps": 7.253459836148724
+   }
+  }
+ ],
+ "env_end": {
+  "rss_mb": 3519,
+  "hwm_mb": 3525,
+  "avail_ram_mb": 1207,
+  "thermal": 0,
+  "batt_temp_c": 33.3,
+  "batt_pct": 63
+ },
+ "status": "ok"
+}

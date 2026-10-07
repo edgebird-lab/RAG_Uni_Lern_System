@@ -71,3 +71,13 @@ Thumbs.db
 streamlit.log
 *.log
 .tools/
+
+# Android: private Eval-Daten und Build-Artefakte
+android/eval/private/
+android/**/build/
+android/.gradle/
+android/local.properties
+android/eval/goldset/.cache/
+android/eval/spike/*.vec
+android/eval/spike/kette*.log
+android/app/src/debug/assets/spike/corpus.json

@@ -1,0 +1,412 @@
+{
+ "tag": "e2b-gpu-mtp",
+ "model": "gemma-4-E2B-it.litertlm",
+ "backend": "GPU",
+ "mtp": true,
+ "env_before": {
+  "rss_mb": 165,
+  "hwm_mb": 166,
+  "avail_ram_mb": 1767,
+  "thermal": 0,
+  "batt_temp_c": 29.6,
+  "batt_pct": 62
+ },
+ "load_ms": 71846,
+ "env_after_load": {
+  "rss_mb": 1770,
+  "hwm_mb": 1829,
+  "avail_ram_mb": 110,
+  "thermal": 0,
+  "batt_temp_c": 29.7,
+  "batt_pct": 63
+ },
+ "results": [
+  {
+   "id": "gg-dire-09",
+   "typ": "direkt",
+   "frage": "Welche Anordnungen und Verfügungen des Bundespräsidenten benötigen zur Gültigkeit eine Gegenzeichnung?",
+   "erwartet": "Alle Anordnungen und Verfügungen des Bundespräsidenten, außer der Ernennung und Entlassung des Bundeskanzlers, der Auflösung des Bundestages nach Artikel 63 und dem Ersuchen nach Artikel 69 Abs. 3.",
+   "antwort": "Anordnungen und Verfügungen des Bundespräsidenten bedürfen zur Gültigkeit der Gegenzeichnung durch den Bundeskanzler oder durch den zuständigen Bundesminister, außer bei der Ernennung und Entlassung des Bundeskanzlers, der Auflösung des Bundestages gemäß Artikel 63 und dem Ersuchen gemäß Artikel 69 Abs. 3 [4].",
+   "ttft_ms": 348231,
+   "total_ms": 357016,
+   "chunks": 25,
+   "prompt_chars": 3381,
+   "bench": {
+    "ttft_s": 345.95214237675003,
+    "prefill_tok": 841,
+    "prefill_tps": 2.4319659161356335,
+    "decode_tok": 78,
+    "decode_tps": 7.073392696849253
+   }
+  },
+  {
+   "id": "hgb-dire-03",
+   "typ": "direkt",
+   "frage": "Welche Unterlagen müssen Kreditinstitute in deutscher Sprache offenlegen, sofern sie zu erstellen sind?",
+   "erwartet": "Kreditinstitute müssen den Jahresabschluß, den Lagebericht sowie den Konzernabschluß und den Konzernlagebericht und die in § 325 bezeichneten Unterlagen offenlegen.",
+   "antwort": "Kreditinstitute müssen den Jahresabschluß, den Lagebericht sowie den Konzernabschluß und den Konzernlagebericht und die anderen in § 325 bezeichneten Unterlagen, sofern sie zu erstellen sind, in deutscher Sprache offenlegen [4].",
+   "ttft_ms": 5388,
+   "total_ms": 7784,
+   "chunks": 16,
+   "prompt_chars": 4446,
+   "bench": {
+    "ttft_s": 4.95347213,
+    "prefill_tok": 1161,
+    "prefill_tps": 236.8016329559955,
+    "decode_tok": 54,
+    "decode_tps": 19.749451328697827
+   }
+  },
+  {
+   "id": "wiki_klimawandel-dire-05",
+   "typ": "direkt",
+   "frage": "Wer lieferte ab 1958 direkte Belege für eine stetig steigende CO2-Konzentration und damit verbundene Erwärmung?",
+   "erwartet": "Charles David Keeling",
+   "antwort": "Charles David Keeling lieferte ab 1958 direkte Belege für die Annahme einer stetig steigenden CO2-Konzentration und einer damit verbundenen Erwärmung [3].",
+   "ttft_ms": 3016,
+   "total_ms": 4900,
+   "chunks": 13,
+   "prompt_chars": 4504,
+   "bench": {
+    "ttft_s": 2.664514725,
+    "prefill_tok": 1186,
+    "prefill_tps": 454.0401139195834,
+    "decode_tok": 42,
+    "decode_tps": 19.080066019481578
+   }
+  },
+  {
+   "id": "wiki_photosynthese-dire-05",
+   "typ": "direkt",
+   "frage": "Welche Art von Bakterien nutzt bei der anoxygenen Photosynthese ein Reaktionszentrum des Typs II und welche Absorptionswellenlänge hat das Bakteriochlorophyll?",
+   "erwartet": "Grüne Nichtschwefelbakterien (Chloroflexi) und Purpurbakterien verwenden dieses Zentrum, dessen Absorptionsmaximum bei 870 nm liegt.",
+   "antwort": "Grüne Nichtschwefelbakterien (Chloroflexi) und Purpurbakterien (Schwefelpurpurbakterien und schwefelfreie Purpurbakterien) verwenden bei der anoxygenen Photosynthese ein Reaktionszentrum des Typs II [1]. Das Absorptionsmaximum des Bakteriochlorophylls a bzw. b im Zentrum liegt bei 870 nm [1].",
+   "ttft_ms": 2872,
+   "total_ms": 6532,
+   "chunks": 25,
+   "prompt_chars": 5412,
+   "bench": {
+    "ttft_s": 2.5278291672499997,
+    "prefill_tok": 1367,
+    "prefill_tps": 550.4883073307584,
+    "decode_tok": 89,
+    "decode_tps": 22.431921170256793
+   }
+  },
+  {
+   "id": "wiki_industrielle_revolution-dire-03",
+   "typ": "direkt",
+   "frage": "Welches Land verfügte um 1848 über ein örtlich massenhaft konzentriertes und teilweise organisiertes Industrieproletariat?",
+   "erwartet": "England verfügte zu dieser Zeit über ein Industrieproletariat, das in größerem Umfang organisiert war.",
+   "antwort": "England verfügte um 1848 über ein örtlich massenhaft konzentriertes und teilweise in größerem Umfang organisiertes Industrieproletariat [3].",
+   "ttft_ms": 2243,
+   "total_ms": 3822,
+   "chunks": 11,
+   "prompt_chars": 4658,
+   "bench": {
+    "ttft_s": 1.891761666,
+    "prefill_tok": 1067,
+    "prefill_tps": 581.313032372754,
+    "decode_tok": 34,
+    "decode_tps": 17.77405291249191
+   }
+  },
+  {
+   "id": "wiki_roemisches_reich-dire-05",
+   "typ": "direkt",
+   "frage": "Wie hoch war die geschätzte durchschnittliche Lebenserwartung im Römischen Reich, wenn die hohe Kindersterblichkeit berücksichtigt wird?",
+   "erwartet": "Die geschätzte Lebenserwartung, bereinigt um die hohe Kindersterblichkeit, lag zwischen 40 und 45 Jahren.",
+   "antwort": "Die Lebenserwartung lag bei 40 bis 45 Jahren, wenn die hohe Kindersterblichkeit berücksichtigt wird [4].",
+   "ttft_ms": 1637,
+   "total_ms": 3041,
+   "chunks": 10,
+   "prompt_chars": 3378,
+   "bench": {
+    "ttft_s": 1.36198363,
+    "prefill_tok": 886,
+    "prefill_tps": 680.5284296189556,
+    "decode_tok": 28,
+    "decode_tps": 16.651628531381558
+   }
+  },
+  {
+   "id": "wiki_klimawandel-dire-03",
+   "typ": "direkt",
+   "frage": "Wie lange wird voraussichtlich ein signifikanter Anteil des anthropogenen CO2-Eintrags in der Atmosphäre verbleiben, selbst bei einem Emissionsstopp?",
+   "erwartet": "Der zusätzliche anthropogene CO2-Eintrag wird selbst bei einem weitgehenden Emissionsstopp nur allmählich verringern und in signifikantem Umfang noch in mehreren tausend Jahren nachweisbar sein.",
+   "antwort": "Nach einem weitgehenden Emissionsstopp wird der zusätzliche anthropogene CO2-Eintrag selbst allmählich verringern und in signifikantem Umfang noch in mehreren tausend Jahren nachweisbar sein, da Kohlenstoffdioxid in der Erdatmosphäre durch natürliche physikalische und biogeochemische Prozesse im Erdsystem nur sehr langsam abgebaut wird. Das deutsche Bundesumweltamt geht davon aus, dass nach 1000 Jahren noch etwa 15 bis 40 Prozent in der Atmosphäre verbleiben. [3]",
+   "ttft_ms": 2485,
+   "total_ms": 7804,
+   "chunks": 36,
+   "prompt_chars": 5761,
+   "bench": {
+    "ttft_s": 2.1424211845,
+    "prefill_tok": 1427,
+    "prefill_tps": 681.6470221703133,
+    "decode_tok": 115,
+    "decode_tps": 20.42386809991484
+   }
+  },
+  {
+   "id": "wiki_zelle_biologie-dire-02",
+   "typ": "direkt",
+   "frage": "Welche Funktion erfüllen die Mitochondrien für die Zelle und welche Art von Reaktion findet dort statt?",
+   "erwartet": "Die Mitochondrien werden als „Energiekraftwerke“ bezeichnet, da dort die Oxidation organischer Stoffe mit molekularem Sauerstoff stattfindet, wodurch Energie als ATP gespeichert wird.",
+   "antwort": "Die Mitochondrien sind \"Energiekraftwerke\" der Zelle [3]. In ihnen findet die Oxidation organischer Stoffe mit molekularem Sauerstoff statt, wobei Energie freigesetzt und in Form von chemischer Energie (als ATP) gespeichert wird [3].",
+   "ttft_ms": 1822,
+   "total_ms": 4137,
+   "chunks": 16,
+   "prompt_chars": 4301,
+   "bench": {
+    "ttft_s": 1.4993685884999999,
+    "prefill_tok": 1032,
+    "prefill_tps": 711.205250918233,
+    "decode_tok": 54,
+    "decode_tps": 20.69935437437246
+   }
+  },
+  {
+   "id": "wiki_blutkreislauf-umfo-33",
+   "typ": "umformuliert",
+   "frage": "Welche Funktion übernimmt das Blutkreislaufsystem bei Käfern, wenn es nicht für den Gasaustausch zuständig ist?",
+   "erwartet": "Es dient dem Transport von Nährstoffen, Abwehrzellen und Botenstoffen.",
+   "antwort": "Das Blutkreislaufsystem bei Insekten dient dem Transport von Nährstoffen, Immunzellen und Signalmolekülen [3].",
+   "ttft_ms": 1657,
+   "total_ms": 2960,
+   "chunks": 9,
+   "prompt_chars": 4372,
+   "bench": {
+    "ttft_s": 1.3350774485,
+    "prefill_tok": 1134,
+    "prefill_tps": 887.3147615510786,
+    "decode_tok": 28,
+    "decode_tps": 17.524114726175828
+   }
+  },
+  {
+   "id": "gg-umfo-45",
+   "typ": "umformuliert",
+   "frage": "Welche Organe sind befugt, eine strafrechtliche Verfolgung gegen den höchsten Staatsvertreter wegen schwerwiegender Rechtsbrüche einzuleiten, und mit welcher Mehrheit muss dies beschlossen werden?",
+   "erwartet": "Der Bundestag oder der Bundesrat können dies beantragen. Der Beschluss erfordert die Zustimmung von zwei Dritteln der Mitglieder des jeweiligen Gremiums.",
+   "antwort": "Der Bundestag oder der Bundesrat können den Bundespräsidenten wegen vorsätzlicher Verletzung des Grundgesetzes oder eines anderen Bundesgesetzes vor dem Bundesverfassungsgericht anklagen [61 (V. Der Bundespräsident)]. Der Antrag auf Erhebung der Anklage muss von mindestens einem Viertel der Mitglieder des Bundestages oder einem Viertel der Stimmen des Bundesrates gestellt werden [61 (V. Der Bundespräsident)]. Der Beschluß auf Erhebung der Anklage bedarf der Mehrheit von zwei Dritteln der Mitglieder des Bundestages oder von zwei Dritteln der Stimmen des Bundesrates [61 (V. Der Bundespräsident)].",
+   "ttft_ms": 1504,
+   "total_ms": 7737,
+   "chunks": 41,
+   "prompt_chars": 3518,
+   "bench": {
+    "ttft_s": 1.17957827025,
+    "prefill_tok": 870,
+    "prefill_tps": 769.1838354149728,
+    "decode_tok": 135,
+    "decode_tps": 20.61462109830754
+   }
+  },
+  {
+   "id": "bgb-umfo-31",
+   "typ": "umformuliert",
+   "frage": "Wie wird der Anspruch auf Rückkauf wirksam, wenn der Verkäufer sich dieses Recht vorbehalten hat?",
+   "erwartet": "Der Anspruch entsteht durch eine direkte Mitteilung des Verkäufers an den Käufer, dass er das Recht geltend macht.",
+   "antwort": "Der Wiederkauf kommt mit der Erklärung des Verkäufers gegenüber dem Käufer zustande, dass er das Wiederkaufsrecht ausübt. Diese Erklärung bedarf nicht der für den Kaufvertrag bestimmten Form [1]. Der Preis, zu welchem verkauft worden ist, gilt im Zweifel auch für den Wiederkauf [1].",
+   "ttft_ms": 1399,
+   "total_ms": 4876,
+   "chunks": 23,
+   "prompt_chars": 2966,
+   "bench": {
+    "ttft_s": 1.0877361505,
+    "prefill_tok": 749,
+    "prefill_tps": 726.4080190665946,
+    "decode_tok": 67,
+    "decode_tps": 17.65686399014465
+   }
+  },
+  {
+   "id": "hgb-umfo-36",
+   "typ": "umformuliert",
+   "frage": "Welcher Wechselkurs ist für die Umrechnung der Umsatzerlöse und Aufwendungen zu verwenden?",
+   "erwartet": "Der Durchschnittskurs in Euro ist für die Umrechnung der Gewinn- und Verlustrechnungsposten zu nutzen.",
+   "antwort": "Nicht im Material gefunden.",
+   "ttft_ms": 1401,
+   "total_ms": 1534,
+   "chunks": 2,
+   "prompt_chars": 3348,
+   "bench": {
+    "ttft_s": 1.1312801435,
+    "prefill_tok": 841,
+    "prefill_tps": 805.3360266630077,
+    "decode_tok": 5,
+    "decode_tps": 11.494839955998396
+   }
+  },
+  {
+   "id": "wiki_zelle_biologie-mehr-03",
+   "typ": "mehrstufig",
+   "frage": "Welche molekularen Komponenten sind für die Speicherung genetischer Informationen und für die Proteinbiosynthese verantwortlich?",
+   "erwartet": "Die DNA speichert die genetischen Informationen, während die Ribosomen, die aus RNA und Proteinen bestehen, für die Proteinbiosynthese verantwortlich sind.",
+   "antwort": "Für die Speicherung genetischer Informationen sind Desoxyribonukleinsäuren (DNA) und Ribonukleinsäuren (RNA) verantwortlich [1]. Für die Proteinbiosynthese sind Ribosomen aus RNA und Proteinen verantwortlich [3].",
+   "ttft_ms": 1435,
+   "total_ms": 4069,
+   "chunks": 18,
+   "prompt_chars": 4006,
+   "bench": {
+    "ttft_s": 1.11460069025,
+    "prefill_tok": 959,
+    "prefill_tps": 904.8324001872586,
+    "decode_tok": 54,
+    "decode_tps": 18.269544412675472
+   }
+  },
+  {
+   "id": "wiki_blutkreislauf-mehr-03",
+   "typ": "mehrstufig",
+   "frage": "Welche Transportmechanismen nutzen Tiere, um Flüssigkeiten zu bewegen, wenn die Diffusion über große Entfernungen zu langsam ist, und welche spezifischen Mechanismen nutzen Schwämme, Nesseltiere und Plattwürmer, um einen Flüssigkeitsstrom zu erzeugen?",
+   "erwartet": "Generell entwickeln vielzellige Tiere, die größer sind als wenige Zellschichten, Mechanismen zur Erzeugung eines Flüssigkeitsstroms per Konvektion. Spezifisch erzeugen Schwämme diesen Strom durch Flagellen, Nesseltiere durch Muskelkontraktionen und Plattwürmer durch Zilien.",
+   "antwort": "Tiere entwickeln Möglichkeiten, einen Flüssigkeitsstrom zu erzeugen, der einen Transport per Konvektion erlaubt, da die Diffusion über längere Entfernungen sehr langsam ist [2].\n\nSpezifische Mechanismen für Schwämme, Nesseltiere und Plattwürmer sind:\n*   Schwämme erzeugen mit Hilfe sich bewegender Flagellen einen Strom durch die Körperhöhle [3].\n*   Nesseltiere gelingen dies durch Muskelkontraktionen [3].\n*   Plattwürmer setzen ihre Gewebsflüssigkeit mit der Hilfe von Zilien in Bewegung [3].",
+   "ttft_ms": 1409,
+   "total_ms": 7422,
+   "chunks": 40,
+   "prompt_chars": 3819,
+   "bench": {
+    "ttft_s": 1.10018491875,
+    "prefill_tok": 962,
+    "prefill_tps": 915.4353814956576,
+    "decode_tok": 128,
+    "decode_tps": 20.276231651487112
+   }
+  },
+  {
+   "id": "bgb-mehr-02",
+   "typ": "mehrstufig",
+   "frage": "Wann haftet das Gesamtgut nicht für Verbindlichkeiten, die durch den Erwerb einer Erbschaft entstehen, wenn der Ehegatte das Gesamtgut nicht verwaltet, und wann haftet es nicht für eine Verbindlichkeit, die während der Gütergemeinschaft infolge eines zum Vorbehaltsgut oder Sondergut gehörenden Rechts entsteht, wenn der Ehegatte das Gesamtgut nicht verwaltet?",
+   "erwartet": "Das Gesamtgut haftet nicht für Verbindlichkeiten aus Erbschaften, wenn der Ehegatte das Gesamtgut nicht verwaltet und die Erbschaft als Vorbehaltsgut oder Sondergut erwirbt. Ebenso haftet es nicht für Verbindlichkeiten, die infolge eines Rechts, das zu einem Vorbehaltsgut oder Sondergut gehört, entstehen, wenn der Ehegatte das Gesamtgut nicht verwaltet.",
+   "antwort": "Das Gesamtgut haftet nicht für Verbindlichkeiten, die durch den Erwerb einer Erbschaft entstehen, wenn der Ehegatte, der Erbe ist, das Gesamtgut nicht verwaltet und die Erbschaft während der Gütergemeinschaft als Vorbehaltsgut oder als Sondergut erwirbt [4]. Das Gesamtgut haftet nicht für eine Verbindlichkeit, die während der Gütergemeinschaft infolge eines zum Vorbehaltsgut oder Sondergut gehörenden Rechts oder des Besitzes einer dazu gehörenden Sache in der Person des Ehegatten entsteht, der das Gesamtgut nicht verwaltet [3].",
+   "ttft_ms": 1414,
+   "total_ms": 6915,
+   "chunks": 37,
+   "prompt_chars": 3816,
+   "bench": {
+    "ttft_s": 1.122294047,
+    "prefill_tok": 944,
+    "prefill_tps": 877.3712963342604,
+    "decode_tok": 125,
+    "decode_tps": 21.573687423832133
+   }
+  },
+  {
+   "id": "bgb-unbe-07",
+   "typ": "unbeantwortbar",
+   "frage": "Welche Rechte hat ein Käufer bei einem Defekt der Batterie seines Elektroautos?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "ttft_ms": 1316,
+   "total_ms": 1459,
+   "chunks": 2,
+   "prompt_chars": 2160,
+   "bench": {
+    "ttft_s": 1.061025098,
+    "prefill_tok": 583,
+    "prefill_tps": 599.8104088806115,
+    "decode_tok": 5,
+    "decode_tps": 11.229482054671177
+   }
+  },
+  {
+   "id": "wiki_klimawandel-unbe-15",
+   "typ": "unbeantwortbar",
+   "frage": "Wie viel kostet eine Tonne CO2 im europäischen Emissionshandel aktuell?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "ttft_ms": 2158,
+   "total_ms": 2312,
+   "chunks": 2,
+   "prompt_chars": 5520,
+   "bench": {
+    "ttft_s": 1.8926824414999999,
+    "prefill_tok": 1440,
+    "prefill_tps": 791.6218903931513,
+    "decode_tok": 6,
+    "decode_tps": 13.581016918117234
+   }
+  },
+  {
+   "id": "wiki_roemisches_reich-unbe-16",
+   "typ": "unbeantwortbar",
+   "frage": "Wie viele Soldaten umfasste die Legio X Gemina?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "ttft_ms": 1980,
+   "total_ms": 2131,
+   "chunks": 2,
+   "prompt_chars": 5065,
+   "bench": {
+    "ttft_s": 1.7165562997500001,
+    "prefill_tok": 1406,
+    "prefill_tps": 864.7952312110656,
+    "decode_tok": 5,
+    "decode_tps": 11.020753326062252
+   }
+  },
+  {
+   "id": "wiki_blutkreislauf-unbe-18",
+   "typ": "unbeantwortbar",
+   "frage": "Wie hoch ist der normale Ruhepuls eines erwachsenen Hundes?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "ttft_ms": 1590,
+   "total_ms": 1754,
+   "chunks": 2,
+   "prompt_chars": 4245,
+   "bench": {
+    "ttft_s": 1.33911451825,
+    "prefill_tok": 1112,
+    "prefill_tps": 891.3801196147632,
+    "decode_tok": 5,
+    "decode_tps": 10.91574172365679
+   }
+  },
+  {
+   "id": "hgb-unbe-08",
+   "typ": "unbeantwortbar",
+   "frage": "Wie viel Stammkapital braucht man zur Gründung einer GmbH?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "ttft_ms": 1377,
+   "total_ms": 1543,
+   "chunks": 2,
+   "prompt_chars": 3286,
+   "bench": {
+    "ttft_s": 1.127124985,
+    "prefill_tok": 854,
+    "prefill_tps": 825.7160655647407,
+    "decode_tok": 5,
+    "decode_tps": 10.76760547372947
+   }
+  },
+  {
+   "id": "hgb-unbe-09",
+   "typ": "unbeantwortbar",
+   "frage": "Wie läuft die Gewerbeanmeldung beim Gewerbeamt ab?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "ttft_ms": 1420,
+   "total_ms": 1584,
+   "chunks": 2,
+   "prompt_chars": 3554,
+   "bench": {
+    "ttft_s": 1.1530568765,
+    "prefill_tok": 876,
+    "prefill_tps": 828.961462969813,
+    "decode_tok": 5,
+    "decode_tps": 10.382820876957222
+   }
+  }
+ ],
+ "env_end": {
+  "rss_mb": 2872,
+  "hwm_mb": 2878,
+  "avail_ram_mb": 2654,
+  "thermal": 0,
+  "batt_temp_c": 34.6,
+  "batt_pct": 62
+ },
+ "status": "ok"
+}
