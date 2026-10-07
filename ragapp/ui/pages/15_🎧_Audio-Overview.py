@@ -466,7 +466,7 @@ if _active_id is None:
 
     else:
         _man_subject = st.selectbox(
-            "Fach (optional)", [None] + sorted(SUBJECT_LABELS.keys() | set(_subjects_with_docs)),
+            "Fach (optional)", [None] + sorted(set(_subjects_with_docs)),
             format_func=lambda s: _KEIN_FACH if s is None else _fach(s), key="audio_manual_subject")
         _man_title = st.text_input("Titel", value="Meine Sprachnotiz", key="audio_manual_title")
         _man_script = st.text_area(

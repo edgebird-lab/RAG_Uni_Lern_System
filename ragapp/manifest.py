@@ -1684,6 +1684,25 @@ def unarchive_subject(subject: str) -> int:
     return len(card_ids)
 
 
+def rename_subject(old: str, new: str) -> int:
+    """Benennt ein Fach in ALLEN Tabellen um, die eine ``subject``-Spalte haben
+    (Dokumente, Klausur, Stundenplan, Karten, Notizen …). Bei Schlüsselkonflikten
+    bleibt die alte Zeile unverändert. Gibt die Zahl geänderter Zeilen zurück."""
+    changed = 0
+    with _connect() as conn:
+        tables = [r["name"] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name NOT LIKE 'sqlite_%' AND sql NOT LIKE 'CREATE VIRTUAL%'")]
+        for t in tables:
+            cols = [c["name"] for c in conn.execute(f'PRAGMA table_info("{t}")')]
+            if "subject" not in cols:
+                continue
+            cur = conn.execute(f'UPDATE OR IGNORE "{t}" SET subject=? WHERE subject=?',
+                               (new, old))
+            changed += cur.rowcount or 0
+    return changed
+
+
 def list_archived_subjects() -> list[str]:
     with _connect() as conn:
         return [r["subject"] for r in conn.execute(

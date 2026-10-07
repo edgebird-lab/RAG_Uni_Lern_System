@@ -7,6 +7,7 @@ Dokumentenmanager, Fragen-Anreicherung und Klausur-Katalog zu den Karteikarten.
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Optional
 
 import streamlit as st
@@ -27,9 +28,23 @@ def extra_folders() -> list[str]:
     disk: set[str] = set()
     try:
         if SOURCE_DIR.is_dir():
+            # Ordner, deren Dokumente alle in ein anderes Fach verschoben/umbenannt
+            # wurden, sind keine eigenen Fächer mehr (die Dateien liegen nur noch dort).
+            docs = _document_dicts()
+            used_dirs: set[str] = set()
+            for d in docs:
+                try:
+                    rel = (PROJECT_ROOT / (d.get("source_path") or "")).resolve(
+                    ).relative_to(SOURCE_DIR.resolve())
+                    if len(rel.parts) >= 2:
+                        used_dirs.add(rel.parts[0])
+                except Exception:  # noqa: BLE001
+                    continue
+            doc_subjects = {d["subject"] for d in docs if d.get("subject")}
             disk = {
                 p.name for p in SOURCE_DIR.iterdir()
                 if p.is_dir() and not p.name.startswith((".", "_"))
+                and (p.name not in used_dirs or p.name in doc_subjects)
             }
     except Exception:  # noqa: BLE001
         pass
@@ -57,7 +72,7 @@ def known_subjects() -> list[str]:
     }
     return sorted(
         s for s in (
-            set(SUBJECT_LABELS.keys()) | found | exams | timetable
+            found | exams | timetable
             | set(extra_folders())
         )
         if s and not is_placeholder_subject(s)

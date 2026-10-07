@@ -338,7 +338,8 @@ if _pending_del:
     _confirm_delete_dialog(_pending_del)
 
 _all_docs = [dict(d) for d in manifest.list_documents()]
-_folder_names = sorted({d["subject"] for d in _all_docs if d.get("subject")}
+_folder_names = sorted(set(_ingest_ui.known_subjects())
+                       | {d["subject"] for d in _all_docs if d.get("subject")}
                        | set(_ingest_ui.extra_folders()))
 _folder = st.session_state.get("doc_folder")
 if _folder and _folder not in _folder_names:
@@ -379,8 +380,69 @@ with card("ordner"):
                                   placeholder="z. B. BWL oder Statistik")
     if _nf2.button("➕ Ordner", use_container_width=True, key="doc_new_folder_go",
                    disabled=not (_new_folder or "").strip()):
-        _ingest_ui.remember_folder(_new_folder.strip())
-        st.rerun()
+        from ragapp.student_flow import create_course_folder
+        try:
+            _ingest_ui.remember_folder(create_course_folder(_new_folder))
+            st.rerun()
+        except ValueError as _exc:
+            st.error(str(_exc))
+
+    _sel = st.session_state.get("doc_folder")
+    from ragapp import student_flow as _sf_folder
+    if _sel and not _sf_folder.is_inbox_subject(_sel):
+        with st.expander(f"✏️ Ordner „{_fach(_sel)}“ umbenennen oder entfernen"):
+            _info = _sf_folder.course_folder_summary(_sel)
+            _rn1, _rn2 = st.columns([3, 1])
+            _rename_to = _rn1.text_input("Neuer Name", value=_sel,
+                                         key=f"doc_rename_{_sel}")
+            if _rn2.button("Umbenennen", use_container_width=True,
+                           key=f"doc_rename_go_{_sel}",
+                           disabled=_rename_to.strip() in ("", _sel)):
+                try:
+                    with st.spinner("Fach wird umbenannt …"):
+                        _sf_folder.rename_course(_sel, _rename_to)
+                    _new_name = _sf_folder.clean_course_name(_rename_to)
+                    _extras = [x for x in (st.session_state.get("doc_extra_folders") or [])
+                               if x != _sel]
+                    st.session_state["doc_extra_folders"] = _extras
+                    st.session_state["doc_folder"] = _new_name
+                    st.session_state["_docmgr_flash"] = {
+                        "error": False,
+                        "message": f"„{_sel}“ heißt jetzt „{_new_name}“."}
+                    st.rerun()
+                except ValueError as _exc:
+                    st.error(str(_exc))
+            st.caption("Umbenannt wird überall: Dokumente, Karten, Klausurtermin, "
+                       "Stundenplan und Such-Index. Dateien mit Inhalt bleiben an ihrem "
+                       "Speicherort liegen.")
+            st.divider()
+            if _info["documents"]:
+                st.caption(f"🔒 Zum Entfernen darf der Ordner keine Dokumente mehr "
+                           f"enthalten (aktuell {_info['documents']}). Verschiebe sie "
+                           "in ein anderes Fach oder lösche sie unten in der Bibliothek.")
+            else:
+                _drop = False
+                if _info["exam"] or _info["slots"]:
+                    _drop = st.checkbox(
+                        f"Auch Klausurtermin und {_info['slots']} Stundenplan-Eintrag/"
+                        "-Einträge dieses Fachs löschen",
+                        key=f"doc_del_plan_{_sel}")
+                if st.button("🗑️ Ordner entfernen", key=f"doc_del_folder_{_sel}",
+                             type="secondary"):
+                    try:
+                        _sf_folder.delete_course_folder(_sel, drop_plan=_drop)
+                        st.session_state["doc_extra_folders"] = [
+                            x for x in (st.session_state.get("doc_extra_folders") or [])
+                            if x != _sel]
+                        st.session_state["doc_folder"] = None
+                        st.session_state["_docmgr_flash"] = {
+                            "error": False, "message": f"Ordner „{_sel}“ entfernt."}
+                        st.rerun()
+                    except ValueError as _exc:
+                        st.error(str(_exc))
+                if (_info["exam"] or _info["slots"]) and not _drop:
+                    st.caption("Ohne Haken bleibt das Fach wegen Klausurtermin/Stundenplan "
+                               "weiter in der Liste stehen.")
 
 with card("kurs_inbox"):
     st.subheader("Kurs-Inbox")

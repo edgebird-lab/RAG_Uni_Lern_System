@@ -93,8 +93,7 @@ def _notes_to_markdown(notes: list) -> str:
 
 
 _known_subjects = sorted(
-    set(SUBJECT_LABELS.keys())
-    | {d["subject"] for d in manifest.list_documents() if d["subject"]})
+    {d["subject"] for d in manifest.list_documents() if d["subject"]})
 
 # --------------------------------------------------------------------------- #
 # Prefill aus anderen Seiten (Chat: Antwort als Notiz; Dokumentenmanager: Notiz

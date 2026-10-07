@@ -1522,6 +1522,100 @@ def ensure_course_folder(subject: str):
     return folder
 
 
+def clean_course_name(name: str) -> str:
+    """Prüft einen Fach-/Ordnernamen (er wird auch Ordnername auf der Platte)."""
+    s = " ".join((name or "").split())
+    if not s:
+        raise ValueError("Bitte einen Namen eingeben.")
+    if len(s) > 80:
+        raise ValueError("Der Name ist zu lang (höchstens 80 Zeichen).")
+    if any(c in s for c in '/\\:*?"<>|') or s.startswith((".", "_")):
+        raise ValueError('Der Name darf keine Zeichen wie / \\ : * ? " < > | enthalten '
+                         "und nicht mit . oder _ beginnen.")
+    return s
+
+
+def course_folder_summary(subject: str) -> dict:
+    """Was hängt an einem Fach: Dokumente, Klausurtermin, Stundenplan-Einträge."""
+    docs = [d for d in manifest.list_documents() if d["subject"] == subject]
+    return {
+        "documents": len(docs),
+        "exam": any(e.get("subject") == subject for e in manifest.list_exams()),
+        "slots": len(manifest.list_timetable(subject)),
+    }
+
+
+def _course_subjects() -> set:
+    from ragapp.config import SOURCE_DIR
+    found = {d["subject"] for d in manifest.list_documents() if d["subject"]}
+    found |= {e["subject"] for e in manifest.list_exams() if e.get("subject")}
+    found |= {t["subject"] for t in manifest.list_timetable() if t.get("subject")}
+    try:
+        found |= {p.name for p in Path(SOURCE_DIR).iterdir() if p.is_dir()}
+    except OSError:
+        pass
+    return found
+
+
+def create_course_folder(name: str) -> str:
+    """Legt ein Fach als echten Ordner an (bleibt damit auch nach dem Neustart)."""
+    code = clean_course_name(name)
+    ensure_course_folder(code)
+    return code
+
+
+def rename_course(old: str, new: str) -> dict:
+    """Benennt ein Fach um: Manifest (alle Tabellen), Such-Index-Metadaten und, wenn
+    der Ordner leer ist, auch den Ordner auf der Platte. Dateien mit Inhalt bleiben
+    an ihrem Pfad liegen, damit Dokument-IDs und Zitate gültig bleiben."""
+    from ragapp.config import SOURCE_DIR
+    new = clean_course_name(new)
+    if new == old:
+        raise ValueError("Der neue Name ist derselbe wie der alte.")
+    if new.casefold() != old.casefold() and new.casefold() in {
+            s.casefold() for s in _course_subjects()}:
+        raise ValueError(f"Ein Fach „{new}“ gibt es schon.")
+    rows = manifest.rename_subject(old, new)
+    try:
+        from ragapp.retrieval.vectorstore import get_vectorstore
+        from ragapp.retrieval.bm25_index import rebuild_bm25_from_store
+        if get_vectorstore().rename_subject(old, new):
+            rebuild_bm25_from_store()
+    except Exception:  # noqa: BLE001  - Index folgt beim nächsten Einlesen
+        pass
+    src, dst = Path(SOURCE_DIR) / old, Path(SOURCE_DIR) / new
+    try:
+        if src.is_dir() and not any(src.iterdir()):
+            src.rename(dst)
+        else:
+            dst.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    return {"rows": rows}
+
+
+def delete_course_folder(subject: str, *, drop_plan: bool = False) -> dict:
+    """Entfernt ein Fach, das keine Dokumente mehr hat. Mit ``drop_plan`` werden
+    auch Klausurtermin und Stundenplan-Einträge des Fachs gelöscht. Karten und
+    Notizen bleiben unangetastet."""
+    from ragapp.config import SOURCE_DIR
+    info = course_folder_summary(subject)
+    if info["documents"]:
+        raise ValueError(f"Das Fach enthält noch {info['documents']} Dokument(e) – "
+                         "verschiebe oder lösche sie zuerst im Dokumentenmanager.")
+    folder = Path(SOURCE_DIR) / subject
+    if folder.is_dir():
+        try:
+            folder.rmdir()
+        except OSError:
+            raise ValueError("Der Ordner enthält noch Dateien auf der Festplatte.")
+    if drop_plan:
+        manifest.delete_exam(subject)
+        for slot in manifest.list_timetable(subject):
+            manifest.delete_timetable_slot(slot["slot_id"])
+    return info
+
+
 def _unique_course_path(folder, name: str):
     from pathlib import Path
     dest = Path(folder) / Path(name).name

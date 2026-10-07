@@ -65,8 +65,7 @@ def _fmt_dauer(sec: float) -> str:
 
 
 _known_subjects = sorted(
-    set(SUBJECT_LABELS.keys())
-    | {d["subject"] for d in manifest.list_documents() if d["subject"]})
+    {d["subject"] for d in manifest.list_documents() if d["subject"]})
 
 # --------------------------------------------------------------------------- #
 # Timer (Pomodoro oder frei) - nur EIN Timer gleichzeitig

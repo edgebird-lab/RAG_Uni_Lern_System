@@ -143,6 +143,17 @@ class VectorStore:
             kw["embeddings"] = [embedding]
         self._col.update(**kw)
 
+    def rename_subject(self, old: str, new: str) -> int:
+        """Setzt das Fach-Metadatum aller Einträge (Chunks + Fragen) von ``old``
+        auf ``new``. Texte und Embeddings bleiben unberührt."""
+        res = self._col.get(where={"subject": old}, include=["metadatas"])
+        ids = list(res.get("ids") or [])
+        metas = list(res.get("metadatas") or [])
+        for i in range(0, len(ids), 500):
+            batch = [dict(m or {}, subject=new) for m in metas[i:i + 500]]
+            self._col.update(ids=ids[i:i + 500], metadatas=batch)
+        return len(ids)
+
     def delete_by_doc(self, doc_id: str) -> None:
         self._col.delete(where={"doc_id": doc_id})
 

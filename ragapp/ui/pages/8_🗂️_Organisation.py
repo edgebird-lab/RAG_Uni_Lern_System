@@ -177,8 +177,7 @@ from ragapp import student_flow as _sf
 
 _known_subjects = sorted(
     s for s in (
-        set(SUBJECT_LABELS.keys())
-        | {d["subject"] for d in manifest.list_documents() if d["subject"]}
+        {d["subject"] for d in manifest.list_documents() if d["subject"]}
         | {t["subject"] for t in manifest.list_tasks() if t.get("subject")}
         | {s["subject"] for s in manifest.list_timetable() if s.get("subject")}
         | {e["subject"] for e in manifest.list_exams() if e.get("subject")}
