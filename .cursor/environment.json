@@ -1,0 +1,20 @@
+{
+  "name": "RAG-Lernsystem (CPU)",
+  "user": "ubuntu",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "Ollama",
+      "command": "ollama serve",
+      "description": "Lokaler LLM-/Embedding-Server (bge-m3 + gemma3:4b) auf Port 11434. Kein systemd in der Cloud-Umgebung, daher hier als Dauerprozess."
+    },
+    {
+      "name": "Streamlit UI",
+      "command": "bash .cursor/run-ui.sh",
+      "description": "RAG-Lernsystem-Weboberflaeche auf http://localhost:8501 (wartet auf Ollama, dann Start via start.sh)."
+    }
+  ],
+  "ports": [
+    { "name": "Streamlit", "port": 8501 }
+  ]
+}
