@@ -37,7 +37,7 @@ class SpikeRagEvalActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         view = TextView(this).apply { textSize = 12f; setPadding(24, 48, 24, 24) }
         setContentView(ScrollView(this).apply { addView(view) })
-        scope.launch { run(intent.getStringExtra("tag") ?: "rag", intent.getIntExtra("n", 1000), intent.getIntExtra("skip", 0)) }
+        if (savedInstanceState == null) scope.launch { run(intent.getStringExtra("tag") ?: "rag", intent.getIntExtra("n", 1000), intent.getIntExtra("skip", 0)) }
     }
 
     private fun log(msg: String) {
@@ -67,12 +67,18 @@ class SpikeRagEvalActivity : Activity() {
                 var first = -1L
                 var sources = emptyList<de.edgebird.lernsystem.data.chat.Source>()
                 var done: ChatEvent.Done? = null
+                try {
                 chat.ask(q.getString("frage")).collect { e ->
                     when (e) {
                         is ChatEvent.Sources -> sources = e.sources
                         is ChatEvent.Token -> if (first < 0) first = SystemClock.elapsedRealtime() - s
                         is ChatEvent.Done -> done = e
                     }
+                }
+                } catch (t: Throwable) {
+                    log("Fehler bei ${q.getString("id")}: ${t.message?.take(80)}; Quellen=${sources.size}, Zeichen=${sources.map { it.text.length }}")
+                    bisect(graph, q.getString("frage"), sources)
+                    throw t
                 }
                 val belege = q.getJSONArray("belege")
                 val hits = JSONArray()
@@ -105,6 +111,22 @@ class SpikeRagEvalActivity : Activity() {
         }
         File(filesDir, "spike").apply { mkdirs() }.let { File(it, "$tag.json").writeText(out.toString(1)) }
         log("FERTIG $tag status=${out.optString("status")}")
+    }
+
+    /** Fehlersuche: gleicher Prompt mit weniger/kuerzeren Quellen, jeweils nur 16 Token erzeugen. */
+    private suspend fun bisect(graph: de.edgebird.lernsystem.AppGraph, question: String, sources: List<de.edgebird.lernsystem.data.chat.Source>) {
+        for ((n, maxChars) in listOf(4 to 100000, 4 to 500, 2 to 1000, 1 to 1000, 1 to 300)) {
+            val passages = sources.take(n).map { de.edgebird.lernsystem.core.rag.Passage("${it.documentTitle}, ${it.location}", it.text.take(maxChars)) }
+            val p = de.edgebird.lernsystem.core.rag.RagPromptBuilder.build(question, passages)
+            val r = try {
+                val sb = StringBuilder()
+                graph.llm.generate(p.user, de.edgebird.lernsystem.core.ai.GenerationParams(maxTokens = 16, system = p.system)).collect { sb.append(it) }
+                "ok '${sb.toString().take(30)}'"
+            } catch (t: Throwable) { "FEHLER" }
+            log("BISECT quellen=$n maxChars=$maxChars promptChars=${p.user.length}: $r")
+        }
+        val first = sources.firstOrNull()
+        if (first != null) log("BISECT erste Quelle (Anfang): ${first.text.take(160).replace("\n", "|")}")
     }
 
     override fun onDestroy() {

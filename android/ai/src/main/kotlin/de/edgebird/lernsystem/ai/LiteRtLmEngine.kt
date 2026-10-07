@@ -51,8 +51,28 @@ class LiteRtLmEngine(
                 maxNumTokens = maxNumTokens,
                 cacheDir = cacheDir,
             )
-            engine = Engine(config).also { it.initialize() }
+            val e = Engine(config).also { it.initialize() }
+            warmUp(e)
+            engine = e
         }
+    }
+
+    /**
+     * Erster Lauf direkt nach dem Laden, mit einem langen Prompt. Die GPU-Kerne des Sprachmodells (besonders für lange
+     * Eingaben) entstehen erst beim ersten passenden Aufruf; lädt davor ein zweites GPU-Modell (der Embedder), schlägt
+     * dieser Aufruf mit "Failed to invoke the compiled model" fehl. Gemessen auf dem Pixel 9 Pro XL: Prompts ab etwa
+     * 1800 Zeichen scheiterten, kürzere liefen.
+     */
+    @OptIn(ExperimentalApi::class)
+    private suspend fun warmUp(e: Engine) {
+        val filler = "Dies ist ein Aufwärmtext, der nur dazu dient, die Kerne für lange Eingaben vorzubereiten. ".repeat(WARMUP_CHARS / 90 + 1).take(WARMUP_CHARS)
+        e.createConversation(ConversationConfig(maxOutputToken = 4)).use { c ->
+            c.sendMessageAsync("$filler\n\nSag kurz Hallo.").collect { }
+        }
+    }
+
+    private companion object {
+        const val WARMUP_CHARS = 4500
     }
 
     @OptIn(ExperimentalApi::class)

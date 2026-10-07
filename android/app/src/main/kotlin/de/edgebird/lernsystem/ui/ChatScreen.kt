@@ -45,6 +45,8 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
     var input by rememberSaveable { mutableStateOf("") }
     var openSource by remember { mutableStateOf<Source?>(null) }
     val listState = rememberLazyListState()
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
     val streaming = messages.lastOrNull()?.streaming == true
 
     LaunchedEffect(messages.size, messages.lastOrNull()?.text?.length) {
@@ -86,7 +88,7 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
             if (streaming) {
                 Button(onClick = vm::stop) { Text("Stopp") }
             } else {
-                Button(onClick = { vm.send(input); input = "" }, enabled = input.isNotBlank() && modelState == ModelState.READY) { Text("Senden") }
+                Button(onClick = { vm.send(input); input = ""; keyboard?.hide(); focus.clearFocus() }, enabled = input.isNotBlank() && modelState == ModelState.READY) { Text("Senden") }
             }
         }
     }

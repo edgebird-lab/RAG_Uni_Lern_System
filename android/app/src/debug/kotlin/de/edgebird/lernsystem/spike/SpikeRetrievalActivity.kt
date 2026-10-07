@@ -41,7 +41,7 @@ class SpikeRetrievalActivity : Activity() {
         view = TextView(this).apply { textSize = 12f; setPadding(24, 48, 24, 24) }
         setContentView(ScrollView(this).apply { addView(view) })
         val tag = intent.getStringExtra("tag") ?: "retr"
-        scope.launch { run(tag) }
+        if (savedInstanceState == null) scope.launch { run(tag) }
     }
 
     private fun log(msg: String) {

@@ -109,7 +109,7 @@ Jeder Schritt ist klein, einzeln testbar und endet mit einem überprüfbaren Erg
 - [x] 4.4 Prompt-Vorlage „nur aus dem Material antworten, Quelle nennen, sonst ‚Nicht im Material gefunden‘“. Prompts aus `graph/prompts.py` als Ausgangsbasis, gekürzt.
 - [x] 4.5 Chat-UI: Streaming-Antwort, Abbrechen, klickbare Quellen mit Textstelle und Seite.
 - [x] 4.6 Gesprächsverlauf (letzte 2 Runden, Antworten auf 600 Zeichen gekürzt; kurze Rückfragen suchen mit der vorigen Frage) mit knapper Historie (Kontextbudget einhalten).
-- [ ] 4.7 Eval aus Phase 2 laufen lassen, mit der Baseline vergleichen.
+- [x] 4.7 (Ergebnisse: `docs/RAG_EVAL.md`; 19/19 Verweigerungen, Beleg in den Quellen 95 %, ca. 88 % inhaltlich korrekt) Eval aus Phase 2 laufen lassen, mit der Baseline vergleichen.
 
 ### Phase 5: Karteikarten und Lernen
 
@@ -165,6 +165,7 @@ Jeder Schritt ist klein, einzeln testbar und endet mit einem überprüfbaren Erg
 | E2B liefert zu schwache deutsche Antworten | Eval früh (Phase 2), kurzer Kontext, JSON-Constrained-Decoding, optional E4B, ggf. LoRA-Finetuning |
 | Tempo/Akku/Hitze | Spike-Messungen, Drosselung beim Embedding, Streaming-UI |
 | Speicherfehler (OOM) bei großem Modell | Mindest-RAM im Manifest, Geräteprüfung im Erststart, E2B als Standard |
+| Lange Prompts scheitern, wenn Embedder und Sprachmodell die GPU teilen (gefunden und behoben, siehe `RAG_EVAL.md`) | Aufwärmlauf mit langem Prompt in `LiteRtLmEngine.load()`; Regressionstest bei jeder LiteRT-LM-Aktualisierung |
 | LiteRT-LM-API ändert sich | Interface-Schicht, Modell und Version im eigenen Release eingefroren |
 | GitHub-Release nicht erreichbar | Mehrere URLs im Manifest, Wiederaufnahme, Offline nach erstem Download |
 | Lizenzpflichten | Apache-2.0-Texte im Release und in der App, NOTICE pflegen |

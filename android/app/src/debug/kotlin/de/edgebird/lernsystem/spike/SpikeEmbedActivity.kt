@@ -35,7 +35,7 @@ class SpikeEmbedActivity : Activity() {
         view = TextView(this).apply { textSize = 12f; setPadding(24, 48, 24, 24) }
         setContentView(ScrollView(this).apply { addView(view) })
         val i = intent
-        scope.launch {
+        if (savedInstanceState == null) scope.launch {
             run(
                 model = i.getStringExtra("model") ?: "embeddinggemma-2-text-270m.litertlm",
                 backend = if (i.getStringExtra("backend") == "gpu") LlmBackend.GPU else LlmBackend.CPU,

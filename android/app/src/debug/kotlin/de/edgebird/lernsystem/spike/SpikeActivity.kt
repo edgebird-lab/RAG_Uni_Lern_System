@@ -48,7 +48,8 @@ class SpikeActivity : Activity() {
         val n = intent.getIntExtra("n", 21)
         val maxTokens = intent.getIntExtra("maxtokens", 256)
         val tag = intent.getStringExtra("tag") ?: "run"
-        scope.launch { runSpike(model, backend, mtp, n, maxTokens, tag) }
+        // Nur beim ersten Start laufen, nicht nach einer Wiederherstellung durch das System
+        if (savedInstanceState == null) scope.launch { runSpike(model, backend, mtp, n, maxTokens, tag) }
     }
 
     private fun log(msg: String) {
