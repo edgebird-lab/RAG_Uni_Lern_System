@@ -1,0 +1,175 @@
+# Android-Plan: RAG-Lernsystem „Lite“ (komplett lokal)
+
+Status: Entwurf, 2026-10-07. Zielgerät für alle Messungen: **Pixel 9 Pro XL** (Tensor G4, 16 GB RAM, Android 17).
+iOS folgt erst, wenn Android steht. Die Architektur hält die Tür aber offen (siehe Abschnitt 2).
+
+## 1. Zielumfang (Version 1.0)
+
+Aus der PC-App wird bewusst nur der Kern übernommen:
+
+| Funktion | PC-Vorbild | Android v1 |
+|---|---|---|
+| Dokumente importieren | `ingestion/loaders.py`, `chunker.py` | PDF, TXT, MD (DOCX/PPTX/OCR später) |
+| Chat mit Quellen (RAG) | `graph/rag_graph.py` | Hybrid-Suche, 3–4 Chunks, Quellenangabe, „nicht im Material“ als Standardausgang |
+| Karteikarten + Lernsystem | `study.py`, FSRS | Karten erzeugen, FSRS-Wiederholung, Tagesziel |
+| Zusammenfassungen | `ingestion/summarize.py` | pro Dokument/Kapitel (Map-Reduce) |
+| Pomodoro | neu | Timer, Benachrichtigungen, Lernzeit-Statistik |
+
+**Bewusst nicht in v1:** Audio-Overview/Chatterbox, Vortrag/Talk, Mindmap, Sokratik, Lernplan-Karten, Prüfungsgenerator, Cloudflare-Tunnel, Websuche, Reranker, OCR.
+
+**Grundregeln:** Alles läuft auf dem Gerät. Nach dem einmaligen Modell-Download braucht die App kein Netz. Keine Analytics, keine Cloud-APIs, keine Konten.
+
+## 2. Architekturentscheidungen
+
+1. **Kotlin, Gradle-Multi-Module.** `core` ist reines Kotlin/JVM ohne Android-Imports (Datenmodelle, Chunker, Fusion, Prompts, FSRS). So bleibt der Kern später für Kotlin Multiplatform/iOS übertragbar.
+2. **Inferenz hinter Interfaces:** `LlmEngine` und `Embedder`. Zwei Kandidaten werden im Spike gemessen, nicht geraten:
+   - **LiteRT-LM** (Google, Kotlin-API, `.litertlm`, nutzt GPU/NPU des Tensor G4)
+   - **llama.cpp** (JNI, GGUF, einheitlich für Android und später iOS)
+3. **Datenbank:** Room/SQLite mit FTS5 (BM25-Ersatz) plus Vektor-BLOB-Spalte, Brute-Force-Cosinus. Reicht für einige zehntausend Chunks.
+4. **UI:** Jetpack Compose, Material 3, ein Activity-Single-Stack.
+5. **Hintergrundarbeit:** WorkManager (Import, Embedding, Karten-Erzeugung), Foreground-Service für Pomodoro.
+6. **Modelle werden nicht ins APK gepackt**, sondern in der App nachgeladen (Abschnitt 4).
+
+Zielstruktur:
+
+```
+android/
+  app/            Compose-UI, DI, Navigation
+  core/           reines Kotlin: Modelle, Chunker, Fusion, Prompts, FSRS, Pomodoro-Logik
+  ai/             LlmEngine, Embedder, Implementierungen, Model-Downloader
+  data/           Room-DB, Repositories, Import
+  eval/           Gold-Set + Skripte (nur synthetische/eigene Daten, nie ins Repo mit Fremdunterlagen)
+  docs/PLAN.md
+```
+
+## 3. Modellwahl
+
+- **LLM:** Gemma 4 E2B als Start (Apache 2.0, Weitergabe erlaubt, mit Lizenz- und Hinweistext). E4B als optionale Auswahl für das Pixel 9 Pro XL, falls das Tempo reicht. Die Entscheidung fällt im Spike.
+- **Embeddings:** EmbeddingGemma (308M, mehrsprachig, 768 Dim, MRL auf 256/512 kürzbar). Alternative bge-m3 nur, wenn es mobil effizient läuft.
+- **Quantisierung:** Erst fertige Q4-Varianten messen (Qualität, Tempo, RAM). Eigene Quantisierung/LoRA nur, wenn das Eval-Ergebnis es rechtfertigt.
+
+## 4. Modell-Verteilung über GitHub (keine dritte Abhängigkeit)
+
+Idee: Eigenes, kleines Repo (z. B. `edgebird-lab/lernsystem-modelle`), die Modelle liegen als **Release-Assets**. Die App lädt von dort, nicht von Hugging Face oder einer API.
+
+Wichtige Fakten und Konsequenzen:
+- Ein Release-Asset darf bis zu **2 GiB** groß sein. Größere Modelle werden in Teile (z. B. 500–1000 MB) gesplittet.
+- Normale Repo-Dateien (100 MB-Limit) und Git-LFS (Kontingent) sind ungeeignet, nur Releases.
+- **`manifest.json`** (im Repo, klein) beschreibt: Modell-ID, Version, Teile, URL(s), Größe, SHA-256, Lizenz, Mindest-RAM, Mindest-App-Version.
+- Die App prüft Integrität per SHA-256, lädt **fortsetzbar** (HTTP Range), nur im WLAN als Standard, mit Speicherplatzprüfung.
+- Das Manifest listet mehrere URLs (Primär: GitHub-Release, Fallback: Mirror), damit die App nicht von einer Quelle abhängt.
+- Wir behalten das Modell in dem Format, das wir getestet haben. Eine Änderung der Quelle (HF, Google) kann so nichts brechen. Preis: Wir pflegen Konvertierung und Release selbst.
+- **Lizenz:** Apache 2.0 verlangt Lizenztext und Hinweise. LICENSE und NOTICE liegen im Release und werden in der App angezeigt.
+- Offene Prüfung: GitHub-Nutzungsbedingungen zu großen Binär-Downloads in öffentlichen Repos kurz gegenlesen, bevor die App viele Nutzer hat.
+
+## 5. Arbeitsschritte
+
+Jeder Schritt ist klein, einzeln testbar und endet mit einem überprüfbaren Ergebnis. Phasen 0 und 1 sind **Entscheidungstore**.
+
+### Phase 0: Fundament
+
+- [x] 0.1 SDK (Platform 36/37, Build-Tools 37, NDK 29, CMake 3.22), `adb` und Pixel 9 Pro XL (Android 17, API 37, 16 GB RAM) eingerichtet; `adb devices` zeigt das Gerät. Android Studio Rabbit 1 (2026.2.1) liegt unter `~/android-studio`.
+- [x] 0.2 Gradle-Projekt `android/` mit leeren Modulen `app`, `core`, `ai`, `data` anlegen; „Hello Compose“ läuft auf dem Pixel.
+- [x] 0.3 (Workflow `.github/workflows/android.yml`, noch nicht auf GitHub gelaufen) CI (GitHub Actions): `./gradlew test lint assembleDebug` bei jedem Push.
+- [ ] 0.4 Code-Konventionen: ktlint/detekt, JUnit5, Kotlin-Coroutines/Flow.
+
+### Phase 1: Spike „Läuft das Modell gut genug?“ (Tor 1)
+
+- [x] 1.1 Interface `LlmEngine { generate(prompt, params): Flow<String>; cancel(); close() }` und `Embedder`.
+- [x] 1.2 Modell manuell per `adb push` aufs Gerät legen (Downloader kommt später).
+- [x] 1.3 Implementierung A: LiteRT-LM mit Gemma 4 E2B. Misst: Ladezeit, Tokens/s (Prefill + Decode), RAM-Spitze, Temperatur nach 5 Minuten.
+- [ ] 1.4 (zurückgestellt, siehe `SPIKE_ERGEBNIS.md`) Implementierung B: llama.cpp (JNI) mit Gemma 4 E2B Q4_K_M. Gleiche Messungen.
+- [x] 1.5 Embedding-Spike: EmbeddingGemma über beide Wege; Durchsatz (Chunks/s) und Vektor-Qualität (Paar-Ähnlichkeit auf deutschen Sätzen).
+- [x] 1.6 E4B gegen E2B messen (Pixel hat 16 GB).
+- [x] 1.7 **Entscheidung (LiteRT-LM + E2B, GPU, MTP):** Runtime (A oder B), Modellgröße, Mindest-RAM. Ergebnis als `docs/SPIKE_ERGEBNIS.md` mit Zahlen.
+  Abbruchkriterium: weniger als ca. 8 Token/s Decode oder instabile Antwortqualität → Plan überdenken (kleinerer Funktionsumfang oder größeres Modell nur optional).
+
+### Phase 2: Eval-Grundlage (vor dem Bauen der Funktionen)
+
+- [x] 2.1 (fertig: 102 geprüfte Fragen in `eval/goldset/goldset.jsonl`, siehe README dort) Gold-Set der PC-App (`data/eval/gold_set.jsonl`, 57 Fragen) als Format-Vorlage verwenden. Die Fragen stammen aus persönlichen Unterlagen und bleiben **lokal**; für das öffentliche Repo ein eigenes, freies Beispiel-Korpus erstellen (z. B. gemeinfreie Lehrtexte).
+- [ ] 2.2 Kleines Eval-Tool (Kotlin-JVM oder Python-Skript), das Fragen gegen ein Modell/Index laufen lässt und Treffer@k sowie Antwort-Treue (Quelle enthalten, „nicht im Material“-Quote) ausgibt.
+- [ ] 2.3 Baseline festhalten: Basismodell, Q4, kleiner Kontext. Dieses Eval ist die Messlatte für jede spätere Änderung.
+
+### Phase 3: Daten und Import
+
+- [x] 3.1 Room-Schema `Document`, `Chunk`, `Embedding` + FTS5-Tabelle (`Card`, `ReviewLog`, `PomodoroSession`, `Setting` kommen mit Phase 5/7). **Befund: Androids System-SQLite hat kein FTS5**, deshalb `BundledSQLiteDriver` (androidx.sqlite-bundled).
+- [x] 3.2 (Paritätstest gegen den Python-Chunker: 133 identische Chunks) Chunker nach Kotlin portieren (Vorlage: `ingestion/chunker.py`, Größe ca. 1100 Zeichen, 180 Überlappung; Parameter für kleineren Kontext neu bewerten). Unit-Tests aus den Python-Tests ableiten.
+- [x] 3.3 Text-Normalisierung (Unicode-NFC, Trennstriche, Whitespace) portieren.
+- [x] 3.4 (PDFium, `io.legere:pdfiumandroid`; Silbentrennungs-Marker U+FFFE werden entfernt) PDF-Extraktion (Text, Seitenzuordnung) mit einer Android-PDF-Bibliothek; Test mit mehreren echten PDFs.
+- [x] 3.5 TXT/MD-Import; Datei-Auswahl über Storage Access Framework.
+- [x] 3.6 Dedup per SHA-256 des Volltexts (wie `dedup.py`), „unverändert“/„Duplikat“/„geändert“.
+- [x] 3.7 Import-Pipeline als WorkManager-Job mit Fortschritt, Abbruch und Wiederaufnahme.
+- [~] 3.8 (läuft als Vordergrunddienst, wiederaufnehmbar; Drosselung bei Hitze/Akku und „bevorzugt am Ladegerät“ fehlen noch) Embedding der Chunks im Hintergrund (Batching, Drosselung bei Hitze/Akku, bevorzugt am Ladegerät).
+
+### Phase 4: Suche und Chat (RAG)
+
+- [ ] 4.1 FTS5-Suche inkl. deutscher Vorverarbeitung (Stemming/Normalisierung, Ersatz für Snowball).
+- [ ] 4.2 Vektor-Suche (Brute-Force-Cosinus) mit Benchmark bei 10k/50k Chunks.
+- [ ] 4.3 Fusion per RRF (Formel aus `ARCHITEKTUR.md` übernehmen), Top-K auf 3–4.
+- [ ] 4.4 Prompt-Vorlage „nur aus dem Material antworten, Quelle nennen, sonst ‚Nicht im Material gefunden‘“. Prompts aus `graph/prompts.py` als Ausgangsbasis, gekürzt.
+- [ ] 4.5 Chat-UI: Streaming-Antwort, Abbrechen, klickbare Quellen mit Textstelle und Seite.
+- [ ] 4.6 Gesprächsverlauf mit knapper Historie (Kontextbudget einhalten).
+- [ ] 4.7 Eval aus Phase 2 laufen lassen, mit der Baseline vergleichen.
+
+### Phase 5: Karteikarten und Lernen
+
+- [ ] 5.1 FSRS nach Kotlin portieren (Vorlage: Python-`fsrs`, Tests mit festen Referenzwerten).
+- [ ] 5.2 Karten-Erzeugung aus Chunks: strikt strukturierte JSON-Ausgabe (Frage/Antwort/Cloze), Retry bei kaputtem JSON (wie `generate_json` in `llm.py`).
+- [ ] 5.3 Qualitätsfilter für Karten (Vorlage: `card_quality.py`), Duplikat-Erkennung.
+- [ ] 5.4 Lern-UI: Karte zeigen, bewerten (Nochmal/Schwer/Gut/Leicht), nächste Fälligkeit.
+- [ ] 5.5 Tagesziel, Streak, einfache Fortschrittsansicht.
+- [ ] 5.6 Karten manuell anlegen/bearbeiten/löschen; Anki-Export (CSV) optional.
+
+### Phase 6: Zusammenfassungen
+
+- [ ] 6.1 Map-Reduce: Abschnitt-Zusammenfassungen, dann Gesamtzusammenfassung (Vorlage: `ingestion/summarize.py`).
+- [ ] 6.2 Länge/Stil wählbar (Stichpunkte, Kurzfassung).
+- [ ] 6.3 Anzeige und Speicherung pro Dokument, Neuberechnung bei geänderter Quelle.
+
+### Phase 7: Pomodoro
+
+- [ ] 7.1 Zustandsmaschine in `core` (Fokus/Kurzpause/Langpause, Einstellungen), voll unit-getestet.
+- [ ] 7.2 Foreground-Service mit Benachrichtigung, genaue Alarme für Ende der Phase.
+- [ ] 7.3 UI: Timer, Start/Pause, Zuordnung zu einem Fach/Dokument.
+- [ ] 7.4 Lernzeit-Statistik (pro Tag/Woche) und Verknüpfung mit dem Tagesziel.
+
+### Phase 8: Modell-Download in der App
+
+- [ ] 8.1 Modell-Repo auf GitHub anlegen, Konvertierung/Quantisierung reproduzierbar dokumentieren (Skript im Repo).
+- [ ] 8.2 `manifest.json`-Schema festlegen (Abschnitt 4), Release `v1` mit Teilen erstellen.
+- [ ] 8.3 Downloader: Range-Fortsetzung, SHA-256-Prüfung, Speicherplatz-Check, nur WLAN (einstellbar), Fortschritt und Abbruch.
+- [ ] 8.4 Erststart-Assistent: Gerät prüfen (RAM), Modell empfehlen, Download starten, Lizenz anzeigen.
+- [ ] 8.5 Fallback-URLs und Fehlerfälle testen (Abbruch, kaputte Datei, volles Gerät).
+- [ ] 8.6 Updates: Manifest-Version prüfen, altes Modell erst nach erfolgreichem Download löschen.
+
+### Phase 9: Qualität, Robustheit, Release
+
+- [ ] 9.1 Fehlerbehandlung: Modell nicht geladen, zu wenig RAM, leere Datenbank, Abbruch mitten im Import.
+- [ ] 9.2 Performance: Kaltstart, Speicherverbrauch, Akku-Test über 30 Minuten Chat.
+- [ ] 9.3 Datenschutz: Datenschutzerklärung (nichts verlässt das Gerät), Backup-Regeln (`allowBackup` bewusst entscheiden), Export/Löschen aller Daten.
+- [ ] 9.4 Barrierefreiheit, Dark Mode, deutsch/englisch.
+- [ ] 9.5 Geschlossener Test mit wenigen Nutzern (Play Console, interne Testspur).
+- [ ] 9.6 Play-Store-Eintrag: Screenshots, Beschreibung, Content-Rating, Data-Safety-Formular, App Bundle signieren.
+- [ ] 9.7 Veröffentlichung auf der Produktionsspur.
+
+### Phase 10: iOS (erst danach)
+
+- [ ] 10.1 `core` auf Kotlin Multiplatform umstellen, ggf. Compose Multiplatform prüfen.
+- [ ] 10.2 Inferenz auf iOS (llama.cpp mit Metal oder LiteRT-LM Swift), Entitlement für erhöhtes Speicherlimit.
+- [ ] 10.3 Modell-Download und Pomodoro-Benachrichtigungen für iOS anpassen; App-Store-Einreichung (Mac + Developer-Konto nötig).
+
+## 6. Risiken und Gegenmaßnahmen
+
+| Risiko | Gegenmaßnahme |
+|---|---|
+| E2B liefert zu schwache deutsche Antworten | Eval früh (Phase 2), kurzer Kontext, JSON-Constrained-Decoding, optional E4B, ggf. LoRA-Finetuning |
+| Tempo/Akku/Hitze | Spike-Messungen, Drosselung beim Embedding, Streaming-UI |
+| Speicherfehler (OOM) bei großem Modell | Mindest-RAM im Manifest, Geräteprüfung im Erststart, E2B als Standard |
+| LiteRT-LM-API ändert sich | Interface-Schicht, Modell und Version im eigenen Release eingefroren |
+| GitHub-Release nicht erreichbar | Mehrere URLs im Manifest, Wiederaufnahme, Offline nach erstem Download |
+| Lizenzpflichten | Apache-2.0-Texte im Release und in der App, NOTICE pflegen |
+| Datenschutz in öffentlichen Tests | Gold-Set und Unterlagen nie committen (`.gitignore` für `android/eval/private/`) |
+
+## 7. Nächster Schritt
+
+Phase 0 (Projekt und Gerät einrichten) und danach direkt Phase 1 (Spike). Alles Weitere hängt von den Messwerten ab.
