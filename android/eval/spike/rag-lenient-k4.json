@@ -1,0 +1,1711 @@
+{
+ "tag": "rag-lenient-k4",
+ "topk": 4,
+ "lenient": true,
+ "load_ms": 5363,
+ "chunks": 5462,
+ "results": [
+  {
+   "id": "bgb-dire-01",
+   "typ": "direkt",
+   "frage": "Unter welchen Bedingungen gilt eine Pauschalreise als frei von Reisemängeln, wenn die Beschaffenheit nicht explizit vereinbart wurde?",
+   "erwartet": "Sie muss entweder für den nach dem Vertrag vorausgesetzten Nutzen geeignet sein oder für den gewöhnlichen Nutzen geeignet sein und eine übliche Beschaffenheit aufweisen, die der Reisende erwarten kann.",
+   "antwort": "Eine Pauschalreise gilt als frei von Reisemängeln, wenn sie die vereinbarte Beschaffenheit hat [2]. Soweit die Beschaffenheit nicht vereinbart ist, gilt dies, wenn:\n1. Sie sich für den nach dem Vertrag vorausgesetzten Nutzen eignet, oder\n2. Sie sich für den gewöhnlichen Nutzen eignet und eine Beschaffenheit aufweist, die bei Pauschalreisen der gleichen Art üblich ist und die der Reisende nach der Art der Pauschalreise erwarten kann [1].",
+   "not_found": false,
+   "cited": [
+    1,
+    2
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 3509,
+   "total_ms": 7449
+  },
+  {
+   "id": "bgb-dire-02",
+   "typ": "direkt",
+   "frage": "Unter welchen Bedingungen ist eine Vereinbarung wirksam, die eine Partei zur Zahlung oder Erstattung von Maklerlohn verpflichtet, wenn nur eine Partei einen Maklervertrag für eine Wohnung oder ein Einfamilienhaus abgeschlossen hat?",
+   "erwartet": "Die Vereinbarung ist nur wirksam, wenn die Partei, die den Maklervertrag abgeschlossen hat, zur Zahlung des Maklerlohns mindestens in gleicher Höhe verpflichtet bleibt.",
+   "antwort": "Eine Vereinbarung, die eine andere Partei zur Zahlung oder Erstattung von Maklerlohn verpflichtet, ist nur wirksam, wenn die Partei, die den Maklervertrag abgeschlossen hat, zur Zahlung des Maklerlohns mindestens in gleicher Höhe verpflichtet bleibt [1]. Der Anspruch gegen die andere Partei wird erst fällig, wenn die Partei, die den Maklervertrag abgeschlossen hat, ihrer Verpflichtung zur Zahlung des Maklerlohns nachgekommen ist und sie oder der Makler einen Nachweis hierüber erbringt [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1667,
+   "total_ms": 5364
+  },
+  {
+   "id": "bgb-dire-03",
+   "typ": "direkt",
+   "frage": "Unter welchen Bedingungen können Eigentümer und Pfandgläubiger vereinbaren, dass der Pfandgläubiger den Verkauf des Pfandes zum laufenden Preis selbst oder durch Dritte vornehmen kann?",
+   "erwartet": "Dies ist möglich, wenn die Eigentümer und Pfandgläubiger Unternehmer, juristische Personen des öffentlichen Rechts oder öffentlich-rechtliche Sondervermögen sind und das Pfand einen Börsen- oder Marktpreis hat.",
+   "antwort": "Eigentümer und Pfandgläubiger, die Unternehmer, juristische Personen des öffentlichen Rechts oder öffentlich-rechtliche Sondervermögen sind, können bei der Verpfändung vereinbaren, dass der Pfandgläubiger den Verkauf aus freier Hand zum laufenden Preis selbst oder durch Dritte vornehmen kann oder dem Pfandgläubiger das Eigentum an der Sache bei Fälligkeit der Forderung zufallen soll [3].",
+   "not_found": false,
+   "cited": [
+    3
+   ],
+   "source_hits": [
+    3
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1564,
+   "total_ms": 4958
+  },
+  {
+   "id": "bgb-dire-04",
+   "typ": "direkt",
+   "frage": "Unter welchen Bedingungen haftet das Gesamtgut nicht für Verbindlichkeiten aus einem Erwerb, der während der Gütergemeinschaft erfolgt?",
+   "erwartet": "Das Gesamtgut haftet nicht, wenn der Ehegatte, der Erbe ist, das Gesamtgut nicht verwaltet und die Erbschaft entweder als Vorbehaltsgut oder als Sondergut erworben wird. Dies gilt auch beim Erwerb eines Vermächtnisses.",
+   "antwort": "Das Gesamtgut haftet nicht für Verbindlichkeiten, die durch den Erwerb einer Erbschaft entstehen, wenn der Ehegatte, der Erbe ist, das Gesamtgut nicht verwaltet und die Erbschaft während der Gütergemeinschaft als Vorbehaltsgut oder als Sondergut erwirbt [1]. Ebenso gilt beim Erwerb eines Vermächtnisses [1].\n\nDas Gesamtgut haftet nicht für Verbindlichkeiten eines Ehegatten, die durch den Erwerb einer Erbschaft oder eines Vermächtnisses entstehen, wenn der Ehegatte die Erbschaft oder das Vermächtnis während der Gütergemeinschaft als Vorbehaltsgut oder als Sondergut erwirbt [2].\n\nDas Gesamtgut haftet nicht für eine Verbindlichkeit eines Ehegatten, die während der Gütergemeinschaft infolge eines zum Vorbehaltsgut oder zum Sondergut gehörenden Rechts oder des Besitzes einer dazu gehörenden Sache entsteht, wenn der Ehegatte das Gesamtgut nicht verwaltet [4].",
+   "not_found": false,
+   "cited": [
+    1,
+    2,
+    4
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1387,
+   "total_ms": 8566
+  },
+  {
+   "id": "bgb-dire-08",
+   "typ": "direkt",
+   "frage": "Unter welchen Bedingungen kann ein Erbe, der zu mehreren Erbteilen berufen ist, einen Erbteil annehmen und einen anderen ausschlagen?",
+   "erwartet": "Wenn die Berufung auf verschiedenen Gründen beruht, kann der Erbe einen Erbteil annehmen und einen anderen ausschlagen.",
+   "antwort": "Ein Erbe, das zu mehreren Erbteilen berufen ist, kann den einen Erbteil annehmen und den anderen ausschlagen, wenn die Berufung auf verschiedenen Gründen beruht [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1448,
+   "total_ms": 2804
+  },
+  {
+   "id": "bgb-dire-09",
+   "typ": "direkt",
+   "frage": "Welche Frist muss für die Kündigung eines Pachtverhältnisses eingehalten werden, wenn die Pachtzeit nicht bestimmt ist?",
+   "erwartet": "Die Kündigung muss spätestens am dritten Werktag des halben Jahres erfolgen, dessen Ablauf mit dem Ende der Pacht zusammenfällt.",
+   "antwort": "Wenn die Pachtzeit nicht bestimmt ist, ist die Kündigung nur für den Schluss eines Pachtjahrs zulässig; sie muss spätestens am dritten Werktag des halben Jahres erfolgen, mit dessen Ablauf die Pacht enden soll [1]. Alternativ kann jeder Vertragsteil das Pachtverhältnis spätestens am dritten Werktag eines Pachtjahrs für den Schluss des nächsten Pachtjahrs kündigen [2].",
+   "not_found": false,
+   "cited": [
+    1,
+    2
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1366,
+   "total_ms": 4558
+  },
+  {
+   "id": "bgb-dire-10",
+   "typ": "direkt",
+   "frage": "In welchem Fall muss der neue Gläubiger eine Kündigung des Eigentümers gegen sich gelten lassen, wenn die Forderung übertragen wird?",
+   "erwartet": "Der neue Gläubiger muss eine Kündigung gelten lassen, es sei denn, die Übertragung war zur Zeit der Kündigung bekannt oder im Grundbuch eingetragen.",
+   "antwort": "Der neue Gläubiger muss eine Kündigung des Eigentümers gegen sich gelten lassen, es sei denn, die Übertragung erfolgte zur Zeit der Kündigung war dem Eigentümer bekannt oder im Grundbuch eingetragen [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1355,
+   "total_ms": 3059
+  },
+  {
+   "id": "gg-dire-01",
+   "typ": "direkt",
+   "frage": "Wie lange dauert das Amt des Bundespräsidenten und wie oft kann er nach Ablauf seiner Amtszeit erneut gewählt werden?",
+   "erwartet": "Das Amt dauert fünf Jahre und eine anschließende Wiederwahl ist nur einmal zulässig.",
+   "antwort": "Das Amt des Bundespräsidenten dauert fünf Jahre, und eine anschließende Wiederwahl ist nur einmal zulässig [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1649,
+   "total_ms": 2723
+  },
+  {
+   "id": "gg-dire-02",
+   "typ": "direkt",
+   "frage": "Wer trägt grundsätzlich die Verantwortlichkeit, wenn jemand in Ausübung eines öffentlichen Amtes eine Pflicht gegenüber einem Dritten verletzt?",
+   "erwartet": "Grundsätzlich trägt der Staat oder die Körperschaft, in deren Dienst die Person steht, die Verantwortlichkeit.",
+   "antwort": "Grundsätzlich trägt die Verantwortlichkeit der Staat oder die Körperschaft, in deren Dienst der Beamte steht, wenn jemand in Ausübung eines ihm anvertrauten öffentlichen Amtes die ihm einem Dritten gegenüber obliegende Amtspflicht verletzt [1]. Bei Vorsatz oder grober Fahrlässigkeit bleibt der Rückgriff vorbehalten [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1438,
+   "total_ms": 4296
+  },
+  {
+   "id": "gg-dire-03",
+   "typ": "direkt",
+   "frage": "Welche drei Bereiche regelt ein Bundesgesetz, das die Zustimmung des Bundesrates benötigt, um Haushaltsnotlagen zu verhindern?",
+   "erwartet": "Das Gesetz regelt die Überwachung der Haushaltswirtschaft, die Feststellung einer drohenden Haushaltsnotlage und die Grundsätze für Sanierungsprogramme.",
+   "antwort": "Ein Bundesgesetz, das die Zustimmung des Bundesrates benötigt, regelt folgende Punkte zur Vermeidung von Haushaltsnotlagen:\n1. Die fortlaufende Überwachung der Haushaltswirtschaft von Bund und Ländern durch ein gemeinsames Gremium (Stabilitätsrat) [1].\n2. Die Voraussetzungen und das Verfahren zur Feststellung einer drohenden Haushaltsnotlage [1].\n3. Die Grundsätze zur Aufstellung und Durchführung von Sanierungsprogrammen zur Vermeidung von Haushaltsnotlagen [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1543,
+   "total_ms": 5243
+  },
+  {
+   "id": "gg-dire-08",
+   "typ": "direkt",
+   "frage": "Wie ist die Zusammensetzung des Gemeinsamen Ausschusses hinsichtlich der Vertretung von Bundestagsabgeordneten und Mitgliedern des Bundesrates?",
+   "erwartet": "Der Gemeinsame Ausschuß besteht zu zwei Dritteln aus Abgeordneten des Bundestages und zu einem Drittel aus Mitgliedern des Bundesrates.",
+   "antwort": "Der Gemeinsame Ausschuß besteht zu zwei Dritteln aus Abgeordneten des Bundestages und zu einem Drittel aus Mitgliedern des Bundesrates [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1305,
+   "total_ms": 2504
+  },
+  {
+   "id": "gg-dire-09",
+   "typ": "direkt",
+   "frage": "Welche Anordnungen und Verfügungen des Bundespräsidenten benötigen zur Gültigkeit eine Gegenzeichnung?",
+   "erwartet": "Alle Anordnungen und Verfügungen des Bundespräsidenten, außer der Ernennung und Entlassung des Bundeskanzlers, der Auflösung des Bundestages nach Artikel 63 und dem Ersuchen nach Artikel 69 Abs. 3.",
+   "antwort": "Anordnungen und Verfügungen des Bundespräsidenten bedürfen zur Gültigkeit der Gegenzeichnung durch den Bundeskanzler oder durch den zuständigen Bundesminister [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1305,
+   "total_ms": 2540
+  },
+  {
+   "id": "gg-dire-10",
+   "typ": "direkt",
+   "frage": "Wie lange bleiben Gesetze, die von den Artikeln 91a, 91b, 104a, 106 und 107 abweichende Regelungen enthalten, gültig?",
+   "erwartet": "Sie gelten längstens bis zum Ende des zweiten Rechnungsjahres, das auf die Beendigung des Verteidigungsfalles folgt.",
+   "antwort": "Gesetze, die von den Artikeln 91a, 91b, 104a, 106 und 107 abweichende Regelungen enthalten, gelten längstens bis zum Ende des zweiten Rechnungsjahres, das auf die Beendigung des Verteidigungsfalls folgt [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1526,
+   "total_ms": 3871
+  },
+  {
+   "id": "gg-dire-11",
+   "typ": "direkt",
+   "frage": "Welcher Artikel ist für die Regelung der Steuerertragsverteilung, des Länderfinanzausgleichs und der Bundesergänzungszuweisungen bis zum 31. Dezember 2019 anzuwenden?",
+   "erwartet": "Artikel 107 in seiner bis zum Inkrafttreten des Gesetzes zur Änderung des Grundgesetzes vom 13. Juli 2017 geltenden Fassung ist anzuwenden.",
+   "antwort": "Artikel 107 wird für die Regelung der Steuerertragsverteilung, des Länderfinanzausgleichs und der Bundesergänzungszuweisungen bis zum 31. Dezember 2019 weiter anzuwenden, bis zum Inkrafttreten des Gesetzes zur Änderung des Grundgesetzes vom 13. Juli 2017 geltenden Fassung [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1650,
+   "total_ms": 4591
+  },
+  {
+   "id": "gg-dire-12",
+   "typ": "direkt",
+   "frage": "Unter welchen Bedingungen kann der Bund ein Sondervermögen für die Bundeswehr errichten und welche rechtlichen Artikel sind dabei außer Kraft gesetzt?",
+   "erwartet": "Der Bund kann ein Sondervermögen bis zu 100 Milliarden Euro errichten; dabei sind die Artikel 109 Absatz 3 und Artikel 115 Absatz 2 nicht anzuwenden.",
+   "antwort": "Der Bund kann ein Sondervermögen für die Bundeswehr errichten, um die Bündnis- und Verteidigungsfähigkeit zu stärken, wobei die zahlenmäßige Stärke und die Grundzüge der Organisation aus dem Haushaltsplan resultieren müssen [1]. Für die Stärkung der Bündnis- und Verteidigungsfähigkeit kann der Bund ein Sondervermögen für die Bundeswehr mit eigener Kreditermächtigung in Höhe von einmalig bis zu 100 Milliarden Euro errichten [1]. Auf die Kreditermächtigung sind Artikel 109 Absatz 3 und Artikel 115 Absatz 2 nicht anzuwenden [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1515,
+   "total_ms": 6515
+  },
+  {
+   "id": "gg-dire-13",
+   "typ": "direkt",
+   "frage": "Wer hat das Recht, die Anwesenheit jedes Mitgliedes der Bundesregierung zu verlangen?",
+   "erwartet": "Der Bundestag und seine Ausschüsse können die Anwesenheit jedes Mitgliedes der Bundesregierung verlangen.",
+   "antwort": "Der Bundestag und seine Ausschüsse können die Anwesenheit jedes Mitgliedes der Bundesregierung verlangen [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1262,
+   "total_ms": 1860
+  },
+  {
+   "id": "gg-dire-18",
+   "typ": "direkt",
+   "frage": "Unter welchen Bedingungen können Bundesgesetze bestimmen, dass Geldleistungen, die von den Ländern ausgeführt werden, ganz oder teilweise vom Bund getragen werden?",
+   "erwartet": "Bundesgesetze können bestimmen, dass Geldleistungen ganz oder teilweise vom Bund getragen werden.",
+   "antwort": "Bundesgesetze, die Geldleistungen gewähren und von den Ländern ausgeführt werden, können bestimmen, dass diese ganz oder zum Teil vom Bund getragen werden, wenn dies im Gesetz vorgesehen ist [1]. Darüber hinaus können Gesetze, die auf Grund des Artikels 73 Abs. 1 Nr. 14 ergehen, mit Zustimmung des Bundesrates bestimmen, dass sie von den Ländern im Auftrage des Bundes ausgeführt werden [3].",
+   "not_found": false,
+   "cited": [
+    1,
+    3
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1287,
+   "total_ms": 5132
+  },
+  {
+   "id": "hgb-dire-01",
+   "typ": "direkt",
+   "frage": "Wer ist für die Anmeldung der Zweigniederlassung einer Aktiengesellschaft und einer GmbH zur Eintragung ins Handelsregister zuständig?",
+   "erwartet": "Die Errichtung einer Zweigniederlassung einer Aktiengesellschaft muss vom Vorstand, und bei einer GmbH von den Geschäftsführern angemeldet werden.",
+   "antwort": "Der Vorstand ist für die Errichtung einer Zweigniederlassung einer Aktiengesellschaft zuständig, und die Geschäftsführer sind für die Errichtung einer Zweigniederlassung einer Gesellschaft mit beschränkter Haftung zuständig, um diese in das Handelsregister einzutragen [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1685,
+   "total_ms": 4404
+  },
+  {
+   "id": "hgb-dire-03",
+   "typ": "direkt",
+   "frage": "Welche Unterlagen müssen Kreditinstitute in deutscher Sprache offenlegen, sofern sie zu erstellen sind?",
+   "erwartet": "Kreditinstitute müssen den Jahresabschluß, den Lagebericht sowie den Konzernabschluß und den Konzernlagebericht und die in § 325 bezeichneten Unterlagen offenlegen.",
+   "antwort": "Kreditinstitute müssen den Jahresabschluß, den Lagebericht sowie den Konzernabschluß und den Konzernlagebericht und die anderen in § 325 bezeichneten Unterlagen, sofern sie zu erstellen sind, in deutscher Sprache nach § 325 Absatz 1 Satz 2 und Absatz 1a bis 5 sowie den §§ 327a und 328 offenzulegen [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1611,
+   "total_ms": 4671
+  },
+  {
+   "id": "hgb-dire-04",
+   "typ": "direkt",
+   "frage": "Unter welchen Bedingungen kann ein Schiffseigentümer sich gegenüber einem Dritten darauf berufen, dass ein Ausrüster das Schiff betreibt, wenn der Eigentümer selbst nicht direkt involviert ist?",
+   "erwartet": "Der Eigentümer muss dem Dritten unverzüglich nach Geltendmachung des Anspruchs den Namen und die Anschrift des Ausrüsters mitteilen.",
+   "antwort": "Der Eigentümer kann sich dem Dritten gegenüber darauf berufen, dass ein Ausrüster das Schiff zum Erwerb durch Seefahrt betreibt, wenn er dem Dritten unverzüglich nach Geltendmachung des Anspruchs den Namen und die Anschrift des Ausrüsters mitteilt [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1310,
+   "total_ms": 3595
+  },
+  {
+   "id": "hgb-dire-05",
+   "typ": "direkt",
+   "frage": "Unter welchen Bedingungen finden die Formvorschriften des BGB für Bürgschaften, Schuldversprechen oder Schuldanerkenntnisse keine Anwendung?",
+   "erwartet": "Die Formvorschriften finden keine Anwendung, wenn die Bürgschaft auf Seiten des Bürgen, das Versprechen oder das Anerkenntnis auf Seiten des Schuldners ein Handelsgeschäft ist.",
+   "antwort": "Die Formvorschriften des BGB für Bürgschaften, Schuldversprechen oder Schuldanerkenntnisse finden keine Anwendung, wenn die Bürgschaft auf der Seite des Bürgen und das Versprechen oder das Anerkenntnis auf der Seite des Schuldners ein Handelsgeschäft ist [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1275,
+   "total_ms": 3388
+  },
+  {
+   "id": "hgb-dire-06",
+   "typ": "direkt",
+   "frage": "Unter welchen Bedingungen muss der Frachtführer die Lieferung des Gutes vornehmen?",
+   "erwartet": "Der Frachtführer muss das Gut entweder innerhalb der vereinbarten Frist oder, falls keine Vereinbarung getroffen wurde, innerhalb einer Frist abliefern, die einem sorgfältigen Frachtführer unter Berücksichtigung der Umstände vernünftigerweise zuzubilligen ist.",
+   "antwort": "Der Frachtführer ist verpflichtet, das Gut innerhalb der vereinbarten Frist oder mangels Vereinbarung innerhalb der Frist abzuliefern, die einem sorgfältigen Frachtführer unter Berücksichtigung der Umstände vernünftigerweise zuzabilligen ist (Lieferfrist) [3].",
+   "not_found": false,
+   "cited": [
+    3
+   ],
+   "source_hits": [
+    3
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1470,
+   "total_ms": 3458
+  },
+  {
+   "id": "hgb-dire-07",
+   "typ": "direkt",
+   "frage": "Wann darf der Verfrachter Weisungen eines legitimierten Besitzers des Konnossements nicht ausführen?",
+   "erwartet": "Der Verfrachter darf Weisungen nicht ausführen, wenn ihm bekannt oder infolge grober Fahrlässigkeit unbekannt ist, dass der Besitzer nicht der aus dem Konnossement Berechtigte ist.",
+   "antwort": "Der Verfrachter darf Weisungen eines legitimierten Besitzers des Konnossements nicht ausführen, wenn ihm bekannt oder infolge grober Fahrlässigkeit unbekannt ist, dass der legitimierte Besitzer des Konnossements nicht der aus dem Konnossement Berechtigte ist [1, 2].",
+   "not_found": false,
+   "cited": [
+    1,
+    2
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1665,
+   "total_ms": 3875
+  },
+  {
+   "id": "wiki_blutkreislauf-dire-02",
+   "typ": "direkt",
+   "frage": "Welche zusätzlichen Funktionen kann das Kreislaufsystem in manchen Tiergruppen außer dem Stofftransport übernehmen?",
+   "erwartet": "Neben dem Stofftransport kann das Kreislaufsystem Temperaturregulation (Thermoregulation) und verschiedene hydraulische Funktionen erfüllen.",
+   "antwort": "Das Kreislaufsystem kann in manchen Tiergruppen neben dem Stofftransport auch Funktionen wie die Temperaturregulation innerhalb des Körpers (Thermoregulation) und verschiedene hydraulische Funktionen erfüllen [1]. Beispiele hierfür sind das Strecken der Beine bei Spinnen durch hydrostatischen Druck, die Erektion der Geschlechtsorgane bei Wirbeltieren durch die erhöhte Blutmenge in Schwellkörpern und die Bereitstellung des Drucks für die Filtration des Harns in der Niere [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1325,
+   "total_ms": 5569
+  },
+  {
+   "id": "wiki_blutkreislauf-dire-03",
+   "typ": "direkt",
+   "frage": "Welche Zellgruppe wird als Vorläufer heutiger Hämangioblasten angesehen, die das Coelom auskleideten und Gefäße bildeten?",
+   "erwartet": "Mesotheliale Zellen.",
+   "antwort": "Mesotheliale Zellen wurden zu kontraktilen Gefäßzellen, Nephrozyten oder zu Blutvorläuferzellen differenziert, welche als eine Art Vorläufer heutiger Hämangioblasten angesehen werden [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1667,
+   "total_ms": 3880
+  },
+  {
+   "id": "wiki_blutkreislauf-dire-04",
+   "typ": "direkt",
+   "frage": "Warum ist die Diffusion über größere Distanzen ineffizient?",
+   "erwartet": "Die Diffusionszeit nimmt mit dem Quadrat der Entfernung zu.",
+   "antwort": "Die Diffusion ist über längere Entfernungen sehr langsam, da die Dauer mit dem Quadrat der Entfernung zunimmt [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1307,
+   "total_ms": 2150
+  },
+  {
+   "id": "wiki_industrielle_revolution-dire-02",
+   "typ": "direkt",
+   "frage": "Welche wichtige technische Errungenschaft ermöglichte den Übergang von Roheisen, das traditionell mit Holzkohle erschmolzen wurde, zu Koksroheisen?",
+   "erwartet": "Die Implementierung des Kokshochofens zur Eisenverhüttung ermöglichte diesen Übergang.",
+   "antwort": "Die Implementierung des Kokshochofens zur Eisenverhüttung ermöglichte den Übergang vom traditionell mit Holzkohle erschmolzenem Roheisen auf Koksroheisen [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1470,
+   "total_ms": 3028
+  },
+  {
+   "id": "wiki_industrielle_revolution-dire-03",
+   "typ": "direkt",
+   "frage": "Welches Land verfügte um 1848 über ein örtlich massenhaft konzentriertes und teilweise organisiertes Industrieproletariat?",
+   "erwartet": "England verfügte zu dieser Zeit über ein Industrieproletariat, das in größerem Umfang organisiert war.",
+   "antwort": "England verfügte um 1848 über ein örtlich massenhaft konzentriertes und teilweise in größerem Umfang organisiertes Industrieproletariat [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1318,
+   "total_ms": 2426
+  },
+  {
+   "id": "wiki_industrielle_revolution-dire-04",
+   "typ": "direkt",
+   "frage": "Welche drei wissenschaftlichen Schulen betrachten die Industrielle Revolution aus unterschiedlichen Blickwinkeln?",
+   "erwartet": "Die drei genannten Schulen sind die industrieökonomische Schule, die makroökonomische Schule und die Schule des sozialen Wandels.",
+   "antwort": "Die folgenden wissenschaftlichen Schulen werden in Großbritannien unterschieden:\n\n*   Die industrieökonomische Schule konzentriert sich auf Veränderungen der Produktionsstruktur, insbesondere das Aufkommen großer Unternehmen wie Fabriken, Bergwerke, Eisenbahngesellschaften und großen Einzelhandelsgeschäften, in denen die Güterproduktion beaufsichtigt wurde und die Arbeiter Disziplin und Qualitätskontrolle unterlagen [2].\n*   Die makroökonomische Schule konzentriert sich auf stark aggregierte Variablen wie die Entwicklung von Nationaleinkommen, Kapitalakkumulation, Investitionen und Arbeitsmarkt [2].\n*   Die Schule des sozialen Wandels betont die Veränderung der Art, wie wirtschaftliche Transaktionen zwischen Menschen stattfinden, wobei das Aufkommen von formalen, wettbewerbsorientierten und unpersönlichen Produkt- und Faktormärkten zentral ist [2, 3].\n*   Die Technologie-Schule betrachtet den technologischen Fortschritt als ursächlich für alle anderen Veränderungen und richtet den Fokus auf Erfindungen und deren Diffusion, einschließlich Geräte, Maschinen sowie Techniken der Arbeitsorganisation und des Marketings [3].",
+   "not_found": false,
+   "cited": [
+    2,
+    3
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1471,
+   "total_ms": 10699
+  },
+  {
+   "id": "wiki_industrielle_revolution-dire-05",
+   "typ": "direkt",
+   "frage": "Welche Einnahmequelle wurde nach 1850 wichtiger als der Personenverkehr im Bahngeschäft?",
+   "erwartet": "Die Einnahmen aus dem Güterverkehr wurden nach 1850 wichtiger als der Personenverkehr.",
+   "antwort": "Nach 1850 wurden die Einnahmen aus dem Güterverkehr wichtiger, was auch an der lange fortbestehenden Effizienz der Kanaltransporte lag [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1674,
+   "total_ms": 3279
+  },
+  {
+   "id": "wiki_inflation-dire-01",
+   "typ": "direkt",
+   "frage": "Welche Art von Inflation wird als Hauptgrund für die Revolutionen in Tunesien und Ägypten angesehen?",
+   "erwartet": "Die Nahrungsmittelinflation wird als einer der Hauptgründe für die Revolutionen in Tunesien und Ägypten angesehen.",
+   "antwort": "Die Nahrungsmittelinflation wird als einer der Hauptgründe für die Revolution in Tunesien 2010\/2011 und die Revolution in Ägypten 2011 angesehen [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1296,
+   "total_ms": 3032
+  },
+  {
+   "id": "wiki_inflation-dire-02",
+   "typ": "direkt",
+   "frage": "Welche makroökonomische Theorie wird als heute allgemein akzeptiert beschrieben?",
+   "erwartet": "Der Neukeynesianismus stellt die heute allgemein akzeptierte makroökonomische Theorie dar.",
+   "antwort": "Der Neukeynesianismus wird als die heute allgemein akzeptierte makroökonomische Theorie beschrieben [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1252,
+   "total_ms": 2182
+  },
+  {
+   "id": "wiki_inflation-dire-03",
+   "typ": "direkt",
+   "frage": "Welche Funktion verliert Geld bei schwerer Inflation, und welche Funktion wird stattdessen wichtiger?",
+   "erwartet": "Die Wertmaßstabsfunktion und die Wertaufbewahrungsfunktion verlieren an Bedeutung, weshalb stattdessen Ersatzwährungen verwendet werden.",
+   "antwort": "Bei schwerer Inflation verliert das Tauschmittel Geld seinen Wert schneller als andere Güter, wodurch es die Wertmaßstabsfunktion und die Wertaufbewahrungsfunktion verliert [1]. Stattdessen wird eine Ersatzwährung verwendet [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1473,
+   "total_ms": 3746
+  },
+  {
+   "id": "wiki_inflation-dire-04",
+   "typ": "direkt",
+   "frage": "Welche zwei Hauptgründe führen laut internationalen Studien zu einer systematisch zu hohen Schätzung der Inflation anhand von Warenkörben?",
+   "erwartet": "Verändertes Kaufverhalten und verändertes Warenangebot.",
+   "antwort": "Zwei Hauptgründe für die Fehleinschätzung der Inflation anhand von Warenkörben sind verändertes Kaufverhalten und verändertes Warenangebot [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1290,
+   "total_ms": 2779
+  },
+  {
+   "id": "wiki_klimawandel-dire-01",
+   "typ": "direkt",
+   "frage": "Welcher Gasbestandteil nahm in der Atmosphäre zu, weil er an den frühen geologischen Prozessen nicht beteiligt war?",
+   "erwartet": "Stickstoff nahm zu und wurde schließlich ein Hauptbestandteil der zweiten Atmosphäre.",
+   "antwort": "Der reaktionsträge (inerte) Stickstoff nahm zu, weil er an den Prozessen, die zur Bildung der ersten ozeanischen Becken führten, nicht beteiligt war [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1632,
+   "total_ms": 3483
+  },
+  {
+   "id": "wiki_klimawandel-dire-02",
+   "typ": "direkt",
+   "frage": "Welche Temperaturerhöhung wird an der Trias-Jura-Grenze durch die Entstehung der Zentralatlantischen Magmatischen Provinz beschrieben?",
+   "erwartet": "Die Entstehung der Zentralatlantischen Magmatischen Provinz führte zu einer Erwärmungsspitze von +4 bis +6 °C.",
+   "antwort": "Die Entstehung der Zentralatlantischen Magmatischen Provinz an der Trias-Jura-Grenze bewirkte eine Erwärmungsspitze im Bereich von +4 bis +6 °C [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1812,
+   "total_ms": 3244
+  },
+  {
+   "id": "wiki_klimawandel-dire-03",
+   "typ": "direkt",
+   "frage": "Wie lange wird voraussichtlich ein signifikanter Anteil des anthropogenen CO2-Eintrags in der Atmosphäre verbleiben, selbst bei einem Emissionsstopp?",
+   "erwartet": "Der zusätzliche anthropogene CO2-Eintrag wird selbst bei einem weitgehenden Emissionsstopp nur allmählich verringern und in signifikantem Umfang noch in mehreren tausend Jahren nachweisbar sein.",
+   "antwort": "Selbst bei einem weitgehenden Emissionsstopp wird sich der zusätzliche anthropogene $\\text{CO}_2$-Eintrag allmählich verringern und in signifikantem Umfang noch in mehreren tausend Jahren nachweisbar sein, da Kohlenstoffdioxid durch natürliche physikalische und biogeochemische Prozesse im Erdsystem nur sehr langsam abgebaut wird [1]. Das deutsche Bundesumweltamt geht davon aus, dass nach 1000 Jahren noch etwa 15 bis 40 Prozent in der Atmosphäre verbleiben [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1984,
+   "total_ms": 6008
+  },
+  {
+   "id": "wiki_klimawandel-dire-04",
+   "typ": "direkt",
+   "frage": "Welches Ereignis wird als das zweitlängste Eiszeitalter der Erdgeschichte bezeichnet?",
+   "erwartet": "Die Permokarbonen Eiszeit war das zweitlängste Eiszeitalter der Erdgeschichte.",
+   "antwort": "Das Permokarbonen Eiszeitalter wird als das zweitlängste Eiszeitalter der Erdgeschichte bezeichnet [2].",
+   "not_found": false,
+   "cited": [
+    2
+   ],
+   "source_hits": [
+    2
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1630,
+   "total_ms": 2804
+  },
+  {
+   "id": "wiki_klimawandel-dire-05",
+   "typ": "direkt",
+   "frage": "Wer lieferte ab 1958 direkte Belege für eine stetig steigende CO2-Konzentration und damit verbundene Erwärmung?",
+   "erwartet": "Charles David Keeling",
+   "antwort": "Charles David Keeling lieferte ab 1958 direkte Belege für eine stetig steigende CO2-Konzentration und eine damit verbundene Erwärmung [2].",
+   "not_found": false,
+   "cited": [
+    2
+   ],
+   "source_hits": [
+    2
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1460,
+   "total_ms": 2808
+  },
+  {
+   "id": "wiki_photosynthese-dire-01",
+   "typ": "direkt",
+   "frage": "Welche Art von Bakterien wird als guter Kandidat für die erste Photoautotrophie angesehen, die Gene an andere Gruppen weitergegeben haben könnte?",
+   "erwartet": "Ausgestorbene Protocyanobakterien (oder Procyanobakterien) gelten als guter Kandidat für die erste Photoautotrophie.",
+   "antwort": "Ausgestorbene Protocyanobakterien (syn. Procyanobakterien or Pro-Protocyanobakterien) werden als guter Kandidat für eine erste Photoautotrophie angesehen, die Gene an Heliobacteria, Chloroflexaceae, Purpurbakterien und Chlorobiaceae weitergegeben haben könnte [1, 3].",
+   "not_found": false,
+   "cited": [
+    1,
+    3
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1475,
+   "total_ms": 4272
+  },
+  {
+   "id": "wiki_photosynthese-dire-02",
+   "typ": "direkt",
+   "frage": "Bei welcher CO2-Konzentration liegt der Kompensationspunkt für C3-Pflanzen?",
+   "erwartet": "Der CO2-Kompensationspunkt für C3-Pflanzen liegt zwischen 0,005 und 0,010 Vol.-% CO2-Konzentration.",
+   "antwort": "Der Kompensationspunkt $\\Gamma_{C3}$ für C3-Pflanzen liegt bei einer $\\text{CO}_2$-Konzentration von $0,005$ bis $0,010 \\text{ Vol.-}\\%$. [1]",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1974,
+   "total_ms": 4596
+  },
+  {
+   "id": "wiki_photosynthese-dire-03",
+   "typ": "direkt",
+   "frage": "Welche Lichtfarbe wurde in praktischen Versuchen als förderlich für schnelleres Pflanzenwachstum und höhere Biomasseausbeute nachgewiesen?",
+   "erwartet": "Grünlicht (500 bis 600 nm) wurde in praktischen Versuchen als förderlich für schnelleres Pflanzenwachstum und höhere Biomasseausbeute nachgewiesen.",
+   "antwort": "Grünlicht (500 bis 600 nm) wurde in praktischen Versuchen mit schnellerem Pflanzenwachstum und höherer Biomasseausbeute nachgewiesen [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1472,
+   "total_ms": 3008
+  },
+  {
+   "id": "wiki_photosynthese-dire-04",
+   "typ": "direkt",
+   "frage": "Welcher Prozess initiiert die Ladungstrennung in den offenen Reaktionszentren von Photosystem II und welche Moleküle sind dabei beteiligt?",
+   "erwartet": "Die Ladungstrennung wird durch die Übertragung eines Elektrons von den gepaarten Chlorophyll-a-Molekülen (P680) auf ein Phäophytin (Phe) initiiert.",
+   "antwort": "Die Ladungstrennung in den offenen Reaktionszentren von Photosystem II wird durch die Abgabe von Energie initiiert, wobei eine Quantenausbeute von etwa 85 % der Anregungsenergie erreicht wird [1]. Dabei wird ein Elektron von den gepaarten Chlorophyll-a-Molekülen (special pair, P680) auf einen primären Akzeptor, ein Phäophytin (Phe) der D1-Untereinheit, transferiert [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1797,
+   "total_ms": 5464
+  },
+  {
+   "id": "wiki_photosynthese-dire-05",
+   "typ": "direkt",
+   "frage": "Welche Art von Bakterien nutzt bei der anoxygenen Photosynthese ein Reaktionszentrum des Typs II und welche Absorptionswellenlänge hat das Bakteriochlorophyll?",
+   "erwartet": "Grüne Nichtschwefelbakterien (Chloroflexi) und Purpurbakterien verwenden dieses Zentrum, dessen Absorptionsmaximum bei 870 nm liegt.",
+   "antwort": "Grüne Nichtschwefelbakterien (Chloroflexi) und Purpurbakterien (Schwefelpurpurbakterien und schwefelfreie Purpurbakterien) verwenden bei der anoxygenen Photosynthese ein Reaktionszentrum des Typs II [2]. Das Absorptionsmaximum des Bakteriochlorophylls a bzw. b im Zentrum liegt bei 870 nm [2].",
+   "not_found": false,
+   "cited": [
+    2
+   ],
+   "source_hits": [
+    2
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1640,
+   "total_ms": 4450
+  },
+  {
+   "id": "wiki_quicksort-dire-01",
+   "typ": "direkt",
+   "frage": "Welche Bedingung muss ein Verfahren erfüllen, um die garantierte Endlichkeit der Rekursion zu gewährleisten?",
+   "erwartet": "Jede der Teillisten muss mindestens um eins kürzer sein als die Gesamtliste.",
+   "antwort": "Das Verfahren muss sicherstellen, dass jede der Teillisten mindestens um eins kürzer ist als die Gesamtliste, damit die Rekursion garantiert nach endlich vielen Schritten endet [3].",
+   "not_found": false,
+   "cited": [
+    3
+   ],
+   "source_hits": [
+    3
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1251,
+   "total_ms": 2527
+  },
+  {
+   "id": "wiki_quicksort-dire-02",
+   "typ": "direkt",
+   "frage": "Welche Bedingung signalisiert in der Quicksort-Implementierung, dass die Indizes k und g aneinander vorbeigelaufen sind?",
+   "erwartet": "Das Aneinandervorbeigehen der Indizes k und g ist die Abbruchbedingung.",
+   "antwort": "Die Bedingung, die signalisiert, dass die Indizes k und g aneinander vorbeigelaufen sind, ist das Ereignis, bei dem sie in der gleichen Richtung weiterlaufen, nachdem sie Elemente gefunden haben, die bei k kleiner als oder gleich dem Pivotelement und bei g größer als dem Pivotelement sind [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1778,
+   "total_ms": 5587
+  },
+  {
+   "id": "wiki_roemisches_reich-dire-02",
+   "typ": "direkt",
+   "frage": "Welche Regionen verlor Karthago im Friedensvertrag nach dem Ersten Punischen Krieg?",
+   "erwartet": "Karthago verlor alle seine sizilischen Besitzungen, später auch Sardinien und Korsika.",
+   "antwort": "Karthago verlor im Friedensvertrag alle seine sizilischen Besitzungen (später auch Sardinien und Korsika) [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1652,
+   "total_ms": 2675
+  },
+  {
+   "id": "wiki_roemisches_reich-dire-03",
+   "typ": "direkt",
+   "frage": "Welche zwei Handelswege trugen zur wirtschaftlichen Bedeutung Roms unter den Etruskern bei?",
+   "erwartet": "Die Via Latina und die Via Salaria.",
+   "antwort": "Die zwei Handelswege, die zur wirtschaftlichen Bedeutung Roms unter den Etruskern beitrugen, waren die Via Latina und die Via Salaria [1, 2].",
+   "not_found": false,
+   "cited": [
+    1,
+    2
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1792,
+   "total_ms": 3426
+  },
+  {
+   "id": "wiki_roemisches_reich-dire-04",
+   "typ": "direkt",
+   "frage": "Unter welchem Kaiser erreichte das Römische Reich seine größte Ausdehnung und in welchem Jahr?",
+   "erwartet": "Das Römische Reich erreichte seine größte Ausdehnung unter Trajan im Jahre 117.",
+   "antwort": "Trajan erreichte das Römische Reich seine größte Ausdehnung im Jahre 117 [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1628,
+   "total_ms": 2567
+  },
+  {
+   "id": "wiki_roemisches_reich-dire-05",
+   "typ": "direkt",
+   "frage": "Wie hoch war die geschätzte durchschnittliche Lebenserwartung im Römischen Reich, wenn die hohe Kindersterblichkeit berücksichtigt wird?",
+   "erwartet": "Die geschätzte Lebenserwartung, bereinigt um die hohe Kindersterblichkeit, lag zwischen 40 und 45 Jahren.",
+   "antwort": "Die Lebenserwartung lag bei 40 bis 45 Jahren, wenn die hohe Kindersterblichkeit berücksichtigt wird [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1315,
+   "total_ms": 2432
+  },
+  {
+   "id": "wiki_zelle_biologie-dire-02",
+   "typ": "direkt",
+   "frage": "Welche Funktion erfüllen die Mitochondrien für die Zelle und welche Art von Reaktion findet dort statt?",
+   "erwartet": "Die Mitochondrien werden als „Energiekraftwerke“ bezeichnet, da dort die Oxidation organischer Stoffe mit molekularem Sauerstoff stattfindet, wodurch Energie als ATP gespeichert wird.",
+   "antwort": "Mitochondrien werden als „Energiekraftwerke“ der Zelle bezeichnet [1]. In ihnen findet die Oxidation organischer Stoffe mit molekularem Sauerstoff statt, wodurch Energie freigesetzt wird und diese in Form von chemischer Energie (ATP) gespeichert wird [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1342,
+   "total_ms": 3412
+  },
+  {
+   "id": "wiki_zelle_biologie-dire-04",
+   "typ": "direkt",
+   "frage": "Welche Funktionen können Vakuolen erfüllen?",
+   "erwartet": "Sie können unter anderem den Zelldruck aufrechterhalten, toxische Stoffe lagern, die Zellfarbe bestimmen, Makromoleküle verdauen und bei kontraktilen Vakuolen Wasser ausscheiden.",
+   "antwort": "Vakuolen können folgende Funktionen erfüllen:\n* Aufrechterhaltung des Zelldrucks (Turgor) [1].\n* Lager für toxische Stoffe [1].\n* Farbgebung der Zelle [1].\n* Verdauung von Makromolekülen [1].\n* Wasserausscheidung im Falle der kontraktilen Vakuole [1].\n* Sie können Farbstoffe (zum Beispiel Flavone), Giftstoffe (zum Beispiel Coffein), Duftstoffe und anderes enthalten [2].",
+   "not_found": false,
+   "cited": [
+    1,
+    2
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1307,
+   "total_ms": 5520
+  },
+  {
+   "id": "bgb-umfo-01",
+   "typ": "umformuliert",
+   "frage": "Was muss ein Unternehmen tun, wenn es einen Kunden telefonisch kontaktiert, um einen Kaufvertrag abzuschließen?",
+   "erwartet": "Der Anrufer muss zu Beginn des Gesprächs offenlegen, wer er ist, wer er vertritt und zu welchem geschäftlichen Zweck er anruft.",
+   "antwort": "Wenn ein Vertrag außerhalb von Geschäftsräumen geschlossen wird, kann dies durch Fernkommunikationsmittel erfolgen, bei denen der Verbraucher jedoch unmittelbar zuvor außerhalb der Geschäftsräume des Unternehmers bei gleichzeitiger körperlicher Anwesenheit des Verbrauchers und des Unternehmers persönlich und individuell angesprochen wurde [2].",
+   "not_found": false,
+   "cited": [
+    2
+   ],
+   "source_hits": [
+    null
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1349,
+   "total_ms": 4096
+  },
+  {
+   "id": "bgb-umfo-31",
+   "typ": "umformuliert",
+   "frage": "Wie wird der Anspruch auf Rückkauf wirksam, wenn der Verkäufer sich dieses Recht vorbehalten hat?",
+   "erwartet": "Der Anspruch entsteht durch eine direkte Mitteilung des Verkäufers an den Käufer, dass er das Recht geltend macht.",
+   "antwort": "Der Wiederkauf kommt mit der Erklärung des Verkäufers gegenüber dem Käufer zustande, dass er das Wiederkaufsrecht ausübe, und diese Erklärung bedarf nicht der für den Kaufvertrag bestimmten Form [1]. Der Preis, zu welchem verkauft worden ist, gilt im Zweifel auch für den Wiederkauf [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1471,
+   "total_ms": 4295
+  },
+  {
+   "id": "bgb-umfo-35",
+   "typ": "umformuliert",
+   "frage": "Wenn mehrere Objekte zu einem neuen, zusammengehörigen Gegenstand zusammengefügt werden, wie wird das Eigentum an diesem neuen Ganzen verteilt, wenn eines der Teile als das wichtigste betrachtet wird?",
+   "erwartet": "Der Besitzer des wichtigsten Teils erhält das alleinige Eigentum an dem neuen Gegenstand.",
+   "antwort": "Wenn bewegliche Sachen miteinander verbunden werden, sodass sie wesentliche Bestandteile einer einheitlichen Sache werden, werden die bisherigen Eigentümer Miteigentümer dieser Sache, und die Anteile bestimmen sich nach dem Verhältnis des Wertes, den die Sachen zur Zeit der Verbindung haben [4]. Wenn eine der Sachen als die Hauptsache angesehen wird, erwirbt ihr Eigentümer das Alleineigentum [4].",
+   "not_found": false,
+   "cited": [
+    4
+   ],
+   "source_hits": [
+    4
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1284,
+   "total_ms": 4801
+  },
+  {
+   "id": "bgb-umfo-38",
+   "typ": "umformuliert",
+   "frage": "Unter welchen Bedingungen kann der Vermieter die Zustimmung des Mieters zur Untervermietung an eine dritte Person verweigern?",
+   "erwartet": "Wenn der dritte Nutzer einen wichtigen Grund hat, der zu einer übermäßigen Belegung des Wohnraums führt, oder wenn die Überlassung aus anderen Gründen nicht dem Vermieter zuzumuten ist.",
+   "antwort": "Der Vermieter kann die Zustimmung des Mieters zur Untervermietung an eine dritte Person verweigern, wenn:\n\n1. Der Mieter den Gebrauch der Mietsache ohne die Erlaubnis des Vermieters an einen Dritten überlässt, insbesondere weiter vermietet [1].\n2. Der Vermieter die Erlaubnis zur Überlassung verweigert [1].\n3. In der Person des Dritten ein wichtiger Grund vorliegt, der Wohnraum übermäßig belegt würde oder dem Vermieter die Überlassung aus sonstigen Gründen nicht zugemutet werden kann [4].\n4. Die Überlassung nur bei einer angemessenen Erhöhung der Miete zuzumuten ist, kann der Vermieter die Erlaubnis davon abhängig machen, dass der Mieter sich mit einer solchen Erhöhung einverstanden erklärt [4].\n5. Eine Vereinbarung, die zum Nachteil des Mieters abweicht, ist unwirksam [4].",
+   "not_found": false,
+   "cited": [
+    1,
+    4
+   ],
+   "source_hits": [
+    4
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1315,
+   "total_ms": 9936
+  },
+  {
+   "id": "gg-umfo-01",
+   "typ": "umformuliert",
+   "frage": "Unter welchen Umständen können bestimmte grundlegende Rechte, wie beispielsweise das Recht auf Meinungsäußerung oder das Recht auf Eigentum, entzogen werden?",
+   "erwartet": "Wenn diese Rechte zur Destabilisierung der freiheitlichen demokratischen Ordnung genutzt werden, können sie verwirkt werden.",
+   "antwort": "Grundrechte können verwirkt werden, wenn sie zum Kampfe gegen die freiheitliche demokratische Grundordnung missbraucht werden [1]. Die Verwirkung und ihr Ausmaß werden durch das Bundesverfassungsgericht entschieden [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1328,
+   "total_ms": 3228
+  },
+  {
+   "id": "gg-umfo-03",
+   "typ": "umformuliert",
+   "frage": "Unter welchen Bedingungen können die Länder die Aufgaben der Bundeswehrverwaltung übernehmen, wenn es um die Verteidigung oder den Schutz der Zivilbevölkerung geht?",
+   "erwartet": "Dies ist möglich, wenn ein Bundesgesetz mit der Zustimmung des Bundesrates dies festlegt. Dabei können auch Befugnisse auf die Bundesoberbehörden übertragen werden.",
+   "antwort": "Die Aufgaben der Beschädigtenversorgung und des Bauwesens können der Bundeswehrverwaltung nur durch ein Bundesgesetz mit Zustimmung des Bundesrates übertragen werden, das Eingriffe in Rechte Dritter erlaubt. Im übrigen können Bundesgesetze, die der Verteidigung einschließlich des Wehrersatzwesens und des Schutzes der Zivilbevölkerung dienen, mit Zustimmung des Bundesrates bestimmt werden, ob sie ganz oder teilweise in bundeseigener Verwaltung mit eigenem Verwaltungsunterbau oder von den Ländern im Auftrage des Bundes ausgeführt werden [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1661,
+   "total_ms": 6121
+  },
+  {
+   "id": "gg-umfo-05",
+   "typ": "umformuliert",
+   "frage": "Unter welchen Umständen kann ein Bundesstaat die Unterstützung von Kräften des Bundesgrenzschutzes oder der Streitkräfte einfordern, wenn die eigene Sicherheitsbehörde alleine nicht ausreichend handeln kann?",
+   "erwartet": "Dies ist möglich, wenn die öffentliche Sicherheit oder Ordnung gefährdet ist oder bei Naturkatastrophen oder schweren Unglücksfällen.",
+   "antwort": "Ein Land kann Kräfte und Einrichtungen des Bundesgrenzschutzes anfordern, wenn die Polizei ohne diese Unterstützung eine Aufgabe nicht oder nur unter erheblichen Schwierigkeiten erfüllen könnte [1]. Auch zur Hilfe bei einer Naturkatastrophe oder bei einem besonders schweren Unglücksfall kann ein Land Polizeikräfte anderer Länder, Kräfte und Einrichtungen anderer Verwaltungen sowie des Bundesgrenzschutzes und der Streitkräfte anfordern, wenn die Polizei ohne diese Unterstützung eine Aufgabe nicht oder nur unter erheblichen Schwierigkeiten erfüllen könnte [3].",
+   "not_found": false,
+   "cited": [
+    1,
+    3
+   ],
+   "source_hits": [
+    3
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1508,
+   "total_ms": 5426
+  },
+  {
+   "id": "gg-umfo-32",
+   "typ": "umformuliert",
+   "frage": "Wer übernimmt die Aufgaben des obersten Staatsoberhauptes, bevor ein neuer gewählt wurde, und welche Befugnis bleibt ihm dabei verwehrt?",
+   "erwartet": "Der Vorsitzende des Bundesrates übernimmt die Funktionen des Bundespräsidenten, kann jedoch nicht das Parlament auflösen.",
+   "antwort": "Der Bundespräsident ernennt den gewählten Bundeskanzler [1]. Wenn der gewählte Bundeskanzler die Stimmen der Mehrheit der Mitglieder des Bundestages auf sich vereinigt, muss der Bundespräsident ihn innerhalb von sieben Tagen nach der Wahl ernennen [1]. Wenn der Gewählte diese Mehrheit nicht erreicht, hat der Bundespräsident entweder ihn zu ernennen oder den Bundestag aufzulösen [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    null
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1451,
+   "total_ms": 5151
+  },
+  {
+   "id": "gg-umfo-38",
+   "typ": "umformuliert",
+   "frage": "Wie lange verlängert sich die Zeitspanne für die Amtszeiten von Parlamentariern und Richter des Verfassungsgerichtes, wenn ein Zustand nationaler Krise herrscht?",
+   "erwartet": "Die Amtszeit von Bundestagsabgeordneten und Verfassungsgerichtsorganen endet sechs Monate nach Ende des Krisenzustandes.",
+   "antwort": "Während des Verteidigungsfalls endet die Amtszeit eines Mitgliedes des Bundesverfassungsgerichts sechs Monate nach Beendigung des Verteidigungsfalls [4].",
+   "not_found": false,
+   "cited": [
+    4
+   ],
+   "source_hits": [
+    4
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1423,
+   "total_ms": 3082
+  },
+  {
+   "id": "gg-umfo-39",
+   "typ": "umformuliert",
+   "frage": "Unter welchen Bedingungen können Personen, deren Staatsbürgerschaft zwischen 1933 und 1945 aufgrund politischer, ethnischer oder Glaubensgründe entzogen wurde, ihre Zugehörigkeit wiedererlangen?",
+   "erwartet": "Sie können ihre Staatsbürgerschaft wiedererlangen, wenn sie einen Antrag stellen und nach dem 8. Mai 1945 ihren Wohnsitz in Deutschland genommen haben und keinen gegenteiligen Willen bekundet haben.",
+   "antwort": "Frühere deutsche Staatsangehörige, denen zwischen dem 30. Januar 1933 und dem 8. Mai 1945 die Staatsangehörigkeit aus politischen, rassischen oder religiösen Gründen entzogen worden ist, sowie ihre Abkömmlinge sind auf Antrag wieder einzubürgern [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1306,
+   "total_ms": 3807
+  },
+  {
+   "id": "gg-umfo-45",
+   "typ": "umformuliert",
+   "frage": "Welche Organe sind befugt, eine strafrechtliche Verfolgung gegen den höchsten Staatsvertreter wegen schwerwiegender Rechtsbrüche einzuleiten, und mit welcher Mehrheit muss dies beschlossen werden?",
+   "erwartet": "Der Bundestag oder der Bundesrat können dies beantragen. Der Beschluss erfordert die Zustimmung von zwei Dritteln der Mitglieder des jeweiligen Gremiums.",
+   "antwort": "Nicht im Material gefunden.",
+   "not_found": true,
+   "cited": [],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1449,
+   "total_ms": 1576
+  },
+  {
+   "id": "hgb-umfo-36",
+   "typ": "umformuliert",
+   "frage": "Welcher Wechselkurs ist für die Umrechnung der Umsatzerlöse und Aufwendungen zu verwenden?",
+   "erwartet": "Der Durchschnittskurs in Euro ist für die Umrechnung der Gewinn- und Verlustrechnungsposten zu nutzen.",
+   "antwort": "Für die Umrechnung der Umsatzerlöse und Aufwendungen in der Konzern-Gewinn- und Verlustrechnung soll der Durchschnittskurs in Euro verwendet werden [2].",
+   "not_found": false,
+   "cited": [
+    2
+   ],
+   "source_hits": [
+    2
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1499,
+   "total_ms": 3003
+  },
+  {
+   "id": "wiki_blutkreislauf-umfo-01",
+   "typ": "umformuliert",
+   "frage": "Welche Hauptfunktion erfüllt die Struktur, die zwischen der Vorhofkammer und der Hauptkammer des Herzens positioniert ist?",
+   "erwartet": "Sie verhindert, dass Blut in die Vorhofkammer zurückfließt.",
+   "antwort": "Die Klappe zwischen Vorhof und Kammer verhindert einen Rückstrom des Blutes [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1337,
+   "total_ms": 2082
+  },
+  {
+   "id": "wiki_blutkreislauf-umfo-33",
+   "typ": "umformuliert",
+   "frage": "Welche Funktion übernimmt das Blutkreislaufsystem bei Käfern, wenn es nicht für den Gasaustausch zuständig ist?",
+   "erwartet": "Es dient dem Transport von Nährstoffen, Abwehrzellen und Botenstoffen.",
+   "antwort": "Das Blutkreislaufsystem bei Insekten dient nicht zum Atemgastransport, sondern zum Transport von Nährstoffen, Immunzellen, Signalmolekülen und ähnlichem [2].",
+   "not_found": false,
+   "cited": [
+    2
+   ],
+   "source_hits": [
+    2
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1330,
+   "total_ms": 3053
+  },
+  {
+   "id": "wiki_industrielle_revolution-umfo-01",
+   "typ": "umformuliert",
+   "frage": "Welche Art von künstlich angelegten Wasserstraßen bot im Vergleich zu bestehenden Wegen einen erheblich höheren Transportvolumen für Güter?",
+   "erwartet": "Der Kanalbau erwies sich als eine sehr erfolgreiche Ergänzung und Alternative.",
+   "antwort": "Der Kanalbau erwies sich nach der Mitte des 18. Jahrhunderts als eine erfolgreiche Ergänzung und Alternative zu unbefestigten Straßen, da er es ermöglichte, einen Kahn mit 30 Tonnen Nutzlast von einem einzelnen Zugpferd befördern zu lassen, während auf befestigten Straßen bis zu 4 Tonnen transportiert werden konnten [2].",
+   "not_found": false,
+   "cited": [
+    2
+   ],
+   "source_hits": [
+    2
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1509,
+   "total_ms": 5494
+  },
+  {
+   "id": "wiki_industrielle_revolution-umfo-32",
+   "typ": "umformuliert",
+   "frage": "Welches Ereignis im Jahr 1819 in Manchester zu schweren Verletzungen und Todesfällen führte, als eine friedliche Versammlung von einer bewaffneten Gruppe angegriffen wurde?",
+   "erwartet": "Der Angriff auf die friedliche Versammlung von 100.000 Menschen auf dem St. Peters Field führte zu 11 Todesopfern und zahlreichen Verletzten.",
+   "antwort": "Die industrielle Protestbewegung in Manchester im Jahr 1819 führte zu einem Angriff einer Bürgergarde mit Schusswaffen auf eine friedliche Demonstration auf dem St. Peters Field, was zu 11 Toten und 150 bis 200 Schwerverletzten resultierte [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1484,
+   "total_ms": 4366
+  },
+  {
+   "id": "wiki_inflation-umfo-01",
+   "typ": "umformuliert",
+   "frage": "Welche Komponente des Lebensunterhalts, die einen beträchtlichen Anteil der Ausgaben ausmacht, wird bei der Berechnung des europäischen Vergleichsindex nicht berücksichtigt?",
+   "erwartet": "Das selbstgenutzte Wohneigentum wird beim Harmonisierten Verbraucherpreisindex (HVPI) komplett ignoriert.",
+   "antwort": "Der nur teilweise oder gar nicht im Warenkorb der Bürger erfasste Bereich des Wohnens, der etwa 20–30 Prozent der Konsumausgaben ausmacht, wird bei der Berechnung des Harmonisierten Verbraucherpreisindex (HVPI) bisher komplett ausgeschlossen [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1833,
+   "total_ms": 4247
+  },
+  {
+   "id": "wiki_inflation-umfo-31",
+   "typ": "umformuliert",
+   "frage": "Welche Art von Preissteigerung kann von Wirtschaftsakteuren bereits in ihre zukünftigen Planungen einbezogen werden?",
+   "erwartet": "Die voraussichtliche Preissteigerung kann bereits in ökonomische Handlungen und Prognosen einbezogen werden.",
+   "antwort": "Die Erwartungen der ökonomischen Agenten über zukünftige Inflationsraten können die Lohn- und Preisentwicklung, Zinssätze und das allgemeine Preisniveau wesentlich beeinflussen, da Unternehmen beispielsweise unternehmerische Entscheidungen über Investitionen oder Preisgestaltung treffen [2].",
+   "not_found": false,
+   "cited": [
+    2
+   ],
+   "source_hits": [
+    null
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1314,
+   "total_ms": 3511
+  },
+  {
+   "id": "wiki_inflation-umfo-32",
+   "typ": "umformuliert",
+   "frage": "Welches Phänomen der Preissteigerungen, das seit 2021 beobachtet wird, betont die Wirtschaftswissenschaftlerin Weber und welche Ursache nimmt sie dafür an?",
+   "erwartet": "Sie spricht von einer Verkäuferinflation, deren Ursprung ein Kostenschock in kritischen Wirtschaftsbereichen ist.",
+   "antwort": "Die Wirtschaftswissenschaftlerin Isabella M. Weber beschäftigt sich seit 2021 mit der „Verkäuferinflation“ (sellers' inflation) [1]. Als Ausgangspunkt für die Inflation sieht sie einen „Kostenschock in systemisch wichtigen Bereichen“ der Wirtschaft, insbesondere starke Preissteigerungen für Energie und in der Schifffahrt [1]. Dieser Schock dient dann als „Koordinations-Mechanismus für Preiserhöhungen“ für viele Unternehmen [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1299,
+   "total_ms": 5390
+  },
+  {
+   "id": "wiki_photosynthese-umfo-32",
+   "typ": "umformuliert",
+   "frage": "Welche Anpassungsstrategie nutzen bestimmte Pflanzen, um Wasserverlust zu minimieren, indem sie die Aufnahme von Kohlendioxid auf die Nacht beschränken?",
+   "erwartet": "Die Pflanzen speichern das Kohlendioxid nachts als Äpfelsäure und geben es erst am nächsten Tag für die Photosynthese frei.",
+   "antwort": "CAM-Pflanzen können die primäre $\\text{CO}_2$-Fixierung zeitlich trennen und öffnen ihre Stomata nur nachts, um das aufgenommene Kohlendioxid in Form von Äpfelsäure zu speichern. Nach Sonnenaufgang setzen sie das Kohlendioxid aus der Äpfelsäure frei und führen es dem Calvinzyklus zu [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1624,
+   "total_ms": 4969
+  },
+  {
+   "id": "wiki_roemisches_reich-umfo-32",
+   "typ": "umformuliert",
+   "frage": "Welche politische Auseinandersetzung führte zu einem bewaffneten Konflikt innerhalb des römischen Verbündetennetzes um 91 bis 89 v. Chr.?",
+   "erwartet": "Der sogenannte Bundesgenossenkrieg.",
+   "antwort": "Der Bundesgenossenkrieg kam aufgrund innerer Spannungen im Bündnissystem Roms zum Zeitpunkt von 91 bis 89 v. Chr. [1, 2].",
+   "not_found": false,
+   "cited": [
+    1,
+    2
+   ],
+   "source_hits": [
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1975,
+   "total_ms": 3662
+  },
+  {
+   "id": "bgb-mehr-02",
+   "typ": "mehrstufig",
+   "frage": "Wann haftet das Gesamtgut nicht für Verbindlichkeiten, die durch den Erwerb einer Erbschaft entstehen, wenn der Ehegatte das Gesamtgut nicht verwaltet, und wann haftet es nicht für eine Verbindlichkeit, die während der Gütergemeinschaft infolge eines zum Vorbehaltsgut oder Sondergut gehörenden Rechts entsteht, wenn der Ehegatte das Gesamtgut nicht verwaltet?",
+   "erwartet": "Das Gesamtgut haftet nicht für Verbindlichkeiten aus Erbschaften, wenn der Ehegatte das Gesamtgut nicht verwaltet und die Erbschaft als Vorbehaltsgut oder Sondergut erwirbt. Ebenso haftet es nicht für Verbindlichkeiten, die infolge eines Rechts, das zu einem Vorbehaltsgut oder Sondergut gehört, entstehen, wenn der Ehegatte das Gesamtgut nicht verwaltet.",
+   "antwort": "Das Gesamtgut haftet nicht für Verbindlichkeiten, die durch den Erwerb einer Erbschaft entstehen, wenn der Ehegatte, der Erbe ist, das Gesamtgut nicht verwaltet und die Erbschaft während der Gütergemeinschaft als Vorbehaltsgut oder Sondergut erwirbt [2]. Ebenso haftet das Gesamtgut nicht für Verbindlichkeiten eines Ehegatten, die durch den Erwerb einer Erbschaft oder eines Vermächtnisses entstehen, wenn der Ehegatte die Erbschaft oder das Vermächtnis während der Gütergemeinschaft als Vorbehaltsgut oder als Sondergut erwirbt [3].\n\nDas Gesamtgut haftet nicht für eine Verbindlichkeit, die während der Gütergemeinschaft infolge eines zum Vorbehaltsgut oder Sondergut gehörenden Rechts oder des Besitzes einer dazu gehörenden Sache in der Person des Ehegatten entsteht, wenn dieser das Gesamtgut nicht verwaltet [1, 4].",
+   "not_found": false,
+   "cited": [
+    1,
+    2,
+    3,
+    4
+   ],
+   "source_hits": [
+    2,
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1274,
+   "total_ms": 8404
+  },
+  {
+   "id": "gg-mehr-03",
+   "typ": "mehrstufig",
+   "frage": "Welche Akte des Bundespräsidenten bedarf der Gegenzeichnung durch den Bundeskanzler oder zuständigen Bundesminister, und welche Art von Verträgen schließt der Bundespräsident im Namen des Bundes ab?",
+   "erwartet": "Anordnungen und Verfügungen des Bundespräsidenten bedürfen der Gegenzeichnung durch den Bundeskanzler oder den zuständigen Bundesminister. Der Bundespräsident schließt im Namen des Bundes Verträge mit auswärtigen Staaten ab.",
+   "antwort": "Anordnungen und Verfügungen des Bundespräsidenten bedürfen der Gültigkeit der Gegenzeichnung durch den Bundeskanzler oder durch den zuständigen Bundesminister [1]. Der Bundespräsident vertritt den Bund völkerrechtlich und schließt im Namen des Bundes Verträge mit auswärtigen Staaten ab [2].",
+   "not_found": false,
+   "cited": [
+    1,
+    2
+   ],
+   "source_hits": [
+    1,
+    2
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1252,
+   "total_ms": 3472
+  },
+  {
+   "id": "wiki_blutkreislauf-mehr-02",
+   "typ": "mehrstufig",
+   "frage": "Welche Zelltypen entstehen aus dem Mesothel, und wie unterscheidet sich deren Beitrag zu den Gefäßen bei Wirbeltieren im Vergleich zu den ursprünglichen bilateralen Tieren?",
+   "erwartet": "Bei den ursprünglichen bilateralen Tieren differenzierten sich mesotheliale Zellen zu kontraktilen Gefäßzellen, Nephrozyten oder Blutvorläuferzellen. Bei Wirbeltieren trägt das Mesothel nicht zu den Gefäßen in den ausgewachsenen Tieren bei, obwohl die Splanchnopleura Endothel und glatte Muskelzellen bildet.",
+   "antwort": "Aus dem Mesothel differenzierten sich mesodermale Zellen zu kontraktilen Gefäßzellen, Nephrozyten oder zu Blutvorläuferzellen [3]. Bei Wirbeltieren sind die Blutgefäße mit nicht-muskulärem Endothel ausgekleidet, das von einer Muskelzellschicht umgeben ist [4]. Im Gegensatz dazu trägt das Mesothel bei Wirbeltieren nicht zu den Gefäßen in den ausgewachsenen Tieren bei, während bei wirbellosen Coelomata das Mesothel das Coelom umgibt und Gefäße bildet [2].",
+   "not_found": false,
+   "cited": [
+    2,
+    3,
+    4
+   ],
+   "source_hits": [
+    3,
+    2
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1651,
+   "total_ms": 6785
+  },
+  {
+   "id": "wiki_blutkreislauf-mehr-03",
+   "typ": "mehrstufig",
+   "frage": "Welche Transportmechanismen nutzen Tiere, um Flüssigkeiten zu bewegen, wenn die Diffusion über große Entfernungen zu langsam ist, und welche spezifischen Mechanismen nutzen Schwämme, Nesseltiere und Plattwürmer, um einen Flüssigkeitsstrom zu erzeugen?",
+   "erwartet": "Generell entwickeln vielzellige Tiere, die größer sind als wenige Zellschichten, Mechanismen zur Erzeugung eines Flüssigkeitsstroms per Konvektion. Spezifisch erzeugen Schwämme diesen Strom durch Flagellen, Nesseltiere durch Muskelkontraktionen und Plattwürmer durch Zilien.",
+   "antwort": "Tiere nutzen einen Flüssigkeitsstrom, um einen Transport per Konvektion zu ermöglichen, da Diffusion über längere Entfernungen sehr langsam ist [2].\n\nSpezifische Mechanismen zur Erzeugung eines Flüssigkeitsstroms sind:\n*   **Schwämme:** Erzeugen einen Strom durch die Körperhöhle mithilfe sich bewegender Flagellen [1].\n*   **Nesseltiere:** Gelangen dies durch Muskelkontraktionen [1].\n*   **Plattwürmer:** Setzen ihre Gewebsflüssigkeit mit der Hilfe von Zilien in Bewegung [1].",
+   "not_found": false,
+   "cited": [
+    1,
+    2
+   ],
+   "source_hits": [
+    2,
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1312,
+   "total_ms": 5879
+  },
+  {
+   "id": "wiki_inflation-mehr-01",
+   "typ": "mehrstufig",
+   "frage": "Welche Art von ökonomischer Theorie wird als heute allgemein akzeptierte makroökonomische Theorie bezeichnet und welche Modelle werden heute von vielen Zentralbanken zur Modellierung der Geldpolitik eingesetzt?",
+   "erwartet": "Der Neukeynesianismus wird als heute allgemein akzeptierte makroökonomische Theorie bezeichnet, und die zugehörigen Modellerweiterungen sind die dynamischen stochastischen allgemeinen Gleichgewichtsmodelle (DSGE).",
+   "antwort": "Der Neukeynesianismus wird als die heute allgemein akzeptierte makroökonomische Theorie bezeichnet [2]. Dynamische stochastische allgemeine Gleichgewichtsmodelle (DSGE) werden heute von vielen Zentralbanken zur Modellierung der Geldpolitik eingesetzt [1].",
+   "not_found": false,
+   "cited": [
+    1,
+    2
+   ],
+   "source_hits": [
+    2,
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1476,
+   "total_ms": 3452
+  },
+  {
+   "id": "wiki_inflation-mehr-03",
+   "typ": "mehrstufig",
+   "frage": "Welcher Unterschied besteht zwischen der Abweichung der berechneten Inflation durch Warenkorbveränderungen und der Diskrepanz zwischen gefühlter und gemessener Inflation, wenn es um die Gewichtung von Konsumgütern geht?",
+   "erwartet": "Bei der berechneten Inflation wird die Verzerrung durch veränderte Warenkörbe beschrieben, während die gefühlte Inflation durch die unterschiedliche Sensibilität für tägliche Bedarfsartikel im Vergleich zu langlebigen Gütern entsteht.",
+   "antwort": "Der Unterschied liegt darin, dass die gefühlte Inflation über der gemessenen Inflation liegt, wenn die Preise für Waren des täglichen Bedarfs stärker steigen als die für langlebige Konsumgüter [1]. Dies liegt daran, dass der Warenkorb sowohl Produkte des täglichen Bedarfs als auch langlebige Konsumgüter enthält, und die Wahrnehmung von Preisveränderungen für Waren des täglichen Bedarfs aufgrund ihrer Bedeutung und ihres häufigeren Einkaufs sensibler ist als für langlebige Konsumgüter [1]. Zudem hatten bestimmte Produktkategorien wie Lebensmittel, Benzin oder Verkehr einen relativ höheren Preisanstieg als Produktkategorien wie Computer, Autos oder Pauschalreisen [3, 4].",
+   "not_found": false,
+   "cited": [
+    1,
+    3,
+    4
+   ],
+   "source_hits": [
+    null,
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1308,
+   "total_ms": 7696
+  },
+  {
+   "id": "wiki_klimawandel-mehr-01",
+   "typ": "mehrstufig",
+   "frage": "Welcher Prozess führte zur Erhöhung des Methangehalts in der Atmosphäre, und welche Folge hatte die Freisetzung von Sauerstoff aus Cyanobakterien auf diesen Methangehalt?",
+   "erwartet": "Die Einzeller erhöhten den Methangehalt durch ihre Stoffwechselprodukte, woraufhin die Sauerstofffreisetzung einen Zusammenbruch der Methankonzentration auslöste.",
+   "antwort": "Die Einzeller, wie die Archaeen, nahmen mit ihren Stoffwechselprodukten den Methangehalt allmählich zu, indem sie diesen erhöhten [2]. Die Freisetzung von Sauerstoff aus Cyanobakterien führte vor 2,4 Milliarden Jahren zu einem Zusammenbruch der Methankonzentration, was als Große Sauerstoffkatastrophe bezeichnet wurde [1].",
+   "not_found": false,
+   "cited": [
+    1,
+    2
+   ],
+   "source_hits": [
+    2,
+    1
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1658,
+   "total_ms": 4988
+  },
+  {
+   "id": "wiki_roemisches_reich-mehr-01",
+   "typ": "mehrstufig",
+   "frage": "Welche militärischen Entwicklungen in Hispanien und die daraus resultierenden karthagischen Strategien sind in den Perioden des Ersten und des Zweiten Punischen Krieges beschrieben?",
+   "erwartet": "Im Ersten Punischen Krieg errichtete die Barkidenfamilie in Hispanien ein Kolonialreich, um Ressourcen für den Kampf gegen Rom zu sammeln. Im Zweiten Punischen Krieg nutzte Hannibal die Eroberung von Saguntum als Kriegsgrund, was zu einem direkten Konflikt führte.",
+   "antwort": "Im Ersten Punischen Krieg erweiterte Rom seinen Einflussbereich bis an die Grenze des karthagischen Machtbereichs, nachdem Karthago provoziert hatte, und baute seine Flotte aus, um der Seemacht Karthago entgegenzuwirken, was zu mehreren Rückschlägen und wechselhaftem Kriegsglück führte, wobei Rom besonders auf Sizilien Fuß fasste und die karthagische Flotte mehrmals schlug [1]. Die karthagische Familie der Barkiden errichtete in Hispanien ein Kolonialreich, dessen Ressourcen für den Kampf gegen Rom eingesetzt werden konnten [1, 2].\n\nIm Zweiten Punischen Krieg gelang es dem karthagischen Strategen Hannibal beinahe, Rom in die Knie zu zwingen, wobei die Belagerung und Eroberung der griechischen Kolonie Saguntum durch Hannibal als Kriegsgrund diente, die mit Rom „verbündet“ war [2]. Hannibal nahm den Landweg durch das südliche Gallien, überquerte die Alpen und fiel mit einem Heer in Italien ein, wobei er mehrere römische Armeen nacheinander vernichtete [2]. Die Niederlage bei Cannae war schmerzhaft für die Römer, da Hannibal das Bündnissystem Roms in Italien nicht zerstören konnte, sodass Hannibal trotz seiner Siege weitgehend isoliert blieb [2].",
+   "not_found": false,
+   "cited": [
+    1,
+    2
+   ],
+   "source_hits": [
+    1,
+    2
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1938,
+   "total_ms": 14827
+  },
+  {
+   "id": "wiki_zelle_biologie-mehr-02",
+   "typ": "mehrstufig",
+   "frage": "Welche Zellorganellen, die von einer Membran umschlossen sind, dienen der Verdauung von aufgenommenen Stoffen oder Makromolekülen?",
+   "erwartet": "Sowohl Vakuolen als auch Lysosomen können mit Verdauungsfunktionen in Verbindung gebracht werden. Vakuolen können Makromoleküle verdauen, während Lysosomen spezifisch zur Verdauung von Fremdstoffen dienen.",
+   "antwort": "Lysosomen dienen der Verdauung von Fremdstoffen, und in Pflanzen übernehmen Zellsaftvakuolen die Aufgaben der Lysosomen [3].",
+   "not_found": false,
+   "cited": [
+    3
+   ],
+   "source_hits": [
+    1,
+    3
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1315,
+   "total_ms": 3013
+  },
+  {
+   "id": "wiki_zelle_biologie-mehr-03",
+   "typ": "mehrstufig",
+   "frage": "Welche molekularen Komponenten sind für die Speicherung genetischer Informationen und für die Proteinbiosynthese verantwortlich?",
+   "erwartet": "Die DNA speichert die genetischen Informationen, während die Ribosomen, die aus RNA und Proteinen bestehen, für die Proteinbiosynthese verantwortlich sind.",
+   "antwort": "Für die Speicherung genetischer Informationen sind Desoxyribonukleinsäuren (DNA) und Ribonukleinsäuren (RNA) verantwortlich [1]. Die RNA wird zum Transport von Informationen (z. B. mRNA) und für enzymähnliche Reaktionen (z. B. rRNA) verwendet [1]. Die Ribosomen, bestehend aus RNA und Proteinen, sind für die Synthese von Proteinen aus Aminosäuren verantwortlich, wobei die mRNA die Information für die Art und Reihenfolge der Aminosäuren in den Proteinen liefert [2].",
+   "not_found": false,
+   "cited": [
+    1,
+    2
+   ],
+   "source_hits": [
+    1,
+    2
+   ],
+   "n_sources": 4,
+   "ttft_ms": 1292,
+   "total_ms": 6043
+  },
+  {
+   "id": "bgb-unbe-05",
+   "typ": "unbeantwortbar",
+   "frage": "Wie sind Kryptowährungen wie Bitcoin im Bürgerlichen Gesetzbuch rechtlich eingeordnet?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "not_found": true,
+   "cited": [],
+   "source_hits": [],
+   "n_sources": 4,
+   "ttft_ms": 1287,
+   "total_ms": 1418
+  },
+  {
+   "id": "bgb-unbe-06",
+   "typ": "unbeantwortbar",
+   "frage": "Welche Haftungsregeln gelten für Betreiber von Drohnen?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "not_found": true,
+   "cited": [],
+   "source_hits": [],
+   "n_sources": 4,
+   "ttft_ms": 1279,
+   "total_ms": 1388
+  },
+  {
+   "id": "bgb-unbe-07",
+   "typ": "unbeantwortbar",
+   "frage": "Welche Rechte hat ein Käufer bei einem Defekt der Batterie seines Elektroautos?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Die Rechte des Käufers wegen eines Mangels sind ausgeschlossen, wenn er diesen bei Vertragsschluss kennt [4]. Wenn dem Käufer ein Mangel infolge grober Fahrlässigkeit unbekannt geblieben ist, kann er Rechte wegen dieses Mangels nur geltend machen, wenn der Verkäufer den Mangel arglistig verschwiegen oder eine Garantie für die Beschaffenheit der Sache übernommen hat [4].",
+   "not_found": false,
+   "cited": [
+    4
+   ],
+   "source_hits": [],
+   "n_sources": 4,
+   "ttft_ms": 1275,
+   "total_ms": 4941
+  },
+  {
+   "id": "gg-unbe-01",
+   "typ": "unbeantwortbar",
+   "frage": "Wie hoch ist der gesetzliche Mindestlohn in Deutschland pro Stunde?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "not_found": true,
+   "cited": [],
+   "source_hits": [],
+   "n_sources": 4,
+   "ttft_ms": 1290,
+   "total_ms": 1405
+  },
+  {
+   "id": "gg-unbe-02",
+   "typ": "unbeantwortbar",
+   "frage": "Ab welchem Alter darf man in Deutschland den Führerschein der Klasse B machen?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "not_found": true,
+   "cited": [],
+   "source_hits": [],
+   "n_sources": 4,
+   "ttft_ms": 1233,
+   "total_ms": 1355
+  },
+  {
+   "id": "gg-unbe-03",
+   "typ": "unbeantwortbar",
+   "frage": "Welche Aufgaben hat der Bundesbeauftragte für den Datenschutz?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "not_found": true,
+   "cited": [],
+   "source_hits": [],
+   "n_sources": 4,
+   "ttft_ms": 1258,
+   "total_ms": 1370
+  },
+  {
+   "id": "gg-unbe-04",
+   "typ": "unbeantwortbar",
+   "frage": "Welche Strafe droht in Deutschland bei Steuerhinterziehung?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Die bereitgestellten Quellen beziehen sich auf Strafen im Zusammenhang mit Verletzung der Berichtspflicht, unrichtiger Versicherung und Verletzung der Geheimhaltungspflicht im Kontext von Jahresabschlüssen und Unternehmensberichten, nicht direkt auf Steuerhinterziehung. [1, 2, 3, 4]",
+   "not_found": false,
+   "cited": [
+    1,
+    2,
+    3,
+    4
+   ],
+   "source_hits": [],
+   "n_sources": 4,
+   "ttft_ms": 1283,
+   "total_ms": 5019
+  },
+  {
+   "id": "hgb-unbe-08",
+   "typ": "unbeantwortbar",
+   "frage": "Wie viel Stammkapital braucht man zur Gründung einer GmbH?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "not_found": true,
+   "cited": [],
+   "source_hits": [],
+   "n_sources": 4,
+   "ttft_ms": 1461,
+   "total_ms": 1566
+  },
+  {
+   "id": "hgb-unbe-09",
+   "typ": "unbeantwortbar",
+   "frage": "Wie läuft die Gewerbeanmeldung beim Gewerbeamt ab?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "not_found": true,
+   "cited": [],
+   "source_hits": [],
+   "n_sources": 4,
+   "ttft_ms": 1436,
+   "total_ms": 1548
+  },
+  {
+   "id": "wiki_blutkreislauf-unbe-18",
+   "typ": "unbeantwortbar",
+   "frage": "Wie hoch ist der normale Ruhepuls eines erwachsenen Hundes?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "not_found": true,
+   "cited": [],
+   "source_hits": [],
+   "n_sources": 4,
+   "ttft_ms": 1458,
+   "total_ms": 1580
+  },
+  {
+   "id": "wiki_industrielle_revolution-unbe-11",
+   "typ": "unbeantwortbar",
+   "frage": "Welche Rolle spielte die Eisenbahn in Japan während der Meiji-Zeit?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "not_found": true,
+   "cited": [],
+   "source_hits": [],
+   "n_sources": 4,
+   "ttft_ms": 1495,
+   "total_ms": 1620
+  },
+  {
+   "id": "wiki_inflation-unbe-14",
+   "typ": "unbeantwortbar",
+   "frage": "Eignet sich Bitcoin als Schutz gegen Inflation?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "not_found": true,
+   "cited": [],
+   "source_hits": [],
+   "n_sources": 4,
+   "ttft_ms": 1259,
+   "total_ms": 1387
+  },
+  {
+   "id": "wiki_klimawandel-unbe-15",
+   "typ": "unbeantwortbar",
+   "frage": "Wie viel kostet eine Tonne CO2 im europäischen Emissionshandel aktuell?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "not_found": true,
+   "cited": [],
+   "source_hits": [],
+   "n_sources": 4,
+   "ttft_ms": 1296,
+   "total_ms": 1411
+  },
+  {
+   "id": "wiki_photosynthese-unbe-10",
+   "typ": "unbeantwortbar",
+   "frage": "Wie viele Chloroplasten enthält eine Mesophyllzelle durchschnittlich?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "not_found": true,
+   "cited": [],
+   "source_hits": [],
+   "n_sources": 4,
+   "ttft_ms": 1627,
+   "total_ms": 1741
+  },
+  {
+   "id": "wiki_quicksort-unbe-12",
+   "typ": "unbeantwortbar",
+   "frage": "Wie funktioniert der Radixsort-Algorithmus?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "not_found": true,
+   "cited": [],
+   "source_hits": [],
+   "n_sources": 4,
+   "ttft_ms": 1467,
+   "total_ms": 1574
+  },
+  {
+   "id": "wiki_quicksort-unbe-13",
+   "typ": "unbeantwortbar",
+   "frage": "Welche Laufzeit hat Timsort im besten Fall?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "not_found": true,
+   "cited": [],
+   "source_hits": [],
+   "n_sources": 4,
+   "ttft_ms": 2278,
+   "total_ms": 2397
+  },
+  {
+   "id": "wiki_roemisches_reich-unbe-16",
+   "typ": "unbeantwortbar",
+   "frage": "Wie viele Soldaten umfasste die Legio X Gemina?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "not_found": true,
+   "cited": [],
+   "source_hits": [],
+   "n_sources": 4,
+   "ttft_ms": 1464,
+   "total_ms": 1584
+  },
+  {
+   "id": "wiki_roemisches_reich-unbe-17",
+   "typ": "unbeantwortbar",
+   "frage": "Wie viele Kriegselefanten führte Hannibal über die Alpen?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Die Quellen nennen, dass Hannibal den Landweg durch das südliche Gallien, überquerte die Alpen und mit einem Heer in Italien einfuhr [1]. Es wird jedoch nicht angegeben, wie viele Kriegselefanten Hannibal führte [1].",
+   "not_found": false,
+   "cited": [
+    1
+   ],
+   "source_hits": [],
+   "n_sources": 4,
+   "ttft_ms": 1439,
+   "total_ms": 3616
+  },
+  {
+   "id": "wiki_zelle_biologie-unbe-19",
+   "typ": "unbeantwortbar",
+   "frage": "Wofür steht die Abkürzung PCR und wie läuft sie ab?",
+   "erwartet": "Nicht im Material gefunden.",
+   "antwort": "Nicht im Material gefunden.",
+   "not_found": true,
+   "cited": [],
+   "source_hits": [],
+   "n_sources": 4,
+   "ttft_ms": 1628,
+   "total_ms": 1754
+  }
+ ],
+ "status": "ok"
+}
