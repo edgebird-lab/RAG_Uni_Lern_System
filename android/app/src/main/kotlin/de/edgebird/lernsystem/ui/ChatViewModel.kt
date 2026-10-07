@@ -24,9 +24,11 @@ data class ChatMessage(
     val notFound: Boolean = false,
     val streaming: Boolean = false,
     val failed: Boolean = false,
+    /** Antwort stammt aus dem zweiten, toleranteren Versuch (weniger sicher). */
+    val retried: Boolean = false,
 )
 
-enum class ModelState { MISSING, LOADING, READY, ERROR }
+enum class ModelState { MISSING, LOADING, OPTIMIZING, READY, ERROR }
 
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val graph = (app as LernsystemApp).graph
@@ -36,13 +38,19 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages
 
-    private val _modelState = MutableStateFlow(if (graph.llmModelFile.exists()) ModelState.LOADING else ModelState.MISSING)
+    private val _modelState = MutableStateFlow(
+        when {
+            !graph.llmModelFile.exists() -> ModelState.MISSING
+            graph.llmCacheWarm() -> ModelState.LOADING
+            else -> ModelState.OPTIMIZING // erster Start: GPU-Kerne werden kompiliert
+        },
+    )
     val modelState: StateFlow<ModelState> = _modelState
 
     val busy: Boolean get() = job?.isActive == true
 
     init {
-        if (_modelState.value == ModelState.LOADING) {
+        if (_modelState.value == ModelState.LOADING || _modelState.value == ModelState.OPTIMIZING) {
             viewModelScope.launch(Dispatchers.Default) {
                 _modelState.value = try {
                     graph.llm.load()
@@ -57,17 +65,31 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun send(question: String) {
         val q = question.trim()
         if (q.isEmpty() || busy || _modelState.value != ModelState.READY) return
+        start(q, retry = false)
+    }
+
+    /** Nach „Nicht im Material gefunden“: dieselbe Frage mit mehr Abschnitten und toleranterem Prompt erneut stellen. */
+    fun retryWithMoreSources(answerId: Long) {
+        if (busy || _modelState.value != ModelState.READY) return
+        val list = _messages.value
+        val idx = list.indexOfFirst { it.id == answerId }
+        val question = list.getOrNull(idx - 1)?.takeIf { it.fromUser }?.text ?: return
+        _messages.update { l -> l.filterNot { it.id == answerId } }
+        start(question, retry = true, dropLastPair = false)
+    }
+
+    private fun start(q: String, retry: Boolean, dropLastPair: Boolean = false) {
         val history = _messages.value.chunked(2).mapNotNull { pair ->
             val u = pair.firstOrNull()?.takeIf { it.fromUser }
             val a = pair.getOrNull(1)?.takeIf { !it.fromUser && !it.failed && !it.notFound && it.text.isNotBlank() }
             if (u != null && a != null) ChatTurn(u.text, a.text) else null
         }
         val answerId = nextId + 1
-        _messages.update { it + ChatMessage(nextId, true, q) + ChatMessage(answerId, false, "", streaming = true) }
+        _messages.update { (if (retry) it else it + ChatMessage(nextId, true, q)) + ChatMessage(answerId, false, "", streaming = true, retried = retry) }
         nextId += 2
         job = viewModelScope.launch(Dispatchers.Default) {
             try {
-                graph.chat.ask(q, history).collect { event ->
+                (if (retry) graph.chat.ask(q, history, topKOverride = 6, styleOverride = de.edgebird.lernsystem.core.rag.PromptStyle.LENIENT) else graph.chat.ask(q, history)).collect { event ->
                     when (event) {
                         is ChatEvent.Sources -> patch(answerId) { it.copy(sources = event.sources) }
                         is ChatEvent.Token -> patch(answerId) { it.copy(text = it.text + event.text) }

@@ -9,6 +9,8 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import de.edgebird.lernsystem.LernsystemApp
 import de.edgebird.lernsystem.data.DocumentSummary
+import de.edgebird.lernsystem.work.CardGenWork
+import de.edgebird.lernsystem.work.CardGenWorker
 import de.edgebird.lernsystem.work.EmbedWorker
 import de.edgebird.lernsystem.work.ImportItem
 import de.edgebird.lernsystem.work.ImportWork
@@ -55,6 +57,19 @@ class DocumentsViewModel(app: Application) : AndroidViewModel(app) {
             else -> null
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Läuft gerade eine Kartenerzeugung? Dann Fortschritt, sonst die letzte Meldung. */
+    val cardGenStatus: StateFlow<String?> = work.getWorkInfosByTagFlow(CardGenWork.TAG).map { infos ->
+        val running = infos.firstOrNull { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
+        when {
+            running != null -> "Karten werden erstellt: ${running.progress.getInt(CardGenWorker.CREATED, 0)} von ${running.progress.getInt(CardGenWorker.TOTAL, 0).takeIf { it > 0 } ?: "…"}"
+            else -> infos.filter { it.state == WorkInfo.State.SUCCEEDED || it.state == WorkInfo.State.FAILED }.lastOrNull()?.let {
+                it.outputData.getString(CardGenWorker.ERROR) ?: it.outputData.getString(CardGenWorker.MESSAGE)
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun generateCards(documentId: Long, maxCards: Int) = CardGenWork.enqueue(getApplication(), documentId, maxCards)
 
     val importMessage: StateFlow<String?> = work.getWorkInfosForUniqueWorkFlow(ImportWork.UNIQUE_IMPORT).map { infos ->
         infos.firstOrNull()?.takeIf { it.state == WorkInfo.State.SUCCEEDED }?.outputData?.getString(ImportWorker.MESSAGE)

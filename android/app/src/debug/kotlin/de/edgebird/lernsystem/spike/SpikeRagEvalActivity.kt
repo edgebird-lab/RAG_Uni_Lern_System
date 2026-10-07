@@ -37,7 +37,7 @@ class SpikeRagEvalActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         view = TextView(this).apply { textSize = 12f; setPadding(24, 48, 24, 24) }
         setContentView(ScrollView(this).apply { addView(view) })
-        if (savedInstanceState == null) scope.launch { run(intent.getStringExtra("tag") ?: "rag", intent.getIntExtra("n", 1000), intent.getIntExtra("skip", 0)) }
+        if (savedInstanceState == null) scope.launch { run(intent.getStringExtra("tag") ?: "rag", intent.getIntExtra("n", 1000), intent.getIntExtra("skip", 0), intent.getIntExtra("topk", 4), intent.getStringExtra("style") == "lenient") }
     }
 
     private fun log(msg: String) {
@@ -45,14 +45,14 @@ class SpikeRagEvalActivity : Activity() {
         runOnUiThread { view.append(msg + "\n") }
     }
 
-    private suspend fun run(tag: String, n: Int, skip: Int) {
-        val out = JSONObject().put("tag", tag)
+    private suspend fun run(tag: String, n: Int, skip: Int, topK: Int, lenient: Boolean) {
+        val out = JSONObject().put("tag", tag).put("topk", topK).put("lenient", lenient)
         try {
             val graph = (application as LernsystemApp).graph
             val db = AppDatabase.build(this, "eval.db")
             val embedder = graph.newEmbedder()
             val retriever = HybridRetriever(db, KeywordSearch(db), VectorIndex(db, graph.embeddingModelId), embedder)
-            val chat = RagChat(retriever, graph.llm)
+            val chat = RagChat(retriever, graph.llm, topK = topK, style = if (lenient) de.edgebird.lernsystem.core.rag.PromptStyle.LENIENT else de.edgebird.lernsystem.core.rag.PromptStyle.STRICT)
             val t0 = SystemClock.elapsedRealtime()
             graph.llm.load()
             embedder.load()

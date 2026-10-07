@@ -17,6 +17,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -49,6 +52,10 @@ fun DocumentsScreen(vm: DocumentsViewModel = viewModel()) {
         }
         embed?.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        val cardGen by vm.cardGenStatus.collectAsStateWithLifecycle()
+        cardGen?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        var cardDialogFor by remember { mutableStateOf<Long?>(null) }
+        cardDialogFor?.let { id -> CardCountDialog(onPick = { vm.generateCards(id, it); cardDialogFor = null }, onDismiss = { cardDialogFor = null }) }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(docs, key = { it.document.id }) { d ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -61,9 +68,23 @@ fun DocumentsScreen(vm: DocumentsViewModel = viewModel()) {
                         }
                         Text("${d.chunkCount} Abschnitte · $status", style = MaterialTheme.typography.bodySmall)
                     }
+                    TextButton(onClick = { cardDialogFor = d.document.id }, enabled = d.document.status == DocumentStatus.INDEXED) { Text("Karten") }
                     TextButton(onClick = { vm.delete(d.document.id) }) { Text("Löschen") }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun CardCountDialog(onPick: (Int) -> Unit, onDismiss: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Wie viele Karten?") },
+        text = { Text("Die App erstellt die Karten im Hintergrund aus gleichmäßig verteilten Abschnitten (ca. 10 Sekunden pro Karte). Das Display sollte dabei an bleiben.") },
+        confirmButton = {
+            Row { listOf(10, 20, 40).forEach { n -> TextButton(onClick = { onPick(n) }) { Text("$n") } } }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } },
+    )
 }

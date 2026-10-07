@@ -45,17 +45,17 @@ object ImportWork {
             .enqueue()
     }
 
-    fun foregroundInfo(context: Context, text: String, done: Int, total: Int): ForegroundInfo {
+    fun foregroundInfo(context: Context, text: String, done: Int, total: Int, title: String = "Dokumente werden vorbereitet", id: Int = 1): ForegroundInfo {
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Indexierung", NotificationManager.IMPORTANCE_LOW))
         val n = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
-            .setContentTitle("Dokumente werden vorbereitet")
+            .setContentTitle(title)
             .setContentText(text)
             .setOngoing(true)
             .setProgress(total, done, total == 0)
             .build()
-        return ForegroundInfo(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        return ForegroundInfo(id, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     }
 }
 

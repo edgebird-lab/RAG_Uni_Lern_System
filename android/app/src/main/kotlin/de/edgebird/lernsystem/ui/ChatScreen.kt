@@ -48,6 +48,12 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
     val streaming = messages.lastOrNull()?.streaming == true
+    // Während der Optimierung darf das Display nicht ausgehen, sonst bremst die GPU-Arbeit stark
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.DisposableEffect(modelState) {
+        view.keepScreenOn = modelState == ModelState.OPTIMIZING || modelState == ModelState.LOADING
+        onDispose { view.keepScreenOn = false }
+    }
 
     LaunchedEffect(messages.size, messages.lastOrNull()?.text?.length) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
@@ -60,7 +66,8 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
         }
         when (modelState) {
             ModelState.MISSING -> Banner("Das Sprachmodell fehlt. Der Download in der App folgt; bis dahin liegt es per adb im App-Ordner.", error = true)
-            ModelState.LOADING -> Banner("Sprachmodell wird geladen (ca. 25 Sekunden). Beim allerersten Start optimiert sich die App für dein Gerät, das dauert mehrere Minuten.")
+            ModelState.LOADING -> Banner("Sprachmodell wird geladen (ca. 25 Sekunden).")
+            ModelState.OPTIMIZING -> Banner("Erster Start: Die App optimiert das Sprachmodell für dein Gerät. Das dauert einmalig 5 bis 10 Minuten. Bitte Display an und die App geöffnet lassen.")
             ModelState.ERROR -> Banner("Das Sprachmodell konnte nicht geladen werden.", error = true)
             ModelState.READY -> Unit
         }
@@ -72,7 +79,7 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
                 )
             }
             LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
-                items(messages, key = { it.id }) { m -> MessageBubble(m) { openSource = it } }
+                items(messages, key = { it.id }) { m -> MessageBubble(m, onSource = { openSource = it }, onRetry = { vm.retryWithMoreSources(m.id) }, canRetry = !streaming) }
             }
         }
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -112,7 +119,7 @@ private fun Banner(text: String, error: Boolean = false) {
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun MessageBubble(m: ChatMessage, onSource: (Source) -> Unit) {
+private fun MessageBubble(m: ChatMessage, onSource: (Source) -> Unit, onRetry: () -> Unit, canRetry: Boolean) {
     val container = if (m.fromUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
     Card(
         colors = CardDefaults.cardColors(containerColor = container),
@@ -120,10 +127,14 @@ private fun MessageBubble(m: ChatMessage, onSource: (Source) -> Unit) {
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             when {
-                m.notFound -> Text("Dazu steht nichts in deinen Dokumenten.", style = MaterialTheme.typography.bodyMedium)
+                m.notFound -> {
+                    Text("Dazu steht nichts in deinen Dokumenten.", style = MaterialTheme.typography.bodyMedium)
+                    if (!m.retried && canRetry) TextButton(onClick = onRetry) { Text("Mit mehr Quellen erneut versuchen") }
+                }
                 m.text.isEmpty() && m.streaming -> Text("Suche und formuliere …", style = MaterialTheme.typography.bodySmall)
                 else -> Text(m.text, style = MaterialTheme.typography.bodyMedium, color = if (m.failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
             }
+            if (m.retried && !m.streaming && !m.notFound) Text("Zweiter Versuch mit mehr Quellen: bitte die Quellen prüfen.", style = MaterialTheme.typography.labelSmall)
             if (!m.fromUser && !m.notFound && m.sources.isNotEmpty() && !m.streaming) {
                 Text("Quellen", style = MaterialTheme.typography.labelMedium)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

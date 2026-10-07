@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import de.edgebird.lernsystem.ui.ChatScreen
 import de.edgebird.lernsystem.ui.DocumentsScreen
+import de.edgebird.lernsystem.ui.LearnScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,11 +33,12 @@ class MainActivity : ComponentActivity() {
                     bottomBar = {
                         NavigationBar {
                             NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = {}, label = { Text("Chat") })
-                            NavigationBarItem(selected = tab == 1, onClick = { tab = 1 }, icon = {}, label = { Text("Dokumente") })
+                            NavigationBarItem(selected = tab == 1, onClick = { tab = 1 }, icon = {}, label = { Text("Lernen") })
+                            NavigationBarItem(selected = tab == 2, onClick = { tab = 2 }, icon = {}, label = { Text("Dokumente") })
                         }
                     },
                 ) { inner ->
-                    Box(Modifier.padding(inner)) { if (tab == 0) ChatScreen() else DocumentsScreen() }
+                    Box(Modifier.padding(inner)) { when (tab) { 0 -> ChatScreen(); 1 -> LearnScreen(); else -> DocumentsScreen() } }
                 }
             }
         }

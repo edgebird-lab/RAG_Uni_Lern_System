@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 enum class LlmBackend { CPU, GPU }
@@ -33,6 +35,9 @@ class LiteRtLmEngine(
     private val collectBenchmark: Boolean = false,
 ) : LlmEngine {
     private var engine: Engine? = null
+
+    /** Eine Generierung nach der anderen (fair, FIFO): Chat und Kartenerzeugung teilen sich das Modell. */
+    private val gate = Mutex()
 
     /** Messwerte der zuletzt abgeschlossenen Generierung (nur mit `collectBenchmark`). */
     @Volatile
@@ -77,6 +82,11 @@ class LiteRtLmEngine(
 
     @OptIn(ExperimentalApi::class)
     override fun generate(prompt: String, params: GenerationParams): Flow<String> = flow {
+        gate.withLock { generateLocked(prompt, params) { emit(it) } }
+    }.flowOn(Dispatchers.Default)
+
+    @OptIn(ExperimentalApi::class)
+    private suspend fun generateLocked(prompt: String, params: GenerationParams, emit: suspend (String) -> Unit) {
         val e = checkNotNull(engine) { "load() wurde nicht aufgerufen" }
         val config = ConversationConfig(
             systemInstruction = params.system?.let { Contents.of(it) },
@@ -101,7 +111,7 @@ class LiteRtLmEngine(
                 }
             }
         }
-    }.flowOn(Dispatchers.Default)
+    }
 
     override fun close() {
         engine?.close()
