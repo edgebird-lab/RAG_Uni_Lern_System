@@ -36,6 +36,11 @@ fun DocumentsScreen(vm: DocumentsViewModel = viewModel()) {
         Button(onClick = { picker.launch(arrayOf("application/pdf", "text/plain", "text/markdown", "application/octet-stream")) }) {
             Text("Dokumente hinzufügen")
         }
+        val onlyCharging by vm.onlyWhenCharging.collectAsStateWithLifecycle()
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Nur am Ladegerät indexieren", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            androidx.compose.material3.Switch(checked = onlyCharging, onCheckedChange = vm::setOnlyWhenCharging)
+        }
         embed?.takeIf { it.running }?.let { e ->
             Column {
                 Text(if (e.total > 0) "Embedding: ${e.done} von ${e.total} Abschnitten" else "Embedding wird gestartet …")

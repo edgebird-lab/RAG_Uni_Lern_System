@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
@@ -14,6 +15,8 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import de.edgebird.lernsystem.LernsystemApp
+import de.edgebird.lernsystem.core.ai.PauseReason
+import kotlinx.coroutines.delay
 import de.edgebird.lernsystem.ingest.DocumentSource
 import de.edgebird.lernsystem.ingest.EmbeddingIndexer
 import de.edgebird.lernsystem.ingest.ImportResult
@@ -27,14 +30,15 @@ object ImportWork {
     const val TAG_EMBED = "embed"
     private const val CHANNEL = "indexing"
 
-    fun enqueue(context: Context, items: List<ImportItem>) {
+    fun enqueue(context: Context, items: List<ImportItem>, onlyWhenCharging: Boolean = false) {
         val input = workDataOf(
             ImportWorker.KEYS to items.map { it.key }.toTypedArray(),
             ImportWorker.NAMES to items.map { it.name }.toTypedArray(),
             ImportWorker.PATHS to items.map { it.file.absolutePath }.toTypedArray(),
         )
         val import = OneTimeWorkRequestBuilder<ImportWorker>().setInputData(input).build()
-        val embed = OneTimeWorkRequestBuilder<EmbedWorker>().addTag(TAG_EMBED).build()
+        val embed = OneTimeWorkRequestBuilder<EmbedWorker>().addTag(TAG_EMBED)
+            .setConstraints(Constraints.Builder().setRequiresCharging(onlyWhenCharging).build()).build()
         WorkManager.getInstance(context)
             .beginUniqueWork(UNIQUE_IMPORT, ExistingWorkPolicy.APPEND_OR_REPLACE, import)
             .then(embed)
@@ -96,10 +100,24 @@ class EmbedWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
         setForeground(ImportWork.foregroundInfo(applicationContext, "Starte …", 0, 0))
         val embedder = graph.newEmbedder()
         return try {
-            EmbeddingIndexer(graph.db, embedder, graph.embeddingModelId).run { done, total ->
-                setProgressAsync(workDataOf(DONE to done, TOTAL to total))
-                setForegroundAsync(ImportWork.foregroundInfo(applicationContext, "$done von $total Abschnitten", done, total))
-            }
+            val total = graph.db.chunks().countWithoutEmbedding(graph.embeddingModelId)
+            var done = 0
+            EmbeddingIndexer(graph.db, embedder, graph.embeddingModelId).run(
+                beforeBatch = {
+                    // Bei Hitze oder leerem Akku pausieren, bis sich der Zustand bessert (Arbeit bleibt gespeichert)
+                    while (true) {
+                        val reason = DeviceState.pauseReason(applicationContext) ?: break
+                        val text = if (reason == PauseReason.HOT) "Pausiert: Gerät ist zu warm" else "Pausiert: Akku ist fast leer"
+                        setForeground(ImportWork.foregroundInfo(applicationContext, text, done, total))
+                        delay(15_000)
+                    }
+                },
+                onProgress = { d, t ->
+                    done = d
+                    setProgressAsync(workDataOf(DONE to d, TOTAL to t))
+                    setForegroundAsync(ImportWork.foregroundInfo(applicationContext, "$d von $t Abschnitten", d, t))
+                },
+            )
             Result.success()
         } finally {
             embedder.close()

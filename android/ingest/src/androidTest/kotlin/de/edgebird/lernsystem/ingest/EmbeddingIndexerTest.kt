@@ -37,7 +37,7 @@ class EmbeddingIndexerTest {
         assertTrue(total > 20)
         val emb = FakeEmbedder()
         val progress = mutableListOf<Pair<Int, Int>>()
-        val done = EmbeddingIndexer(db, emb, model, batchSize = 8).run { d, t -> progress += d to t }
+        val done = EmbeddingIndexer(db, emb, model, batchSize = 8).run(onProgress = { d, t -> progress += d to t })
         assertEquals(total, done)
         assertEquals(total, db.embeddings().countForModel(model))
         assertEquals(0, db.chunks().countWithoutEmbedding(model))
@@ -64,6 +64,16 @@ class EmbeddingIndexerTest {
         assertEquals(total - 16, done)
         assertEquals(total, db.embeddings().countForModel(model))
         assertEquals(DocumentStatus.INDEXED, db.documents().getAll().single().status)
+    }
+
+    @Test
+    fun beforeBatch_wirdVorJedemBatchAufgerufen_undDarfWarten() = runBlocking {
+        val total = db.chunks().count()
+        var calls = 0
+        val done = EmbeddingIndexer(db, FakeEmbedder(), model, batchSize = 8).run(beforeBatch = { calls++ })
+        assertEquals(total, done)
+        // ein Aufruf je Batch plus einer für die leere Abschlussrunde
+        assertEquals((total + 7) / 8 + 1, calls)
     }
 
     @Test

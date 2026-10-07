@@ -1,8 +1,8 @@
 package de.edgebird.lernsystem.core.ingest
 
-import java.text.Normalizer
+import de.edgebird.lernsystem.core.search.SearchTokenizer
 
-/** Aufbereitung von Text für den Stichwort-Index (FTS5). Phase 4 ergänzt deutsches Stemming. */
+/** Aufbereitung von Chunk-Text für den FTS5-Index: gestemmte Tokens, durch Leerzeichen getrennt. */
 object SearchText {
-    fun prepare(text: String): String = Normalizer.normalize(text, Normalizer.Form.NFC).lowercase()
+    fun prepare(text: String): String = SearchTokenizer.tokenize(text).joinToString(" ")
 }

@@ -27,10 +27,12 @@ class ImportPipelineTest {
     @After
     fun tearDown() = db.close()
 
+    /** Der Index enthält gestemmte Tokens: der Suchbegriff wird genauso aufbereitet. */
     private fun ftsHits(term: String): Int = runBlocking {
+        val stem = de.edgebird.lernsystem.core.search.SearchTokenizer.tokenize(term).first()
         db.useReaderConnection { c ->
             c.usePrepared("SELECT COUNT(*) FROM chunk_fts WHERE chunk_fts MATCH ?") { st ->
-                st.bindText(1, term)
+                st.bindText(1, stem)
                 st.step()
                 st.getLong(0).toInt()
             }

@@ -1,0 +1,1124 @@
+{
+ "tag": "retr-1",
+ "import_ms": 10064,
+ "chunks": 5462,
+ "embed_ms": 1071880,
+ "per_question": [
+  {
+   "id": "bgb-dire-01",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    2
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "bgb-dire-02",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "bgb-dire-03",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    6
+   ],
+   "hybrid": [
+    3
+   ]
+  },
+  {
+   "id": "bgb-dire-04",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    3
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "bgb-dire-08",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "bgb-dire-09",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    2
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "bgb-dire-10",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "gg-dire-01",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "gg-dire-02",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "gg-dire-03",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    2
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "gg-dire-08",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "gg-dire-09",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "gg-dire-10",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    2
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "gg-dire-11",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "gg-dire-12",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "gg-dire-13",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "gg-dire-18",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "hgb-dire-01",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    2
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "hgb-dire-03",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "hgb-dire-04",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "hgb-dire-05",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    2
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "hgb-dire-06",
+   "typ": "direkt",
+   "keyword": [
+    null
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    3
+   ]
+  },
+  {
+   "id": "hgb-dire-07",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_blutkreislauf-dire-02",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_blutkreislauf-dire-03",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_blutkreislauf-dire-04",
+   "typ": "direkt",
+   "keyword": [
+    5
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_industrielle_revolution-dire-02",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_industrielle_revolution-dire-03",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    2
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_industrielle_revolution-dire-04",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_industrielle_revolution-dire-05",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_inflation-dire-01",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_inflation-dire-02",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_inflation-dire-03",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_inflation-dire-04",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_klimawandel-dire-01",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    2
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_klimawandel-dire-02",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_klimawandel-dire-03",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_klimawandel-dire-04",
+   "typ": "direkt",
+   "keyword": [
+    2
+   ],
+   "dense": [
+    2
+   ],
+   "hybrid": [
+    2
+   ]
+  },
+  {
+   "id": "wiki_klimawandel-dire-05",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    4
+   ],
+   "hybrid": [
+    2
+   ]
+  },
+  {
+   "id": "wiki_photosynthese-dire-01",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_photosynthese-dire-02",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_photosynthese-dire-03",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_photosynthese-dire-04",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_photosynthese-dire-05",
+   "typ": "direkt",
+   "keyword": [
+    2
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    2
+   ]
+  },
+  {
+   "id": "wiki_quicksort-dire-01",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    null
+   ],
+   "hybrid": [
+    7
+   ]
+  },
+  {
+   "id": "wiki_quicksort-dire-02",
+   "typ": "direkt",
+   "keyword": [
+    3
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_roemisches_reich-dire-02",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_roemisches_reich-dire-03",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_roemisches_reich-dire-04",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    2
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_roemisches_reich-dire-05",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_zelle_biologie-dire-02",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_zelle_biologie-dire-04",
+   "typ": "direkt",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "bgb-umfo-01",
+   "typ": "umformuliert",
+   "keyword": [
+    null
+   ],
+   "dense": [
+    8
+   ],
+   "hybrid": [
+    null
+   ]
+  },
+  {
+   "id": "bgb-umfo-31",
+   "typ": "umformuliert",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    3
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "bgb-umfo-35",
+   "typ": "umformuliert",
+   "keyword": [
+    null
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    7
+   ]
+  },
+  {
+   "id": "bgb-umfo-38",
+   "typ": "umformuliert",
+   "keyword": [
+    5
+   ],
+   "dense": [
+    4
+   ],
+   "hybrid": [
+    4
+   ]
+  },
+  {
+   "id": "gg-umfo-01",
+   "typ": "umformuliert",
+   "keyword": [
+    3
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "gg-umfo-03",
+   "typ": "umformuliert",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "gg-umfo-05",
+   "typ": "umformuliert",
+   "keyword": [
+    2
+   ],
+   "dense": [
+    3
+   ],
+   "hybrid": [
+    3
+   ]
+  },
+  {
+   "id": "gg-umfo-32",
+   "typ": "umformuliert",
+   "keyword": [
+    null
+   ],
+   "dense": [
+    7
+   ],
+   "hybrid": [
+    3
+   ]
+  },
+  {
+   "id": "gg-umfo-38",
+   "typ": "umformuliert",
+   "keyword": [
+    null
+   ],
+   "dense": [
+    2
+   ],
+   "hybrid": [
+    4
+   ]
+  },
+  {
+   "id": "gg-umfo-39",
+   "typ": "umformuliert",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "gg-umfo-45",
+   "typ": "umformuliert",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "hgb-umfo-36",
+   "typ": "umformuliert",
+   "keyword": [
+    null
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    2
+   ]
+  },
+  {
+   "id": "wiki_blutkreislauf-umfo-01",
+   "typ": "umformuliert",
+   "keyword": [
+    3
+   ],
+   "dense": [
+    3
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_blutkreislauf-umfo-33",
+   "typ": "umformuliert",
+   "keyword": [
+    null
+   ],
+   "dense": [
+    3
+   ],
+   "hybrid": [
+    2
+   ]
+  },
+  {
+   "id": "wiki_industrielle_revolution-umfo-01",
+   "typ": "umformuliert",
+   "keyword": [
+    null
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    3
+   ]
+  },
+  {
+   "id": "wiki_industrielle_revolution-umfo-32",
+   "typ": "umformuliert",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_inflation-umfo-01",
+   "typ": "umformuliert",
+   "keyword": [
+    3
+   ],
+   "dense": [
+    4
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_inflation-umfo-31",
+   "typ": "umformuliert",
+   "keyword": [
+    null
+   ],
+   "dense": [
+    null
+   ],
+   "hybrid": [
+    null
+   ]
+  },
+  {
+   "id": "wiki_inflation-umfo-32",
+   "typ": "umformuliert",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_photosynthese-umfo-32",
+   "typ": "umformuliert",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "wiki_roemisches_reich-umfo-32",
+   "typ": "umformuliert",
+   "keyword": [
+    1
+   ],
+   "dense": [
+    1
+   ],
+   "hybrid": [
+    1
+   ]
+  },
+  {
+   "id": "bgb-mehr-02",
+   "typ": "mehrstufig",
+   "keyword": [
+    2,
+    1
+   ],
+   "dense": [
+    2,
+    1
+   ],
+   "hybrid": [
+    2,
+    1
+   ]
+  },
+  {
+   "id": "gg-mehr-03",
+   "typ": "mehrstufig",
+   "keyword": [
+    1,
+    2
+   ],
+   "dense": [
+    1,
+    2
+   ],
+   "hybrid": [
+    1,
+    2
+   ]
+  },
+  {
+   "id": "wiki_blutkreislauf-mehr-02",
+   "typ": "mehrstufig",
+   "keyword": [
+    3,
+    2
+   ],
+   "dense": [
+    3,
+    2
+   ],
+   "hybrid": [
+    3,
+    2
+   ]
+  },
+  {
+   "id": "wiki_blutkreislauf-mehr-03",
+   "typ": "mehrstufig",
+   "keyword": [
+    2,
+    1
+   ],
+   "dense": [
+    1,
+    2
+   ],
+   "hybrid": [
+    2,
+    1
+   ]
+  },
+  {
+   "id": "wiki_inflation-mehr-01",
+   "typ": "mehrstufig",
+   "keyword": [
+    2,
+    1
+   ],
+   "dense": [
+    2,
+    1
+   ],
+   "hybrid": [
+    2,
+    1
+   ]
+  },
+  {
+   "id": "wiki_inflation-mehr-03",
+   "typ": "mehrstufig",
+   "keyword": [
+    null,
+    1
+   ],
+   "dense": [
+    3,
+    1
+   ],
+   "hybrid": [
+    6,
+    1
+   ]
+  },
+  {
+   "id": "wiki_klimawandel-mehr-01",
+   "typ": "mehrstufig",
+   "keyword": [
+    3,
+    1
+   ],
+   "dense": [
+    5,
+    1
+   ],
+   "hybrid": [
+    2,
+    1
+   ]
+  },
+  {
+   "id": "wiki_roemisches_reich-mehr-01",
+   "typ": "mehrstufig",
+   "keyword": [
+    1,
+    2
+   ],
+   "dense": [
+    1,
+    3
+   ],
+   "hybrid": [
+    1,
+    2
+   ]
+  },
+  {
+   "id": "wiki_zelle_biologie-mehr-02",
+   "typ": "mehrstufig",
+   "keyword": [
+    1,
+    2
+   ],
+   "dense": [
+    4,
+    3
+   ],
+   "hybrid": [
+    1,
+    3
+   ]
+  },
+  {
+   "id": "wiki_zelle_biologie-mehr-03",
+   "typ": "mehrstufig",
+   "keyword": [
+    2,
+    1
+   ],
+   "dense": [
+    1,
+    3
+   ],
+   "hybrid": [
+    1,
+    2
+   ]
+  }
+ ],
+ "ms_per_mode_total": {
+  "KEYWORD": 1741,
+  "DENSE": 16557,
+  "HYBRID": 17463
+ },
+ "n": 83,
+ "status": "ok"
+}

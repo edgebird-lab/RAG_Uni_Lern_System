@@ -5,5 +5,7 @@
         <activity android:name=".spike.SpikeActivity" android:exported="true" />
         <activity android:name=".spike.SpikeEmbedActivity" android:exported="true" />
         <activity android:name=".spike.DebugImportActivity" android:exported="true" />
+        <activity android:name=".spike.SpikeRetrievalActivity" android:exported="true" />
+        <activity android:name=".spike.SpikeRagEvalActivity" android:exported="true" />
     </application>
 </manifest>

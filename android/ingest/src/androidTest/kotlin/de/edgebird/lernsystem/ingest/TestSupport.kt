@@ -33,3 +33,16 @@ class FakeEmbedder(override val dimensions: Int = 8, private val failAfterBatche
 
     override fun close() = Unit
 }
+
+/** Attrappen-Embedder mit Wortsack (Hashing auf 64 Dimensionen): Texte mit gleichen Stämmen sind ähnlich. */
+class BagOfWordsEmbedder(override val dimensions: Int = 64) : Embedder {
+    override suspend fun load() = Unit
+
+    override suspend fun embed(texts: List<String>): List<FloatArray> = texts.map { t ->
+        val v = FloatArray(dimensions)
+        de.edgebird.lernsystem.core.search.SearchTokenizer.tokenize(t).forEach { v[(it.hashCode() and 0x7fffffff) % dimensions] += 1f }
+        de.edgebird.lernsystem.core.ai.VectorCodec.normalize(v)
+    }
+
+    override fun close() = Unit
+}

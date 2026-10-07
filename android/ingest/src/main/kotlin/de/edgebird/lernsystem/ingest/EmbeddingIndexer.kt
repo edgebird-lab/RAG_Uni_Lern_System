@@ -18,14 +18,18 @@ class EmbeddingIndexer(
     private val modelId: String,
     private val batchSize: Int = 16,
 ) {
-    /** @return Anzahl neu berechneter Embeddings. */
-    suspend fun run(onProgress: (done: Int, total: Int) -> Unit = { _, _ -> }): Int {
+    /**
+     * @param beforeBatch wird vor jedem Batch aufgerufen und darf warten (z. B. bei Hitze oder leerem Akku pausieren)
+     * @return Anzahl neu berechneter Embeddings.
+     */
+    suspend fun run(beforeBatch: suspend () -> Unit = {}, onProgress: (done: Int, total: Int) -> Unit = { _, _ -> }): Int {
         val total = db.chunks().countWithoutEmbedding(modelId)
         if (total == 0) return 0
         embedder.load()
         var done = 0
         while (true) {
             currentCoroutineContext().ensureActive()
+            beforeBatch()
             val batch = db.chunks().withoutEmbedding(modelId, batchSize)
             if (batch.isEmpty()) break
             val vectors = embedder.embed(batch.map { it.text })

@@ -99,16 +99,16 @@ Jeder Schritt ist klein, einzeln testbar und endet mit einem überprüfbaren Erg
 - [x] 3.5 TXT/MD-Import; Datei-Auswahl über Storage Access Framework.
 - [x] 3.6 Dedup per SHA-256 des Volltexts (wie `dedup.py`), „unverändert“/„Duplikat“/„geändert“.
 - [x] 3.7 Import-Pipeline als WorkManager-Job mit Fortschritt, Abbruch und Wiederaufnahme.
-- [~] 3.8 (läuft als Vordergrunddienst, wiederaufnehmbar; Drosselung bei Hitze/Akku und „bevorzugt am Ladegerät“ fehlen noch) Embedding der Chunks im Hintergrund (Batching, Drosselung bei Hitze/Akku, bevorzugt am Ladegerät).
+- [x] 3.8 (Vordergrunddienst, wiederaufnehmbar; pausiert bei Hitze ab THERMAL_MODERATE oder Akku unter 20 % ohne Ladegerät; Schalter „Nur am Ladegerät indexieren“) Embedding der Chunks im Hintergrund (Batching, Drosselung bei Hitze/Akku, bevorzugt am Ladegerät).
 
 ### Phase 4: Suche und Chat (RAG)
 
-- [ ] 4.1 FTS5-Suche inkl. deutscher Vorverarbeitung (Stemming/Normalisierung, Ersatz für Snowball).
-- [ ] 4.2 Vektor-Suche (Brute-Force-Cosinus) mit Benchmark bei 10k/50k Chunks.
-- [ ] 4.3 Fusion per RRF (Formel aus `ARCHITEKTUR.md` übernehmen), Top-K auf 3–4.
-- [ ] 4.4 Prompt-Vorlage „nur aus dem Material antworten, Quelle nennen, sonst ‚Nicht im Material gefunden‘“. Prompts aus `graph/prompts.py` als Ausgangsbasis, gekürzt.
-- [ ] 4.5 Chat-UI: Streaming-Antwort, Abbrechen, klickbare Quellen mit Textstelle und Seite.
-- [ ] 4.6 Gesprächsverlauf mit knapper Historie (Kontextbudget einhalten).
+- [x] 4.1 (Snowball-German-Port mit Paritätstest gegen Python: 9022 Wörter, 3847 Tokens identisch) FTS5-Suche inkl. deutscher Vorverarbeitung (Stemming/Normalisierung, Ersatz für Snowball).
+- [~] 4.2 Vektor-Suche (Brute-Force-Cosinus), umgesetzt und mit 5462 Chunks gemessen (ca. 200 ms inkl. Anfrage-Embedding); Benchmark bei 10k/50k Chunks fehlt.
+- [x] 4.3 Fusion per RRF (Formel aus `ARCHITEKTUR.md` übernehmen), Top-K auf 3–4.
+- [x] 4.4 Prompt-Vorlage „nur aus dem Material antworten, Quelle nennen, sonst ‚Nicht im Material gefunden‘“. Prompts aus `graph/prompts.py` als Ausgangsbasis, gekürzt.
+- [x] 4.5 Chat-UI: Streaming-Antwort, Abbrechen, klickbare Quellen mit Textstelle und Seite.
+- [x] 4.6 Gesprächsverlauf (letzte 2 Runden, Antworten auf 600 Zeichen gekürzt; kurze Rückfragen suchen mit der vorigen Frage) mit knapper Historie (Kontextbudget einhalten).
 - [ ] 4.7 Eval aus Phase 2 laufen lassen, mit der Baseline vergleichen.
 
 ### Phase 5: Karteikarten und Lernen

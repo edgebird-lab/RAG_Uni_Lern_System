@@ -6,6 +6,7 @@ import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.ExperimentalApi
 import com.google.ai.edge.litertlm.ExperimentalFlags
 import com.google.ai.edge.litertlm.SamplerConfig
@@ -59,6 +60,7 @@ class LiteRtLmEngine(
         val e = checkNotNull(engine) { "load() wurde nicht aufgerufen" }
         val config = ConversationConfig(
             systemInstruction = params.system?.let { Contents.of(it) },
+            initialMessages = params.history.flatMap { (q, a) -> listOf(Message.user(q), Message.model(a)) },
             samplerConfig = SamplerConfig(topK = 40, topP = params.topP.toDouble(), temperature = params.temperature.toDouble(), seed = 0),
             maxOutputToken = params.maxTokens,
         )

@@ -28,6 +28,15 @@ data class EmbedStatus(val done: Int, val total: Int, val running: Boolean, val 
 class DocumentsViewModel(app: Application) : AndroidViewModel(app) {
     private val graph = (app as LernsystemApp).graph
     private val work = WorkManager.getInstance(app)
+    private val prefs = app.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
+
+    private val _onlyWhenCharging = kotlinx.coroutines.flow.MutableStateFlow(prefs.getBoolean(PREF_CHARGING, false))
+    val onlyWhenCharging: StateFlow<Boolean> = _onlyWhenCharging
+
+    fun setOnlyWhenCharging(value: Boolean) {
+        prefs.edit().putBoolean(PREF_CHARGING, value).apply()
+        _onlyWhenCharging.value = value
+    }
 
     val documents: StateFlow<List<DocumentSummary>> =
         graph.db.documents().observeSummaries().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -68,11 +77,15 @@ class DocumentsViewModel(app: Application) : AndroidViewModel(app) {
                     }.getOrNull()
                 }
             }
-            if (items.isNotEmpty()) ImportWork.enqueue(getApplication(), items)
+            if (items.isNotEmpty()) ImportWork.enqueue(getApplication(), items, _onlyWhenCharging.value)
         }
     }
 
     fun delete(id: Long) {
         viewModelScope.launch { graph.db.documents().delete(id) }
+    }
+
+    private companion object {
+        const val PREF_CHARGING = "embed_only_when_charging"
     }
 }

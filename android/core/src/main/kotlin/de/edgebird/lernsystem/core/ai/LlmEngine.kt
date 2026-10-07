@@ -10,6 +10,8 @@ data class GenerationParams(
     val stop: List<String> = emptyList(),
     /** Systemanweisung; wird vom Chat-Template des Modells eingebaut. */
     val system: String? = null,
+    /** Bisheriger Gesprächsverlauf als (Frage, Antwort), älteste zuerst. */
+    val history: List<Pair<String, String>> = emptyList(),
 )
 
 /** Port fuer das lokale Sprachmodell. Implementierungen liegen im Modul `ai`. */

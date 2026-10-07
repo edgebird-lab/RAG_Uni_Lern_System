@@ -4,21 +4,40 @@ import android.Manifest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import de.edgebird.lernsystem.ui.ChatScreen
 import de.edgebird.lernsystem.ui.DocumentsScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Benachrichtigungen für den Vordergrunddienst der Indexierung (Android 13+)
-        registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
-            .launch(Manifest.permission.POST_NOTIFICATIONS)
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }.launch(Manifest.permission.POST_NOTIFICATIONS)
         setContent {
             MaterialTheme {
-                Scaffold { inner -> androidx.compose.foundation.layout.Box(Modifier.padding(inner)) { DocumentsScreen() } }
+                var tab by rememberSaveable { mutableIntStateOf(0) }
+                Scaffold(
+                    bottomBar = {
+                        NavigationBar {
+                            NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = {}, label = { Text("Chat") })
+                            NavigationBarItem(selected = tab == 1, onClick = { tab = 1 }, icon = {}, label = { Text("Dokumente") })
+                        }
+                    },
+                ) { inner ->
+                    Box(Modifier.padding(inner)) { if (tab == 0) ChatScreen() else DocumentsScreen() }
+                }
             }
         }
     }
