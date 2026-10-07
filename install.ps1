@@ -286,6 +286,8 @@ try {
 
     # ---- 6) requirements --------------------------------------------------- #
     Write-Step "Abhaengigkeiten installieren (requirements.txt)"
+    Write-Info "Hinweis: Gleich meldet pip evtl. 'chatterbox-tts requires torch==2.6.0 / gradio ... incompatible'."
+    Write-Info "Das ist erwartet und harmlos - chatterbox-tts wird bewusst ohne seine eigenen Vorgaben installiert."
     Invoke-Native -File $VenvPy -Arguments @('-m','pip','install','-r','requirements.txt') -What "requirements.txt"
     Write-Ok "Alle Python-Abhaengigkeiten installiert."
 

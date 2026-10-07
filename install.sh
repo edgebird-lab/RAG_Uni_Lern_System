@@ -214,6 +214,8 @@ ok "setuptools angepasst."
 
 # ---- 6) requirements ------------------------------------------------------- #
 step "Abhaengigkeiten installieren (requirements.txt)"
+info "Hinweis: Gleich meldet pip evtl. 'chatterbox-tts requires torch==2.6.0 / gradio ... incompatible'."
+info "Das ist erwartet und harmlos - chatterbox-tts wird bewusst ohne seine eigenen Vorgaben installiert."
 "$VENV_PY" -m pip install -r requirements.txt
 ok "Alle Python-Abhaengigkeiten installiert."
 
