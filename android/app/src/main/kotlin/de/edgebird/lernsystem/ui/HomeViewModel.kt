@@ -31,8 +31,10 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     fun refresh() {
         viewModelScope.launch {
             graph.subjects.adoptOrphans()   // Altbestand aus der Zeit vor den Fächern landet in „Allgemein“
+            de.edgebird.lernsystem.data.summary.SummaryRepository(graph.db).adoptLegacy()   // alte Zusammenfassungen in die neue Tabelle
             tick.value++
             val s = graph.study.summary(null)
+            de.edgebird.lernsystem.work.StudyWidgetProvider.refreshAll(getApplication())
             _strip.value = DayStrip(s.due, graph.pomodoroRepo.todayMinutes(), graph.pomodoro.goalMinutes.value, s.streak)
         }
     }

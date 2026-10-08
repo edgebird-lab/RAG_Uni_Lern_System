@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -68,6 +69,7 @@ fun HomeScreen(onOpen: (Long) -> Unit, onFocus: () -> Unit, onModels: () -> Unit
     var creating by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<SubjectSummary?>(null) }
     var menu by remember { mutableStateOf(false) }
+    var reminder by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 110.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -81,6 +83,7 @@ fun HomeScreen(onOpen: (Long) -> Unit, onFocus: () -> Unit, onModels: () -> Unit
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "Menü") }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(text = { Text("Lern-Erinnerung") }, onClick = { menu = false; reminder = true })
                             DropdownMenuItem(text = { Text("KI-Modelle") }, onClick = { menu = false; onModels() })
                             DropdownMenuItem(text = { Text("Datenschutz") }, onClick = { menu = false; onPrivacy() })
                         }
@@ -98,6 +101,7 @@ fun HomeScreen(onOpen: (Long) -> Unit, onFocus: () -> Unit, onModels: () -> Unit
         )
     }
 
+    if (reminder) ReminderDialog(onDismiss = { reminder = false })
     if (creating) SubjectDialog(title = "Neues Fach", initialName = "", initialColor = (subjects?.size ?: 0) % SubjectColors.size, confirmLabel = "Anlegen",
         onConfirm = { n, c -> vm.create(n, c); creating = false }, onDismiss = { creating = false })
     editing?.let { s ->
@@ -192,7 +196,7 @@ private fun SubjectDialog(title: String, initialName: String, initialColor: Int,
     AlertDialog(
         onDismissRequest = onDismiss, title = { Text(title) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(value = name, onValueChange = { name = it.take(40) }, label = { Text("Name des Fachs") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Text("Farbe", style = MaterialTheme.typography.labelLarge)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -209,6 +213,36 @@ private fun SubjectDialog(title: String, initialName: String, initialColor: Int,
             }
         },
         confirmButton = { TextButton(onClick = { onConfirm(name, color) }, enabled = name.isNotBlank()) { Text(confirmLabel) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } },
+    )
+}
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun ReminderDialog(onDismiss: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { (context.applicationContext as de.edgebird.lernsystem.LernsystemApp).graph.prefs }
+    var on by remember { mutableStateOf(prefs.getBoolean(de.edgebird.lernsystem.work.ReminderWork.PREF_ON, false)) }
+    val picker = androidx.compose.material3.rememberTimePickerState(prefs.getInt(de.edgebird.lernsystem.work.ReminderWork.PREF_HOUR, 18), prefs.getInt(de.edgebird.lernsystem.work.ReminderWork.PREF_MINUTE, 0), true)
+    AlertDialog(
+        onDismissRequest = onDismiss, title = { Text("Lern-Erinnerung") },
+        text = {
+            Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Täglich zur gewählten Zeit, wenn Karten fällig sind und dein Tagesziel noch nicht erreicht ist. Android darf die Zeit um einige Minuten verschieben.", style = MaterialTheme.typography.bodySmall)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Erinnerung an", Modifier.weight(1f))
+                    androidx.compose.material3.Switch(checked = on, onCheckedChange = { on = it })
+                }
+                if (on) androidx.compose.material3.TimePicker(state = picker)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                prefs.edit().putBoolean(de.edgebird.lernsystem.work.ReminderWork.PREF_ON, on).putInt(de.edgebird.lernsystem.work.ReminderWork.PREF_HOUR, picker.hour).putInt(de.edgebird.lernsystem.work.ReminderWork.PREF_MINUTE, picker.minute).apply()
+                de.edgebird.lernsystem.work.ReminderWork.apply(context, on, picker.hour, picker.minute)
+                onDismiss()
+            }) { Text("Speichern") }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } },
     )
 }

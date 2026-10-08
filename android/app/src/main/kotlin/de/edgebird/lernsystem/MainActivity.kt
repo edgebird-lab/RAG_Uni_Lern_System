@@ -30,15 +30,18 @@ private fun parse(route: String): List<String> = route.split(":")
 
 class MainActivity : ComponentActivity() {
     private val requestedTab = mutableIntStateOf(-1)
+    private val shared = mutableStateOf<de.edgebird.lernsystem.ui.SharedContent?>(null)
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         requestedTab.intValue = intent.getIntExtra(EXTRA_TAB, -1)
+        de.edgebird.lernsystem.ui.SharedContent.from(intent)?.let { shared.value = it }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestedTab.intValue = intent.getIntExtra(EXTRA_TAB, -1)
+        if (savedInstanceState == null) de.edgebird.lernsystem.ui.SharedContent.from(intent)?.let { shared.value = it }
         // Benachrichtigungen für Vordergrunddienste (Import, Download) und den Fokus-Timer (Android 13+)
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }.launch(Manifest.permission.POST_NOTIFICATIONS)
         setContent {
@@ -52,7 +55,15 @@ class MainActivity : ComponentActivity() {
                     Scaffold { inner -> Box(Modifier.padding(inner)) { ModelScreen(firstRun = true, onDone = { modelsOk = true }) } }
                     return@LernTheme
                 }
+                val share = shared.value
+                if (share != null) {
+                    de.edgebird.lernsystem.ui.ShareTargetDialog(
+                        share, onDone = { msg -> shared.value = null; android.widget.Toast.makeText(this@MainActivity, msg, android.widget.Toast.LENGTH_LONG).show(); route = "home" },
+                        onDismiss = { shared.value = null },
+                    )
+                }
                 val parts = parse(route)
+                androidx.compose.runtime.CompositionLocalProvider(de.edgebird.lernsystem.ui.LocalOpenModels provides { route = "models:$route" }) {
                 when (parts[0]) {
                     "subject" -> {
                         val id = parts[1].toLong()
@@ -85,6 +96,7 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
+                }
                 }
             }
         }

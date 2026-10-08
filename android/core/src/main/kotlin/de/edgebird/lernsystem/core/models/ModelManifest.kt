@@ -17,6 +17,10 @@ data class ModelInfo(
     val sha256: String,
     val license: String = "",
     val parts: List<ModelPart>,
+    /** Wird nur auf Wunsch geladen (z. B. die Stimme für die Sprachausgabe). */
+    val optional: Boolean = false,
+    /** Nicht leer: Die geladene ZIP-Datei wird nach `models/<unpack>/` entpackt (die ZIP selbst wird danach gelöscht). */
+    val unpack: String = "",
 )
 
 /** `manifest.json` aus dem Modell-Repo (Schema 1). */
@@ -42,7 +46,8 @@ class ModelException(message: String, cause: Throwable? = null) : Exception(mess
 /** Dateien neben dem Modell, die den Einbau-Stand festhalten (für Updates). */
 object ModelPlan {
     /** Welche Modelle müssen geladen werden? [installed]: Dateiname → (Größe, Version aus der Markierung oder null bei manuell abgelegten). */
-    fun pending(manifest: ModelManifest, installed: Map<String, InstalledModel>): List<ModelInfo> = manifest.models.filter { m ->
+    fun pending(manifest: ModelManifest, installed: Map<String, InstalledModel>, includeOptional: Boolean = false): List<ModelInfo> = manifest.models.filter { m ->
+        if (m.optional && !includeOptional && installed[m.fileName] == null) return@filter false
         val have = installed[m.fileName]
         have == null || have.size != m.size || (have.version != null && have.version != m.version)
     }

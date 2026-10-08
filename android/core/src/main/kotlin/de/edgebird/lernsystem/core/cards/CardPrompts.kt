@@ -11,7 +11,26 @@ object CardPrompts {
     private const val MAX_CHUNK_CHARS_QUESTION = 2500
     private const val MAX_CHUNK_CHARS_ANSWER = 2800
 
-    fun questionPrompt(chunk: String, n: Int): String = """Lies den folgenden Abschnitt aus einer Klausur-Zusammenfassung.
+    fun questionPrompt(chunk: String, n: Int): String = if (ContentKind.isCode(chunk)) codeQuestionPrompt(chunk, n) else textQuestionPrompt(chunk, n)
+
+    /** Fragen zu Programmcode: Verhalten, Ergebnis, Zweck, Laufzeit – ohne dass die Frage den Code selbst voraussetzt. */
+    fun codeQuestionPrompt(chunk: String, n: Int): String = """Lies den folgenden Abschnitt, der Programmcode oder eine Beschreibung davon enthält.
+
+Formuliere genau $n verschiedene Prüfungsfragen auf Deutsch zum Konzept, das der Code zeigt. Regeln:
+- Frage nach dem Verhalten, dem Ergebnis, dem Zweck, der Funktionsweise oder der Laufzeit (z. B. „Wie funktioniert die Partitionierung bei Quicksort?“, „Welche Laufzeit hat der Algorithmus im Mittel und warum?“).
+- Die Frage muss ohne den Code verständlich sein: nenne Konzepte und Algorithmen beim Namen, aber verweise nicht auf Variablennamen, Zeilen oder „den Code“.
+- Keine Fragen, die nur ein Stück Code abschreiben lassen.
+- Natürliche Prüfungssprache.
+
+Abschnitt:
+${"\"\"\""}
+${chunk.take(MAX_CHUNK_CHARS_QUESTION)}
+${"\"\"\""}
+
+Gib NUR gültiges JSON in diesem Format zurück:
+{"questions": ["...", "..."]}"""
+
+    fun textQuestionPrompt(chunk: String, n: Int): String = """Lies den folgenden Abschnitt aus einer Klausur-Zusammenfassung.
 
 Formuliere genau $n verschiedene, eigenständige Fragen auf Deutsch, die
 AUSSCHLIESSLICH mit den Informationen aus DIESEM Abschnitt beantwortet werden

@@ -109,7 +109,7 @@ class ImportPipelineTest {
     @Test
     fun gescanntesPdf_ohneText_wirdMitHinweisAbgelehnt() = runBlocking {
         val r = pipeline.import(assetSource("leer.pdf")) as ImportResult.Failed
-        assertTrue(r.reason, "gescannt" in r.reason)
+        assertTrue(r.reason, "Kein Text erkannt" in r.reason)
         assertEquals(0, db.documents().getAll().size)
     }
 

@@ -51,5 +51,25 @@ class SummarySectionsTest {
     fun `leere Chunks werden ignoriert`() = assertTrue(SummarySections.build(listOf(SourcePiece("x", "  ")), 3000).isEmpty())
 
     @Test
-    fun `Titel verschiedener Art werden mit Schraegstrich verbunden`() = assertEquals("Kosten / Erlöse", SummarySections.mergeTitles("Kosten", "Erlöse"))
+    fun `vereinigte Titel heissen Anfang bis Ende und behalten nur den letzten Teil der Kette`() {
+        assertEquals("Kosten bis Erlöse", SummarySections.mergeTitles("Kosten", "Erlöse"))
+        val ab = SummarySections.mergeTitles("Zelle › Struktur › Ribosomen", "Zelle › Struktur › Zentriolen")
+        assertEquals("Ribosomen bis Zentriolen", ab)
+        assertEquals("Ribosomen bis Weblinks", SummarySections.mergeTitles(ab, "Zelle › Weblinks"))   // weitere Vereinigung verlängert nur das Ende
+    }
+
+    @Test
+    fun `sehr lange Einzeltitel werden gekuerzt`() {
+        val long = "Photosynthese › Energiebilanz bei Pflanzen und anderen Organismen mit oxygener Photosynthese › Abhängigkeit von abiotischen Faktoren"
+        assertEquals("Abhängigkeit von abiotischen Faktoren", SummarySections.build(listOf(SourcePiece(long, text(300, "x"))), 3000).single().title)
+    }
+
+    @Test
+    fun `bei groesserem Budget werden auch grosse Nachbarn vereint`() {
+        val pieces = (1..6).map { SourcePiece("Kapitel $it", text(1500, "k$it")) }
+        assertEquals(6, SummarySections.build(pieces, SummarySections.DEFAULT_BUDGET).size)           // normal: getrennt
+        val coarse = SummarySections.build(pieces, SummarySections.MAX_BUDGET)
+        assertEquals(2, coarse.size)                                                                  // grob: je ca. 4 Kapitel
+        assertTrue(coarse.all { it.text.length <= SummarySections.MAX_BUDGET + 20 })
+    }
 }

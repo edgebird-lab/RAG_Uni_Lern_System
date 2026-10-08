@@ -11,6 +11,7 @@ gson = "2.13.2"
 work = "2.12.0"
 sqlite = "2.6.2"
 pdfium = "2.0.3"
+mlkitText = "16.0.1"
 room = "2.8.5"
 ksp = "2.3.12"
 androidxTest = "1.7.0"
@@ -42,6 +43,7 @@ androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "a
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
 
 pdfium = { module = "io.legere:pdfiumandroid", version.ref = "pdfium" }
+mlkit-text = { module = "com.google.mlkit:text-recognition", version.ref = "mlkitText" }
 
 androidx-sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "sqlite" }
 

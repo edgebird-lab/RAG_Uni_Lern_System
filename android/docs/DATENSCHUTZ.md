@@ -6,11 +6,11 @@ Stand: 2026-10-08
 
 ## Welche Daten verarbeitet die App?
 
-Die App speichert ausschließlich lokal im privaten App-Speicher: importierte Dokumente und ihre Textabschnitte, daraus berechnete Suchdaten (Embeddings), Zusammenfassungen, Karteikarten mit Lernstand, Chat-Verläufe der laufenden Sitzung (nicht dauerhaft) und die Fokus-Sitzungen des Timers. Die KI (Sprachmodell und Embedding-Modell) läuft vollständig auf dem Gerät.
+Die App speichert ausschließlich lokal im privaten App-Speicher: importierte Dokumente (auch aus Fotos und Scans) und ihre Textabschnitte, daraus berechnete Suchdaten (Embeddings), Zusammenfassungen samt Einstellungen und eigenen Vorlagen, Karteikarten mit Lernstand, Ergebnisse der Abfragen (je Thema), Chat-Verläufe der laufenden Sitzung (nicht dauerhaft) und die Fokus-Sitzungen des Timers. Die KI (Sprachmodell und Embedding-Modell) sowie die Texterkennung für Fotos laufen vollständig auf dem Gerät.
 
 ## Netzwerkzugriff
 
-Die App benötigt die Berechtigung „Internet“ ausschließlich, um beim ersten Start und bei Updates die KI-Modelle von GitHub (Repository `edgebird-lab/lernsystem-modelle`) zu laden und die Modellliste (`manifest.json`) abzurufen. Dabei werden keine Inhalte aus der App übertragen. Wie jeder Webserver sieht GitHub technisch bedingt deine IP-Adresse und den Zeitpunkt der Anfrage; dafür gilt die Datenschutzerklärung von GitHub.
+Die App benötigt die Berechtigung „Internet“ ausschließlich, um beim ersten Start und bei Updates die KI-Modelle und das optionale Stimmenpaket von GitHub (Repository `edgebird-lab/lernsystem-modelle`) zu laden und die Modellliste (`manifest.json`) abzurufen. Dabei werden keine Inhalte aus der App übertragen. Wie jeder Webserver sieht GitHub technisch bedingt deine IP-Adresse und den Zeitpunkt der Anfrage; dafür gilt die Datenschutzerklärung von GitHub.
 
 ## Weitergabe
 
@@ -18,7 +18,11 @@ Es werden keine personenbezogenen Daten an den Anbieter oder an Dritte weitergeg
 
 ## Berechtigungen
 
-- Benachrichtigungen: Fortschritt von Import und Download, Erinnerungen des Fokus-Timers.
+- Benachrichtigungen: Fortschritt von Import und Download, Erinnerungen des Fokus-Timers und die optionale tägliche Lern-Erinnerung.
+- Mikrofon (optional): für die Spracheingabe. Die Erkennung läuft mit der Spracherkennung des Geräts **auf dem Gerät**; es wird nichts aufgezeichnet oder gesendet.
+- Fotos: Zum Fotografieren öffnet die App die Kamera-App des Geräts (keine Kamera-Berechtigung nötig). Die Bilder bleiben im Zwischenspeicher der App und werden nach dem Erkennen des Textes gelöscht.
+- Teilen: Du kannst PDFs, Texte und Bilder aus anderen Apps mit dem Lernsystem teilen; sie werden erst nach deiner Wahl eines Fachs importiert.
+- Sprachausgabe (Vorlesen): Die App verwendet ausschließlich ihre **eigene Offline-Stimme** (ein optional geladenes Stimmenpaket, Piper über sherpa-onnx). Das Vorlesen und das Erzeugen von Audiodateien laufen vollständig auf dem Gerät. Online-Stimmen der System-Sprachausgabe werden bewusst nicht benutzt.
 - Genaue Alarme (optional): damit das Ende einer Fokusphase pünktlich gemeldet wird.
 - Nach Neustart starten: stellt einen laufenden Fokus-Timer wieder her.
 - Vordergrunddienst (Datensynchronisierung): lässt Import, Indexierung und Download bei ausgeschaltetem Display weiterlaufen.

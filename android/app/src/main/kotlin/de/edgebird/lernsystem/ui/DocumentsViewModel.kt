@@ -95,7 +95,10 @@ class DocumentsViewModel(app: Application) : AndroidViewModel(app) {
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    fun generateCards(documentId: Long, maxCards: Int) = CardGenWork.enqueue(getApplication(), documentId, maxCards)
+    /** Meldungen über beendete Aufträge (Import, Kartenerzeugung) ausblenden. */
+    fun dismissMessages() { work.pruneWork() }
+
+    fun generateCards(documentId: Long, maxCards: Int, mode: CardGenWork.Mode = CardGenWork.Mode.QA) = CardGenWork.enqueue(getApplication(), documentId, maxCards, mode)
 
     val importMessage: StateFlow<String?> = work.getWorkInfosForUniqueWorkFlow(ImportWork.UNIQUE_IMPORT).map { infos ->
         infos.firstOrNull()?.takeIf { it.state == WorkInfo.State.SUCCEEDED }?.outputData?.getString(ImportWorker.MESSAGE)
@@ -105,19 +108,7 @@ class DocumentsViewModel(app: Application) : AndroidViewModel(app) {
     fun import(uris: List<Uri>) {
         if (uris.isEmpty()) return
         viewModelScope.launch {
-            val items = withContext(Dispatchers.IO) {
-                val resolver = getApplication<Application>().contentResolver
-                uris.mapNotNull { uri ->
-                    runCatching {
-                        val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
-                            if (c.moveToFirst()) c.getString(0) else null
-                        } ?: uri.lastPathSegment ?: "datei"
-                        val copy = File(graph.inboxDir, UUID.randomUUID().toString())
-                        resolver.openInputStream(uri)!!.use { input -> copy.outputStream().use { input.copyTo(it) } }
-                        ImportItem(uri.toString(), name, copy)
-                    }.getOrNull()
-                }
-            }
+            val items = withContext(Dispatchers.IO) { ImportHelper.items(getApplication(), graph, uris) }
             if (items.isNotEmpty()) ImportWork.enqueue(getApplication(), items, _onlyWhenCharging.value, subject.value)
         }
     }

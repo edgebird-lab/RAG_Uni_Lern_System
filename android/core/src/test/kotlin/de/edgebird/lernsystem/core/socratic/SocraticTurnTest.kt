@@ -122,4 +122,35 @@ class SocraticTurnTest {
         assertTrue("nicht erneut stellen" in msg)
         assertFalse("Deine offene Frage" in msg)
     }
+
+    @Test fun `Urteil wird aus der Modellantwort gelesen`() {
+        assertEquals(Verdict.CORRECT, SocraticGrader.parse("richtig"))
+        assertEquals(Verdict.CORRECT, SocraticGrader.parse("Richtig."))
+        assertEquals(Verdict.PARTIAL, SocraticGrader.parse("teilweise richtig"))
+        assertEquals(Verdict.PARTIAL, SocraticGrader.parse("Die Antwort ist teilweise korrekt"))
+        assertEquals(Verdict.WRONG, SocraticGrader.parse("Falsch!"))
+        assertEquals(Verdict.WRONG, SocraticGrader.parse("Das ist nicht richtig."))
+        assertNull(SocraticGrader.parse(""))
+        assertNull(SocraticGrader.parse("Vielleicht"))
+    }
+
+    @Test fun `leere oder inhaltslose Antwort ist falsch, ohne das Modell zu fragen`() = runBlocking {
+        val llm = Fake(listOf("richtig"))
+        assertEquals(Verdict.WRONG, SocraticGrader.grade(llm, "Was ist ein Vektor?", " ", "ctx"))
+        assertTrue(llm.prompts.isEmpty())
+        assertEquals(Verdict.CORRECT, SocraticGrader.grade(llm, "Was ist ein Vektor?", "Eine Größe mit Betrag und Richtung", "ctx"))
+        assertTrue("GENAU EINEM Wort" in llm.prompts[0] && "ANTWORT: Eine Größe" in llm.prompts[0])
+    }
+
+    @Test fun `die Bewertung wird dem Tutor verbindlich vorgegeben`() {
+        val st = DialogState("V", Phase.OPEN, goal = "Was ist ein Vektor?")
+        val msg = SocraticDialog.userMessage(st, Kind.ANSWER, null, "Eine Zahl", "ctx", verdict = Verdict.WRONG)
+        assertTrue("verbindlich" in msg && "noch nicht richtig" in msg)
+        assertFalse("verbindlich" in SocraticDialog.userMessage(st, Kind.ANSWER, null, "Eine Zahl", "ctx"))
+    }
+
+    @Test fun `Bewertungskriterien stehen im Pruefer-Prompt`() {
+        val p = SocraticGrader.prompt("Was ist ein Vektor?", "Ein Pfeil", "ctx")
+        assertTrue("teilweise: Sie enthält Zutreffendes" in p && "falsch: Sie widerspricht" in p)
+    }
 }

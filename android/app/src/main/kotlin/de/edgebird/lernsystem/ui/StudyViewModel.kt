@@ -89,6 +89,7 @@ class StudyViewModel(app: Application) : AndroidViewModel(app) {
     fun endSession() {
         _session.value = null
         refresh()
+        de.edgebird.lernsystem.work.StudyWidgetProvider.refreshAll(getApplication())
     }
 
     fun saveSettings(s: StudySettings) {

@@ -26,6 +26,19 @@
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+        </provider>
+        <receiver android:name=".work.StudyWidgetProvider" android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/study_widget_info" />
+        </receiver>
         <receiver android:name=".pomodoro.PomodoroAlarmReceiver" android:exported="false" />
         <receiver android:name=".pomodoro.PomodoroActionReceiver" android:exported="false" />
         <receiver android:name=".pomodoro.PomodoroBootReceiver" android:exported="true">
@@ -39,6 +52,16 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- „Teilen mit …“: PDFs, Texte und Bilder aus anderen Apps als Quelle importieren -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="text/markdown" />
+                <data android:mimeType="image/*" />
             </intent-filter>
         </activity>
     </application>

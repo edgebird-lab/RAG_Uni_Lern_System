@@ -40,6 +40,8 @@ fun ModelScreen(firstRun: Boolean, onDone: () -> Unit, onBack: (() -> Unit)? = n
     val check by vm.check.collectAsStateWithLifecycle()
     val dl by vm.download.collectAsStateWithLifecycle()
     val wifiOnly by vm.wifiOnly.collectAsStateWithLifecycle()
+    val voice by vm.voice.collectAsStateWithLifecycle()
+    val withVoice by vm.withVoice.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var confirmReinstall by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val busy = dl?.running == true || dl?.queued == true
@@ -58,13 +60,25 @@ fun ModelScreen(firstRun: Boolean, onDone: () -> Unit, onBack: (() -> Unit)? = n
                 Button(onClick = vm::refresh) { Text("Erneut versuchen") }
             }
             is ModelCheck.Ready -> {
+                voice?.let { v -> VoiceCard(v, busy, onDownload = vm::downloadVoice) }
                 Text(if (c.updates.isEmpty()) "Alle Modelle sind vorhanden und aktuell." else "Neuere Modelle verfügbar: ${c.updates.joinToString { it.title }}.")
                 if (c.updates.isNotEmpty()) {
                     Text("Das alte Modell bleibt, bis das neue vollständig geladen und geprüft ist. Danach die App einmal komplett schließen und neu öffnen.", style = MaterialTheme.typography.bodySmall)
                     if (!busy) Button(onClick = vm::start, modifier = Modifier.fillMaxWidth()) { Text("Update laden") }
                 } else OutlinedButton(onClick = vm::refresh) { Text("Nach Updates suchen") }
             }
-            is ModelCheck.Needed -> NeededCard(c.pending, c.ramMb, c.freeMb, c.manifest.licenseUrl, busy)
+            is ModelCheck.Needed -> {
+                NeededCard(c.pending, c.ramMb, c.freeMb, c.manifest.licenseUrl, busy)
+                voice?.takeIf { !it.installed }?.let { v ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Offline-Stimme für das Vorlesen mitladen (${mb(v.model.size)})", style = MaterialTheme.typography.bodyMedium)
+                            Text("Deutsche Stimme, läuft komplett auf dem Gerät. Später jederzeit nachladbar.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = withVoice, onCheckedChange = vm::setWithVoice)
+                    }
+                }
+            }
         }
 
         dl?.let { d ->
@@ -90,7 +104,7 @@ fun ModelScreen(firstRun: Boolean, onDone: () -> Unit, onBack: (() -> Unit)? = n
             val enoughSpace = needed.freeMb * 1_048_576 > needed.pending.sumOf { it.size } + 300L * 1_048_576
             if (!enoughSpace) Text("Zu wenig freier Speicher: ${needed.pending.sumOf { it.size } / 1_000_000 + 300} MB nötig, ${needed.freeMb} MB frei.", color = MaterialTheme.colorScheme.error)
             Button(onClick = vm::start, enabled = enoughSpace, modifier = Modifier.fillMaxWidth()) {
-                Text(if (dl?.error != null) "Erneut versuchen" else "Modelle herunterladen (${mb(needed.pending.sumOf { it.size })})")
+                Text(if (dl?.error != null) "Erneut versuchen" else "Modelle herunterladen (${mb(needed.pending.sumOf { it.size } + if (withVoice && voice?.installed == false) voice!!.model.size else 0L)})")
             }
         }
         if (check is ModelCheck.Ready && !busy) TextButton(onClick = { confirmReinstall = true }) { Text("Modelle löschen und neu laden") }
@@ -107,6 +121,21 @@ private fun ReinstallDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) = andr
     confirmButton = { TextButton(onClick = onConfirm) { Text("Löschen und neu laden") } },
     dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } },
 )
+
+@Composable
+private fun VoiceCard(v: VoiceInfo, busy: Boolean, onDownload: () -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Offline-Stimme (Vorlesen)", style = MaterialTheme.typography.titleMedium)
+            if (v.installed) Text("Installiert. Das Vorlesen läuft komplett auf dem Gerät, ohne Internet.", style = MaterialTheme.typography.bodySmall)
+            else {
+                Text("Noch nicht geladen. Ohne sie kann die App nicht vorlesen; Online-Stimmen des Geräts werden bewusst nicht benutzt.", style = MaterialTheme.typography.bodySmall)
+                Button(onClick = onDownload, enabled = !busy) { Text("Stimme laden (${mb(v.model.size)})") }
+            }
+            Text("Stimme: Thorsten (CC0), Piper (MIT), espeak-ng-Daten (GPL-3.0+)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
 
 @Composable
 private fun NeededCard(pending: List<ModelInfo>, ramMb: Long, freeMb: Long, licenseUrl: String, busy: Boolean) {

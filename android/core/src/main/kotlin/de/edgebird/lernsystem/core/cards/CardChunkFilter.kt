@@ -12,6 +12,7 @@ object CardChunkFilter {
         val urlChars = URL.findAll(text).sumOf { it.value.length }
         if (urlChars.toDouble() / text.length > 0.25) return false
         val letters = text.count { it.isLetter() }
-        return letters.toDouble() / text.length >= 0.5
+        // Programmcode hat viele Sonderzeichen, ist aber lernenswert
+        return letters.toDouble() / text.length >= (if (ContentKind.isCode(text)) 0.3 else 0.5)
     }
 }

@@ -2,7 +2,7 @@
 
 Abgespeckte, komplett lokale Android-Version des RAG-Lernsystems: Dokumente importieren, Chat mit Quellen (RAG), Karteikarten mit FSRS-6. Die KI (Gemma 4 E2B plus EmbeddingGemma 2) läuft auf dem Gerät, es gibt keine Cloud-Abhängigkeit.
 
-**Stand:** Phasen 0 bis 8 des [Plans](docs/PLAN.md) sind umgesetzt (Import, hybride Suche, Chat, Karteikarten, Zusammenfassungen, Fokus-Timer, Fächer, Spracheingabe, sokratische Abfragen; Konzept in [DESIGN.md](docs/DESIGN.md)). Der Store-Release (Phase 9) fehlt noch.
+**Stand:** Phasen 0 bis 8 des [Plans](docs/PLAN.md) sind umgesetzt (Import, hybride Suche, Chat, Karteikarten, Zusammenfassungen, Fokus-Timer, Fächer, Spracheingabe, sokratische Abfragen mit Auswertung, einstellbare Zusammenfassungen, Lückentext-Karten, Foto-Texterkennung mit Dokumentenscanner, Quiz und Probeklausur, mehrere Chats je Fach, Teilen aus anderen Apps, Lern-Erinnerung, Offline-Sprachausgabe; Konzept in [DESIGN.md](docs/DESIGN.md)). Der Store-Release (Phase 9) fehlt noch.
 
 ## Bauen und installieren
 
@@ -16,6 +16,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk   # -r behält die App-
 Tests: `./gradlew :core:test testDebugUnitTest` (JVM) und `./gradlew :data:connectedDebugAndroidTest :ingest:connectedDebugAndroidTest` (Gerät).
 
 ## Modelle
+
+Dazu kommt eine optionale **Offline-Stimme** (Piper, Thorsten, ca. 59 MB) für das Vorlesen; sie wird im Assistenten mitgeladen oder später unter „KI-Modelle“. Die nativen Bibliotheken holt `tools/fetch_sherpa.sh` beim Bauen. Lizenzen: [NOTICE.md](NOTICE.md) (espeak-ng ist GPL-3.0+).
 
 Beim ersten Start lädt die App die Modelle selbst aus dem Release von [edgebird-lab/lernsystem-modelle](https://github.com/edgebird-lab/lernsystem-modelle) (Apache 2.0, unverändert von `litert-community`): `gemma-4-E2B-it.litertlm` (2,6 GB, Sprachmodell) und `embeddinggemma-2-text-270m.litertlm` (165 MB, Embeddings). Der Assistent zeigt Gerät, Speicher und Lizenz; geladen wird standardmäßig nur im WLAN, mit Fortsetzen nach Abbruch und SHA-256-Prüfung. Später prüft „KI-Modelle“ im Tab Dokumente auf Updates.
 

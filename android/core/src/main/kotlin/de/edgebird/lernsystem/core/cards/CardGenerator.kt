@@ -6,7 +6,7 @@ import de.edgebird.lernsystem.core.ai.LlmEngine
 import kotlinx.coroutines.flow.fold
 
 /** Eine fertig erzeugte, geprüfte Karte. [questionVector] ist die Frage-Einbettung (für spätere Dublettenprüfung). */
-data class GeneratedCard(val question: String, val answer: String, val questionVector: FloatArray?) {
+data class GeneratedCard(val question: String, val answer: String, val questionVector: FloatArray?, val kind: CardKind = CardKind.QA) {
     override fun equals(other: Any?) = other is GeneratedCard && question == other.question && answer == other.answer
     override fun hashCode() = 31 * question.hashCode() + answer.hashCode()
 }
@@ -32,10 +32,10 @@ class CardGenerator(
     }
 
     /**
-     * @param existingVectors Einbettungen bereits vorhandener Fragen (Dublettenprüfung); wird nicht verändert.
+     * @param existing bereits vorhandene Fragen als (Einbettung, Text) für die Dublettenprüfung; wird nicht verändert.
      * @return bis zu [n] neue Karten
      */
-    suspend fun generate(chunk: String, n: Int = 2, existingVectors: List<FloatArray> = emptyList(), stats: GenerationStats = GenerationStats()): List<GeneratedCard> {
+    suspend fun generate(chunk: String, n: Int = 2, existing: List<Pair<FloatArray?, String>> = emptyList(), stats: GenerationStats = GenerationStats()): List<GeneratedCard> {
         if (chunk.trim().length < minChunkChars || !CardChunkFilter.isStudyWorthy(chunk)) return emptyList()
         // Ohne geladenen Embedder gäbe es keine Vektoren und damit keine Dublettenprüfung (fiel vorher still aus)
         val vectorsAvailable = embedder != null && runCatching { embedder!!.load() }.isSuccess
@@ -63,7 +63,7 @@ class CardGenerator(
                     continue
                 }
                 val vec = if (vectorsAvailable) runCatching { embedder!!.embed(listOf(q)).first() }.getOrNull() else null
-                if (vec != null && CardQuality.isDuplicate(vec, existingVectors + accepted.mapNotNull { it.second })) {
+                if (vec != null && CardQuality.isDuplicate(vec, q, existing + accepted.map { it.second to it.first })) {
                     stats.duplicates++
                     continue
                 }
@@ -113,5 +113,39 @@ class CardGenerator(
             return null
         }
         return best
+    }
+
+    /**
+     * Lückentext-Karten aus einem Abschnitt: das Modell wählt Sätze und Begriffe, [Cloze.build] prüft sie gegen den Quelltext.
+     * Es gibt keinen zweiten Modellaufruf (keine Antwortstufe), deshalb geht es deutlich schneller als bei Frage-Antwort-Karten.
+     * @param existingFronts schon vorhandene Karten-Vorderseiten (Dubletten werden übersprungen)
+     */
+    suspend fun generateCloze(chunk: String, n: Int = 2, existingFronts: Collection<String> = emptyList(), stats: GenerationStats = GenerationStats()): List<GeneratedCard> {
+        if (chunk.trim().length < minChunkChars || !CardChunkFilter.isStudyWorthy(chunk) || ContentKind.isCode(chunk)) return emptyList()
+        val seenFronts = existingFronts.map { it.lowercase().replace(Regex("""\s+"""), " ") }.toMutableSet()
+        val seenTerms = HashSet<String>()
+        val seenSentences = HashSet<String>()   // höchstens eine Lücke je Satz
+        val out = mutableListOf<GeneratedCard>()
+        for (attempt in 0..1) {
+            val want = n - out.size
+            if (want <= 0) break
+            val raw = try {
+                ask(Cloze.prompt(chunk, want + attempt), CardPrompts.QUESTION_SYSTEM, 0.3f + 0.3f * attempt, 400)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (attempt == 0) throw e else break
+            }
+            for (item in Cloze.parse(raw)) {
+                if (out.size >= n) break
+                val built = Cloze.build(item, chunk)
+                if (built == null) { stats.rejectedQuestions++; continue }
+                val key = built.front.lowercase().replace(Regex("""\s+"""), " ")
+                if (!seenFronts.add(key) || !seenTerms.add(item.term.lowercase()) || !seenSentences.add(item.sentence.lowercase().replace(Regex("""\\s+"""), " "))) { stats.duplicates++; continue }
+                out += GeneratedCard(built.front, built.answer, null, CardKind.CLOZE)
+            }
+            if (attempt == 0 && out.size < n) stats.retries++
+        }
+        return out
     }
 }

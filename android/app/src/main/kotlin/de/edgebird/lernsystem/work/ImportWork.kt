@@ -77,10 +77,10 @@ class ImportWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
             lines += when (result) {
                 is ImportResult.Imported -> {
                     // Geändertes Dokument: vorhandene Zusammenfassungen werden für die neue Fassung neu berechnet
-                    result.previousSummaryStyles.mapNotNull { runCatching { de.edgebird.lernsystem.core.summary.SummaryStyle.valueOf(it) }.getOrNull() }
-                        .forEach { SummaryWork.enqueue(applicationContext, result.documentId, it) }
+                    val subject = graph.db.documents().byId(result.documentId)?.subjectId
+                    if (subject != null) result.previousSummarySpecs.forEach { SummaryWork.enqueue(applicationContext, SummaryWork.Job(subject, de.edgebird.lernsystem.data.SummaryScope.DOC, listOf(result.documentId), "", de.edgebird.lernsystem.core.summary.SummarySpec.fromJson(it))) }
                     "${names[i]}: ${result.chunks} Abschnitte" + (if (result.emptyPages > 0) " (${result.emptyPages} Seiten ohne Text)" else "") +
-                        (if (result.previousSummaryStyles.isNotEmpty()) ", Zusammenfassung wird neu erstellt" else "")
+                        (if (result.previousSummarySpecs.isNotEmpty()) ", Zusammenfassung wird neu erstellt" else "")
                 }
                 is ImportResult.SkippedUnchanged -> "${names[i]}: bereits vorhanden"
                 is ImportResult.SkippedDuplicate -> "${names[i]}: Duplikat eines vorhandenen Dokuments"

@@ -38,3 +38,26 @@ Auf dieser Grundlage zeigt die App vor dem Start eine Zeitschätzung an (12 s je
 - Lange Dokumente brauchen lange (über 100 Seiten: eine halbe Stunde und mehr). Die Erzeugung läuft im Vordergrunddienst, pausiert bei Hitze und Akku unter 20 % und kann unterbrochen werden.
 - Das Display sollte während der Erzeugung an bleiben.
 - Zusammenfassungen eines ganzen Fachs gibt es erst, wenn Fächer existieren (siehe Feinschliff-Backlog im Plan).
+
+## Einstellbare Zusammenfassungen (Feinschliff, 2026-10-08)
+
+Umfang (eine Quelle, ganzes Fach, Thema), Form (Gegliedert, Stichpunkte, Fließtext, Glossar), Länge in Wörtern, Rolle samt frei änderbarem Masterprompt, Wünsche, Niveau, Sprache, Schalter für Formeln, Beispiele, Fettdruck, Fundstellen und Prüfungsfokus sowie Vorlagen. Die Regel „nichts erfinden, nur den Quelltext nutzen“ hängt immer an der Systemanweisung und lässt sich nicht abschalten.
+
+**Messung auf dem Pixel (Gemma 4 E2B, GPU), öffentliche Testtexte (Wikipedia „Zelle“ 20 KB, „Photosynthese“ 107 KB):**
+
+| Fall | Ziel | Ergebnis (netto ohne Kopfzeile) | Zeit |
+|---|---|---|---|
+| Quelle, Fließtext, Rolle Lektor | 120 Wörter | ca. 140 | 36 s |
+| Quelle, Stichpunkte, „nur das Wesentliche“ | 150 Wörter | ca. 170 | 22 s |
+| Thema „Zelle“ in 2 Quellen, Fließtext | 100 Wörter | ca. 105 | 26 s |
+| Ganzes Fach (2 Quellen, 38 Schritte), Stichpunkte | 400 Wörter | ca. 690 | 249 s |
+| Quelle, Glossar | (Obergrenze 33 Einträge) | 530 Wörter | 141 s |
+
+Was beim ersten Lauf auffiel und behoben wurde (Vergleich vorher/nachher):
+- Das Modell überschreitet Längenangaben bei Stichpunkten um 50 bis 80 Prozent. Der Prompt nennt jetzt „höchstens 0,7 × Ziel“ (Stichpunkte 266 → 170 Wörter bei Ziel 150); beim Fließtext prüft der Code die Wortzahl und fragt bei mehr als dem 1,4-fachen mit Hinweis auf die tatsächliche Zahl neu an (269 → 140 bei Ziel 120).
+- Abgebrochene letzte Zeilen („… membr“, „… oder“): Erkennung über die Token-Obergrenze, unvollendetes Fettdruck-Zeichen, Überschrift ohne Inhalt, hängende Wörter am Ende und (nur bei Stichpunkten) fehlendes Satzende.
+- Zusammengeklebte Abschnittstitel („A / B / C“, „Zelle › Struktur › Ribosomen / …“) heißen jetzt „Anfang bis Ende“ mit dem letzten Teil der Überschriften-Kette; leere „****“-Reste werden entfernt.
+- Bei kurzer Zielänge werden Abschnitte größer geschnitten (bis 7500 Zeichen), statt nachträglich zu kürzen: weniger Schritte (65 → 38) und 40 bis 60 Prozent weniger Zeit.
+- Das Glossar ist auf etwa Ziel/12 Einträge begrenzt, gleichmäßig über das Dokument verteilt.
+
+**Grenze:** Jeder Abschnitt braucht mindestens rund 20 Wörter. Bei sehr großen Quellen und kurzer Zielänge wird eine strukturierte Zusammenfassung deshalb länger als gewünscht (Beispiel: Fach mit dem 107-KB-Text, 1,7-fach). Die App zeigt vorab die erwartete Länge und rät dann zu „Fließtext“.

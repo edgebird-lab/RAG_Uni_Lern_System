@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Widget in den Farben „Papier und Tinte“ -->
+    <color name="widget_bg">#FFEAE3D3</color>
+    <color name="widget_text">#FF1F2A44</color>
+    <color name="widget_text_secondary">#FF4E5163</color>
+</resources>

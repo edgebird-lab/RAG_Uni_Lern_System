@@ -74,7 +74,7 @@ class CardGeneratorTest {
             mutableListOf("Erlöse minus variable Kosten."),
         )
         val stats = GenerationStats()
-        val cards = CardGenerator(llm, emb, retries = 0).generate(chunk, n = 1, existingVectors = existing, stats = stats)
+        val cards = CardGenerator(llm, emb, retries = 0).generate(chunk, n = 1, existing = existing.map { it to "Wie berechnet man den Deckungsbeitrag eines Produkts?" }, stats = stats)
         assertTrue(cards.isEmpty())
         assertEquals(1, stats.duplicates)
     }

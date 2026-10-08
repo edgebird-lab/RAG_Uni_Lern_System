@@ -15,6 +15,8 @@ dependencies {
     api(project(":core"))
     api(project(":data"))
     implementation(libs.pdfium)
+    implementation(libs.mlkit.text)
+    implementation("com.google.android.gms:play-services-tasks:18.2.0")
 
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.kotlinx.coroutines.test)

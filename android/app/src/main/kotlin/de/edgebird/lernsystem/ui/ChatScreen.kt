@@ -44,15 +44,20 @@ import de.edgebird.lernsystem.data.chat.Source
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun ChatScreen(subjectId: Long, onModels: () -> Unit = {}, onOpenSources: () -> Unit = {}, vm: ChatViewModel = viewModel(key = "chat$subjectId"), docsVm: DocumentsViewModel = viewModel(key = "docs$subjectId")) {
-    androidx.compose.runtime.LaunchedEffect(subjectId) { docsVm.bind(subjectId) }
+    androidx.compose.runtime.LaunchedEffect(subjectId) { docsVm.bind(subjectId); vm.bindSubject(subjectId) }
+    val context = androidx.compose.ui.platform.LocalContext.current
     val docs by docsVm.documents.collectAsStateWithLifecycle()
     val selected by docsVm.selectedIds.collectAsStateWithLifecycle()
     androidx.compose.runtime.LaunchedEffect(selected) { vm.setScope(selected) }
+    val speaker = rememberSpeechOutput()
     var picking by remember { mutableStateOf(false) }
     var speechBase by remember { mutableStateOf("") }
     val messages by vm.messages.collectAsStateWithLifecycle()
     val modelState by vm.modelState.collectAsStateWithLifecycle()
     val loadError by vm.loadError.collectAsStateWithLifecycle()
+    val chats by vm.sessions.collectAsStateWithLifecycle()
+    val currentChat by vm.currentSession.collectAsStateWithLifecycle()
+    var chatMenu by remember { mutableStateOf(false) }
     var input by rememberSaveable { mutableStateOf("") }
     val speech = rememberSpeech(
         onPartial = { input = (speechBase.trim() + " " + it).trim() },
@@ -82,7 +87,19 @@ fun ChatScreen(subjectId: Long, onModels: () -> Unit = {}, onOpenSources: () -> 
                 modifier = Modifier.weight(1f, fill = false),
             )
             androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
-            if (messages.isNotEmpty()) TextButton(onClick = vm::newChat) { Text("Neuer Chat") }
+            Box {
+                TextButton(onClick = { chatMenu = true }) { Text(if (chats.size > 1 || (chats.isNotEmpty() && messages.isEmpty())) "Chats (${chats.size}) ▾" else "Chats ▾") }
+                androidx.compose.material3.DropdownMenu(expanded = chatMenu, onDismissRequest = { chatMenu = false }) {
+                    androidx.compose.material3.DropdownMenuItem(text = { Text("Neuer Chat") }, onClick = { chatMenu = false; vm.newChat() })
+                    chats.forEach { c ->
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text((if (c.id == currentChat) "✓ " else "") + c.title, maxLines = 1) },
+                            onClick = { chatMenu = false; vm.openSession(c.id) },
+                            trailingIcon = { TextButton(onClick = { chatMenu = false; vm.deleteSession(c.id) }) { Text("Löschen") } },
+                        )
+                    }
+                }
+            }
         }
         when (modelState) {
             ModelState.MISSING -> Banner("Das Sprachmodell fehlt.", error = true, actionLabel = "Modelle laden", onAction = onModels)
@@ -111,9 +128,11 @@ fun ChatScreen(subjectId: Long, onModels: () -> Unit = {}, onOpenSources: () -> 
                 }
             }
             LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
-                items(messages, key = { it.id }) { m -> MessageBubble(m, onSource = { openSource = it }, onRetry = { vm.retryWithMoreSources(m.id) }, canRetry = !streaming) }
+                items(messages, key = { it.id }) { m -> MessageBubble(m, onSource = { openSource = it }, onRetry = { vm.retryWithMoreSources(m.id) }, canRetry = !streaming, onSpeak = { if (speaker.speaking) speaker.stop() else speaker.speak(m.text) }, speaking = speaker.speaking,
+                    onNote = { if (vm.saveAsNote(m.id)) android.widget.Toast.makeText(context, "Als Notiz in den Quellen gespeichert", android.widget.Toast.LENGTH_SHORT).show() }) }
             }
         }
+        VoiceMissingHint(speaker)
         speech.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
@@ -167,7 +186,7 @@ private fun Banner(text: String, error: Boolean = false, actionLabel: String? = 
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun MessageBubble(m: ChatMessage, onSource: (Source) -> Unit, onRetry: () -> Unit, canRetry: Boolean) {
+private fun MessageBubble(m: ChatMessage, onSource: (Source) -> Unit, onRetry: () -> Unit, canRetry: Boolean, onSpeak: () -> Unit = {}, speaking: Boolean = false, onNote: () -> Unit = {}) {
     val container = if (m.fromUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
     Card(
         colors = CardDefaults.cardColors(containerColor = container),
@@ -181,6 +200,10 @@ private fun MessageBubble(m: ChatMessage, onSource: (Source) -> Unit, onRetry: (
                 }
                 m.text.isEmpty() && m.streaming -> Text("Suche und formuliere …", style = MaterialTheme.typography.bodySmall)
                 else -> Text(de.edgebird.lernsystem.core.cards.LatexLite.toPlain(m.text), style = MaterialTheme.typography.bodyMedium, color = if (m.failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+            }
+            if (!m.fromUser && !m.streaming && !m.failed && !m.notFound && m.text.isNotBlank()) Row {
+                TextButton(onClick = onSpeak) { Text(if (speaking) "Stopp" else "Vorlesen") }
+                TextButton(onClick = onNote) { Text("Als Notiz speichern") }
             }
             if (m.retried && !m.streaming && !m.notFound) Text("Zweiter Versuch mit mehr Quellen: bitte die Quellen prüfen.", style = MaterialTheme.typography.labelSmall)
             if (!m.fromUser && !m.notFound && m.sources.isNotEmpty() && !m.streaming) {
