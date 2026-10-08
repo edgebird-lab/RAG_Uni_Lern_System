@@ -25,6 +25,12 @@ class AppGraph(private val context: Context) {
     val modelsDir = File(context.filesDir, "models")
     val inboxDir = File(context.filesDir, "inbox").apply { mkdirs() }
 
+    /** Reste abgebrochener Importe (Dateien, die nie verarbeitet wurden) nach einem Tag entfernen. */
+    fun cleanInbox(maxAgeMs: Long = 24L * 3600_000) {
+        val limit = System.currentTimeMillis() - maxAgeMs
+        inboxDir.listFiles().orEmpty().filter { it.isFile && it.lastModified() < limit }.forEach { it.delete() }
+    }
+
     /** Bis zum Modell-Download (Phase 8) manuell per adb abgelegt. */
     val embeddingModelFile = File(modelsDir, "embeddinggemma-2-text-270m.litertlm")
     val embeddingModelId = "embeddinggemma-2-text-270m-768"

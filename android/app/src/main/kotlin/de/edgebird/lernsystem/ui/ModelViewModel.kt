@@ -85,6 +85,15 @@ class ModelViewModel(app: Application) : AndroidViewModel(app) {
     fun start() = ModelWork.enqueue(getApplication(), _wifiOnly.value)
     fun cancel() = ModelWork.cancel(getApplication())
 
+    /** Beschädigte oder falsche Modelldateien entfernen, damit der Assistent sie neu lädt. */
+    fun reinstall() {
+        cancel()
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { graph.modelsDir.listFiles().orEmpty().forEach { it.delete() } }
+            refresh()
+        }
+    }
+
     fun filesReady(): Boolean = filesPresent()
 
     private fun totalRamMb(): Long = ActivityManager.MemoryInfo().also { getApplication<Application>().getSystemService(ActivityManager::class.java).getMemoryInfo(it) }.totalMem / 1_048_576
