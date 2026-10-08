@@ -16,7 +16,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 sealed interface ImportResult {
-    data class Imported(val documentId: Long, val chunks: Int, val replaced: Boolean, val emptyPages: Int) : ImportResult
+    /** [previousSummaryStyles]: Stile, die für die ersetzte Fassung des Dokuments existierten (werden neu berechnet). */
+    data class Imported(val documentId: Long, val chunks: Int, val replaced: Boolean, val emptyPages: Int, val previousSummaryStyles: List<String> = emptyList()) : ImportResult
     data class SkippedUnchanged(val documentId: Long) : ImportResult
     data class SkippedDuplicate(val existingId: Long, val existingPath: String) : ImportResult
     data class Failed(val reason: String) : ImportResult
@@ -64,6 +65,7 @@ class ImportPipeline(
         if (chunks.isEmpty()) return@withContext ImportResult.Failed("Die Datei enthält keinen verwertbaren Text")
 
         onStage(ImportStage.SAVING)
+        val previousStyles = decision.existing?.let { db.summaries().stylesFor(it.id) }.orEmpty()
         val docId = db.importing().replaceDocument(
             replaceId = decision.existing?.id,
             doc = DocumentEntity(
@@ -78,6 +80,6 @@ class ImportPipeline(
                 )
             }
         }
-        ImportResult.Imported(docId, chunks.size, replaced = decision.action == DedupAction.REPLACE, emptyPages = loaded.emptyPages)
+        ImportResult.Imported(docId, chunks.size, replaced = decision.action == DedupAction.REPLACE, emptyPages = loaded.emptyPages, previousSummaryStyles = previousStyles)
     }
 }
