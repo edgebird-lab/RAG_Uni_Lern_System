@@ -30,11 +30,12 @@ object ImportWork {
     const val TAG_EMBED = "embed"
     private const val CHANNEL = "indexing"
 
-    fun enqueue(context: Context, items: List<ImportItem>, onlyWhenCharging: Boolean = false) {
+    fun enqueue(context: Context, items: List<ImportItem>, onlyWhenCharging: Boolean = false, subjectId: Long? = null) {
         val input = workDataOf(
             ImportWorker.KEYS to items.map { it.key }.toTypedArray(),
             ImportWorker.NAMES to items.map { it.name }.toTypedArray(),
             ImportWorker.PATHS to items.map { it.file.absolutePath }.toTypedArray(),
+            ImportWorker.SUBJECT to (subjectId ?: -1L),
         )
         val import = OneTimeWorkRequestBuilder<ImportWorker>().setInputData(input).build()
         val embed = OneTimeWorkRequestBuilder<EmbedWorker>().addTag(TAG_EMBED)
@@ -69,7 +70,7 @@ class ImportWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
         for (i in keys.indices) {
             val file = File(paths[i])
             val result = try {
-                graph.pipeline.import(DocumentSource(keys[i], names[i]) { file.inputStream() })
+                graph.pipeline.import(DocumentSource(keys[i], names[i]) { file.inputStream() }, subjectId = inputData.getLong(SUBJECT, -1L).takeIf { it >= 0 })
             } finally {
                 file.delete()
             }
@@ -94,6 +95,7 @@ class ImportWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
         const val NAMES = "names"
         const val PATHS = "paths"
         const val MESSAGE = "message"
+        const val SUBJECT = "subject"
     }
 }
 

@@ -42,7 +42,8 @@ import de.edgebird.lernsystem.data.study.Grade
 import de.edgebird.lernsystem.data.study.StudySettings
 
 @Composable
-fun LearnScreen(vm: StudyViewModel = viewModel(), cardsVm: CardsViewModel = viewModel()) {
+fun LearnScreen(subjectId: Long, vm: StudyViewModel = viewModel(key = "study$subjectId"), cardsVm: CardsViewModel = viewModel(key = "cards$subjectId")) {
+    androidx.compose.runtime.LaunchedEffect(subjectId) { vm.bind(subjectId); cardsVm.bind(subjectId) }
     val session by vm.session.collectAsStateWithLifecycle()
     var manage by rememberSaveable { mutableStateOf(false) }
     when {
@@ -69,7 +70,6 @@ private fun LearnHome(vm: StudyViewModel, onManage: () -> Unit) {
     val focusGoal by pomodoroGraph.pomodoro.goalMinutes.collectAsStateWithLifecycle()
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Lernen", style = MaterialTheme.typography.headlineMedium)
         val s = summary
         if (s == null) {
             Text("Wird geladen …")

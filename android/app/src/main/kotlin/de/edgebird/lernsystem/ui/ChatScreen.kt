@@ -39,11 +39,15 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import de.edgebird.lernsystem.data.chat.Source
 
 @Composable
-fun ChatScreen(onModels: () -> Unit = {}, vm: ChatViewModel = viewModel()) {
+fun ChatScreen(subjectId: Long, onModels: () -> Unit = {}, onOpenSources: () -> Unit = {}, vm: ChatViewModel = viewModel(key = "chat$subjectId"), docsVm: DocumentsViewModel = viewModel(key = "docs$subjectId")) {
+    androidx.compose.runtime.LaunchedEffect(subjectId) { docsVm.bind(subjectId) }
+    val docs by docsVm.documents.collectAsStateWithLifecycle()
+    val selected by docsVm.selectedIds.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(selected) { vm.setScope(selected) }
+    var picking by remember { mutableStateOf(false) }
     val messages by vm.messages.collectAsStateWithLifecycle()
     val modelState by vm.modelState.collectAsStateWithLifecycle()
     val loadError by vm.loadError.collectAsStateWithLifecycle()
-    val hasDocuments by vm.hasDocuments.collectAsStateWithLifecycle()
     var input by rememberSaveable { mutableStateOf("") }
     var openSource by remember { mutableStateOf<Source?>(null) }
     val listState = rememberLazyListState()
@@ -63,7 +67,12 @@ fun ChatScreen(onModels: () -> Unit = {}, vm: ChatViewModel = viewModel()) {
 
     Column(Modifier.fillMaxSize().imePadding().padding(horizontal = 16.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Chat", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+            androidx.compose.material3.AssistChip(
+                onClick = { picking = true },
+                label = { Text(if (docs.isEmpty()) "Keine Quellen" else "${selected.size} von ${docs.size} Quellen") },
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
             if (messages.isNotEmpty()) TextButton(onClick = vm::newChat) { Text("Neuer Chat") }
         }
         when (modelState) {
@@ -79,7 +88,8 @@ fun ChatScreen(onModels: () -> Unit = {}, vm: ChatViewModel = viewModel()) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (messages.isEmpty()) {
                 Text(
-                    if (hasDocuments == false) "Noch keine Dokumente. Importiere im Tab „Dokumente“ ein PDF oder eine Textdatei, dann kannst du hier Fragen dazu stellen."
+                    if (docs.isEmpty()) "Dieses Fach hat noch keine Quellen. Füge unter „Quellen“ ein PDF oder eine Textdatei hinzu, dann kannst du hier Fragen dazu stellen."
+                    else if (selected.isEmpty()) "Keine Quelle angehakt. Wähle oben die Quellen, auf die sich die Antworten stützen sollen."
                     else "Stell eine Frage zu deinen Dokumenten. Die Antwort nennt die Quellen; steht nichts dazu im Material, sagt die App das.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -105,6 +115,8 @@ fun ChatScreen(onModels: () -> Unit = {}, vm: ChatViewModel = viewModel()) {
             }
         }
     }
+
+    if (picking) SourcePickerDialog(docs, selected, docsVm::toggle, docsVm::selectAll) { picking = false }
 
     openSource?.let { s ->
         AlertDialog(
@@ -158,4 +170,24 @@ private fun MessageBubble(m: ChatMessage, onSource: (Source) -> Unit, onRetry: (
             }
         }
     }
+}
+
+@Composable
+private fun SourcePickerDialog(docs: List<de.edgebird.lernsystem.data.DocumentSummary>, selected: Set<Long>, onToggle: (Long) -> Unit, onAll: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss, title = { Text("Quellen für den Chat") },
+        text = {
+            androidx.compose.foundation.lazy.LazyColumn {
+                items(docs.size) { i ->
+                    val d = docs[i].document
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(checked = d.id in selected, onCheckedChange = { onToggle(d.id) }, enabled = d.status != de.edgebird.lernsystem.data.DocumentStatus.FAILED)
+                        Text(d.title, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Fertig") } },
+        dismissButton = { TextButton(onClick = onAll) { Text("Alle") } },
+    )
 }

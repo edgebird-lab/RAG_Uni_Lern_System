@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -60,7 +62,7 @@ import de.edgebird.lernsystem.core.pomodoro.PomodoroStatus
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PomodoroScreen(vm: PomodoroViewModel = viewModel()) {
+fun PomodoroScreen(onBack: (() -> Unit)? = null, vm: PomodoroViewModel = viewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
     val now by vm.now.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -93,7 +95,10 @@ fun PomodoroScreen(vm: PomodoroViewModel = viewModel()) {
     val track = MaterialTheme.colorScheme.surfaceVariant
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Fokus", style = MaterialTheme.typography.headlineMedium)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (onBack != null) androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück") }
+            Text("Fokus", style = MaterialTheme.typography.headlineMedium)
+        }
         if (!vm.exactAlarms) {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

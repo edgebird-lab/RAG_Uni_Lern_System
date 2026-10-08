@@ -13,8 +13,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -55,9 +53,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val _loadError = MutableStateFlow<String?>(null)
     val loadError: StateFlow<String?> = _loadError
 
-    /** Gibt es schon Dokumente? Ohne sie kann der Chat nichts beantworten. */
-    val hasDocuments: StateFlow<Boolean?> = kotlinx.coroutines.flow.flow { emitAll(graph.db.documents().observeSummaries().map { it.isNotEmpty() }) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    /** Quellen, in denen gesucht wird (angehakte Dokumente des Fachs); `null` = noch nicht gesetzt. */
+    @Volatile private var scope: Set<Long>? = null
+    fun setScope(ids: Set<Long>) { scope = ids }
 
     val busy: Boolean get() = job?.isActive == true
 
@@ -114,7 +112,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         nextId += 2
         job = viewModelScope.launch(Dispatchers.Default) {
             try {
-                (if (retry) graph.chat.ask(q, history, topKOverride = 6, styleOverride = de.edgebird.lernsystem.core.rag.PromptStyle.LENIENT) else graph.chat.ask(q, history)).collect { event ->
+                (if (retry) graph.chat.ask(q, history, topKOverride = 6, styleOverride = de.edgebird.lernsystem.core.rag.PromptStyle.LENIENT, documentIds = scope) else graph.chat.ask(q, history, documentIds = scope)).collect { event ->
                     when (event) {
                         is ChatEvent.Sources -> patch(answerId) { it.copy(sources = event.sources) }
                         is ChatEvent.Token -> patch(answerId) { it.copy(text = it.text + event.text) }

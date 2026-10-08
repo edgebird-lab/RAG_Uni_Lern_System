@@ -64,6 +64,8 @@ class AppGraph(private val context: Context) {
         prefs.edit().putInt(PREF_DAILY_GOAL, s.dailyReviewGoal).putInt(PREF_NEW_PER_DAY, s.newCardsPerDay).apply()
     }
 
+    val subjects: de.edgebird.lernsystem.data.SubjectRepository by lazy { de.edgebird.lernsystem.data.SubjectRepository(db) }
+
     val pomodoroRepo: PomodoroRepository by lazy { PomodoroRepository(db) }
 
     /** Fokus-Timer (Pomodoro): hält den Zustand auch ohne offene Oberfläche. */
