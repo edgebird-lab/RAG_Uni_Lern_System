@@ -122,9 +122,9 @@ Jeder Schritt ist klein, einzeln testbar und endet mit einem überprüfbaren Erg
 
 ### Phase 6: Zusammenfassungen
 
-- [ ] 6.1 Map-Reduce: Abschnitt-Zusammenfassungen, dann Gesamtzusammenfassung (Vorlage: `ingestion/summarize.py`).
-- [ ] 6.2 Länge/Stil wählbar (Stichpunkte, Kurzfassung).
-- [ ] 6.3 Anzeige und Speicherung pro Dokument, Neuberechnung bei geänderter Quelle.
+- [x] 6.1 Map-Reduce: Abschnitt-Zusammenfassungen, dann Kurzfassung (stapelweise Verdichtung); Teilergebnisse werden gespeichert, unterbrochene Läufe setzen fort. Prüfungen auf abgeschnittene Sätze und nicht belegte Zahlen (Vorlage: `ingestion/summarize.py`).
+- [x] 6.2 Stil wählbar: Gegliedert, Stichpunkte, Kurzfassung.
+- [x] 6.3 Anzeige (Markdown), Teilen, Speicherung pro Dokument und Stil; ersetzt eine neue Fassung das Dokument, werden vorhandene Zusammenfassungen automatisch neu erstellt.
 
 ### Phase 7: Pomodoro
 
@@ -158,6 +158,16 @@ Jeder Schritt ist klein, einzeln testbar und endet mit einem überprüfbaren Erg
 - [ ] 10.2 Inferenz auf iOS (llama.cpp mit Metal oder LiteRT-LM Swift), Entitlement für erhöhtes Speicherlimit.
 - [ ] 10.3 Modell-Download und Pomodoro-Benachrichtigungen für iOS anpassen; App-Store-Einreichung (Mac + Developer-Konto nötig).
 
+## 5a. Feinschliff-Backlog (nach den Phasen, Reihenfolge offen)
+
+Vom Nutzer nach dem Test über Nacht genannt oder beim Bauen aufgefallen:
+
+- **Fächer und Referenz im RAG:** Fächer anlegen, Dokumente einem Fach zuordnen und den Chat auf ein Fach oder ein einzelnes Dokument einschränken (wie in der PC-App). Betrifft Suche (`HybridRetriever`: Filter nach Dokument-IDs), Datenmodell (`subject`-Tabelle, Dokument-Zuordnung), Import-Dialog und Chat-Kopfzeile. Nach dem Fach lassen sich auch Karten und Zusammenfassungen (Fach-Zusammenfassung wie `write_summary(mode="subject")`) filtern.
+- Kartenerzeugung: Dublettenschwelle für EmbeddingGemma feiner abstimmen, Lückentext-Karten, bessere Fragen bei Code-Dokumenten.
+- Zusammenfassung eines ganzen Fachs aus den Dokumentzusammenfassungen.
+- Dokumente umbenennen; Reihenfolge und Suche in der Dokumentenliste.
+- Querformat und Tablets (Layout funktioniert, ist aber nicht optimiert).
+
 ## 6. Risiken und Gegenmaßnahmen
 
 | Risiko | Gegenmaßnahme |
@@ -174,4 +184,4 @@ Jeder Schritt ist klein, einzeln testbar und endet mit einem überprüfbaren Erg
 
 ## 7. Nächster Schritt
 
-Phase 0 (Projekt und Gerät einrichten) und danach direkt Phase 1 (Spike). Alles Weitere hängt von den Messwerten ab.
+Phase 7 (Pomodoro). Danach Phase 8 (Modell-Download über GitHub-Releases), dann Qualität und Release (Phase 9) und das Feinschliff-Backlog.
