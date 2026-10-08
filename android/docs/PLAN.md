@@ -158,15 +158,23 @@ Jeder Schritt ist klein, einzeln testbar und endet mit einem überprüfbaren Erg
 - [ ] 10.2 Inferenz auf iOS (llama.cpp mit Metal oder LiteRT-LM Swift), Entitlement für erhöhtes Speicherlimit.
 - [ ] 10.3 Modell-Download und Pomodoro-Benachrichtigungen für iOS anpassen; App-Store-Einreichung (Mac + Developer-Konto nötig).
 
-## 5a. Feinschliff-Backlog (nach den Phasen, Reihenfolge offen)
+## 5a. Feinschliff (Stand 2026-10-08, Konzept in [DESIGN.md](DESIGN.md))
 
-Vom Nutzer nach dem Test über Nacht genannt oder beim Bauen aufgefallen:
+Erledigt (Branch `android-feinschliff`):
+- [x] **Fächer** als Einstieg (Startseite „Meine Fächer“, Fachfarben), jedes Dokument gehört zu einem Fach; Altbestand landet automatisch in „Allgemein“. Migration 4 → 5 mit echten Daten geprüft.
+- [x] **Chat nur auf angehakte Quellen** (Fach = alles angehakt, ein Haken = ein Dokument), Suchfilter in Stichwort- und Vektorsuche (Gerätetests).
+- [x] Aufbau **Fach → Quellen | Chat | Lernen | Studio** (nach dem NotebookLM-Muster), eigene Optik „Papier und Tinte“, Dark Mode, seitliche Leiste im Querformat und auf Tablets.
+- [x] **Spracheingabe** im Chat und bei den Abfragen (Erkennung auf dem Gerät, ohne Netz).
+- [x] **Sokratischer Dialog** („Abfragen“) nach dem Muster der PC-App: Gesprächsstand statt Verlauf, Absicht und Phase im Code, Prüfung mit Neuversuch und Rückfall; 14 Tests, Praxistest mit dem echten Modell (11 Züge, keine Rückfallantworten mit echtem Kontext).
+- [x] Quellen umbenennen und in ein anderes Fach verschieben, Startfragen im Chat, Formeln lesbar (LaTeX-Kurzform).
 
-- **Fächer und Referenz im RAG:** Fächer anlegen, Dokumente einem Fach zuordnen und den Chat auf ein Fach oder ein einzelnes Dokument einschränken (wie in der PC-App). Betrifft Suche (`HybridRetriever`: Filter nach Dokument-IDs), Datenmodell (`subject`-Tabelle, Dokument-Zuordnung), Import-Dialog und Chat-Kopfzeile. Nach dem Fach lassen sich auch Karten und Zusammenfassungen (Fach-Zusammenfassung wie `write_summary(mode="subject")`) filtern.
+Offen:
+- Zusammenfassung eines **ganzen Fachs** aus den Dokumentzusammenfassungen (Studio).
+- Suche und Sortierung in der Quellenliste.
 - Kartenerzeugung: Dublettenschwelle für EmbeddingGemma feiner abstimmen, Lückentext-Karten, bessere Fragen bei Code-Dokumenten.
-- Zusammenfassung eines ganzen Fachs aus den Dokumentzusammenfassungen.
-- Dokumente umbenennen; Reihenfolge und Suche in der Dokumentenliste.
-- Querformat und Tablets (Layout funktioniert, ist aber nicht optimiert).
+- Abfragen: Auswertung der Antworten mit Fortschritt je Thema, Übergabe schwacher Themen als Karten.
+- Audio-Zusammenfassung (Studio), Vorlesen der Antworten.
+- Echte Sprechprobe der Spracheingabe auf dem Pixel (die Erkennung selbst ist nur von Hand testbar).
 
 ## 6. Risiken und Gegenmaßnahmen
 

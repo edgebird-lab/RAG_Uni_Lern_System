@@ -22,6 +22,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,6 +41,20 @@ import de.edgebird.lernsystem.data.CardEntity
 import de.edgebird.lernsystem.data.CardSource
 import de.edgebird.lernsystem.data.study.Grade
 import de.edgebird.lernsystem.data.study.StudySettings
+
+/** Bereich „Lernen“: Karteikarten oder Abfragen (sokratischer Dialog). */
+@Composable
+fun LearnTab(subjectId: Long) {
+    var mode by rememberSaveable { mutableStateOf(0) }
+    Column(Modifier.fillMaxSize()) {
+        androidx.compose.material3.SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            listOf("Karten", "Abfragen").forEachIndexed { i, label ->
+                SegmentedButton(selected = mode == i, onClick = { mode = i }, shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(i, 2)) { Text(label) }
+            }
+        }
+        if (mode == 0) LearnScreen(subjectId) else SocraticScreen(subjectId)
+    }
+}
 
 @Composable
 fun LearnScreen(subjectId: Long, vm: StudyViewModel = viewModel(key = "study$subjectId"), cardsVm: CardsViewModel = viewModel(key = "cards$subjectId")) {

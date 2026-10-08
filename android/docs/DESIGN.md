@@ -36,7 +36,7 @@ Start (Fächer)  ──►  Fach
 - Große, runde Karten (20 dp), wenige Linien, viel Luft. Primäraktion immer unten erreichbar (Daumenzone).
 - Querformat und Tablet: untere Leiste wird zur seitlichen Leiste.
 
-## Umsetzungsschritte
+## Umsetzungsschritte (Schritte 1 bis 4 und 6 umgesetzt, Stand siehe PLAN.md, Abschnitt 5a)
 
 1. Datenmodell: Fächer, Zuordnung von Dokumenten und Karten, Suchfilter nach Dokumenten.
 2. Designsystem und Navigation: Start, Fach, vier Bereiche.

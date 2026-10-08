@@ -54,6 +54,8 @@ fun SubjectScreen(subjectId: Long, tab: SubjectTab, onTab: (SubjectTab) -> Unit,
     val color = subject?.let { subjectColor(it.colorIndex) } ?: MaterialTheme.colorScheme.primary
     val focusVm: PomodoroViewModel = viewModel()
 
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+    val wide = maxWidth >= 700.dp   // Querformat und Tablets: seitliche Leiste statt unterer
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -65,7 +67,7 @@ fun SubjectScreen(subjectId: Long, tab: SubjectTab, onTab: (SubjectTab) -> Unit,
             }
         },
         bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+            if (!wide) NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                 SubjectTab.entries.forEach { t ->
                     NavigationBarItem(
                         selected = t == tab, onClick = { onTab(t) }, icon = { Icon(t.icon, contentDescription = null) }, label = { Text(t.label) },
@@ -75,13 +77,24 @@ fun SubjectScreen(subjectId: Long, tab: SubjectTab, onTab: (SubjectTab) -> Unit,
             }
         },
     ) { inner ->
-        Box(Modifier.padding(inner).fillMaxSize()) {
+      Row(Modifier.padding(inner).fillMaxSize()) {
+        if (wide) androidx.compose.material3.NavigationRail(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+            SubjectTab.entries.forEach { t ->
+                androidx.compose.material3.NavigationRailItem(
+                    selected = t == tab, onClick = { onTab(t) }, icon = { Icon(t.icon, contentDescription = null) }, label = { Text(t.label) },
+                    colors = androidx.compose.material3.NavigationRailItemDefaults.colors(indicatorColor = color.copy(alpha = 0.22f)),
+                )
+            }
+        }
+        Box(Modifier.weight(1f).fillMaxSize()) {
             when (tab) {
                 SubjectTab.SOURCES -> SourcesScreen(subjectId, otherSubjects = all.filter { it.subject.id != subjectId }.map { it.subject.id to it.subject.name })
                 SubjectTab.CHAT -> ChatScreen(subjectId, onModels = onModels, onOpenSources = { onTab(SubjectTab.SOURCES) })
-                SubjectTab.LEARN -> LearnScreen(subjectId)
+                SubjectTab.LEARN -> LearnTab(subjectId)
                 SubjectTab.STUDIO -> StudioScreen(subjectId)
             }
         }
+      }
+    }
     }
 }
