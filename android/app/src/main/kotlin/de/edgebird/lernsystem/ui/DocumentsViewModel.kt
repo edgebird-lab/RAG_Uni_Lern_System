@@ -55,6 +55,12 @@ class DocumentsViewModel(app: Application) : AndroidViewModel(app) {
         if (id == null) kotlinx.coroutines.flow.flowOf(emptyList()) else graph.db.documents().observeSummariesForSubject(id)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** Kapitel des Fachs in ihrer Reihenfolge. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val folders: StateFlow<List<de.edgebird.lernsystem.data.FolderEntity>> = subject.flatMapLatest { id ->
+        if (id == null) kotlinx.coroutines.flow.flowOf(emptyList()) else graph.sourceRepo.observeFolders(id)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     /** Abgewählte Quellen; neue Quellen sind automatisch angehakt. */
     private val excluded = kotlinx.coroutines.flow.MutableStateFlow<Set<Long>>(emptySet())
 
@@ -66,6 +72,71 @@ class DocumentsViewModel(app: Application) : AndroidViewModel(app) {
     fun toggle(id: Long) { excluded.value = excluded.value.let { if (id in it) it - id else it + id } }
     fun selectAll() { excluded.value = emptySet() }
     fun selectOnly(id: Long) { excluded.value = documents.value.map { it.document.id }.toSet() - id }
+
+    /** Mehrere Quellen auf einmal an- oder abhaken (Kapitel, Art). */
+    fun setChecked(ids: Collection<Long>, checked: Boolean) { excluded.value = if (checked) excluded.value - ids.toSet() else excluded.value + ids }
+
+    fun createFolder(name: String, thenAssign: List<Long> = emptyList()) {
+        val sid = subject.value ?: return
+        viewModelScope.launch { val id = graph.sourceRepo.createFolder(sid, name); graph.sourceRepo.assign(thenAssign, id) }
+    }
+    fun renameFolder(id: Long, name: String) { viewModelScope.launch { graph.sourceRepo.renameFolder(id, name) } }
+    fun deleteFolder(id: Long) { viewModelScope.launch { graph.sourceRepo.deleteFolder(id) } }
+    fun moveFolder(id: Long, delta: Int) { val sid = subject.value ?: return; viewModelScope.launch { graph.sourceRepo.moveFolder(sid, id, delta) } }
+    fun assign(ids: List<Long>, folderId: Long?) { viewModelScope.launch { graph.sourceRepo.assign(ids, folderId) } }
+
+    /** Ergebnis des Ziehens: Reihenfolge aller Quellen und ihr Kapitel; nur geänderte Zuordnungen werden geschrieben. */
+    fun commitOrder(order: List<Long>, folderOf: Map<Long, Long?>) {
+        viewModelScope.launch {
+            val current = documents.value.associate { it.document.id to it.document.folderId }
+            order.filter { current[it] != folderOf[it] }.groupBy { folderOf[it] }.forEach { (f, ids) -> graph.sourceRepo.assign(ids, f) }
+            graph.sourceRepo.applyDocumentOrder(order)
+        }
+    }
+
+    /** Quellen zum Weitergeben laden (Original und Text) und dann [use] auf dem Hauptthread aufrufen. */
+    fun withSources(ids: List<Long>, use: (List<SourceFile>) -> Unit) {
+        viewModelScope.launch {
+            val files = withContext(Dispatchers.IO) {
+                ids.mapNotNull { id ->
+                    val doc = graph.db.documents().byId(id) ?: return@mapNotNull null
+                    val orig = graph.sources.original(doc)
+                    val ext = (orig?.extension ?: doc.filetype).lowercase()
+                    val text = (if (orig != null && ext in setOf("md", "txt", "markdown")) runCatching { orig.readText() }.getOrNull() else null)
+                        ?: graph.db.chunks().byDocument(id).joinToString("\n\n") { c -> c.location + "\n" + c.text.replace(Regex("^\\[[^\\]]{0,160}]\\n"), "") }
+                    SourceFile(doc.title, if (doc.kind == "SUMMARY" || doc.kind == "NOTE") "md" else doc.filetype, orig) { text }
+                }
+            }
+            use(files)
+        }
+    }
+
+    /** Eine Notiz als Quelle anlegen (Text selbst schreiben). */
+    fun addNote(title: String, text: String, folderId: Long?) {
+        val sid = subject.value ?: return
+        if (text.isBlank()) return
+        viewModelScope.launch {
+            val name = (title.ifBlank { tr("Notiz", "Note") }).take(60).trim().replace(Regex("[\\\\/:*?\"<>|]"), " ")
+            val f = withContext(Dispatchers.IO) { File(graph.inboxDir, UUID.randomUUID().toString()).also { it.writeText("# $name\n\n${text.trim()}\n", Charsets.UTF_8) } }
+            ImportWork.enqueue(getApplication(), listOf(ImportItem("note:${UUID.randomUUID()}", "$name.md", f)), _onlyWhenCharging.value, sid, folderId)
+        }
+    }
+
+    /** Treffer der Volltextsuche in den Quellen des Fachs. */
+    data class ContentHit(val documentId: Long, val title: String, val location: String, val chunkIdx: Int, val snippet: String)
+
+    suspend fun searchContent(query: String): List<ContentHit> = withContext(Dispatchers.IO) {
+        val ids = documents.value.map { it.document.id }.toSet()
+        if (query.isBlank() || ids.isEmpty()) return@withContext emptyList()
+        val chunkIds = de.edgebird.lernsystem.data.search.KeywordSearch(graph.db).search(query, 40, ids)
+        val byId = graph.db.chunks().withTitles(chunkIds).associateBy { it.chunk.id }
+        chunkIds.mapNotNull { byId[it] }.map { c ->
+            val text = c.chunk.text.replace(Regex("^\\[[^\\]]{0,160}]\\n"), "").replace(Regex("\\s+"), " ")
+            val first = query.trim().split(Regex("\\s+")).firstOrNull { it.length > 2 }?.let { text.indexOf(it, ignoreCase = true) } ?: -1
+            val from = if (first > 40) first - 40 else 0
+            ContentHit(c.chunk.documentId, c.documentTitle, c.chunk.location, c.chunk.idx, (if (from > 0) "…" else "") + text.substring(from).take(160))
+        }
+    }
 
     fun rename(id: Long, title: String) { if (title.isNotBlank()) viewModelScope.launch { graph.db.documents().rename(id, title.trim()) } }
 
@@ -107,16 +178,20 @@ class DocumentsViewModel(app: Application) : AndroidViewModel(app) {
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Kopiert die gewählten Dateien in den App-Speicher und startet den Import im Hintergrund. */
+    /** Kapitel, in das die nächsten Importe gehen (vom Menü eines Kapitels gesetzt). */
+    var importFolder: Long? = null
+
     fun import(uris: List<Uri>) {
         if (uris.isEmpty()) return
+        val folder = importFolder
         viewModelScope.launch {
             val items = withContext(Dispatchers.IO) { ImportHelper.items(getApplication(), graph, uris) }
-            if (items.isNotEmpty()) ImportWork.enqueue(getApplication(), items, _onlyWhenCharging.value, subject.value)
+            if (items.isNotEmpty()) ImportWork.enqueue(getApplication(), items, _onlyWhenCharging.value, subject.value, folder)
         }
     }
 
     fun delete(id: Long) {
-        viewModelScope.launch { graph.db.documents().delete(id) }
+        viewModelScope.launch { graph.db.documents().delete(id); graph.sources.delete(id) }
     }
 
     private companion object {

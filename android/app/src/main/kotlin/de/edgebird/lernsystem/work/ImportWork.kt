@@ -25,19 +25,25 @@ import de.edgebird.lernsystem.ingest.ImportResult
 import java.io.File
 
 /** Eine bereits in den App-Speicher kopierte Datei, die eingelesen werden soll. */
-data class ImportItem(val key: String, val name: String, val file: File)
+/** [original]: Datei, die als Original der Quelle aufbewahrt wird (z. B. das PDF eines Foto-Dokuments); sonst gilt [file] selbst. */
+data class ImportItem(val key: String, val name: String, val file: File, val original: File? = null) {
+    /** Art der Quelle nach dem Schlüssel, unter dem sie angelegt wird. */
+    val kind: String get() = when { key.startsWith("summary:") -> "SUMMARY"; key.startsWith("note:") -> "NOTE"; key.startsWith("photo:") -> "PHOTO"; else -> "FILE" }
+}
 
 object ImportWork {
     const val UNIQUE_IMPORT = "import"
     const val TAG_EMBED = "embed"
     private const val CHANNEL = "indexing"
 
-    fun enqueue(context: Context, items: List<ImportItem>, onlyWhenCharging: Boolean = false, subjectId: Long? = null) {
+    fun enqueue(context: Context, items: List<ImportItem>, onlyWhenCharging: Boolean = false, subjectId: Long? = null, folderId: Long? = null) {
         val input = workDataOf(
             ImportWorker.KEYS to items.map { it.key }.toTypedArray(),
             ImportWorker.NAMES to items.map { it.name }.toTypedArray(),
             ImportWorker.PATHS to items.map { it.file.absolutePath }.toTypedArray(),
+            ImportWorker.ORIGINALS to items.map { it.original?.absolutePath.orEmpty() }.toTypedArray(),
             ImportWorker.SUBJECT to (subjectId ?: -1L),
+            ImportWorker.FOLDER to (folderId ?: -1L),
         )
         val import = OneTimeWorkRequestBuilder<ImportWorker>().setInputData(input).build()
         val embed = OneTimeWorkRequestBuilder<EmbedWorker>().addTag(TAG_EMBED)
@@ -68,13 +74,27 @@ class ImportWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
         val keys = inputData.getStringArray(KEYS) ?: return Result.failure()
         val names = inputData.getStringArray(NAMES) ?: return Result.failure()
         val paths = inputData.getStringArray(PATHS) ?: return Result.failure()
+        val originals = inputData.getStringArray(ORIGINALS).orEmpty()
         val lines = mutableListOf<String>()
         for (i in keys.indices) {
             val file = File(paths[i])
+            val original = originals.getOrNull(i)?.takeIf { it.isNotEmpty() }?.let { File(it) }
+            val kind = ImportItem(keys[i], names[i], file).kind
             val result = try {
-                graph.pipeline.import(DocumentSource(keys[i], names[i]) { file.inputStream() }, subjectId = inputData.getLong(SUBJECT, -1L).takeIf { it >= 0 })
+                graph.pipeline.import(
+                    DocumentSource(keys[i], names[i]) { file.inputStream() }, subjectId = inputData.getLong(SUBJECT, -1L).takeIf { it >= 0 },
+                    kind = kind, folderId = inputData.getLong(FOLDER, -1L).takeIf { it >= 0 },
+                ).also { r ->
+                    // Original aufbewahren: Ansicht, Teilen, Drucken und Speichern gehen von ihm aus
+                    val id = (r as? ImportResult.Imported)?.documentId
+                    if (id != null) runCatching {
+                        val src = original ?: file
+                        graph.sources.save(id, src, if (original != null) original.extension else names[i].substringAfterLast('.', "txt"))
+                        graph.db.documents().setHasOriginal(id, true)
+                    }
+                }
             } finally {
-                file.delete()
+                file.delete(); original?.delete()
             }
             lines += when (result) {
                 is ImportResult.Imported -> {
@@ -98,6 +118,8 @@ class ImportWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
         const val PATHS = "paths"
         const val MESSAGE = "message"
         const val SUBJECT = "subject"
+        const val FOLDER = "folder"
+        const val ORIGINALS = "originals"
     }
 }
 

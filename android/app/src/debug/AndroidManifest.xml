@@ -13,6 +13,7 @@
         <activity android:name=".spike.DebugTtsActivity" android:exported="true" />
         <activity android:name=".spike.DebugClozeActivity" android:exported="true" />
         <activity android:name=".spike.DebugQuizActivity" android:exported="true" />
+        <activity android:name=".spike.DebugSourcesActivity" android:exported="true" />
         <activity android:name=".spike.DebugSpeechActivity" android:exported="true" />
         <activity android:name=".spike.DebugDupActivity" android:exported="true" />
         <activity android:name=".spike.DebugSummaryActivity" android:exported="true" />

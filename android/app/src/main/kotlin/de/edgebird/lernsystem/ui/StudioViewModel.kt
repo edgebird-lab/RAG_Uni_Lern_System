@@ -103,6 +103,17 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ---- Aufwand und Start ----------------------------------------------------------------------------------------
+    /** Kapitel des Fachs (für den Umfang „Kapitel“ und das Ablegen von Zusammenfassungen). */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val folders: kotlinx.coroutines.flow.StateFlow<List<de.edgebird.lernsystem.data.FolderEntity>> = subject.flatMapLatest { id -> if (id == null) kotlinx.coroutines.flow.flowOf(emptyList()) else graph.sourceRepo.observeFolders(id) }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Vom Kapitelmenü der Quellen gesetzt: dieses Kapitel soll zusammengefasst werden. */
+    private val _presetFolder = kotlinx.coroutines.flow.MutableStateFlow<Long?>(null)
+    val presetFolder: kotlinx.coroutines.flow.StateFlow<Long?> = _presetFolder
+    fun preset(folderId: Long) { _presetFolder.value = folderId }
+    fun consumePreset() { _presetFolder.value = null }
+
     suspend fun estimate(scope: SummaryScope, docIds: List<Long>, topic: String, spec: SummarySpec): Estimate? {
         val sid = subject.value ?: return null
         if (docIds.isEmpty()) return null
@@ -126,10 +137,10 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Speichert die Zusammenfassung als eigene Quelle im Fach, damit Chat, Abfragen und Karten sie mit nutzen. */
-    fun saveAsSource(s: GeneratedSummaryEntity) {
+    fun saveAsSource(s: GeneratedSummaryEntity, folderId: Long? = null) {
         val title = (tr("Zusammenfassung: ", "Summary: ") + s.title.removePrefix(tr("Zusammenfassung: ", "Summary: "))).take(70).replace(Regex("[\\\\/:*?\"<>|]"), " ")
         val file = java.io.File(graph.inboxDir, java.util.UUID.randomUUID().toString()).also { it.writeText(s.text, Charsets.UTF_8) }
-        de.edgebird.lernsystem.work.ImportWork.enqueue(getApplication(), listOf(de.edgebird.lernsystem.work.ImportItem("summary:${s.id}:${s.createdAt}", "$title.md", file)), graph.prefs.getBoolean("embed_only_when_charging", false), s.subjectId)
+        de.edgebird.lernsystem.work.ImportWork.enqueue(getApplication(), listOf(de.edgebird.lernsystem.work.ImportItem("summary:${s.id}:${s.createdAt}", "$title.md", file)), graph.prefs.getBoolean("embed_only_when_charging", false), s.subjectId, folderId)
     }
 
     fun rename(id: Long, title: String) { viewModelScope.launch { repo.rename(id, title) } }

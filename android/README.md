@@ -2,7 +2,7 @@
 
 Abgespeckte, komplett lokale Android-Version des RAG-Lernsystems: Dokumente importieren, Chat mit Quellen (RAG), Karteikarten mit FSRS-6. Die KI (Gemma 4 E2B plus EmbeddingGemma 2) läuft auf dem Gerät, es gibt keine Cloud-Abhängigkeit.
 
-**Stand:** Phasen 0 bis 8 des [Plans](docs/PLAN.md) sind umgesetzt (Import, hybride Suche, Chat, Karteikarten, Zusammenfassungen, Fokus-Timer, Fächer, Deutsch und Englisch umschaltbar (Oberfläche, KI-Antworten, Stimme), Spracheingabe, sokratische Abfragen mit Auswertung, einstellbare Zusammenfassungen, Lückentext-Karten, Foto-Texterkennung mit Dokumentenscanner, Quiz und Probeklausur, mehrere Chats je Fach, Teilen aus anderen Apps, Lern-Erinnerung, Offline-Sprachausgabe; Konzept in [DESIGN.md](docs/DESIGN.md)). Der Store-Release (Phase 9) fehlt noch.
+**Stand:** Phasen 0 bis 8 des [Plans](docs/PLAN.md) sind umgesetzt (Import, hybride Suche, Chat, Karteikarten, Zusammenfassungen, Fokus-Timer, Fächer, Deutsch und Englisch umschaltbar (Oberfläche, KI-Antworten, Stimme), Spracheingabe, sokratische Abfragen mit Auswertung, einstellbare Zusammenfassungen, Lückentext-Karten, Foto-Texterkennung mit Dokumentenscanner, Kapitel und Quellenverwaltung (ansehen, ordnen, teilen, drucken), Quiz und Probeklausur, mehrere Chats je Fach, Teilen aus anderen Apps, Lern-Erinnerung, Offline-Sprachausgabe; Konzept in [DESIGN.md](docs/DESIGN.md)). Der Store-Release (Phase 9) fehlt noch.
 
 ## Bauen und installieren
 

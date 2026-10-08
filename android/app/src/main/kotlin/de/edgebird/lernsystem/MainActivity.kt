@@ -33,7 +33,9 @@ class MainActivity : ComponentActivity() {
     private val shared = mutableStateOf<de.edgebird.lernsystem.ui.SharedContent?>(null)
 
     override fun attachBaseContext(newBase: android.content.Context) {
-        super.attachBaseContext(de.edgebird.lernsystem.ui.AppLanguage.wrap(newBase, de.edgebird.lernsystem.core.i18n.Lang.current))
+        // Gebietsschema der App als Überschreibung der Konfiguration (statt den Kontext zu ersetzen: sonst ist er für Dienste wie das Drucken keine Activity mehr)
+        applyOverrideConfiguration(android.content.res.Configuration().apply { setLocale(de.edgebird.lernsystem.core.i18n.Lang.current.locale) })
+        super.attachBaseContext(newBase)
     }
 
     override fun onNewIntent(intent: Intent) {

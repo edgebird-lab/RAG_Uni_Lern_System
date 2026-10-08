@@ -8,6 +8,9 @@ class LernsystemApp : Application() {
     override fun onCreate() {
         super.onCreate()
         de.edgebird.lernsystem.core.i18n.Lang.current = de.edgebird.lernsystem.ui.AppLanguage.load(graph.prefs)
-        Thread { runCatching { graph.cleanInbox() } }.start()
+        Thread {
+            runCatching { graph.cleanInbox() }
+            runCatching { kotlinx.coroutines.runBlocking { graph.db.documents().backfillKinds(); graph.sources.prune(graph.db.documents().allIds()) } }
+        }.start()
     }
 }

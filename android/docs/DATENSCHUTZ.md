@@ -6,7 +6,7 @@ Stand: 2026-10-08
 
 ## Welche Daten verarbeitet die App?
 
-Die App speichert ausschließlich lokal im privaten App-Speicher: importierte Dokumente (auch aus Fotos und Scans) und ihre Textabschnitte, daraus berechnete Suchdaten (Embeddings), Zusammenfassungen samt Einstellungen und eigenen Vorlagen, Karteikarten mit Lernstand, Ergebnisse der Abfragen (je Thema), Chat-Verläufe der laufenden Sitzung (nicht dauerhaft) und die Fokus-Sitzungen des Timers. Die KI (Sprachmodell und Embedding-Modell) sowie die Texterkennung für Fotos laufen vollständig auf dem Gerät.
+Die App speichert ausschließlich lokal im privaten App-Speicher: importierte Dokumente samt ihrem Original (PDF, Bild, Textdatei; auch aus Fotos und Scans, dann als PDF der Seiten) und ihre Textabschnitte, deine Kapitel und die Reihenfolge deiner Quellen, daraus berechnete Suchdaten (Embeddings), Zusammenfassungen samt Einstellungen und eigenen Vorlagen, Karteikarten mit Lernstand, Ergebnisse der Abfragen (je Thema), Chat-Verläufe der laufenden Sitzung (nicht dauerhaft) und die Fokus-Sitzungen des Timers. Die KI (Sprachmodell und Embedding-Modell) sowie die Texterkennung für Fotos laufen vollständig auf dem Gerät.
 
 ## Netzwerkzugriff
 
