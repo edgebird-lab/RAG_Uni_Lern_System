@@ -28,7 +28,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import de.edgebird.lernsystem.data.DocumentStatus
 
 @Composable
-fun DocumentsScreen(vm: DocumentsViewModel = viewModel()) {
+fun DocumentsScreen(onModels: () -> Unit = {}, vm: DocumentsViewModel = viewModel()) {
     val docs by vm.documents.collectAsStateWithLifecycle()
     val embed by vm.embedStatus.collectAsStateWithLifecycle()
     val message by vm.importMessage.collectAsStateWithLifecycle()
@@ -37,7 +37,10 @@ fun DocumentsScreen(vm: DocumentsViewModel = viewModel()) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri> -> vm.import(uris) }
 
     Column(Modifier.padding(horizontal = 16.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Dokumente", style = MaterialTheme.typography.headlineMedium)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Dokumente", style = MaterialTheme.typography.headlineMedium)
+            TextButton(onClick = onModels) { Text("KI-Modelle") }
+        }
         Button(onClick = { picker.launch(arrayOf("application/pdf", "text/plain", "text/markdown", "application/octet-stream")) }) {
             Text("Dokumente hinzufügen")
         }

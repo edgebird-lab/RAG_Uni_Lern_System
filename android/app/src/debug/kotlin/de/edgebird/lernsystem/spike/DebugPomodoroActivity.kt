@@ -13,7 +13,11 @@ import kotlinx.coroutines.runBlocking
 class DebugPomodoroActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (savedInstanceState == null) {
+        val action = intent.getStringExtra("action")
+        if (savedInstanceState == null && action != null) {
+            // Knopf der Benachrichtigung auslösen: pause | resume | skip | stop | start
+            sendBroadcast(android.content.Intent(this, de.edgebird.lernsystem.pomodoro.PomodoroActionReceiver::class.java).setAction("de.edgebird.lernsystem.pomodoro.${action.uppercase()}"))
+        } else if (savedInstanceState == null) {
             val c = (application as LernsystemApp).graph.pomodoro
             val s = PomodoroSettings(
                 focusSeconds = intent.getIntExtra("focus", 20), shortBreakSeconds = intent.getIntExtra("short", 10), longBreakSeconds = intent.getIntExtra("long", 15),
