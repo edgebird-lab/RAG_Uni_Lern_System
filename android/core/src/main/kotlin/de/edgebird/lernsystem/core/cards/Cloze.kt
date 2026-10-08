@@ -1,9 +1,15 @@
 package de.edgebird.lernsystem.core.cards
 
 import com.google.gson.JsonParser
+import de.edgebird.lernsystem.core.i18n.Lang
+import de.edgebird.lernsystem.core.i18n.tr
 
 /** Art einer Karte. */
-enum class CardKind(val label: String) { QA("Frage"), CLOZE("Lückentext") }
+enum class CardKind {
+    QA, CLOZE;
+
+    val label: String get() = when (this) { QA -> tr("Frage", "Question"); CLOZE -> tr("Lückentext", "Fill in the blank") }
+}
 
 /**
  * Lückentext-Karten: Das Modell wählt Sätze aus dem Abschnitt und je einen Schlüsselbegriff; der CODE baut die Karte und prüft,
@@ -12,7 +18,7 @@ enum class CardKind(val label: String) { QA("Frage"), CLOZE("Lückentext") }
 object Cloze {
     const val BLANK = "[…]"
 
-    fun prompt(chunk: String, n: Int): String = """Lies den folgenden Abschnitt aus einer Zusammenfassung.
+    fun prompt(chunk: String, n: Int, lang: Lang = Lang.current): String = if (lang == Lang.EN) promptEn(chunk, n) else """Lies den folgenden Abschnitt aus einer Zusammenfassung.
 
 Wähle genau $n wichtige, prüfungsrelevante Sätze aus. Je Satz wählst du EINEN Schlüsselbegriff (eine Fachbezeichnung, eine Zahl oder einen Formelteil), den man auswendig wissen muss und der im Satz gelöscht werden soll. Regeln:
 - Der Satz muss WÖRTLICH aus dem Abschnitt kopiert sein (nichts umformulieren, nichts kürzen).
@@ -26,6 +32,22 @@ ${chunk.take(2500)}
 ${"\"\"\""}
 
 Gib NUR gültiges JSON in diesem Format zurück:
+{"cloze": [{"satz": "...", "luecke": "..."}]}"""
+
+    private fun promptEn(chunk: String, n: Int): String = """Read the following passage from a study summary.
+
+Choose exactly $n important, exam-relevant sentences. For each sentence choose ONE key term (a technical term, a number or part of a formula) that must be memorised and that will be deleted from the sentence. Rules:
+- The sentence must be copied VERBATIM from the passage (do not rephrase or shorten anything).
+- The key term must appear VERBATIM in the sentence (1 to 4 words).
+- The sentence must be understandable without the passage (no "this", "above", "Figure 2").
+- Choose different sentences with different terms; no headings, no source notes.
+
+Passage:
+${"\"\"\""}
+${chunk.take(2500)}
+${"\"\"\""}
+
+Return ONLY valid JSON in this format (keep the German key names):
 {"cloze": [{"satz": "...", "luecke": "..."}]}"""
 
     data class Item(val sentence: String, val term: String)
@@ -49,7 +71,7 @@ Gib NUR gültiges JSON in diesem Format zurück:
     /** Fertige Karte: [front] mit Lücke, [answer] mit dem Begriff und dem vollständigen Satz. */
     data class Built(val front: String, val answer: String)
 
-    private val STOPWORDS = setOf("der", "die", "das", "den", "dem", "des", "ein", "eine", "einer", "und", "oder", "ist", "sind", "wird", "werden", "von", "mit", "für", "zu", "im", "in", "an", "auf")
+    private val STOPWORDS = setOf("der", "die", "das", "den", "dem", "des", "ein", "eine", "einer", "und", "oder", "ist", "sind", "wird", "werden", "von", "mit", "für", "zu", "im", "in", "an", "auf", "the", "a", "an", "and", "or", "is", "are", "of", "with", "for", "to", "on", "at", "by")
 
     /** `null`, wenn der Eintrag nicht taugt (nicht im Text, Begriff zu kurz oder Füllwort, Satz zu kurz oder zu lang, Quellenbezug). */
     fun build(item: Item, chunk: String): Built? {
@@ -63,7 +85,7 @@ Gib NUR gültiges JSON in diesem Format zurück:
         if (blanked.split(Regex("""\s+""")).count { it.length > 2 && BLANK !in it } < 5) return null      // genug Kontext übrig
         if (CardQuality.questionProblems(sentence).any { it == CardProblem.SOURCE_REFERENCE || it == CardProblem.GARBLED || it == CardProblem.CONTEXT }) return null
         val shown = sentence.replace(Regex(Regex.escape(term), RegexOption.IGNORE_CASE)) { "**${it.value}**" }
-        return Built("Ergänze die Lücke:\n$blanked", "**${sentence.substring(at, at + term.length)}**\n\n$shown")
+        return Built(tr("Ergänze die Lücke:", "Fill in the blank:") + "\n$blanked", "**${sentence.substring(at, at + term.length)}**\n\n$shown")
     }
 }
 

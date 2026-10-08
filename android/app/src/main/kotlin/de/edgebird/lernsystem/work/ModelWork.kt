@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.work
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.content.Context
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -27,11 +29,11 @@ object ModelWork {
         "https://github.com/edgebird-lab/lernsystem-modelle/releases/latest/download/manifest.json",
     )
 
-    const val INCLUDE_VOICE = "include_voice"
+    const val VOICE_IDS = "voice_ids"
 
-    /** @param withVoice auch die optionale Offline-Stimme (Sprachausgabe) laden */
-    fun enqueue(context: Context, wifiOnly: Boolean, withVoice: Boolean = false) {
-        val req = OneTimeWorkRequestBuilder<ModelDownloadWorker>().setInputData(workDataOf(INCLUDE_VOICE to withVoice))
+    /** @param voiceIds optionale Modelle (Stimmen für die Sprachausgabe), die zusätzlich geladen werden sollen; bereits installierte werden bei neuer Version aktualisiert */
+    fun enqueue(context: Context, wifiOnly: Boolean, voiceIds: Set<String> = emptySet()) {
+        val req = OneTimeWorkRequestBuilder<ModelDownloadWorker>().setInputData(workDataOf(VOICE_IDS to voiceIds.toTypedArray()))
             .setConstraints(Constraints.Builder().setRequiredNetworkType(if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED).build())
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(UNIQUE, ExistingWorkPolicy.REPLACE, req)
@@ -45,11 +47,11 @@ class ModelDownloadWorker(ctx: Context, params: WorkerParameters) : CoroutineWor
     override suspend fun doWork(): Result {
         val graph = (applicationContext as LernsystemApp).graph
         val dl = ModelDownloader(graph.modelsDir)
-        setForeground(ImportWork.foregroundInfo(applicationContext, "Starte …", 0, 0, "Modelle werden geladen", id = 3))
+        setForeground(ImportWork.foregroundInfo(applicationContext, tr("Starte …", "Starting …"), 0, 0, tr("Modelle werden geladen", "Downloading models"), id = 3))
         return withContext(Dispatchers.IO) {
             try {
                 val manifest = dl.fetchManifest(ModelWork.MANIFEST_URLS)
-                val todo = ModelPlan.pending(manifest, dl.installed(), includeOptional = inputData.getBoolean(ModelWork.INCLUDE_VOICE, false))
+                val todo = ModelPlan.pending(manifest, dl.installed(), optionalIds = inputData.getStringArray(ModelWork.VOICE_IDS).orEmpty().toSet())
                 val grand = todo.sumOf { it.size }
                 var finished = 0L
                 var lastReport = 0L
@@ -59,17 +61,17 @@ class ModelDownloadWorker(ctx: Context, params: WorkerParameters) : CoroutineWor
                         if (now - lastReport > 700) {
                             lastReport = now
                             val all = finished + done
-                            setProgressAsync(workDataOf(DONE to all, TOTAL to grand, NAME to m.title))
-                            setForegroundAsync(ImportWork.foregroundInfo(applicationContext, "${m.title}: ${all * 100 / grand.coerceAtLeast(1)} %", (all / 1_048_576).toInt(), (grand / 1_048_576).toInt(), "Modelle werden geladen", id = 3))
+                            setProgressAsync(workDataOf(DONE to all, TOTAL to grand, NAME to m.displayTitle()))
+                            setForegroundAsync(ImportWork.foregroundInfo(applicationContext, "${m.displayTitle()}: ${all * 100 / grand.coerceAtLeast(1)} %", (all / 1_048_576).toInt(), (grand / 1_048_576).toInt(), tr("Modelle werden geladen", "Downloading models"), id = 3))
                         }
                     }, isCancelled = { !coroutineContext.isActive })
                     finished += m.size
                 }
                 Result.success()
             } catch (e: ModelDownloader.Cancelled) {
-                throw CancellationException("Abgebrochen")
+                throw CancellationException(tr("Abgebrochen", "Cancelled"))
             } catch (e: Exception) {
-                Result.failure(workDataOf(ERROR to (e.message ?: "Unbekannter Fehler")))
+                Result.failure(workDataOf(ERROR to (e.message ?: tr("Unbekannter Fehler", "Unknown error"))))
             }
         }
     }

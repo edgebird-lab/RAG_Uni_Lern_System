@@ -16,6 +16,10 @@ object SearchTokenizer {
         "was", "wer", "wo", "warum", "dass", "es", "sie", "er", "wir", "ihr",
         "man", "sich", "nicht", "kein", "keine", "nur", "so", "im", "am", "dem",
         "den", "des", "diese", "dieser", "dieses", "welche", "welcher",
+        // Englisch (Unterlagen und Fragen können englisch sein); der Stemmer bleibt deutsch, damit der Index sprachunabhängig stimmig bleibt
+        "the", "of", "and", "to", "is", "are", "was", "were", "be", "been", "what", "which", "how", "does", "do", "did", "with", "for", "that",
+        "this", "these", "those", "from", "by", "on", "at", "as", "it", "its", "or", "but", "if", "then", "than", "can", "could", "should",
+        "would", "will", "has", "have", "had", "not", "no", "there", "their", "they", "you", "your", "we", "who", "when", "where", "why",
     )
 
     fun tokenize(text: String): List<String> =

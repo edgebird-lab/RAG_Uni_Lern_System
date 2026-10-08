@@ -26,7 +26,7 @@ object Chunker {
             for ((path, body) in splitMarkdownSections(doc.text)) {
                 val prefix = if (path.isNotEmpty()) "[$path]\n" else ""
                 for (piece in splitRecursive(body, config.size, config.overlap)) {
-                    out += Chunk(text = (prefix + piece).trim(), location = path.ifEmpty { "Dokument" }, headerPath = path)
+                    out += Chunk(text = (prefix + piece).trim(), location = path.ifEmpty { de.edgebird.lernsystem.core.i18n.tr("Dokument", "Document") }, headerPath = path)
                 }
             }
         } else {
@@ -34,9 +34,9 @@ object Chunker {
                 for (piece in splitRecursive(block.text, config.size, config.overlap)) {
                     val page = block.page
                     val location = when {
-                        page == null -> "Dokument"
-                        block.kind == BlockKind.SLIDE -> "Folie $page"
-                        else -> "Seite $page"
+                        page == null -> de.edgebird.lernsystem.core.i18n.tr("Dokument", "Document")
+                        block.kind == BlockKind.SLIDE -> de.edgebird.lernsystem.core.i18n.tr("Folie", "Slide") + " $page"
+                        else -> de.edgebird.lernsystem.core.i18n.tr("Seite", "Page") + " $page"
                     }
                     out += Chunk(text = piece, location = location, page = page)
                 }

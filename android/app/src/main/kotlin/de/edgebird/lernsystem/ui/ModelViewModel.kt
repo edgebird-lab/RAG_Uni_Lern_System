@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ui
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.app.ActivityManager
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
@@ -7,10 +9,12 @@ import androidx.lifecycle.viewModelScope
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import de.edgebird.lernsystem.LernsystemApp
+import de.edgebird.lernsystem.core.i18n.Lang
 import de.edgebird.lernsystem.core.models.ModelDownloader
 import de.edgebird.lernsystem.core.models.ModelInfo
 import de.edgebird.lernsystem.core.models.ModelManifest
 import de.edgebird.lernsystem.core.models.ModelPlan
+import de.edgebird.lernsystem.voice.VoiceEntry
 import de.edgebird.lernsystem.work.ModelDownloadWorker
 import de.edgebird.lernsystem.work.ModelWork
 import kotlinx.coroutines.Dispatchers
@@ -30,8 +34,13 @@ sealed interface ModelCheck {
     data class Failed(val message: String) : ModelCheck
 }
 
-/** Die optionale Offline-Stimme für die Sprachausgabe. */
-data class VoiceInfo(val model: ModelInfo, val installed: Boolean)
+/** Stimmen für die Sprachausgabe: Katalog aus dem Manifest, installierte Stimmen und die Wahl je Sprache. */
+data class VoicesState(val catalog: List<ModelInfo> = emptyList(), val installed: List<VoiceEntry> = emptyList(), val selected: Map<Lang, String> = emptyMap(), val message: String? = null) {
+    /** Empfohlene Stimme für die App-Sprache (erste passende im Katalog). */
+    fun recommended(lang: Lang = Lang.current) = catalog.firstOrNull { it.lang == lang.tag }
+    fun entryFor(model: ModelInfo) = installed.firstOrNull { it.dir.name == model.unpack }
+    fun hasVoiceFor(lang: Lang = Lang.current) = installed.any { it.lang == lang }
+}
 
 data class DownloadState(val running: Boolean, val queued: Boolean, val done: Long, val total: Long, val name: String, val error: String?)
 
@@ -48,8 +57,14 @@ class ModelViewModel(app: Application) : AndroidViewModel(app) {
     val withVoice: StateFlow<Boolean> = _withVoice
     fun setWithVoice(v: Boolean) { _withVoice.value = v }
 
-    private val _voice = MutableStateFlow<VoiceInfo?>(null)
-    val voice: StateFlow<VoiceInfo?> = _voice
+    private val _voices = MutableStateFlow(VoicesState(installed = graph.voices.installed(), selected = selectedMap()))
+    val voices: StateFlow<VoicesState> = _voices
+
+    private fun selectedMap(): Map<Lang, String> = Lang.entries.mapNotNull { l -> graph.voices.selected(l)?.let { l to it.id } }.toMap()
+    private fun reloadVoices(manifest: ModelManifest? = null, message: String? = _voices.value.message) {
+        val catalog = manifest?.models?.filter { it.optional && it.role == "tts" } ?: _voices.value.catalog
+        _voices.value = VoicesState(catalog, graph.voices.installed(), selectedMap(), message)
+    }
 
     private val _check = MutableStateFlow<ModelCheck>(ModelCheck.Loading)
     val check: StateFlow<ModelCheck> = _check
@@ -59,7 +74,7 @@ class ModelViewModel(app: Application) : AndroidViewModel(app) {
         DownloadState(
             running = i.state == WorkInfo.State.RUNNING, queued = i.state == WorkInfo.State.ENQUEUED || i.state == WorkInfo.State.BLOCKED,
             done = i.progress.getLong(ModelDownloadWorker.DONE, 0), total = i.progress.getLong(ModelDownloadWorker.TOTAL, 0), name = i.progress.getString(ModelDownloadWorker.NAME) ?: "",
-            error = if (i.state == WorkInfo.State.FAILED) i.outputData.getString(ModelDownloadWorker.ERROR) ?: "Download fehlgeschlagen" else null,
+            error = if (i.state == WorkInfo.State.FAILED) i.outputData.getString(ModelDownloadWorker.ERROR) ?: tr("Download fehlgeschlagen", "Download failed") else null,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -80,8 +95,8 @@ class ModelViewModel(app: Application) : AndroidViewModel(app) {
             val present = filesPresent()
             val res = withContext(Dispatchers.IO) { runCatching { downloader.fetchManifest(ModelWork.MANIFEST_URLS) } }
             val manifest = res.getOrNull()
-            _voice.value = manifest?.models?.firstOrNull { it.optional && it.role == "tts" }?.let { VoiceInfo(it, graph.voice.installed()) }
-            graph.voice.release()   // nach einem Download oder Löschen neu laden
+            withContext(Dispatchers.IO) { graph.voice.release() }   // nach einem Download oder Löschen neu laden
+            reloadVoices(manifest)
             _check.value = when {
                 manifest != null -> {
                     val pending = ModelPlan.pending(manifest, installed)
@@ -89,16 +104,48 @@ class ModelViewModel(app: Application) : AndroidViewModel(app) {
                     else ModelCheck.Ready(manifest, pending)   // alles da; offene Einträge sind neuere Versionen
                 }
                 present -> ModelCheck.Ready(null, emptyList())   // offline, aber Modelle sind da
-                else -> ModelCheck.Failed(res.exceptionOrNull()?.message ?: "Manifest nicht erreichbar")
+                else -> ModelCheck.Failed(res.exceptionOrNull()?.message ?: tr("Manifest nicht erreichbar", "Manifest not reachable"))
             }
         }
     }
 
     fun setWifiOnly(v: Boolean) { graph.prefs.edit().putBoolean(PREF_WIFI_ONLY, v).apply(); _wifiOnly.value = v }
-    fun start() = ModelWork.enqueue(getApplication(), _wifiOnly.value, withVoice = _withVoice.value && _voice.value?.installed == false)
+    fun start() {
+        val v = _voices.value
+        val rec = v.recommended()?.takeIf { _withVoice.value && !v.hasVoiceFor() }
+        ModelWork.enqueue(getApplication(), _wifiOnly.value, voiceIds = setOfNotNull(rec?.id))
+    }
 
-    /** Nur die Stimme (nachträglich) laden. */
-    fun downloadVoice() = ModelWork.enqueue(getApplication(), _wifiOnly.value, withVoice = true)
+    /** Eine Stimme aus dem Katalog (nachträglich) laden. */
+    fun downloadVoice(model: ModelInfo) = ModelWork.enqueue(getApplication(), _wifiOnly.value, voiceIds = setOf(model.id))
+
+    fun selectVoice(e: VoiceEntry) { graph.voices.select(e); viewModelScope.launch { graph.voice.release() }; reloadVoices(message = null) }
+
+    fun deleteVoice(e: VoiceEntry) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { graph.voice.release(); graph.voices.delete(e) }
+            // Katalogstimmen: Marker mit entfernt (Ordner gelöscht), der Download kann erneut starten
+            reloadVoices(message = null)
+        }
+    }
+
+    /** Eigene Stimme aus einer ZIP-Datei importieren. */
+    fun importVoice(uri: android.net.Uri, lang: Lang) {
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val name = withContext(Dispatchers.IO) { app.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null } } ?: "stimme.zip"
+            val msg = withContext(Dispatchers.IO) {
+                try {
+                    val entry = app.contentResolver.openInputStream(uri)!!.use { graph.voices.importZip(it, name, lang) }
+                    graph.voices.select(entry); graph.voice.release()
+                    tr("Stimme „${entry.name}“ importiert.", "Voice “${entry.name}” imported.")
+                } catch (e: Exception) { e.message ?: tr("Der Import ist fehlgeschlagen.", "The import failed.") }
+            }
+            reloadVoices(message = msg)
+        }
+    }
+
+    fun clearVoiceMessage() = reloadVoices(message = null)
     fun cancel() = ModelWork.cancel(getApplication())
 
     /** Beschädigte oder falsche Modelldateien entfernen, damit der Assistent sie neu lädt. */

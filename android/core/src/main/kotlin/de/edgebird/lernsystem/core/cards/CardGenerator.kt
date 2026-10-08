@@ -46,7 +46,7 @@ class CardGenerator(
             val want = n - accepted.size
             if (want <= 0) break
             val raw = try {
-                ask(CardPrompts.questionPrompt(chunk, want) + hint, CardPrompts.QUESTION_SYSTEM, 0.3f + 0.15f * attempt, 300)
+                ask(CardPrompts.questionPrompt(chunk, want) + hint, CardPrompts.questionSystem(), 0.3f + 0.15f * attempt, 300)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -86,7 +86,7 @@ class CardGenerator(
     /** Musterlösung mit Neuversuchen; `null`, wenn sie nicht im Text steht oder Mängel bleiben. */
     private suspend fun answer(chunk: String, question: String, stats: GenerationStats): String? {
         val base = CardPrompts.answerPrompt(question, chunk)
-        var best = CardPrompts.cleanAnswer(ask(base, CardPrompts.ANSWER_SYSTEM, 0.2f, 350))
+        var best = CardPrompts.cleanAnswer(ask(base, CardPrompts.answerSystem(), 0.2f, 350))
         if (best.isEmpty()) {
             stats.rejectedAnswers++
             return null
@@ -95,7 +95,7 @@ class CardGenerator(
         for (attempt in 0 until retries) {
             if (problems.isEmpty()) break
             val again = try {
-                CardPrompts.cleanAnswer(ask(base + CardQuality.retryHint(problems), CardPrompts.ANSWER_SYSTEM, 0.3f + 0.1f * attempt, 350))
+                CardPrompts.cleanAnswer(ask(base + CardQuality.retryHint(problems), CardPrompts.answerSystem(), 0.3f + 0.1f * attempt, 350))
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -130,7 +130,7 @@ class CardGenerator(
             val want = n - out.size
             if (want <= 0) break
             val raw = try {
-                ask(Cloze.prompt(chunk, want + attempt), CardPrompts.QUESTION_SYSTEM, 0.3f + 0.3f * attempt, 400)
+                ask(Cloze.prompt(chunk, want + attempt), CardPrompts.questionSystem(), 0.3f + 0.3f * attempt, 400)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {

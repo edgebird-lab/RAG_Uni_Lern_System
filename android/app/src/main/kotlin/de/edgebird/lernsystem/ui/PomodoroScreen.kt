@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ui
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.Canvas
@@ -87,28 +89,28 @@ fun PomodoroScreen(onBack: (() -> Unit)? = null, vm: PomodoroViewModel = viewMod
     val total = state.phaseTotalMs.coerceAtLeast(1)
     val idle = state.status == PomodoroStatus.IDLE
     val phaseLabel = when (state.phase) {
-        PomodoroPhase.FOCUS -> "Fokus"
-        PomodoroPhase.SHORT_BREAK -> "Kurze Pause"
-        PomodoroPhase.LONG_BREAK -> "Lange Pause"
+        PomodoroPhase.FOCUS -> tr("Fokus", "Focus")
+        PomodoroPhase.SHORT_BREAK -> tr("Kurze Pause", "Short break")
+        PomodoroPhase.LONG_BREAK -> tr("Lange Pause", "Long break")
     }
     val ringColor = if (state.phase == PomodoroPhase.FOCUS) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
     val track = MaterialTheme.colorScheme.surfaceVariant
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (onBack != null) androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück") }
-            Text("Fokus", style = MaterialTheme.typography.headlineMedium)
+            if (onBack != null) androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Zurück", "Back")) }
+            Text(tr("Fokus", "Focus"), style = MaterialTheme.typography.headlineMedium)
         }
         if (!vm.exactAlarms) {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Erinnerungen können sich verspäten, weil genaue Alarme nicht erlaubt sind.", style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).setData(android.net.Uri.parse("package:${context.packageName}"))) }) { Text("Erlauben") }
+                    Text(tr("Erinnerungen können sich verspäten, weil genaue Alarme nicht erlaubt sind.", "Reminders may be delayed because exact alarms are not allowed."), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).setData(android.net.Uri.parse("package:${context.packageName}"))) }) { Text(tr("Erlauben", "Allow")) }
                 }
             }
         }
         val secsLeft = ((remaining + 999) / 1000).toInt()
-        val spoken = "$phaseLabel, noch ${secsLeft / 60} Minuten ${secsLeft % 60} Sekunden" + when (state.status) { PomodoroStatus.PAUSED -> ", pausiert"; PomodoroStatus.WAITING -> ", bereit"; else -> "" }
+        val spoken = tr("$phaseLabel, noch ${secsLeft / 60} Minuten ${secsLeft % 60} Sekunden", "$phaseLabel, ${secsLeft / 60} minutes ${secsLeft % 60} seconds left") + when (state.status) { PomodoroStatus.PAUSED -> tr(", pausiert", ", paused"); PomodoroStatus.WAITING -> tr(", bereit", ", ready"); else -> "" }
         Box(Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = spoken }, contentAlignment = Alignment.Center) {
             Canvas(Modifier.size(240.dp)) {
                 val w = 14.dp.toPx()
@@ -123,26 +125,26 @@ fun PomodoroScreen(onBack: (() -> Unit)? = null, vm: PomodoroViewModel = viewMod
                 Text("%02d:%02d".format(secs / 60, secs % 60), fontSize = 52.sp, fontWeight = FontWeight.Light)
                 Text(
                     when (state.status) {
-                        PomodoroStatus.PAUSED -> "$phaseLabel · pausiert"
-                        PomodoroStatus.WAITING -> "$phaseLabel bereit"
+                        PomodoroStatus.PAUSED -> tr("$phaseLabel · pausiert", "$phaseLabel · paused")
+                        PomodoroStatus.WAITING -> tr("$phaseLabel bereit", "$phaseLabel ready")
                         else -> phaseLabel
                     },
                     style = MaterialTheme.typography.titleMedium,
                 )
-                Text("Runde ${state.completedFocus % settings.cyclesBeforeLongBreak + 1} von ${settings.cyclesBeforeLongBreak}", style = MaterialTheme.typography.bodySmall)
+                Text(tr("Runde ${state.completedFocus % settings.cyclesBeforeLongBreak + 1} von ${settings.cyclesBeforeLongBreak}", "Round ${state.completedFocus % settings.cyclesBeforeLongBreak + 1} of ${settings.cyclesBeforeLongBreak}"), style = MaterialTheme.typography.bodySmall)
             }
         }
 
         if (idle || state.status == PomodoroStatus.WAITING) {
             ExposedDropdownMenuBox(expanded = menuOpen, onExpandedChange = { menuOpen = it }) {
                 OutlinedTextField(
-                    value = docs.firstOrNull { it.document.id == (selectedDoc ?: state.documentId) }?.document?.title ?: "Ohne Dokument",
-                    onValueChange = {}, readOnly = true, label = { Text("Lerne gerade für") },
+                    value = docs.firstOrNull { it.document.id == (selectedDoc ?: state.documentId) }?.document?.title ?: tr("Ohne Dokument", "No document"),
+                    onValueChange = {}, readOnly = true, label = { Text(tr("Lerne gerade für", "Currently studying for")) },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(menuOpen) },
                     modifier = Modifier.menuAnchor().fillMaxWidth(),
                 )
                 ExposedDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DropdownMenuItem(text = { Text("Ohne Dokument") }, onClick = { selectedDoc = null; menuOpen = false })
+                    DropdownMenuItem(text = { Text(tr("Ohne Dokument", "No document")) }, onClick = { selectedDoc = null; menuOpen = false })
                     docs.forEach { d -> DropdownMenuItem(text = { Text(d.document.title) }, onClick = { selectedDoc = d.document.id; menuOpen = false }) }
                 }
             }
@@ -150,13 +152,13 @@ fun PomodoroScreen(onBack: (() -> Unit)? = null, vm: PomodoroViewModel = viewMod
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             when (state.status) {
-                PomodoroStatus.IDLE, PomodoroStatus.WAITING -> Button(onClick = { vm.start(selectedDoc ?: state.documentId) }, modifier = Modifier.weight(1f)) { Text("Starten") }
-                PomodoroStatus.RUNNING -> Button(onClick = vm::pause, modifier = Modifier.weight(1f)) { Text("Pause") }
-                PomodoroStatus.PAUSED -> Button(onClick = vm::resume, modifier = Modifier.weight(1f)) { Text("Fortsetzen") }
+                PomodoroStatus.IDLE, PomodoroStatus.WAITING -> Button(onClick = { vm.start(selectedDoc ?: state.documentId) }, modifier = Modifier.weight(1f)) { Text(tr("Starten", "Start")) }
+                PomodoroStatus.RUNNING -> Button(onClick = vm::pause, modifier = Modifier.weight(1f)) { Text(tr("Pause", "Pause")) }
+                PomodoroStatus.PAUSED -> Button(onClick = vm::resume, modifier = Modifier.weight(1f)) { Text(tr("Fortsetzen", "Resume")) }
             }
             if (!idle) {
-                OutlinedButton(onClick = vm::skip, modifier = Modifier.weight(1f)) { Text("Überspringen") }
-                OutlinedButton(onClick = vm::stop, modifier = Modifier.weight(1f)) { Text("Beenden") }
+                OutlinedButton(onClick = vm::skip, modifier = Modifier.weight(1f)) { Text(tr("Überspringen", "Skip")) }
+                OutlinedButton(onClick = vm::stop, modifier = Modifier.weight(1f)) { Text(tr("Beenden", "End")) }
             }
         }
 
@@ -164,10 +166,10 @@ fun PomodoroScreen(onBack: (() -> Unit)? = null, vm: PomodoroViewModel = viewMod
         if (s != null) {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Heute ${s.todayMinutes} von $goal Min Fokus", style = MaterialTheme.typography.bodyMedium)
+                    Text(tr("Heute ${s.todayMinutes} von $goal Min Fokus", "Today ${s.todayMinutes} of $goal min focus"), style = MaterialTheme.typography.bodyMedium)
                     LinearProgressIndicator(progress = { de.edgebird.lernsystem.core.pomodoro.FocusStats.goalProgress(s.todayMinutes, goal) }, modifier = Modifier.fillMaxWidth())
                     val max = (s.week.maxOfOrNull { it.minutes } ?: 0).coerceAtLeast(1)
-                    val fmt = java.time.format.DateTimeFormatter.ofPattern("EE", java.util.Locale.GERMAN)
+                    val fmt = java.time.format.DateTimeFormatter.ofPattern("EE", de.edgebird.lernsystem.core.i18n.Lang.current.locale)
                     Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                         s.week.forEach { d ->
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -178,13 +180,13 @@ fun PomodoroScreen(onBack: (() -> Unit)? = null, vm: PomodoroViewModel = viewMod
                         }
                     }
                     if (s.byDocument.isNotEmpty()) {
-                        Text("Letzte 7 Tage je Dokument", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp))
-                        s.byDocument.forEach { Text("${it.title ?: "Ohne Dokument"}: ${Math.round(it.focusedMs / 60_000.0)} Min", style = MaterialTheme.typography.bodySmall) }
+                        Text(tr("Letzte 7 Tage je Dokument", "Last 7 days per document"), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp))
+                        s.byDocument.forEach { Text("${it.title ?: tr("Ohne Dokument", "No document")}: ${Math.round(it.focusedMs / 60_000.0)} ${tr("Min", "min")}", style = MaterialTheme.typography.bodySmall) }
                     }
                 }
             }
         }
-        TextButton(onClick = { showSettings = true }) { Text("Zeiten und Tagesziel") }
+        TextButton(onClick = { showSettings = true }) { Text(tr("Zeiten und Tagesziel", "Times and daily goal")) }
     }
     if (showSettings) PomodoroSettingsDialog(settings, goal, keepOn, onSave = { st, g, k -> vm.save(st, g, k); showSettings = false }, onDismiss = { showSettings = false })
 }
@@ -201,17 +203,17 @@ private fun PomodoroSettingsDialog(s: PomodoroSettings, goal: Int, keepOn: Boole
     var keep by remember { mutableStateOf(keepOn) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Fokus-Einstellungen") },
+        title = { Text(tr("Fokus-Einstellungen", "Focus settings")) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                NumberField("Fokus (Min)", focus) { focus = it }
-                NumberField("Kurze Pause (Min)", short) { short = it }
-                NumberField("Lange Pause (Min)", long) { long = it }
-                NumberField("Runden bis zur langen Pause", cycles) { cycles = it }
-                NumberField("Tagesziel Fokus (Min)", g) { g = it }
-                SwitchRow("Pausen automatisch starten", autoBreaks) { autoBreaks = it }
-                SwitchRow("Nächsten Fokus automatisch starten", autoFocus) { autoFocus = it }
-                SwitchRow("Display an, solange der Timer läuft", keep) { keep = it }
+                NumberField(tr("Fokus (Min)", "Focus (min)"), focus) { focus = it }
+                NumberField(tr("Kurze Pause (Min)", "Short break (min)"), short) { short = it }
+                NumberField(tr("Lange Pause (Min)", "Long break (min)"), long) { long = it }
+                NumberField(tr("Runden bis zur langen Pause", "Rounds until the long break"), cycles) { cycles = it }
+                NumberField(tr("Tagesziel Fokus (Min)", "Daily focus goal (min)"), g) { g = it }
+                SwitchRow(tr("Pausen automatisch starten", "Start breaks automatically"), autoBreaks) { autoBreaks = it }
+                SwitchRow(tr("Nächsten Fokus automatisch starten", "Start the next focus automatically"), autoFocus) { autoFocus = it }
+                SwitchRow(tr("Display an, solange der Timer läuft", "Keep display on while the timer runs"), keep) { keep = it }
             }
         },
         confirmButton = {
@@ -224,9 +226,9 @@ private fun PomodoroSettingsDialog(s: PomodoroSettings, goal: Int, keepOn: Boole
                     ),
                     n(g, 120, 0, 1000), keep,
                 )
-            }) { Text("Speichern") }
+            }) { Text(tr("Speichern", "Save")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Abbrechen", "Cancel")) } },
     )
 }
 

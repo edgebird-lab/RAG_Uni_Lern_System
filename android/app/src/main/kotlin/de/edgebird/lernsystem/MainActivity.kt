@@ -32,6 +32,10 @@ class MainActivity : ComponentActivity() {
     private val requestedTab = mutableIntStateOf(-1)
     private val shared = mutableStateOf<de.edgebird.lernsystem.ui.SharedContent?>(null)
 
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(de.edgebird.lernsystem.ui.AppLanguage.wrap(newBase, de.edgebird.lernsystem.core.i18n.Lang.current))
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         requestedTab.intValue = intent.getIntExtra(EXTRA_TAB, -1)

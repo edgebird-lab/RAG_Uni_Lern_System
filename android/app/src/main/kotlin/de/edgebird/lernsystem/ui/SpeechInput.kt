@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ui
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -51,10 +53,10 @@ class SpeechController internal constructor(private val context: Context, privat
             override fun onError(code: Int) {
                 listening = false
                 error = when (code) {
-                    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Nichts verstanden. Tippe auf das Mikrofon und sprich noch einmal."
-                    SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> "Das deutsche Sprachpaket fehlt. Lade es in den Android-Einstellungen unter Sprachen und Spracheingabe herunter."
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Ohne Mikrofon-Erlaubnis geht keine Spracheingabe."
-                    else -> "Spracheingabe nicht möglich (Fehler $code)."
+                    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> tr("Nichts verstanden. Tippe auf das Mikrofon und sprich noch einmal.", "Didn’t catch that. Tap the microphone and speak again.")
+                    SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> tr("Das deutsche Sprachpaket fehlt. Lade es in den Android-Einstellungen unter Sprachen und Spracheingabe herunter.", "The language pack is missing. Download it in the Android settings under Languages and voice input.")
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> tr("Ohne Mikrofon-Erlaubnis geht keine Spracheingabe.", "Voice input is not possible without microphone permission.")
+                    else -> tr("Spracheingabe nicht möglich (Fehler $code).", "Voice input not possible (error $code).")
                 }
             }
             override fun onReadyForSpeech(params: Bundle?) {}
@@ -68,7 +70,7 @@ class SpeechController internal constructor(private val context: Context, privat
         r.startListening(
             Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "de-DE")
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE, de.edgebird.lernsystem.core.i18n.tr("de-DE", "en-US"))
                 .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true),
         )

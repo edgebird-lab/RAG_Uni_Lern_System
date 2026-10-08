@@ -23,6 +23,7 @@ class DebugSocraticActivity : Activity() {
         // Die Aktivität bleibt offen: Im Hintergrund hängt der GPU-Zugriff des Modells
         setContentView(android.widget.TextView(this).apply { text = "Sokratischer Test läuft …"; textSize = 24f; setPadding(48, 200, 48, 48) })
         if (savedInstanceState != null) return
+        de.edgebird.lernsystem.core.i18n.Lang.fromTag(intent.getStringExtra("lang"))?.let { de.edgebird.lernsystem.core.i18n.Lang.current = it }
         val topic = intent.getStringExtra("topic") ?: "Photosynthese"
         val out = File(filesDir, "debug-out").apply { mkdirs() }.resolve("socratic.txt").also { it.writeText("") }
         Thread {

@@ -26,8 +26,8 @@ class AppGraph(private val context: Context) {
     val inboxDir = File(context.filesDir, "inbox").apply { mkdirs() }
 
     /** Entpacktes Stimmenpaket für die Offline-Sprachausgabe (optionaler Download). */
-    val ttsVoiceDir = File(modelsDir, "tts-de")
-    val voice: de.edgebird.lernsystem.ui.VoiceHolder by lazy { de.edgebird.lernsystem.ui.VoiceHolder(ttsVoiceDir) }
+    val voices: de.edgebird.lernsystem.voice.VoiceLibrary by lazy { de.edgebird.lernsystem.voice.VoiceLibrary(modelsDir, prefs) }
+    val voice: de.edgebird.lernsystem.ui.VoiceHolder by lazy { de.edgebird.lernsystem.ui.VoiceHolder(voices) }
 
     /** Reste abgebrochener Importe (Dateien, die nie verarbeitet wurden) nach einem Tag entfernen. */
     fun cleanInbox(maxAgeMs: Long = 24L * 3600_000) {

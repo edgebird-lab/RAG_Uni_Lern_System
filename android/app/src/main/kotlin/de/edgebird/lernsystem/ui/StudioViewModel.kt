@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ui
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -54,11 +56,11 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     val jobs: StateFlow<JobsState> = subject.flatMapLatest { id ->
         if (id == null) flowOf(JobsState()) else work.getWorkInfosByTagFlow(SummaryWork.subjectTag(id)).map { infos ->
-            fun label(i: WorkInfo) = i.tags.firstOrNull { it.startsWith(SummaryWork.LABEL_TAG) }?.removePrefix(SummaryWork.LABEL_TAG).orEmpty().ifEmpty { "Zusammenfassung" }
+            fun label(i: WorkInfo) = i.tags.firstOrNull { it.startsWith(SummaryWork.LABEL_TAG) }?.removePrefix(SummaryWork.LABEL_TAG).orEmpty().ifEmpty { tr("Zusammenfassung", "Summary") }
             JobsState(
                 running = infos.filter { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED }
                     .map { RunningJob(label(it), it.progress.getInt(SummaryWorker.DONE, 0), it.progress.getInt(SummaryWorker.TOTAL, 0), it.state != WorkInfo.State.RUNNING) },
-                failed = infos.filter { it.state == WorkInfo.State.FAILED }.map { FailedJob(label(it), it.outputData.getString(SummaryWorker.ERROR) ?: "Fehlgeschlagen") },
+                failed = infos.filter { it.state == WorkInfo.State.FAILED }.map { FailedJob(label(it), it.outputData.getString(SummaryWorker.ERROR) ?: tr("Fehlgeschlagen", "Failed")) },
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), JobsState())
@@ -125,7 +127,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Speichert die Zusammenfassung als eigene Quelle im Fach, damit Chat, Abfragen und Karten sie mit nutzen. */
     fun saveAsSource(s: GeneratedSummaryEntity) {
-        val title = ("Zusammenfassung: " + s.title.removePrefix("Zusammenfassung: ")).take(70).replace(Regex("[\\\\/:*?\"<>|]"), " ")
+        val title = (tr("Zusammenfassung: ", "Summary: ") + s.title.removePrefix(tr("Zusammenfassung: ", "Summary: "))).take(70).replace(Regex("[\\\\/:*?\"<>|]"), " ")
         val file = java.io.File(graph.inboxDir, java.util.UUID.randomUUID().toString()).also { it.writeText(s.text, Charsets.UTF_8) }
         de.edgebird.lernsystem.work.ImportWork.enqueue(getApplication(), listOf(de.edgebird.lernsystem.work.ImportItem("summary:${s.id}:${s.createdAt}", "$title.md", file)), graph.prefs.getBoolean("embed_only_when_charging", false), s.subjectId)
     }

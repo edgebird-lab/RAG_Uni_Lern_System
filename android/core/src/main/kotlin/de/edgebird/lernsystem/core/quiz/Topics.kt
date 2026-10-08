@@ -2,7 +2,7 @@ package de.edgebird.lernsystem.core.quiz
 
 /** Themenname eines Abschnitts: seine Überschrift, außer sie sagt nichts („Dokument“, „Seite 3“); dann zählt der Name der Quelle. */
 object Topics {
-    private val GENERIC = Regex("(?i)^(dokument|seite \\d+.*|folie \\d+.*|abschnitt.*|kapitel \\d+)$")
+    private val GENERIC = Regex("(?i)^(dokument|document|seite \\d+.*|page \\d+.*|folie \\d+.*|slide \\d+.*|abschnitt.*|section.*|kapitel \\d+|chapter \\d+)$")
 
     fun of(location: String, documentTitle: String): String {
         val loc = location.trim()

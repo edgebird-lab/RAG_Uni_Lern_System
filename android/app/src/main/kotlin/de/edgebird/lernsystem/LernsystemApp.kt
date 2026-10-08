@@ -7,6 +7,7 @@ class LernsystemApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        de.edgebird.lernsystem.core.i18n.Lang.current = de.edgebird.lernsystem.ui.AppLanguage.load(graph.prefs)
         Thread { runCatching { graph.cleanInbox() } }.start()
     }
 }

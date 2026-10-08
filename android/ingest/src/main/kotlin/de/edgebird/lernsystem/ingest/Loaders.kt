@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ingest
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.content.Context
 import de.edgebird.lernsystem.core.ingest.Block
 import de.edgebird.lernsystem.core.ingest.LoadedDoc
@@ -83,7 +85,7 @@ class PdfDocumentLoader(private val context: Context, private val recognizer: Te
                 }
             }
         } catch (e: Exception) {
-            throw LoadException("PDF konnte nicht gelesen werden: ${e.message}", e)
+            throw LoadException(tr("PDF konnte nicht gelesen werden: ${e.message}", "The PDF could not be read: ${e.message}"), e)
         } finally {
             if (ocrBudget < maxOcrPages) runCatching { renderer.close() }
         }

@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.work
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -47,13 +49,13 @@ class ReminderWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
         val open = s.due + s.newToday
         if (open == 0 || s.reviewsToday >= s.dailyGoal) return Result.success()   // nichts zu tun oder Tagesziel schon erreicht
         val nm = applicationContext.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(ReminderWork.CHANNEL, "Lern-Erinnerung", NotificationManager.IMPORTANCE_DEFAULT))
+        nm.createNotificationChannel(NotificationChannel(ReminderWork.CHANNEL, tr("Lern-Erinnerung", "Study reminder"), NotificationManager.IMPORTANCE_DEFAULT))
         val open2 = PendingIntent.getActivity(applicationContext, 40, Intent(applicationContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         nm.notify(
             41,
             NotificationCompat.Builder(applicationContext, ReminderWork.CHANNEL).setSmallIcon(android.R.drawable.ic_menu_agenda)
-                .setContentTitle("Zeit zum Lernen")
-                .setContentText(if (s.due > 0) "${s.due} Karten sind fällig" + if (s.streak > 0) " – halte deine Serie von ${s.streak} Tagen!" else "" else "${s.newToday} neue Karten warten")
+                .setContentTitle(tr("Zeit zum Lernen", "Time to study"))
+                .setContentText(if (s.due > 0) tr("${s.due} Karten sind fällig", "${s.due} cards are due") + if (s.streak > 0) tr(" – halte deine Serie von ${s.streak} Tagen!", " – keep your ${s.streak}-day streak going!") else "" else tr("${s.newToday} neue Karten warten", "${s.newToday} new cards are waiting"))
                 .setContentIntent(open2).setAutoCancel(true).build(),
         )
         return Result.success()

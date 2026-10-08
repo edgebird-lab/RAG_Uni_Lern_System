@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.work
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
@@ -24,9 +26,9 @@ object CardGenWork {
 
     /** Welche Karten erzeugt werden. */
     enum class Mode(val label: String, val hint: String) {
-        QA("Fragen", "Frage und Musterlösung, ca. 7 Sekunden je Karte"),
-        CLOZE("Lückentext", "Satz mit Lücke zum Ergänzen, ca. 3 Sekunden je Karte"),
-        MIXED("Gemischt", "Je Abschnitt eine Frage und ein Lückentext"),
+        QA(tr("Fragen", "Questions"), tr("Frage und Musterlösung, ca. 7 Sekunden je Karte", "Question and model answer, about 7 seconds per card")),
+        CLOZE(tr("Lückentext", "Fill in the blank"), tr("Satz mit Lücke zum Ergänzen, ca. 3 Sekunden je Karte", "Sentence with a blank to fill in, about 3 seconds per card")),
+        MIXED(tr("Gemischt", "Mixed"), tr("Je Abschnitt eine Frage und ein Lückentext", "One question and one fill-in-the-blank per section")),
     }
 
     fun enqueue(context: Context, documentId: Long, maxCards: Int, mode: Mode = Mode.QA) {
@@ -47,13 +49,13 @@ class CardGenWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
         val target = inputData.getInt(CardGenWork.MAX_CARDS, 20)
         val mode = runCatching { CardGenWork.Mode.valueOf(inputData.getString(CardGenWork.MODE).orEmpty()) }.getOrDefault(CardGenWork.Mode.QA)
         if (docId < 0) return Result.failure()
-        if (!graph.llmModelFile.exists()) return Result.failure(workDataOf(ERROR to "Das Sprachmodell fehlt"))
+        if (!graph.llmModelFile.exists()) return Result.failure(workDataOf(ERROR to tr("Das Sprachmodell fehlt", "The language model is missing")))
 
-        val title = "Karten werden erstellt"
-        setForeground(ImportWork.foregroundInfo(applicationContext, "Starte …", 0, target, title, NOTIFICATION_ID))
+        val title = tr("Karten werden erstellt", "Cards are being created")
+        setForeground(ImportWork.foregroundInfo(applicationContext, tr("Starte …", "Starting …"), 0, target, title, NOTIFICATION_ID))
         val used = graph.db.cards().chunkIdsWithCards(docId).toSet()
         val usable = graph.db.chunks().byDocument(docId).filter { it.id !in used && it.text.length >= MIN_CHARS && CardChunkFilter.isStudyWorthy(it.text) }
-        if (usable.isEmpty()) return Result.success(workDataOf(CREATED to 0, MESSAGE to "Keine passenden Abschnitte gefunden"))
+        if (usable.isEmpty()) return Result.success(workDataOf(CREATED to 0, MESSAGE to tr("Keine passenden Abschnitte gefunden", "No suitable sections found")))
 
         val chunksWanted = ceil(target / PER_CHUNK.toDouble()).toInt().coerceAtMost(usable.size)
         val picked = (0 until chunksWanted).map { usable[(it * usable.size.toDouble() / chunksWanted).toInt()] }
@@ -68,7 +70,7 @@ class CardGenWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
             if (created >= target) break
             while (true) { // bei Hitze oder leerem Akku warten
                 val reason = DeviceState.pauseReason(applicationContext) ?: break
-                setForeground(ImportWork.foregroundInfo(applicationContext, if (reason == PauseReason.HOT) "Pausiert: Gerät ist zu warm" else "Pausiert: Akku ist fast leer", created, target, title, NOTIFICATION_ID))
+                setForeground(ImportWork.foregroundInfo(applicationContext, if (reason == PauseReason.HOT) tr("Pausiert: Gerät ist zu warm", "Paused: device is too warm") else tr("Pausiert: Akku ist fast leer", "Paused: battery almost empty"), created, target, title, NOTIFICATION_ID))
                 delay(15_000)
             }
             val cards = try {
@@ -82,7 +84,7 @@ class CardGenWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                return Result.failure(workDataOf(ERROR to "Die Erzeugung ist fehlgeschlagen: ${e.message}", CREATED to created))
+                return Result.failure(workDataOf(ERROR to tr("Die Erzeugung ist fehlgeschlagen: ${e.message}", "Generation failed: ${e.message}"), CREATED to created))
             }
             for (c in cards) {
                 graph.study.addGenerated(docId, chunk.id, c.question, c.answer, c.questionVector, c.kind)
@@ -91,10 +93,10 @@ class CardGenWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
                 created++
             }
             setProgressAsync(workDataOf(CREATED to created, TOTAL to target, DONE_CHUNKS to i + 1, TOTAL_CHUNKS to picked.size))
-            setForegroundAsync(ImportWork.foregroundInfo(applicationContext, "$created von $target Karten", created, target, title, NOTIFICATION_ID))
+            setForegroundAsync(ImportWork.foregroundInfo(applicationContext, tr("$created von $target Karten", "$created of $target cards"), created, target, title, NOTIFICATION_ID))
         }
-        val msg = "$created Karten erstellt" + if (stats.rejectedQuestions + stats.rejectedAnswers + stats.duplicates > 0)
-            " (verworfen: ${stats.rejectedQuestions} Fragen, ${stats.rejectedAnswers} Antworten, ${stats.duplicates} Dubletten)" else ""
+        val msg = tr("$created Karten erstellt", "$created cards created") + if (stats.rejectedQuestions + stats.rejectedAnswers + stats.duplicates > 0)
+            tr(" (verworfen: ${stats.rejectedQuestions} Fragen, ${stats.rejectedAnswers} Antworten, ${stats.duplicates} Dubletten)", " (discarded: ${stats.rejectedQuestions} questions, ${stats.rejectedAnswers} answers, ${stats.duplicates} duplicates)") else ""
         android.util.Log.i("CARDGEN", "doc=$docId ziel=$target: $msg; Neuversuche=${stats.retries}; Abschnitte=${picked.size}")
         return Result.success(workDataOf(CREATED to created, MESSAGE to msg))
     }

@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ui
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.app.Application
 import android.net.Uri
 import androidx.core.content.FileProvider
@@ -47,7 +49,7 @@ class PhotoImportViewModel(app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(PhotoState(name = defaultName()))
     val state: StateFlow<PhotoState> = _state
 
-    private fun defaultName() = "Foto-Notizen " + SimpleDateFormat("d. MMM HH:mm", Locale.GERMAN).format(Date())
+    private fun defaultName() = tr("Foto-Notizen ", "Photo notes ") + SimpleDateFormat(tr("d. MMM HH:mm", "MMM d, HH:mm"), de.edgebird.lernsystem.core.i18n.Lang.current.locale).format(Date())
 
     fun bind(subjectId: Long) { subject = subjectId }
 
@@ -91,7 +93,7 @@ class PhotoImportViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val ok = withContext(Dispatchers.Default) { PageScanner.crop(f, corners) }
             // neue Version erzwingen, damit die Vorschau neu geladen wird
-            _state.value = _state.value.copy(version = _state.value.version + 1, error = if (ok) null else "Der Zuschnitt ist fehlgeschlagen.")
+            _state.value = _state.value.copy(version = _state.value.version + 1, error = if (ok) null else tr("Der Zuschnitt ist fehlgeschlagen.", "Cropping failed."))
         }
     }
 
@@ -118,7 +120,7 @@ class PhotoImportViewModel(app: Application) : AndroidViewModel(app) {
                 _state.value = _state.value.copy(step = PhotoStep.REVIEW, texts = texts)
             } catch (e: CancellationException) { throw e
             } catch (e: Throwable) {
-                _state.value = _state.value.copy(step = PhotoStep.CAPTURE, error = "Die Texterkennung ist fehlgeschlagen: ${e.message}")
+                _state.value = _state.value.copy(step = PhotoStep.CAPTURE, error = tr("Die Texterkennung ist fehlgeschlagen: ${e.message}", "Text recognition failed: ${e.message}"))
             }
         }
     }
@@ -129,7 +131,7 @@ class PhotoImportViewModel(app: Application) : AndroidViewModel(app) {
     fun save(onDone: () -> Unit) {
         val s = _state.value
         val sid = subject ?: return
-        if (s.texts.all { it.isBlank() }) { _state.value = s.copy(error = "Auf den Fotos wurde kein Text erkannt. Bitte gerader, schärfer und heller aufnehmen.") ; return }
+        if (s.texts.all { it.isBlank() }) { _state.value = s.copy(error = tr("Auf den Fotos wurde kein Text erkannt. Bitte gerader, schärfer und heller aufnehmen.", "No text was recognised in the photos. Please shoot straighter, sharper and brighter.")) ; return }
         viewModelScope.launch {
             val name = s.name.trim().ifEmpty { defaultName() }.let { if (it.endsWith(".txt")) it else "$it.txt" }
             val item = withContext(Dispatchers.IO) {

@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ui
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -52,11 +54,11 @@ class QuizViewModel(app: Application) : AndroidViewModel(app) {
                 graph.llm.load()
                 val runner = McQuizRunner(graph.db, graph.llm)
                 val items = runner.prepare(subjectId, documentIds, options.count, options.preferWeak, onProgress = { d, t -> _state.value = QuizState.Generating(d, t) })
-                _state.value = if (items.isEmpty()) QuizState.Failed("Aus den gewählten Quellen konnten keine Fragen erzeugt werden. Wähle längere Quellen mit Fließtext.")
+                _state.value = if (items.isEmpty()) QuizState.Failed(tr("Aus den gewählten Quellen konnten keine Fragen erzeugt werden. Wähle längere Quellen mit Fließtext.", "No questions could be created from the chosen sources. Choose longer sources with running text."))
                 else QuizState.Running(items, 0, emptyMap(), revealed = false, exam = options.exam, endAt = if (options.exam) System.currentTimeMillis() + options.minutes * 60_000L else null)
                 if (options.exam) watchTimer()
             } catch (e: CancellationException) { throw e
-            } catch (t: Throwable) { _state.value = QuizState.Failed(if (t is OutOfMemoryError) "Zu wenig Arbeitsspeicher. Schließe andere Apps." else "Die Fragen konnten nicht erzeugt werden: ${t.message}") }
+            } catch (t: Throwable) { _state.value = QuizState.Failed(if (t is OutOfMemoryError) tr("Zu wenig Arbeitsspeicher. Schließe andere Apps.", "Not enough memory. Close other apps.") else tr("Die Fragen konnten nicht erzeugt werden: ${t.message}", "The questions could not be created: ${t.message}")) }
         }
     }
 

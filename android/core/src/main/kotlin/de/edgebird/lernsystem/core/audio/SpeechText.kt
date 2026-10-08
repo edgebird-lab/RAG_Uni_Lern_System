@@ -1,6 +1,8 @@
 package de.edgebird.lernsystem.core.audio
 
 import de.edgebird.lernsystem.core.cards.LatexLite
+import de.edgebird.lernsystem.core.i18n.Lang
+import de.edgebird.lernsystem.core.i18n.tr
 import de.edgebird.lernsystem.core.summary.MarkdownLite
 
 /** Bereitet Text für die Sprachausgabe auf: Formatierung weg, Abkürzungen ausschreiben, in Sätze für kurze Wartezeiten teilen. */
@@ -10,12 +12,19 @@ object SpeechText {
         Regex("""\busw\."""), Regex("""\bvgl\."""), Regex("""\bca\."""), Regex("""\bevtl\."""), Regex("""\bbspw\."""), Regex("""\binkl\."""), Regex("""\bsog\."""), Regex("""\bNr\."""), Regex("""\bAbb\."""),
     ).zip(listOf("zum Beispiel", "das heißt", "unter anderem", "zum Teil", "beziehungsweise", "gegebenenfalls", "und so weiter", "vergleiche", "circa", "eventuell", "beispielsweise", "inklusive", "sogenannte", "Nummer", "Abbildung"))
 
+    private val ABBREVIATIONS_EN = listOf(
+        Regex("""\be\.g\."""), Regex("""\bi\.e\."""), Regex("""\betc\."""), Regex("""\bcf\."""), Regex("""\bvs\."""), Regex("""\bapprox\."""), Regex("""\bincl\."""), Regex("""\bFig\."""), Regex("""\bNo\."""), Regex("""\bDr\."""),
+    ).zip(listOf("for example", "that is", "et cetera", "compare", "versus", "approximately", "including", "Figure", "Number", "Doctor"))
+
     /** Fließender, vorlesbarer Text aus einer Markdown-Zusammenfassung oder Antwort (Absätze durch Leerzeilen getrennt). */
-    fun prepare(markdown: String): String {
+    fun prepare(markdown: String, lang: Lang = Lang.current): String {
         var t = LatexLite.toPlain(MarkdownLite.toPlain(markdown)).replace(Regex("""\*+|_{2,}|`|•"""), "")
-        for ((rx, full) in ABBREVIATIONS) t = rx.replace(t, full)
-        t = t.replace("%", " Prozent").replace("&", " und ").replace("→", " ergibt ").replace("≈", " ungefähr ").replace("≤", " kleiner gleich ").replace("≥", " größer gleich ")
-            .replace("°C", " Grad Celsius").replace("€", " Euro").replace(Regex("""\[Quelle[^\]]*\]"""), "").replace(Regex("""\s*\(Seite[^)]*\)"""), "")
+        for ((rx, full) in if (lang == Lang.EN) ABBREVIATIONS_EN else ABBREVIATIONS) t = rx.replace(t, full)
+        t = if (lang == Lang.EN) t.replace("%", " percent").replace("&", " and ").replace("→", " gives ").replace("≈", " approximately ").replace("≤", " less than or equal to ").replace("≥", " greater than or equal to ")
+            .replace("°C", " degrees Celsius").replace("€", " euros").replace("\$", " dollars ")
+        else t.replace("%", " Prozent").replace("&", " und ").replace("→", " ergibt ").replace("≈", " ungefähr ").replace("≤", " kleiner gleich ").replace("≥", " größer gleich ")
+            .replace("°C", " Grad Celsius").replace("€", " Euro")
+        t = t.replace(Regex("""\[(?:Quelle|Source)[^\]]*\]"""), "").replace(Regex("""\s*\((?:Seite|Page|Folie|Slide)[^)]*\)"""), "")
         t = t.replace(Regex("""[ \t]{2,}"""), " ")
         return t.lines().joinToString("\n") { it.trim() }.replace(Regex("""\n{3,}"""), "\n\n").trim()
     }

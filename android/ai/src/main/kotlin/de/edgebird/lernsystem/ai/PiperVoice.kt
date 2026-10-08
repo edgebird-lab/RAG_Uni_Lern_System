@@ -10,13 +10,13 @@ import java.io.File
  * Offline-Stimme (Piper VITS über sherpa-onnx). Läuft komplett auf dem Gerät und ohne Netz; die Dateien liegen im entpackten Stimmenpaket
  * (`model.onnx`, `tokens.txt`, `espeak-ng-data/`).
  */
-class PiperVoice(dir: File, threads: Int = 3) : AutoCloseable {
+class PiperVoice(dir: File, threads: Int = 3, dataDir: File = File(dir, "espeak-ng-data")) : AutoCloseable {
     private val tts = OfflineTts(
         null,
         OfflineTtsConfig(
             model = OfflineTtsModelConfig(
                 vits = OfflineTtsVitsModelConfig(
-                    model = File(dir, "model.onnx").path, tokens = File(dir, "tokens.txt").path, dataDir = File(dir, "espeak-ng-data").path,
+                    model = File(dir, "model.onnx").path, tokens = File(dir, "tokens.txt").path, dataDir = dataDir.path,
                     // etwas ruhiger und gleichmäßiger als die Voreinstellung; Lernstoff soll klar zu verstehen sein
                     noiseScale = 0.6f, noiseScaleW = 0.7f, lengthScale = 1.0f,
                 ),
@@ -35,6 +35,10 @@ class PiperVoice(dir: File, threads: Int = 3) : AutoCloseable {
 
     companion object {
         /** Ist ein vollständiges Stimmenpaket in [dir] entpackt? */
-        fun isInstalled(dir: File) = File(dir, "model.onnx").isFile && File(dir, "tokens.txt").isFile && File(dir, "espeak-ng-data/phondata").isFile
+        fun isInstalled(dir: File) = hasModel(dir) && hasData(File(dir, "espeak-ng-data"))
+
+        /** Modell und Zeichentabelle liegen in [dir] (die espeak-ng-Daten können auch von einer anderen Stimme kommen). */
+        fun hasModel(dir: File) = File(dir, "model.onnx").isFile && File(dir, "tokens.txt").isFile
+        fun hasData(dataDir: File) = File(dataDir, "phondata").isFile
     }
 }

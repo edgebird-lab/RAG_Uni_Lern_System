@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ui
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.app.Application
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -88,7 +90,7 @@ class DocumentsViewModel(app: Application) : AndroidViewModel(app) {
     val cardGenStatus: StateFlow<String?> = work.getWorkInfosByTagFlow(CardGenWork.TAG).map { infos ->
         val running = infos.firstOrNull { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
         when {
-            running != null -> "Karten werden erstellt: ${running.progress.getInt(CardGenWorker.CREATED, 0)} von ${running.progress.getInt(CardGenWorker.TOTAL, 0).takeIf { it > 0 } ?: "…"}"
+            running != null -> tr("Karten werden erstellt: ${running.progress.getInt(CardGenWorker.CREATED, 0)} von ${running.progress.getInt(CardGenWorker.TOTAL, 0).takeIf { it > 0 } ?: "…"}", "Creating cards: ${running.progress.getInt(CardGenWorker.CREATED, 0)} of ${running.progress.getInt(CardGenWorker.TOTAL, 0).takeIf { it > 0 } ?: "…"}")
             else -> infos.filter { it.state == WorkInfo.State.SUCCEEDED || it.state == WorkInfo.State.FAILED }.lastOrNull()?.let {
                 it.outputData.getString(CardGenWorker.ERROR) ?: it.outputData.getString(CardGenWorker.MESSAGE)
             }
