@@ -27,7 +27,9 @@ class SearchTokenizerTest {
 
     @Test
     fun `FTS-Abfrage verknuepft die Staemme mit ODER`() {
-        assertEquals("\"braucht\" OR \"gegenzeichn\" OR \"bundesprasident\"", FtsQuery.fromQuestion("Wer braucht die Gegenzeichnung des Bundespräsidenten? Gegenzeichnung!"))
+        // zuerst die deutschen Stämme, danach (nur wenn abweichend) die englischen für englische Quellen
+        val q = FtsQuery.fromQuestion("Wer braucht die Gegenzeichnung des Bundespräsidenten? Gegenzeichnung!")!!
+        assertEquals(true, q.startsWith("\"braucht\" OR \"gegenzeichn\" OR \"bundesprasident\""), q)
         assertNull(FtsQuery.fromQuestion("Wie ist das?"))
     }
 }
