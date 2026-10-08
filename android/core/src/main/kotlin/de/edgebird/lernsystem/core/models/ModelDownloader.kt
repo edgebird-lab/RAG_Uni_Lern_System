@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.core.models
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
@@ -19,7 +21,7 @@ class ModelDownloader(
     private val readTimeoutMs: Int = 30_000,
     private val reserveBytes: Long = 200L * 1024 * 1024,
 ) {
-    class Cancelled : Exception("Abgebrochen")
+    class Cancelled : Exception(tr("Abgebrochen", "Cancelled"))
 
     /** Entpackt [zip] erst in einen Nebenordner und ersetzt dann [target]; so bleibt eine ältere Fassung bis zum Erfolg erhalten. Schutz vor Pfaden außerhalb des Ordners. */
     internal fun unzipAtomic(zip: File, target: File, marker: String, maxBytes: Long = 600L * 1024 * 1024) {
@@ -30,21 +32,21 @@ class ModelDownloader(
                 while (true) {
                     val e = zin.nextEntry ?: break
                     val out = File(tmp, e.name)
-                    if (!out.canonicalPath.startsWith(tmp.canonicalPath + File.separator)) throw ModelException("Ungültiges Paket (Pfad außerhalb des Ordners)")
+                    if (!out.canonicalPath.startsWith(tmp.canonicalPath + File.separator)) throw ModelException(tr("Ungültiges Paket (Pfad außerhalb des Ordners)", "Invalid package (path outside the folder)"))
                     if (e.isDirectory) { out.mkdirs(); continue }
                     out.parentFile?.mkdirs()
                     out.outputStream().use { o ->
                         val buf = ByteArray(64 * 1024)
-                        while (true) { val n = zin.read(buf); if (n < 0) break; total += n; if (total > maxBytes) throw ModelException("Paket ist größer als erlaubt"); o.write(buf, 0, n) }
+                        while (true) { val n = zin.read(buf); if (n < 0) break; total += n; if (total > maxBytes) throw ModelException(tr("Paket ist größer als erlaubt", "Package is larger than allowed")); o.write(buf, 0, n) }
                     }
                 }
             }
             File(tmp, MARKER).writeText(marker)
             target.deleteRecursively()
-            if (!tmp.renameTo(target)) throw ModelException("Paket konnte nicht abgelegt werden")
+            if (!tmp.renameTo(target)) throw ModelException(tr("Paket konnte nicht abgelegt werden", "Package could not be stored"))
         } catch (e: Exception) {
             tmp.deleteRecursively()
-            throw if (e is ModelException) e else ModelException("Paket konnte nicht entpackt werden: ${e.message}", e)
+            throw if (e is ModelException) e else ModelException(tr("Paket konnte nicht entpackt werden: ${e.message}", "Package could not be unpacked: ${e.message}"), e)
         }
     }
 
@@ -72,7 +74,7 @@ class ModelDownloader(
                 } finally { c.disconnect() }
             } catch (e: Exception) { last = e }
         }
-        throw ModelException("Manifest nicht erreichbar: ${last?.message}", last)
+        throw ModelException(tr("Manifest nicht erreichbar: ${last?.message}", "Manifest not reachable: ${last?.message}"), last)
     }
 
     /** Speicher, der für [model] noch gebraucht wird (Teilstand wird angerechnet). */
@@ -83,7 +85,7 @@ class ModelDownloader(
         val partial = File(dir, model.fileName + ".partial")
         if (partial.exists() && partial.length() > model.size) partial.delete()
         val need = bytesNeeded(model)
-        if (freeSpace() < need) throw ModelException("Zu wenig freier Speicher: ${need / 1_048_576} MB nötig, ${freeSpace() / 1_048_576} MB frei")
+        if (freeSpace() < need) throw ModelException(tr("Zu wenig freier Speicher: ${need / 1_048_576} MB nötig, ${freeSpace() / 1_048_576} MB frei", "Not enough free storage: ${need / 1_048_576} MB needed, ${freeSpace() / 1_048_576} MB free"))
         try {
             RandomAccessFile(partial, "rw").use { raf ->
                 var start = 0L
@@ -95,19 +97,19 @@ class ModelDownloader(
                     }
                     if (!verifyRange(raf, start, part.size, part.sha256)) {
                         raf.setLength(start)
-                        throw ModelException("Prüfsumme von ${part.name} stimmt nicht, Teil wird beim nächsten Versuch neu geladen")
+                        throw ModelException(tr("Prüfsumme von ${part.name} stimmt nicht, Teil wird beim nächsten Versuch neu geladen", "Checksum of ${part.name} does not match, part will be downloaded again on the next attempt"))
                     }
                     start = end
                 }
                 raf.setLength(model.size)
             }
-            if (sha256(partial) != model.sha256) { partial.delete(); throw ModelException("Prüfsumme von ${model.fileName} stimmt nicht, Datei wurde verworfen") }
+            if (sha256(partial) != model.sha256) { partial.delete(); throw ModelException(tr("Prüfsumme von ${model.fileName} stimmt nicht, Datei wurde verworfen", "Checksum of ${model.fileName} does not match, file was discarded")) }
             if (model.unpack.isNotEmpty()) {
                 unzipAtomic(partial, File(dir, model.unpack), "${model.fileName}|${model.size}|${model.version}")
                 partial.delete()
             } else {
                 val target = File(dir, model.fileName)
-                if (!partial.renameTo(target)) throw ModelException("Modell konnte nicht abgelegt werden")
+                if (!partial.renameTo(target)) throw ModelException(tr("Modell konnte nicht abgelegt werden", "Model could not be stored"))
                 versionFile(model).writeText(model.version)
             }
         } catch (e: Cancelled) { throw e }
@@ -150,7 +152,7 @@ class ModelDownloader(
                 while (written < size) {
                     if (isCancelled()) throw Cancelled()
                     val n = input.read(buf, 0, minOf(buf.size.toLong(), size - written).toInt())
-                    if (n < 0) throw IOException("Verbindung beendet nach ${written} von $size Bytes")
+                    if (n < 0) throw IOException(tr("Verbindung beendet nach ${written} von $size Bytes", "Connection closed after ${written} of $size bytes"))
                     raf.write(buf, 0, n)
                     written += n
                     onProgress(start + written, total)

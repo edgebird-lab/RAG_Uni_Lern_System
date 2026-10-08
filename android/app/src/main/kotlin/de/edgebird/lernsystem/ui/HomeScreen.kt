@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ui
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -70,22 +72,24 @@ fun HomeScreen(onOpen: (Long) -> Unit, onFocus: () -> Unit, onModels: () -> Unit
     var deleting by remember { mutableStateOf<SubjectSummary?>(null) }
     var menu by remember { mutableStateOf(false) }
     var reminder by remember { mutableStateOf(false) }
+    var language by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 110.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Meine Fächer", style = MaterialTheme.typography.headlineLarge)
-                        Text(java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("EEEE, d. MMMM", java.util.Locale.GERMAN)), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(tr("Meine Fächer", "My subjects"), style = MaterialTheme.typography.headlineLarge)
+                        Text(java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern(tr("EEEE, d. MMMM", "EEEE, MMMM d"), de.edgebird.lernsystem.core.i18n.Lang.current.locale)), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     FocusChip(focusVm, onFocus)
                     Box {
-                        IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "Menü") }
+                        IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = tr("Menü", "Menu")) }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                            DropdownMenuItem(text = { Text("Lern-Erinnerung") }, onClick = { menu = false; reminder = true })
-                            DropdownMenuItem(text = { Text("KI-Modelle") }, onClick = { menu = false; onModels() })
-                            DropdownMenuItem(text = { Text("Datenschutz") }, onClick = { menu = false; onPrivacy() })
+                            DropdownMenuItem(text = { Text("Sprache / Language") }, onClick = { menu = false; language = true })
+                            DropdownMenuItem(text = { Text(tr("Lern-Erinnerung", "Study reminder")) }, onClick = { menu = false; reminder = true })
+                            DropdownMenuItem(text = { Text(tr("KI-Modelle", "AI models")) }, onClick = { menu = false; onModels() })
+                            DropdownMenuItem(text = { Text(tr("Datenschutz", "Privacy")) }, onClick = { menu = false; onPrivacy() })
                         }
                     }
                 }
@@ -96,25 +100,26 @@ fun HomeScreen(onOpen: (Long) -> Unit, onFocus: () -> Unit, onModels: () -> Unit
             items(list.orEmpty(), key = { it.subject.id }) { s -> SubjectCard(s, onClick = { onOpen(s.subject.id) }, onLongClick = { editing = s }) }
         }
         ExtendedFloatingActionButton(
-            onClick = { creating = true }, icon = { Icon(Icons.Default.Add, null) }, text = { Text("Neues Fach") },
+            onClick = { creating = true }, icon = { Icon(Icons.Default.Add, null) }, text = { Text(tr("Neues Fach", "New subject")) },
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp), containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary,
         )
     }
 
+    if (language) LanguageDialog(onDismiss = { language = false })
     if (reminder) ReminderDialog(onDismiss = { reminder = false })
-    if (creating) SubjectDialog(title = "Neues Fach", initialName = "", initialColor = (subjects?.size ?: 0) % SubjectColors.size, confirmLabel = "Anlegen",
+    if (creating) SubjectDialog(title = tr("Neues Fach", "New subject"), initialName = "", initialColor = (subjects?.size ?: 0) % SubjectColors.size, confirmLabel = tr("Anlegen", "Create"),
         onConfirm = { n, c -> vm.create(n, c); creating = false }, onDismiss = { creating = false })
     editing?.let { s ->
-        SubjectDialog(title = "Fach bearbeiten", initialName = s.subject.name, initialColor = s.subject.colorIndex, confirmLabel = "Speichern",
+        SubjectDialog(title = tr("Fach bearbeiten", "Edit subject"), initialName = s.subject.name, initialColor = s.subject.colorIndex, confirmLabel = tr("Speichern", "Save"),
             onConfirm = { n, c -> vm.update(s.subject.id, n, c); editing = null }, onDismiss = { editing = null },
             onDelete = { deleting = s; editing = null })
     }
     deleting?.let { s ->
         AlertDialog(
-            onDismissRequest = { deleting = null }, title = { Text("„${s.subject.name}“ löschen?") },
-            text = { Text("Das Fach mit seinen ${s.documentCount} Quellen, allen Abschnitten, Zusammenfassungen und ${s.cardCount} Karten wird unwiderruflich gelöscht.") },
-            confirmButton = { TextButton(onClick = { vm.delete(s.subject.id); deleting = null }) { Text("Endgültig löschen") } },
-            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Abbrechen") } },
+            onDismissRequest = { deleting = null }, title = { Text(tr("„${s.subject.name}“ löschen?", "Delete “${s.subject.name}”?")) },
+            text = { Text(tr("Das Fach mit seinen ${s.documentCount} Quellen, allen Abschnitten, Zusammenfassungen und ${s.cardCount} Karten wird unwiderruflich gelöscht.", "The subject with its ${s.documentCount} sources, all sections, summaries and ${s.cardCount} cards will be deleted irrevocably.")) },
+            confirmButton = { TextButton(onClick = { vm.delete(s.subject.id); deleting = null }) { Text(tr("Endgültig löschen", "Delete permanently")) } },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text(tr("Abbrechen", "Cancel")) } },
         )
     }
 }
@@ -128,11 +133,11 @@ internal fun FocusChip(vm: PomodoroViewModel, onClick: () -> Unit) {
     Surface(
         onClick = onClick, shape = RoundedCornerShape(50),
         color = if (active) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-        modifier = Modifier.semantics { contentDescription = if (active) "Fokus-Timer, noch ${secs / 60} Minuten" else "Fokus-Timer öffnen" },
+        modifier = Modifier.semantics { contentDescription = if (active) tr("Fokus-Timer, noch ${secs / 60} Minuten", "Focus timer, ${secs / 60} minutes left") else tr("Fokus-Timer öffnen", "Open focus timer") },
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Icon(Icons.Default.Timer, null, Modifier.size(18.dp))
-            Text(if (active) "%02d:%02d".format(secs / 60, secs % 60) else "Fokus", style = MaterialTheme.typography.labelLarge)
+            Text(if (active) "%02d:%02d".format(secs / 60, secs % 60) else tr("Fokus", "Focus"), style = MaterialTheme.typography.labelLarge)
         }
     }
 }
@@ -141,9 +146,9 @@ internal fun FocusChip(vm: PomodoroViewModel, onClick: () -> Unit) {
 private fun DayStripCard(s: DayStrip) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.primaryContainer) {
         Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-            StripStat("Fällig", s.due.toString())
-            StripStat("Fokus", "${s.focusMinutes}/${s.focusGoal} Min")
-            StripStat("Serie", "${s.streak} Tg.")
+            StripStat(tr("Fällig", "Due"), s.due.toString())
+            StripStat(tr("Fokus", "Focus"), tr("${s.focusMinutes}/${s.focusGoal} Min", "${s.focusMinutes}/${s.focusGoal} min"))
+            StripStat(tr("Serie", "Streak"), tr("${s.streak} Tg.", "${s.streak} d"))
         }
     }
 }
@@ -159,8 +164,8 @@ private fun StripStat(label: String, value: String) {
 @Composable
 private fun EmptyHome() {
     Column(Modifier.fillMaxWidth().padding(vertical = 40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Noch kein Fach", style = MaterialTheme.typography.headlineSmall)
-        Text("Lege ein Fach an, füge deine Unterlagen als Quellen hinzu und stelle dann Fragen, lerne mit Karten oder lass dich abfragen.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(tr("Noch kein Fach", "No subject yet"), style = MaterialTheme.typography.headlineSmall)
+        Text(tr("Lege ein Fach an, füge deine Unterlagen als Quellen hinzu und stelle dann Fragen, lerne mit Karten oder lass dich abfragen.", "Create a subject, add your materials as sources, then ask questions, study with cards or have yourself quizzed."), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -172,17 +177,17 @@ private fun SubjectCard(s: SubjectSummary, onClick: () -> Unit, onLongClick: () 
     Surface(
         shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, tonalElevation = 1.dp, shadowElevation = 1.dp,
         modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .semantics { contentDescription = "${s.subject.name}, ${s.documentCount} Quellen, ${s.dueCount} fällige Karten. Lange drücken zum Bearbeiten." },
+            .semantics { contentDescription = tr("${s.subject.name}, ${s.documentCount} Quellen, ${s.dueCount} fällige Karten. Lange drücken zum Bearbeiten.", "${s.subject.name}, ${s.documentCount} sources, ${s.dueCount} cards due. Long-press to edit.") },
     ) {
         Row(Modifier.height(IntrinsicSize.Min)) {
             Box(Modifier.width(12.dp).fillMaxHeight().background(color))
             Column(Modifier.padding(16.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(s.subject.name, style = MaterialTheme.typography.titleLarge)
-                Text("${s.documentCount} ${if (s.documentCount == 1) "Quelle" else "Quellen"} · ${s.cardCount} Karten", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(displaySubjectName(s.subject.name), style = MaterialTheme.typography.titleLarge)
+                Text("${s.documentCount} ${if (s.documentCount == 1) tr("Quelle", "source") else tr("Quellen", "sources")} · ${s.cardCount} ${tr("Karten", "cards")}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (s.dueCount > 0) {
                 Box(Modifier.padding(16.dp).align(Alignment.CenterVertically).clip(RoundedCornerShape(50)).background(color.copy(alpha = 0.18f)).padding(horizontal = 12.dp, vertical = 6.dp)) {
-                    Text("${s.dueCount} fällig", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+                    Text(tr("${s.dueCount} fällig", "${s.dueCount} due"), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
                 }
             }
         }
@@ -197,23 +202,23 @@ private fun SubjectDialog(title: String, initialName: String, initialColor: Int,
         onDismissRequest = onDismiss, title = { Text(title) },
         text = {
             Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(value = name, onValueChange = { name = it.take(40) }, label = { Text("Name des Fachs") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Text("Farbe", style = MaterialTheme.typography.labelLarge)
+                OutlinedTextField(value = name, onValueChange = { name = it.take(40) }, label = { Text(tr("Name des Fachs", "Name of the subject")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text(tr("Farbe", "Colour"), style = MaterialTheme.typography.labelLarge)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SubjectColors.forEachIndexed { i, c ->
                         Box(
                             Modifier.size(36.dp).clip(CircleShape).background(c).clickable { color = i }
                                 .then(if (i == color) Modifier.background(Color.Black.copy(alpha = 0.0f)) else Modifier)
-                                .semantics { contentDescription = SubjectColorNames[i] + if (i == color) ", gewählt" else "" },
+                                .semantics { contentDescription = SubjectColorNames[i] + if (i == color) tr(", gewählt", ", selected") else "" },
                             contentAlignment = Alignment.Center,
                         ) { if (i == color) Text("✓", color = Color.White, style = MaterialTheme.typography.titleMedium) }
                     }
                 }
-                if (onDelete != null) TextButton(onClick = onDelete) { Text("Fach löschen …", color = MaterialTheme.colorScheme.error) }
+                if (onDelete != null) TextButton(onClick = onDelete) { Text(tr("Fach löschen …", "Delete subject …"), color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = { TextButton(onClick = { onConfirm(name, color) }, enabled = name.isNotBlank()) { Text(confirmLabel) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Abbrechen", "Cancel")) } },
     )
 }
 
@@ -225,12 +230,12 @@ private fun ReminderDialog(onDismiss: () -> Unit) {
     var on by remember { mutableStateOf(prefs.getBoolean(de.edgebird.lernsystem.work.ReminderWork.PREF_ON, false)) }
     val picker = androidx.compose.material3.rememberTimePickerState(prefs.getInt(de.edgebird.lernsystem.work.ReminderWork.PREF_HOUR, 18), prefs.getInt(de.edgebird.lernsystem.work.ReminderWork.PREF_MINUTE, 0), true)
     AlertDialog(
-        onDismissRequest = onDismiss, title = { Text("Lern-Erinnerung") },
+        onDismissRequest = onDismiss, title = { Text(tr("Lern-Erinnerung", "Study reminder")) },
         text = {
             Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Täglich zur gewählten Zeit, wenn Karten fällig sind und dein Tagesziel noch nicht erreicht ist. Android darf die Zeit um einige Minuten verschieben.", style = MaterialTheme.typography.bodySmall)
+                Text(tr("Täglich zur gewählten Zeit, wenn Karten fällig sind und dein Tagesziel noch nicht erreicht ist. Android darf die Zeit um einige Minuten verschieben.", "Daily at the chosen time, when cards are due and your daily goal has not been reached yet. Android may shift the time by a few minutes."), style = MaterialTheme.typography.bodySmall)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Erinnerung an", Modifier.weight(1f))
+                    Text(tr("Erinnerung an", "Remind me"), Modifier.weight(1f))
                     androidx.compose.material3.Switch(checked = on, onCheckedChange = { on = it })
                 }
                 if (on) androidx.compose.material3.TimePicker(state = picker)
@@ -241,8 +246,8 @@ private fun ReminderDialog(onDismiss: () -> Unit) {
                 prefs.edit().putBoolean(de.edgebird.lernsystem.work.ReminderWork.PREF_ON, on).putInt(de.edgebird.lernsystem.work.ReminderWork.PREF_HOUR, picker.hour).putInt(de.edgebird.lernsystem.work.ReminderWork.PREF_MINUTE, picker.minute).apply()
                 de.edgebird.lernsystem.work.ReminderWork.apply(context, on, picker.hour, picker.minute)
                 onDismiss()
-            }) { Text("Speichern") }
+            }) { Text(tr("Speichern", "Save")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Abbrechen", "Cancel")) } },
     )
 }

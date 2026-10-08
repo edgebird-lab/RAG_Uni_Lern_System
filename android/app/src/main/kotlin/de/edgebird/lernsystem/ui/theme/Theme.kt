@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ui.theme
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -25,7 +27,7 @@ val SubjectColors = listOf(
     Color(0xFF5A5F6B), // Graphit
 )
 
-val SubjectColorNames = listOf("Terrakotta", "Salbei", "Indigo", "Senf", "Pflaume", "Petrol", "Rosenholz", "Graphit")
+val SubjectColorNames = listOf(tr("Terrakotta", "Terracotta"), tr("Salbei", "Sage"), tr("Indigo", "Indigo"), tr("Senf", "Mustard"), tr("Pflaume", "Plum"), tr("Petrol", "Petrol"), tr("Rosenholz", "Rosewood"), tr("Graphit", "Graphite"))
 
 fun subjectColor(index: Int): Color = SubjectColors[index.mod(SubjectColors.size)]
 

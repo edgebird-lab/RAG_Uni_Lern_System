@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ingest
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import de.edgebird.lernsystem.core.ingest.ChunkDedup
 import de.edgebird.lernsystem.core.ingest.Chunker
 import de.edgebird.lernsystem.core.ingest.ChunkerConfig
@@ -37,7 +39,7 @@ class ImportPipeline(
 ) {
     suspend fun import(source: DocumentSource, onStage: (ImportStage) -> Unit = {}, subjectId: Long? = null): ImportResult = withContext(Dispatchers.IO) {
         val loader = loaders.firstOrNull { source.extension in it.extensions }
-            ?: return@withContext ImportResult.Failed("Dateityp „.${source.extension}“ wird nicht unterstützt")
+            ?: return@withContext ImportResult.Failed(tr("Dateityp „.${source.extension}“ wird nicht unterstützt", "File type \".${source.extension}\" is not supported"))
 
         onStage(ImportStage.LOADING)
         val loaded = try {
@@ -47,7 +49,7 @@ class ImportPipeline(
         }
         if (loaded.text.isBlank()) {
             return@withContext ImportResult.Failed(
-                if (loaded.emptyPages > 0) "Kein Text erkannt. Bei Fotos und Scans: gerade, scharf und gut beleuchtet aufnehmen" else "Die Datei enthält keinen Text",
+                if (loaded.emptyPages > 0) tr("Kein Text erkannt. Bei Fotos und Scans: gerade, scharf und gut beleuchtet aufnehmen", "No text recognised. For photos and scans: shoot straight, sharp and well lit") else tr("Die Datei enthält keinen Text", "The file contains no text"),
             )
         }
 
@@ -62,7 +64,7 @@ class ImportPipeline(
 
         onStage(ImportStage.CHUNKING)
         val chunks = ChunkDedup.distinct(Chunker.chunk(loaded, chunkerConfig))
-        if (chunks.isEmpty()) return@withContext ImportResult.Failed("Die Datei enthält keinen verwertbaren Text")
+        if (chunks.isEmpty()) return@withContext ImportResult.Failed(tr("Die Datei enthält keinen verwertbaren Text", "The file contains no usable text"))
 
         onStage(ImportStage.SAVING)
         val previous = decision.existing?.let { db.generatedSummaries().forDocument(it.id.toString()) }.orEmpty()

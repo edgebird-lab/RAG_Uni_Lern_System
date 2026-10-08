@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.work
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -38,12 +40,12 @@ class StudyWidgetProvider : AppWidgetProvider() {
             for (id in ids) {
                 val v = RemoteViews(context.packageName, R.layout.study_widget)
                 v.setTextViewText(R.id.widget_count, when {
-                    s == null -> "Lernsystem"
-                    s.due > 0 -> "${s.due} fällig"
-                    s.newToday > 0 -> "${s.newToday} neue Karten"
-                    else -> "Alles geschafft"
+                    s == null -> tr("Lernsystem", "Lernsystem")
+                    s.due > 0 -> tr("${s.due} fällig", "${s.due} due")
+                    s.newToday > 0 -> tr("${s.newToday} neue Karten", "${s.newToday} new cards")
+                    else -> tr("Alles geschafft", "All done")
                 })
-                v.setTextViewText(R.id.widget_label, if (s == null) "Tippen zum Öffnen" else if (s.streak > 0) "Serie: ${s.streak} Tage" else "Heute lernen")
+                v.setTextViewText(R.id.widget_label, if (s == null) tr("Tippen zum Öffnen", "Tap to open") else if (s.streak > 0) tr("Serie: ${s.streak} Tage", "Streak: ${s.streak} days") else tr("Heute lernen", "Study today"))
                 v.setOnClickPendingIntent(R.id.widget_root, open)
                 manager.updateAppWidget(id, v)
             }

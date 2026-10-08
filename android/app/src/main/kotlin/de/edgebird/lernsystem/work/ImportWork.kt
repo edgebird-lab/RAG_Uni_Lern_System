@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.work
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
@@ -46,9 +48,9 @@ object ImportWork {
             .enqueue()
     }
 
-    fun foregroundInfo(context: Context, text: String, done: Int, total: Int, title: String = "Dokumente werden vorbereitet", id: Int = 1): ForegroundInfo {
+    fun foregroundInfo(context: Context, text: String, done: Int, total: Int, title: String = tr("Dokumente werden vorbereitet", "Preparing documents"), id: Int = 1): ForegroundInfo {
         val nm = context.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Indexierung", NotificationManager.IMPORTANCE_LOW))
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, tr("Indexierung", "Indexing"), NotificationManager.IMPORTANCE_LOW))
         val n = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle(title)
@@ -79,11 +81,11 @@ class ImportWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
                     // Geändertes Dokument: vorhandene Zusammenfassungen werden für die neue Fassung neu berechnet
                     val subject = graph.db.documents().byId(result.documentId)?.subjectId
                     if (subject != null) result.previousSummarySpecs.forEach { SummaryWork.enqueue(applicationContext, SummaryWork.Job(subject, de.edgebird.lernsystem.data.SummaryScope.DOC, listOf(result.documentId), "", de.edgebird.lernsystem.core.summary.SummarySpec.fromJson(it))) }
-                    "${names[i]}: ${result.chunks} Abschnitte" + (if (result.emptyPages > 0) " (${result.emptyPages} Seiten ohne Text)" else "") +
-                        (if (result.previousSummarySpecs.isNotEmpty()) ", Zusammenfassung wird neu erstellt" else "")
+                    tr("${names[i]}: ${result.chunks} Abschnitte", "${names[i]}: ${result.chunks} sections") + (if (result.emptyPages > 0) tr(" (${result.emptyPages} Seiten ohne Text)", " (${result.emptyPages} pages without text)") else "") +
+                        (if (result.previousSummarySpecs.isNotEmpty()) tr(", Zusammenfassung wird neu erstellt", ", summary will be recreated") else "")
                 }
-                is ImportResult.SkippedUnchanged -> "${names[i]}: bereits vorhanden"
-                is ImportResult.SkippedDuplicate -> "${names[i]}: Duplikat eines vorhandenen Dokuments"
+                is ImportResult.SkippedUnchanged -> tr("${names[i]}: bereits vorhanden", "${names[i]}: already present")
+                is ImportResult.SkippedDuplicate -> tr("${names[i]}: Duplikat eines vorhandenen Dokuments", "${names[i]}: duplicate of an existing document")
                 is ImportResult.Failed -> "${names[i]}: ${result.reason}"
             }
         }
@@ -104,8 +106,8 @@ class EmbedWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
     override suspend fun doWork(): Result {
         val graph = (applicationContext as LernsystemApp).graph
         if (graph.db.chunks().countWithoutEmbedding(graph.embeddingModelId) == 0) return Result.success()
-        if (!graph.embeddingModelFile.exists()) return Result.failure(workDataOf(ERROR to "Embedding-Modell fehlt"))
-        setForeground(ImportWork.foregroundInfo(applicationContext, "Starte …", 0, 0))
+        if (!graph.embeddingModelFile.exists()) return Result.failure(workDataOf(ERROR to tr("Embedding-Modell fehlt", "Embedding model is missing")))
+        setForeground(ImportWork.foregroundInfo(applicationContext, tr("Starte …", "Starting …"), 0, 0))
         val embedder = graph.newEmbedder()
         return try {
             val total = graph.db.chunks().countWithoutEmbedding(graph.embeddingModelId)
@@ -115,7 +117,7 @@ class EmbedWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
                     // Bei Hitze oder leerem Akku pausieren, bis sich der Zustand bessert (Arbeit bleibt gespeichert)
                     while (true) {
                         val reason = DeviceState.pauseReason(applicationContext) ?: break
-                        val text = if (reason == PauseReason.HOT) "Pausiert: Gerät ist zu warm" else "Pausiert: Akku ist fast leer"
+                        val text = if (reason == PauseReason.HOT) tr("Pausiert: Gerät ist zu warm", "Paused: device is too warm") else tr("Pausiert: Akku ist fast leer", "Paused: battery almost empty")
                         setForeground(ImportWork.foregroundInfo(applicationContext, text, done, total))
                         delay(15_000)
                     }
@@ -123,7 +125,7 @@ class EmbedWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
                 onProgress = { d, t ->
                     done = d
                     setProgressAsync(workDataOf(DONE to d, TOTAL to t))
-                    setForegroundAsync(ImportWork.foregroundInfo(applicationContext, "$d von $t Abschnitten", d, t))
+                    setForegroundAsync(ImportWork.foregroundInfo(applicationContext, tr("$d von $t Abschnitten", "$d of $t sections"), d, t))
                 },
             )
             Result.success()

@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.work
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
@@ -35,9 +37,9 @@ object SummaryWork {
 
     /** Kurzer Name des Auftrags für die Anzeige. */
     fun label(j: Job, docTitle: String?): String = when (j.scope) {
-        SummaryScope.DOC -> docTitle ?: "Quelle"
-        SummaryScope.SUBJECT -> "Ganzes Fach"
-        SummaryScope.TOPIC -> "Thema: ${j.topic.trim()}"
+        SummaryScope.DOC -> docTitle ?: tr("Quelle", "Source")
+        SummaryScope.SUBJECT -> tr("Ganzes Fach", "Whole subject")
+        SummaryScope.TOPIC -> tr("Thema: ${j.topic.trim()}", "Topic: ${j.topic.trim()}")
     } + " · " + j.spec.format.label
 
     fun enqueue(context: Context, job: Job, label: String = "") {
@@ -60,12 +62,12 @@ class SummaryWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
         val subject = inputData.getLong(SummaryWork.SUBJECT, -1)
         val docs = inputData.getString(SummaryWork.DOCS).orEmpty().split(',').mapNotNull { it.toLongOrNull() }
         if (subject < 0 || docs.isEmpty()) return Result.failure()
-        if (!graph.llmModelFile.exists()) return Result.failure(workDataOf(ERROR to "Das Sprachmodell fehlt"))
+        if (!graph.llmModelFile.exists()) return Result.failure(workDataOf(ERROR to tr("Das Sprachmodell fehlt", "The language model is missing")))
         val spec = SummarySpec.fromJson(inputData.getString(SummaryWork.SPEC))
         val label = inputData.getString(SummaryWork.LABEL).orEmpty()
 
-        val title = "Zusammenfassung wird erstellt"
-        setForeground(ImportWork.foregroundInfo(applicationContext, label.ifEmpty { "Starte …" }, 0, 0, title, NOTIFICATION_ID))
+        val title = tr("Zusammenfassung wird erstellt", "Creating summary")
+        setForeground(ImportWork.foregroundInfo(applicationContext, label.ifEmpty { tr("Starte …", "Starting …") }, 0, 0, title, NOTIFICATION_ID))
         val started = System.currentTimeMillis()
         return try {
             val req = SummaryRequest(subject, scope, docs, spec, inputData.getString(SummaryWork.TOPIC).orEmpty(), inputData.getLong(SummaryWork.REPLACE, -1).takeIf { it >= 0 })
@@ -74,27 +76,27 @@ class SummaryWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
                 beforeSection = {
                     while (true) {
                         val reason = DeviceState.pauseReason(applicationContext) ?: break
-                        setForeground(ImportWork.foregroundInfo(applicationContext, if (reason == PauseReason.HOT) "Pausiert: Gerät ist zu warm" else "Pausiert: Akku ist fast leer", 0, 0, title, NOTIFICATION_ID))
+                        setForeground(ImportWork.foregroundInfo(applicationContext, if (reason == PauseReason.HOT) tr("Pausiert: Gerät ist zu warm", "Paused: device is too warm") else tr("Pausiert: Akku ist fast leer", "Paused: battery almost empty"), 0, 0, title, NOTIFICATION_ID))
                         delay(15_000)
                     }
                 },
                 onProgress = { done, total ->
                     setProgressAsync(workDataOf(DONE to done, TOTAL to total))
-                    setForegroundAsync(ImportWork.foregroundInfo(applicationContext, "${label.ifEmpty { "Schritt" }}: $done von $total", done, total, title, NOTIFICATION_ID))
+                    setForegroundAsync(ImportWork.foregroundInfo(applicationContext, tr("${label.ifEmpty { "Schritt" }}: $done von $total", "${label.ifEmpty { "Step" }}: $done of $total"), done, total, title, NOTIFICATION_ID))
                 },
             )
             val msg = buildString {
-                append("${out.used} Abschnitte zusammengefasst")
-                if (out.skipped > 0) append(", ${out.skipped} übersprungen")
-                if (out.failed > 0) append(", ${out.failed} fehlgeschlagen (erneut versuchen)")
+                append(tr("${out.used} Abschnitte zusammengefasst", "${out.used} sections summarised"))
+                if (out.skipped > 0) append(tr(", ${out.skipped} übersprungen", ", ${out.skipped} skipped"))
+                if (out.failed > 0) append(tr(", ${out.failed} fehlgeschlagen (erneut versuchen)", ", ${out.failed} failed (try again)"))
             }
             android.util.Log.i("SUMMARY", "$label: $msg; Warnungen=${out.warnings}; ${(System.currentTimeMillis() - started) / 1000} s")
             Result.success(workDataOf(MESSAGE to msg, RESULT_ID to out.id))
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Throwable) {
-            android.util.Log.w("SUMMARY", "$label fehlgeschlagen", e)
-            Result.failure(workDataOf(ERROR to (if (e is OutOfMemoryError) "Zu wenig Arbeitsspeicher. Schließe andere Apps und versuche es erneut." else e.message ?: "Die Zusammenfassung ist fehlgeschlagen")))
+            android.util.Log.w("SUMMARY", tr("$label fehlgeschlagen", "$label failed"), e)
+            Result.failure(workDataOf(ERROR to (if (e is OutOfMemoryError) tr("Zu wenig Arbeitsspeicher. Schließe andere Apps und versuche es erneut.", "Not enough memory. Close other apps and try again.") else e.message ?: tr("Die Zusammenfassung ist fehlgeschlagen", "The summary failed"))))
         }
     }
 

@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ui
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -83,45 +85,45 @@ fun ChatScreen(subjectId: Long, onModels: () -> Unit = {}, onOpenSources: () -> 
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             androidx.compose.material3.AssistChip(
                 onClick = { picking = true },
-                label = { Text(if (docs.isEmpty()) "Keine Quellen" else "${selected.size} von ${docs.size} Quellen") },
+                label = { Text(if (docs.isEmpty()) tr("Keine Quellen", "No sources") else tr("${selected.size} von ${docs.size} Quellen", "${selected.size} of ${docs.size} sources")) },
                 modifier = Modifier.weight(1f, fill = false),
             )
             androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
             Box {
-                TextButton(onClick = { chatMenu = true }) { Text(if (chats.size > 1 || (chats.isNotEmpty() && messages.isEmpty())) "Chats (${chats.size}) ▾" else "Chats ▾") }
+                TextButton(onClick = { chatMenu = true }) { Text(if (chats.size > 1 || (chats.isNotEmpty() && messages.isEmpty())) tr("Chats (${chats.size}) ▾", "Chats (${chats.size}) ▾") else tr("Chats ▾", "Chats ▾")) }
                 androidx.compose.material3.DropdownMenu(expanded = chatMenu, onDismissRequest = { chatMenu = false }) {
-                    androidx.compose.material3.DropdownMenuItem(text = { Text("Neuer Chat") }, onClick = { chatMenu = false; vm.newChat() })
+                    androidx.compose.material3.DropdownMenuItem(text = { Text(tr("Neuer Chat", "New chat")) }, onClick = { chatMenu = false; vm.newChat() })
                     chats.forEach { c ->
                         androidx.compose.material3.DropdownMenuItem(
                             text = { Text((if (c.id == currentChat) "✓ " else "") + c.title, maxLines = 1) },
                             onClick = { chatMenu = false; vm.openSession(c.id) },
-                            trailingIcon = { TextButton(onClick = { chatMenu = false; vm.deleteSession(c.id) }) { Text("Löschen") } },
+                            trailingIcon = { TextButton(onClick = { chatMenu = false; vm.deleteSession(c.id) }) { Text(tr("Löschen", "Delete")) } },
                         )
                     }
                 }
             }
         }
         when (modelState) {
-            ModelState.MISSING -> Banner("Das Sprachmodell fehlt.", error = true, actionLabel = "Modelle laden", onAction = onModels)
-            ModelState.LOADING -> Banner("Sprachmodell wird geladen (ca. 25 Sekunden).")
-            ModelState.OPTIMIZING -> Banner("Erster Start: Die App optimiert das Sprachmodell für dein Gerät. Das dauert einmalig 5 bis 10 Minuten. Bitte Display an und die App geöffnet lassen.")
+            ModelState.MISSING -> Banner(tr("Das Sprachmodell fehlt.", "The language model is missing."), error = true, actionLabel = tr("Modelle laden", "Download models"), onAction = onModels)
+            ModelState.LOADING -> Banner(tr("Sprachmodell wird geladen (ca. 25 Sekunden).", "Loading language model (about 25 seconds)."))
+            ModelState.OPTIMIZING -> Banner(tr("Erster Start: Die App optimiert das Sprachmodell für dein Gerät. Das dauert einmalig 5 bis 10 Minuten. Bitte Display an und die App geöffnet lassen.", "First start: the app optimises the language model for your device. This takes 5 to 10 minutes once. Please keep the display on and the app open."))
             ModelState.ERROR -> Banner(
-                "Das Sprachmodell konnte nicht geladen werden" + (loadError?.let { ": $it" } ?: "") + ". Hilft ein erneuter Versuch nicht, ist die Datei evtl. beschädigt (unter „KI-Modelle“ neu laden).",
-                error = true, actionLabel = "Erneut versuchen", onAction = vm::retryLoad,
+                tr("Das Sprachmodell konnte nicht geladen werden", "The language model could not be loaded") + (loadError?.let { ": $it" } ?: "") + tr(". Hilft ein erneuter Versuch nicht, ist die Datei evtl. beschädigt (unter „KI-Modelle“ neu laden).", ". If trying again does not help, the file may be damaged (re-download under “AI models”)."),
+                error = true, actionLabel = tr("Erneut versuchen", "Try again"), onAction = vm::retryLoad,
             )
             ModelState.READY -> Unit
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (messages.isEmpty()) {
                 Text(
-                    if (docs.isEmpty()) "Dieses Fach hat noch keine Quellen. Füge unter „Quellen“ ein PDF oder eine Textdatei hinzu, dann kannst du hier Fragen dazu stellen."
-                    else if (selected.isEmpty()) "Keine Quelle angehakt. Wähle oben die Quellen, auf die sich die Antworten stützen sollen."
-                    else "Stell eine Frage zu deinen Quellen. Die Antwort nennt die Quellen; steht nichts dazu im Material, sagt die App das.",
+                    if (docs.isEmpty()) tr("Dieses Fach hat noch keine Quellen. Füge unter „Quellen“ ein PDF oder eine Textdatei hinzu, dann kannst du hier Fragen dazu stellen.", "This subject has no sources yet. Add a PDF or text file under “Sources”, then you can ask questions about it here.")
+                    else if (selected.isEmpty()) tr("Keine Quelle angehakt. Wähle oben die Quellen, auf die sich die Antworten stützen sollen.", "No source checked. Choose above the sources the answers should be based on.")
+                    else tr("Stell eine Frage zu deinen Quellen. Die Antwort nennt die Quellen; steht nichts dazu im Material, sagt die App das.", "Ask a question about your sources. The answer names the sources; if nothing about it is in the material, the app says so."),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 if (docs.isNotEmpty() && selected.isNotEmpty() && modelState == ModelState.READY) {
                     androidx.compose.foundation.layout.FlowRow(Modifier.align(Alignment.BottomStart), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("Worum geht es in diesen Quellen?", "Was sind die wichtigsten Begriffe?", "Welche Definitionen kommen vor?").forEach { q ->
+                        listOf(tr("Worum geht es in diesen Quellen?", "What are these sources about?"), tr("Was sind die wichtigsten Begriffe?", "What are the most important terms?"), tr("Welche Definitionen kommen vor?", "Which definitions appear?")).forEach { q ->
                             androidx.compose.material3.SuggestionChip(onClick = { vm.send(q) }, label = { Text(q) })
                         }
                     }
@@ -129,7 +131,7 @@ fun ChatScreen(subjectId: Long, onModels: () -> Unit = {}, onOpenSources: () -> 
             }
             LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
                 items(messages, key = { it.id }) { m -> MessageBubble(m, onSource = { openSource = it }, onRetry = { vm.retryWithMoreSources(m.id) }, canRetry = !streaming, onSpeak = { if (speaker.speaking) speaker.stop() else speaker.speak(m.text) }, speaking = speaker.speaking,
-                    onNote = { if (vm.saveAsNote(m.id)) android.widget.Toast.makeText(context, "Als Notiz in den Quellen gespeichert", android.widget.Toast.LENGTH_SHORT).show() }) }
+                    onNote = { if (vm.saveAsNote(m.id)) android.widget.Toast.makeText(context, tr("Als Notiz in den Quellen gespeichert", "Saved as a note in the sources"), android.widget.Toast.LENGTH_SHORT).show() }) }
             }
         }
         VoiceMissingHint(speaker)
@@ -139,7 +141,7 @@ fun ChatScreen(subjectId: Long, onModels: () -> Unit = {}, onOpenSources: () -> 
                 value = input,
                 onValueChange = { input = it },
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("Frage stellen …") },
+                placeholder = { Text(tr("Frage stellen …", "Ask a question …")) },
                 maxLines = 4,
                 enabled = modelState == ModelState.READY,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -151,13 +153,13 @@ fun ChatScreen(subjectId: Long, onModels: () -> Unit = {}, onOpenSources: () -> 
                     colors = if (speech.listening) androidx.compose.material3.IconButtonDefaults.filledTonalIconButtonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError) else androidx.compose.material3.IconButtonDefaults.filledTonalIconButtonColors(),
                     modifier = Modifier.size(56.dp),
                 ) {
-                    androidx.compose.material3.Icon(if (speech.listening) androidx.compose.material.icons.Icons.Default.MicOff else androidx.compose.material.icons.Icons.Default.Mic, contentDescription = if (speech.listening) "Aufnahme beenden" else "Frage einsprechen")
+                    androidx.compose.material3.Icon(if (speech.listening) androidx.compose.material.icons.Icons.Default.MicOff else androidx.compose.material.icons.Icons.Default.Mic, contentDescription = if (speech.listening) tr("Aufnahme beenden", "Stop recording") else tr("Frage einsprechen", "Speak your question"))
                 }
             }
             if (streaming) {
-                Button(onClick = vm::stop) { Text("Stopp") }
+                Button(onClick = vm::stop) { Text(tr("Stopp", "Stop")) }
             } else {
-                Button(onClick = { vm.send(input); input = ""; keyboard?.hide(); focus.clearFocus() }, enabled = input.isNotBlank() && modelState == ModelState.READY) { Text("Senden") }
+                Button(onClick = { vm.send(input); input = ""; keyboard?.hide(); focus.clearFocus() }, enabled = input.isNotBlank() && modelState == ModelState.READY) { Text(tr("Senden", "Send")) }
             }
         }
     }
@@ -167,7 +169,7 @@ fun ChatScreen(subjectId: Long, onModels: () -> Unit = {}, onOpenSources: () -> 
     openSource?.let { s ->
         AlertDialog(
             onDismissRequest = { openSource = null },
-            confirmButton = { TextButton(onClick = { openSource = null }) { Text("Schließen") } },
+            confirmButton = { TextButton(onClick = { openSource = null }) { Text(tr("Schließen", "Close")) } },
             title = { Text("[${s.number}] ${s.documentTitle}, ${s.location}") },
             text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(s.text, style = MaterialTheme.typography.bodyMedium) } },
         )
@@ -195,19 +197,19 @@ private fun MessageBubble(m: ChatMessage, onSource: (Source) -> Unit, onRetry: (
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             when {
                 m.notFound -> {
-                    Text("Dazu steht nichts in deinen Dokumenten.", style = MaterialTheme.typography.bodyMedium)
-                    if (!m.retried && canRetry) TextButton(onClick = onRetry) { Text("Mit mehr Quellen erneut versuchen") }
+                    Text(tr("Dazu steht nichts in deinen Dokumenten.", "There is nothing about this in your documents."), style = MaterialTheme.typography.bodyMedium)
+                    if (!m.retried && canRetry) TextButton(onClick = onRetry) { Text(tr("Mit mehr Quellen erneut versuchen", "Try again with more sources")) }
                 }
-                m.text.isEmpty() && m.streaming -> Text("Suche und formuliere …", style = MaterialTheme.typography.bodySmall)
+                m.text.isEmpty() && m.streaming -> Text(tr("Suche und formuliere …", "Searching and writing …"), style = MaterialTheme.typography.bodySmall)
                 else -> Text(de.edgebird.lernsystem.core.cards.LatexLite.toPlain(m.text), style = MaterialTheme.typography.bodyMedium, color = if (m.failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
             }
             if (!m.fromUser && !m.streaming && !m.failed && !m.notFound && m.text.isNotBlank()) Row {
-                TextButton(onClick = onSpeak) { Text(if (speaking) "Stopp" else "Vorlesen") }
-                TextButton(onClick = onNote) { Text("Als Notiz speichern") }
+                TextButton(onClick = onSpeak) { Text(if (speaking) tr("Stopp", "Stop") else tr("Vorlesen", "Read aloud")) }
+                TextButton(onClick = onNote) { Text(tr("Als Notiz speichern", "Save as note")) }
             }
-            if (m.retried && !m.streaming && !m.notFound) Text("Zweiter Versuch mit mehr Quellen: bitte die Quellen prüfen.", style = MaterialTheme.typography.labelSmall)
+            if (m.retried && !m.streaming && !m.notFound) Text(tr("Zweiter Versuch mit mehr Quellen: bitte die Quellen prüfen.", "Second attempt with more sources: please check the sources."), style = MaterialTheme.typography.labelSmall)
             if (!m.fromUser && !m.notFound && m.sources.isNotEmpty() && !m.streaming) {
-                Text("Quellen", style = MaterialTheme.typography.labelMedium)
+                Text(tr("Quellen", "Sources"), style = MaterialTheme.typography.labelMedium)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     m.sources.forEach { s ->
                         FilterChip(
@@ -225,7 +227,7 @@ private fun MessageBubble(m: ChatMessage, onSource: (Source) -> Unit, onRetry: (
 @Composable
 private fun SourcePickerDialog(docs: List<de.edgebird.lernsystem.data.DocumentSummary>, selected: Set<Long>, onToggle: (Long) -> Unit, onAll: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
-        onDismissRequest = onDismiss, title = { Text("Quellen für den Chat") },
+        onDismissRequest = onDismiss, title = { Text(tr("Quellen für den Chat", "Sources for the chat")) },
         text = {
             androidx.compose.foundation.lazy.LazyColumn {
                 items(docs.size) { i ->
@@ -237,7 +239,7 @@ private fun SourcePickerDialog(docs: List<de.edgebird.lernsystem.data.DocumentSu
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Fertig") } },
-        dismissButton = { TextButton(onClick = onAll) { Text("Alle") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Fertig", "Done")) } },
+        dismissButton = { TextButton(onClick = onAll) { Text(tr("Alle", "All")) } },
     )
 }

@@ -146,10 +146,13 @@ class ModelDownloaderTest {
         val f = File(System.getProperty("user.home"), "lernsystem-modelle-repo/manifest.json")
         org.junit.jupiter.api.Assumptions.assumeTrue(f.exists())
         val m = ModelManifest.parse(f.readText())
-        assertEquals(3, m.models.size)
+        assertEquals(2, m.models.count { !it.optional })
         assertTrue(m.models.filter { !it.optional }.all { it.license == "Apache-2.0" })
-        val voice = m.models.single { it.optional }
-        assertEquals("tts", voice.role); assertEquals("tts-de", voice.unpack); assertTrue(voice.license.contains("espeak-ng"))
+        val voices = m.models.filter { it.optional }
+        assertTrue(voices.all { it.role == "tts" && it.unpack.startsWith("tts-") && it.license.contains("espeak-ng") && it.lang != null })
+        assertEquals("tts-de", voices.first { it.id == "voice-de-thorsten" }.unpack)
+        assertTrue(voices.any { it.lang == "en" } && voices.any { it.lang == "de" })
+        assertEquals(voices.size, voices.map { it.unpack }.toSet().size)   // jede Stimme hat einen eigenen Ordner
     }
 
     // ---- Pakete (ZIP), z. B. die Stimme ------------------------------------------------------------------------------

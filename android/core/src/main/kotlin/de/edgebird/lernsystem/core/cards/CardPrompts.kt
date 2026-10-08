@@ -1,20 +1,31 @@
 package de.edgebird.lernsystem.core.cards
 
 import com.google.gson.JsonParser
+import de.edgebird.lernsystem.core.i18n.Lang
+import de.edgebird.lernsystem.core.i18n.tr
 
 /** Prompts und Auswertung der Kartenerzeugung (Port von `ragapp/ingestion/question_gen.py`, zweistufig: Fragen, dann Antworten). */
 object CardPrompts {
-    const val QUESTION_SYSTEM = "Du bist ein erfahrener Prüfungs-Coach an einer deutschen Hochschule. Du formulierst knappe, eigenständige Klausur-/Verständnisfragen auf Deutsch."
-    const val ANSWER_SYSTEM = "Du bist ein präziser Tutor an einer deutschen Hochschule. Du beantwortest Prüfungsfragen kurz, korrekt und nur mit dem gegebenen Stoff."
+    fun questionSystem(lang: Lang = Lang.current) = tr(
+        "Du bist ein erfahrener Prüfungs-Coach an einer deutschen Hochschule. Du formulierst knappe, eigenständige Klausur-/Verständnisfragen auf Deutsch.",
+        "You are an experienced exam coach at a university. You write concise, self-contained exam and comprehension questions in English.", lang,
+    )
+    fun answerSystem(lang: Lang = Lang.current) = tr(
+        "Du bist ein präziser Tutor an einer deutschen Hochschule. Du beantwortest Prüfungsfragen kurz, korrekt und nur mit dem gegebenen Stoff.",
+        "You are a precise university tutor. You answer exam questions briefly, correctly and using only the given material.", lang,
+    )
+    val QUESTION_SYSTEM get() = questionSystem()
+    val ANSWER_SYSTEM get() = answerSystem()
     const val NOT_IN_TEXT = "NICHT_IM_TEXT"
 
     private const val MAX_CHUNK_CHARS_QUESTION = 2500
     private const val MAX_CHUNK_CHARS_ANSWER = 2800
 
-    fun questionPrompt(chunk: String, n: Int): String = if (ContentKind.isCode(chunk)) codeQuestionPrompt(chunk, n) else textQuestionPrompt(chunk, n)
+    fun questionPrompt(chunk: String, n: Int, lang: Lang = Lang.current): String =
+        if (ContentKind.isCode(chunk)) codeQuestionPrompt(chunk, n, lang) else textQuestionPrompt(chunk, n, lang)
 
     /** Fragen zu Programmcode: Verhalten, Ergebnis, Zweck, Laufzeit – ohne dass die Frage den Code selbst voraussetzt. */
-    fun codeQuestionPrompt(chunk: String, n: Int): String = """Lies den folgenden Abschnitt, der Programmcode oder eine Beschreibung davon enthält.
+    fun codeQuestionPrompt(chunk: String, n: Int, lang: Lang = Lang.current): String = if (lang == Lang.EN) codeQuestionPromptEn(chunk, n) else """Lies den folgenden Abschnitt, der Programmcode oder eine Beschreibung davon enthält.
 
 Formuliere genau $n verschiedene Prüfungsfragen auf Deutsch zum Konzept, das der Code zeigt. Regeln:
 - Frage nach dem Verhalten, dem Ergebnis, dem Zweck, der Funktionsweise oder der Laufzeit (z. B. „Wie funktioniert die Partitionierung bei Quicksort?“, „Welche Laufzeit hat der Algorithmus im Mittel und warum?“).
@@ -30,7 +41,7 @@ ${"\"\"\""}
 Gib NUR gültiges JSON in diesem Format zurück:
 {"questions": ["...", "..."]}"""
 
-    fun textQuestionPrompt(chunk: String, n: Int): String = """Lies den folgenden Abschnitt aus einer Klausur-Zusammenfassung.
+    fun textQuestionPrompt(chunk: String, n: Int, lang: Lang = Lang.current): String = if (lang == Lang.EN) textQuestionPromptEn(chunk, n) else """Lies den folgenden Abschnitt aus einer Klausur-Zusammenfassung.
 
 Formuliere genau $n verschiedene, eigenständige Fragen auf Deutsch, die
 AUSSCHLIESSLICH mit den Informationen aus DIESEM Abschnitt beantwortet werden
@@ -53,7 +64,7 @@ ${"\"\"\""}
 Gib NUR gültiges JSON in diesem Format zurück:
 {"questions": ["...", "..."]}"""
 
-    fun answerPrompt(question: String, chunk: String): String = """Beantworte die folgende Prüfungsfrage AUSSCHLIESSLICH mit den
+    fun answerPrompt(question: String, chunk: String, lang: Lang = Lang.current): String = if (lang == Lang.EN) answerPromptEn(question, chunk) else """Beantworte die folgende Prüfungsfrage AUSSCHLIESSLICH mit den
 Informationen aus dem gegebenen Abschnitt. Schreibe eine klare, vollständige
 Musterlösung auf Deutsch (2–6 Sätze; bei Rechnungen die Schritte). Formeln in
 LaTeX (z. B. ${'$'}\frac{a}{b}${'$'}). Kein Vorspann wie „Antwort:", keine Verweise auf
@@ -69,10 +80,66 @@ ${"\"\"\""}
 
 Musterlösung:"""
 
+
+    private fun codeQuestionPromptEn(chunk: String, n: Int): String = """Read the following passage, which contains program code or a description of it.
+
+Write exactly $n different exam questions in English about the concept the code shows. Rules:
+- Ask about behaviour, result, purpose, how it works or running time (e.g. "How does the partitioning step of quicksort work?", "What is the average running time of the algorithm and why?").
+- The question must be understandable without the code: name concepts and algorithms, but do not refer to variable names, lines or "the code".
+- No questions that merely ask to copy a piece of code.
+- Natural exam language.
+
+Passage:
+${"\"\"\""}
+${chunk.take(MAX_CHUNK_CHARS_QUESTION)}
+${"\"\"\""}
+
+Return ONLY valid JSON in this format:
+{"questions": ["...", "..."]}"""
+
+    private fun textQuestionPromptEn(chunk: String, n: Int): String = """Read the following passage from a study summary.
+
+Write exactly $n different, self-contained questions in English that can be answered
+EXCLUSIVELY with the information in THIS passage. Rules:
+- Each question must be answerable from the passage alone (no outside knowledge).
+- Cover different aspects (definition, calculation, example, distinction).
+- Natural exam language, the way a student would ask.
+- No references such as "according to the passage" or "in the text".
+- Do not just rephrase the heading ("What is …?" with the section title).
+  Ask about an exam-relevant aspect: a definition in your own words,
+  a calculation, a distinction, an example, an application.
+- Formulas and equations as LaTeX with a single backslash, in ${'$'}...${'$'} (inline)
+  or ${'$'}${'$'}...${'$'}${'$'} (display). No Unicode fractions.
+
+Passage:
+${"\"\"\""}
+${chunk.take(MAX_CHUNK_CHARS_QUESTION)}
+${"\"\"\""}
+
+Return ONLY valid JSON in this format:
+{"questions": ["...", "..."]}"""
+
+    private fun answerPromptEn(question: String, chunk: String): String = """Answer the following exam question EXCLUSIVELY with the information
+from the given passage. Write a clear, complete model answer in English (2–6 sentences;
+show the steps for calculations). Formulas in LaTeX (e.g. ${'$'}\frac{a}{b}${'$'}). No preamble
+such as "Answer:", no references to "the passage". If the answer is not in the passage,
+write only: $NOT_IN_TEXT
+
+Question:
+${question.trim()}
+
+Passage:
+${"\"\"\""}
+${chunk.take(MAX_CHUNK_CHARS_ANSWER)}
+${"\"\"\""}
+
+Model answer:"""
+
     private val IMPERATIVES = listOf(
         "nenne", "erklär", "erklaer", "berechne", "beschreib", "definier", "begründe", "begruende", "leite", "zeige",
         "bestimme", "skizzier", "vergleich", "unterscheide", "ordne", "analysier", "diskutier", "gib ",
         "berechnen sie", "nennen sie", "erklären sie", "erklaeren sie", "beschreiben sie", "bestimmen sie", "geben sie", "leiten sie",
+        "name ", "explain", "calculate", "describe", "define", "justify", "derive", "show ", "determine", "sketch", "compare", "distinguish", "classify", "analy", "discuss", "give ", "state ", "list ", "outline", "prove",
     )
 
     /** Auch Aufforderungen („Berechnen Sie …“) sind gültige Prüfungsfragen, nicht nur Sätze mit Fragezeichen. */
@@ -87,6 +154,7 @@ Musterlösung:"""
         "was", "ist", "sind", "der", "die", "das", "ein", "eine", "einer", "eines", "und", "oder", "wie", "wird", "werden",
         "bitte", "nenne", "erklären", "erklaeren", "erklär", "erklaer", "sie", "den", "dem", "im", "in", "zu", "zur", "zum",
         "von", "vom", "über", "ueber", "genau", "kurz", "sich",
+        "what", "is", "are", "the", "a", "an", "and", "or", "how", "does", "do", "please", "briefly", "exactly", "of", "in", "to", "explain", "name",
     )
 
     private fun normalizeQuestion(text: String) =
@@ -113,7 +181,7 @@ Musterlösung:"""
     fun cleanAnswer(raw: String): String {
         var ans = raw.trim()
         if (ans.startsWith("```")) ans = ans.trim('`').substringAfter('\n', ans).trim()
-        for (pref in listOf("Antwort:", "Musterlösung:", "Lösung:")) {
+        for (pref in listOf("Antwort:", "Musterlösung:", "Lösung:", "Answer:", "Model answer:", "Solution:")) {
             if (ans.lowercase().startsWith(pref.lowercase())) ans = ans.substring(pref.length).trim()
         }
         if (ans.isEmpty() || NOT_IN_TEXT in ans) return ""

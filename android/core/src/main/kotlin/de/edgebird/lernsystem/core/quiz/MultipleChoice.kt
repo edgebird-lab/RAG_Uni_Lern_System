@@ -5,6 +5,8 @@ import de.edgebird.lernsystem.core.ai.GenerationParams
 import de.edgebird.lernsystem.core.ai.LlmEngine
 import de.edgebird.lernsystem.core.cards.CardPrompts
 import de.edgebird.lernsystem.core.cards.CardQuality
+import de.edgebird.lernsystem.core.i18n.Lang
+import de.edgebird.lernsystem.core.i18n.tr
 import kotlinx.coroutines.flow.toList
 import kotlin.random.Random
 
@@ -18,9 +20,13 @@ data class McQuestion(val question: String, val options: List<String>, val corre
  * im Abschnitt belegt ist (kein Erfinden), die falschen verschieden und nicht verraten sind, und mischt die Reihenfolge.
  */
 object MultipleChoice {
-    const val SYSTEM = "Du bist ein erfahrener Prüfer an einer deutschen Hochschule. Du schreibst eindeutige Mehrfachauswahl-Fragen mit genau einer richtigen Antwort."
+    fun system(lang: Lang = Lang.current) = tr(
+        "Du bist ein erfahrener Prüfer an einer deutschen Hochschule. Du schreibst eindeutige Mehrfachauswahl-Fragen mit genau einer richtigen Antwort.",
+        "You are an experienced university examiner. You write unambiguous multiple-choice questions with exactly one correct answer.", lang,
+    )
+    val SYSTEM get() = system()
 
-    fun prompt(chunk: String): String = """Lies den folgenden Abschnitt und schreibe EINE Mehrfachauswahl-Frage dazu. Regeln:
+    fun prompt(chunk: String, lang: Lang = Lang.current): String = if (lang == Lang.EN) promptEn(chunk) else """Lies den folgenden Abschnitt und schreibe EINE Mehrfachauswahl-Frage dazu. Regeln:
 - Die Frage prüft einen wichtigen Begriff, eine Regel oder einen Zusammenhang und lässt sich allein aus dem Abschnitt beantworten.
 - Genau EINE richtige Antwort, kurz (höchstens 15 Wörter), sinngemäß aus dem Abschnitt.
 - Drei FALSCHE Antworten, die plausibel klingen, aber eindeutig falsch sind (typische Verwechslungen); ähnlich lang wie die richtige.
@@ -33,6 +39,22 @@ ${chunk.take(2500)}
 ${"\"\"\""}
 
 Gib NUR gültiges JSON zurück:
+{"frage": "...", "richtig": "...", "falsch": ["...", "...", "..."], "erklaerung": "..."}"""
+
+    private fun promptEn(chunk: String): String = """Read the following passage and write ONE multiple-choice question about it. Rules:
+- The question tests an important term, rule or relationship and can be answered from the passage alone.
+- Exactly ONE correct answer, short (at most 15 words), faithful to the passage.
+- Three WRONG answers that sound plausible but are clearly wrong (typical mix-ups); about as long as the correct one.
+- The question must be understandable without the passage (no "in the text", no references to figures or pages).
+- An explanation in one sentence of why the correct answer is right.
+- Write question, answers and explanation in English.
+
+Passage:
+${"\"\"\""}
+${chunk.take(2500)}
+${"\"\"\""}
+
+Return ONLY valid JSON (keep the German key names):
 {"frage": "...", "richtig": "...", "falsch": ["...", "...", "..."], "erklaerung": "..."}"""
 
     data class Raw(val question: String, val correct: String, val wrong: List<String>, val explanation: String)
@@ -78,7 +100,7 @@ Gib NUR gültiges JSON zurück:
     suspend fun generate(llm: LlmEngine, chunk: String, rng: Random = Random.Default, attempts: Int = 3): McQuestion? {
         llm.load()
         for (i in 0 until attempts) {
-            val raw = llm.generate(prompt(chunk), GenerationParams(maxTokens = 400, temperature = 0.3f + 0.2f * i, system = SYSTEM)).toList().joinToString("")
+            val raw = llm.generate(prompt(chunk), GenerationParams(maxTokens = 400, temperature = 0.3f + 0.2f * i, system = system())).toList().joinToString("")
             parse(raw)?.let { r -> build(r, chunk, rng)?.let { return it } }
         }
         return null

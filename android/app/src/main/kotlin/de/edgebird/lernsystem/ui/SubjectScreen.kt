@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ui
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,10 +40,10 @@ import de.edgebird.lernsystem.LernsystemApp
 import de.edgebird.lernsystem.ui.theme.subjectColor
 
 enum class SubjectTab(val label: String, val icon: ImageVector) {
-    SOURCES("Quellen", Icons.AutoMirrored.Filled.LibraryBooks),
-    CHAT("Chat", Icons.AutoMirrored.Filled.Chat),
-    LEARN("Lernen", Icons.Default.School),
-    STUDIO("Studio", Icons.Default.AutoStories),
+    SOURCES(tr("Quellen", "Sources"), Icons.AutoMirrored.Filled.LibraryBooks),
+    CHAT(tr("Chat", "Chat"), Icons.AutoMirrored.Filled.Chat),
+    LEARN(tr("Lernen", "Study"), Icons.Default.School),
+    STUDIO(tr("Studio", "Studio"), Icons.Default.AutoStories),
 }
 
 /** Ein Fach mit seinen vier Bereichen (wie ein Notizbuch bei NotebookLM, plus Lernen). */
@@ -60,9 +62,9 @@ fun SubjectScreen(subjectId: Long, tab: SubjectTab, onTab: (SubjectTab) -> Unit,
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 12.dp, top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück zu den Fächern") }
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Zurück zu den Fächern", "Back to subjects")) }
                 Box(Modifier.width(6.dp).height(28.dp).background(color, MaterialTheme.shapes.extraSmall))
-                Text(subject?.name.orEmpty(), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 10.dp).weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Text(displaySubjectName(subject?.name.orEmpty()), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 10.dp).weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 FocusChip(focusVm, onFocus)
             }
         },

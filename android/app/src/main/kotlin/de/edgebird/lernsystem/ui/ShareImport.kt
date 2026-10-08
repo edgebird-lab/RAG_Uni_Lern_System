@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ui
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
@@ -79,7 +81,7 @@ class ShareViewModel(app: Application) : AndroidViewModel(app) {
                 val files = ImportHelper.items(getApplication(), graph, content.uris).toMutableList()
                 content.text?.takeIf { it.isNotBlank() }?.let { t ->
                     val f = File(graph.inboxDir, UUID.randomUUID().toString()).also { it.writeText(t, Charsets.UTF_8) }
-                    val name = (content.title?.takeIf { it.isNotBlank() }?.take(60) ?: "Geteilter Text").let { if (it.endsWith(".txt")) it else "$it.txt" }
+                    val name = (content.title?.takeIf { it.isNotBlank() }?.take(60) ?: tr("Geteilter Text", "Shared text")).let { if (it.endsWith(".txt")) it else "$it.txt" }
                     files += ImportItem("share:${UUID.randomUUID()}", name, f)
                 }
                 files
@@ -96,15 +98,15 @@ fun ShareTargetDialog(content: SharedContent, onDone: (String) -> Unit, onDismis
     val subjects by vm.subjects.collectAsStateWithLifecycle(emptyList())
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (content.count == 1) "In welches Fach importieren?" else "${content.count} Quellen: in welches Fach?") },
+        title = { Text(if (content.count == 1) tr("In welches Fach importieren?", "Import into which subject?") else tr("${content.count} Quellen: in welches Fach?", "${content.count} sources: into which subject?")) },
         text = {
             Column(Modifier.fillMaxWidth()) {
-                if (subjects.isEmpty()) Text("Lege zuerst ein Fach an.", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 8.dp))
+                if (subjects.isEmpty()) Text(tr("Lege zuerst ein Fach an.", "Create a subject first."), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 8.dp))
                 subjects.forEach { s ->
-                    TextButton(onClick = { vm.import(content, s.subject.id) { n -> onDone(if (n == 0) "Nichts importiert" else "$n ${if (n == 1) "Quelle wird" else "Quellen werden"} in „${s.subject.name}“ importiert") } }) { Text(s.subject.name) }
+                    TextButton(onClick = { vm.import(content, s.subject.id) { n -> onDone(if (n == 0) tr("Nichts importiert", "Nothing imported") else tr("$n ${if (n == 1) "Quelle wird" else "Quellen werden"} in „${s.subject.name}“ importiert", "Importing $n ${if (n == 1) "source" else "sources"} into “${s.subject.name}”")) } }) { Text(displaySubjectName(s.subject.name)) }
                 }
             }
         },
-        confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } },
+        confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Abbrechen", "Cancel")) } },
     )
 }

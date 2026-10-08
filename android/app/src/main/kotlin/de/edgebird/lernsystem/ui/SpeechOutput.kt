@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ui
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
@@ -18,6 +20,9 @@ import de.edgebird.lernsystem.LernsystemApp
 import de.edgebird.lernsystem.ai.PiperVoice
 import de.edgebird.lernsystem.core.audio.SpeechText
 import de.edgebird.lernsystem.core.audio.Wav
+import de.edgebird.lernsystem.core.i18n.Lang
+import de.edgebird.lernsystem.voice.VoiceEntry
+import de.edgebird.lernsystem.voice.VoiceLibrary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,20 +36,28 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
 
-/** Hält die geladene Offline-Stimme (Piper, ca. 100 MB Arbeitsspeicher) und serialisiert die Zugriffe. */
-class VoiceHolder(private val dir: File) {
+/** Hält die geladene Offline-Stimme (Piper, ca. 100 MB Arbeitsspeicher) und serialisiert die Zugriffe. Es wird die Stimme der App-Sprache genutzt. */
+class VoiceHolder(private val library: VoiceLibrary) {
     private val mutex = Mutex()
     private var voice: PiperVoice? = null
+    private var loaded: File? = null
 
-    fun installed() = PiperVoice.isInstalled(dir)
+    /** Gibt es eine installierte Stimme für die aktuelle Sprache? */
+    fun installed(lang: Lang = Lang.current) = library.selected(lang) != null
 
-    suspend fun <T> use(block: (PiperVoice) -> T): T = mutex.withLock {
-        val v = voice ?: PiperVoice(dir).also { voice = it }
+    /** Aktuell gewählte Stimme für [lang]. */
+    fun selected(lang: Lang = Lang.current) = library.selected(lang)
+
+    /** Führt [block] mit der gewählten Stimme der App-Sprache aus (oder mit [entry], etwa für die Hörprobe). */
+    suspend fun <T> use(entry: VoiceEntry? = null, block: (PiperVoice) -> T): T = mutex.withLock {
+        val e = entry ?: library.selected() ?: throw IllegalStateException(tr("Keine Stimme installiert", "No voice installed"))
+        if (loaded != e.dir) { voice?.close(); voice = null; loaded = null }
+        val v = voice ?: PiperVoice(e.dir, dataDir = library.dataDirFor(e)).also { voice = it; loaded = e.dir }
         withContext(Dispatchers.Default) { block(v) }
     }
 
-    /** Gibt die Stimme frei (z. B. nach dem Löschen oder Aktualisieren des Pakets). */
-    suspend fun release() = mutex.withLock { voice?.close(); voice = null }
+    /** Gibt die Stimme frei (z. B. nach dem Löschen, Wechseln oder Aktualisieren des Pakets). */
+    suspend fun release() = mutex.withLock { voice?.close(); voice = null; loaded = null }
 }
 
 /** Öffnet die Seite „KI-Modelle“, wo die Stimme geladen werden kann (von der Navigation gesetzt). */
@@ -62,17 +75,17 @@ class SpeechOutput internal constructor(private val holder: VoiceHolder, private
     private var job: Job? = null
     @Volatile private var track: AudioTrack? = null
 
-    private fun checkVoice(): Boolean {
+    private fun checkVoice(entry: VoiceEntry? = null): Boolean {
         error = null
-        missingVoice = !holder.installed()
-        if (missingVoice) error = "Zum Vorlesen fehlt die Offline-Stimme (ca. 59 MB). Sie wird einmalig unter „KI-Modelle“ geladen und läuft danach ohne Internet."
+        missingVoice = entry == null && !holder.installed()
+        if (missingVoice) error = tr("Zum Vorlesen fehlt eine deutsche Offline-Stimme (ca. 59 MB). Sie wird einmalig unter „KI-Modelle“ geladen und läuft danach ohne Internet.", "An English offline voice (about 59 MB) is missing for reading aloud. It is downloaded once under “AI models” and then works without internet.")
         return !missingVoice
     }
 
     /** Liest [markdown] vor (Formatierung wird entfernt, Absätze werden mit Pausen gesprochen). */
-    fun speak(markdown: String) {
+    fun speak(markdown: String, entry: VoiceEntry? = null) {
         stop()
-        if (!checkVoice()) return
+        if (!checkVoice(entry)) return
         val chunks = SpeechText.chunks(SpeechText.prepare(markdown))
         if (chunks.isEmpty()) return
         speaking = true
@@ -80,7 +93,7 @@ class SpeechOutput internal constructor(private val holder: VoiceHolder, private
             try {
                 // Der nächste Satz wird schon berechnet, während der vorige spricht
                 val ready = produce(capacity = 2) {
-                    for ((text, pauseMs) in chunks) { val (pcm, rate) = holder.use { v -> SpeechText.toPcm16(v.synthesize(text)) to v.sampleRate }; send(Triple(pcm, rate, pauseMs)) }
+                    for ((text, pauseMs) in chunks) { val (pcm, rate) = holder.use(entry) { v -> SpeechText.toPcm16(v.synthesize(text)) to v.sampleRate }; send(Triple(pcm, rate, pauseMs)) }
                 }
                 var frames = 0L
                 for ((pcm, rate, pauseMs) in ready) {
@@ -94,7 +107,7 @@ class SpeechOutput internal constructor(private val holder: VoiceHolder, private
             } catch (e: CancellationException) {
                 throw e
             } catch (t: Throwable) {
-                error = if (t is OutOfMemoryError) "Zu wenig Arbeitsspeicher für die Sprachausgabe. Schließe andere Apps und versuche es erneut." else "Vorlesen ist fehlgeschlagen: ${t.message}"
+                error = if (t is OutOfMemoryError) tr("Zu wenig Arbeitsspeicher für die Sprachausgabe. Schließe andere Apps und versuche es erneut.", "Not enough memory for speech output. Close other apps and try again.") else tr("Vorlesen ist fehlgeschlagen: ${t.message}", "Reading aloud failed: ${t.message}")
             } finally {
                 releaseTrack(); speaking = false
             }
@@ -121,6 +134,11 @@ class SpeechOutput internal constructor(private val holder: VoiceHolder, private
         releaseTrack()
     }
 
+    /** Hörprobe einer bestimmten Stimme (auch einer anderen Sprache als der der App). */
+    fun preview(entry: VoiceEntry) {
+        speak(if (entry.lang == Lang.EN) "Hello! This is how I sound when I read your study notes aloud." else "Hallo! So klinge ich, wenn ich dir deine Lernunterlagen vorlese.", entry)
+    }
+
     /** Erzeugt die Sprachausgabe als WAV (alle Teile mit Pausen). `null`, wenn die Stimme fehlt oder das Erzeugen scheitert. [onProgress]: (erledigt, gesamt). */
     suspend fun renderWav(markdown: String, onProgress: (Int, Int) -> Unit = { _, _ -> }): ByteArray? {
         if (!checkVoice()) return null
@@ -139,7 +157,7 @@ class SpeechOutput internal constructor(private val holder: VoiceHolder, private
         } catch (e: CancellationException) {
             throw e
         } catch (t: Throwable) {
-            error = "Das Audio konnte nicht erstellt werden: ${t.message}"; null
+            error = tr("Das Audio konnte nicht erstellt werden: ${t.message}", "The audio could not be created: ${t.message}"); null
         }
     }
 }
@@ -161,6 +179,6 @@ fun VoiceMissingHint(speaker: SpeechOutput) {
     val open = LocalOpenModels.current
     androidx.compose.foundation.layout.Column {
         androidx.compose.material3.Text(speaker.error.orEmpty(), style = androidx.compose.material3.MaterialTheme.typography.bodySmall, color = androidx.compose.material3.MaterialTheme.colorScheme.error)
-        androidx.compose.material3.TextButton(onClick = open) { androidx.compose.material3.Text("Stimme laden") }
+        androidx.compose.material3.TextButton(onClick = open) { androidx.compose.material3.Text(tr("Stimme laden", "Download voice")) }
     }
 }

@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.core.summary
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 /** Ein zusammenzufassender Abschnitt: Titel (Fundstelle) und Text. */
 data class SummarySection(val title: String, val text: String)
 
@@ -60,12 +62,12 @@ object SummarySections {
         return out
     }
 
-    private val PAGE = Regex("^(Seite|Folie) (\\d+)(?:–(\\d+))?$")
+    private val PAGE = Regex("^(Seite|Folie|Page|Slide) (\\d+)(?:–(\\d+))?$")
 
     /** Der letzte Teil einer Überschriften-Kette („Zelle › Struktur › Ribosomen“ → „Ribosomen“). */
     internal fun shortTitle(t: String): String = t.substringAfterLast(" › ").trim().ifEmpty { t }
 
-    private const val RANGE = " bis "
+    private val RANGE get() = tr(" bis ", " to ")
 
     /** Vereinigte Abschnitte heißen „Anfang bis Ende“ (nur die letzten Teile der Überschriften); Seiten werden zu „Seite 3–5“. */
     internal fun mergeTitles(a: String, b: String): String {
@@ -75,8 +77,9 @@ object SummarySections {
             return "${ma.groupValues[1]} ${ma.groupValues[2]}–${mb.groupValues[3].ifEmpty { mb.groupValues[2] }}"
         }
         if (a == b) return a
-        val first = if (RANGE in a) a.substringBeforeLast(RANGE) else shortTitle(a)
-        val last = if (RANGE in b) b.substringAfterLast(RANGE) else shortTitle(b)
+        val ranges = listOf(" bis ", " to ")
+        val first = ranges.firstOrNull { it in a }?.let { a.substringBeforeLast(it) } ?: shortTitle(a)
+        val last = ranges.firstOrNull { it in b }?.let { b.substringAfterLast(it) } ?: shortTitle(b)
         return if (first == last) first else "$first$RANGE$last"
     }
 }

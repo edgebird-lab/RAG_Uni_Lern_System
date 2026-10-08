@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ui
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -85,7 +87,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun titleFrom(question: String?) = (question ?: "Neuer Chat").trim().replace(Regex("\\s+"), " ").take(48).ifBlank { "Neuer Chat" }
+    private fun titleFrom(question: String?) = (question ?: tr("Neuer Chat", "New chat")).trim().replace(Regex("\\s+"), " ").take(48).ifBlank { tr("Neuer Chat", "New chat") }
 
     /** Wechselt zu einem gespeicherten Chat. */
     fun openSession(id: Long) {
@@ -139,7 +141,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val idx = list.indexOfFirst { it.id == answerId }
         val answer = list.getOrNull(idx)?.takeIf { !it.fromUser && it.text.isNotBlank() } ?: return false
         val question = list.getOrNull(idx - 1)?.takeIf { it.fromUser }?.text.orEmpty()
-        val title = ("Notiz: " + question.ifBlank { "Antwort" }).take(60).trim().replace(Regex("[\\\\/:*?\"<>|]"), " ")
+        val title = (tr("Notiz: ", "Note: ") + question.ifBlank { tr("Antwort", "Answer") }).take(60).trim().replace(Regex("[\\\\/:*?\"<>|]"), " ")
         val body = buildString { if (question.isNotBlank()) append("# ").append(question.trim()).append("\n\n"); append(answer.text.trim()).append("\n") }
         val file = java.io.File(graph.inboxDir, java.util.UUID.randomUUID().toString()).also { it.writeText(body, Charsets.UTF_8) }
         de.edgebird.lernsystem.work.ImportWork.enqueue(getApplication(), listOf(de.edgebird.lernsystem.work.ImportItem("note:${java.util.UUID.randomUUID()}", "$title.md", file)), graph.prefs.getBoolean("embed_only_when_charging", false), sid)
@@ -162,7 +164,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 throw e
             } catch (t: Throwable) {
                 // Auch OutOfMemoryError und native Fehler: die App soll erklären statt abstürzen
-                _loadError.value = if (t is OutOfMemoryError) "Zu wenig Arbeitsspeicher. Schließe andere Apps und versuche es erneut." else t.message
+                _loadError.value = if (t is OutOfMemoryError) tr("Zu wenig Arbeitsspeicher. Schließe andere Apps und versuche es erneut.", "Not enough memory. Close other apps and try again.") else t.message
                 ModelState.ERROR
             }
         }
@@ -215,7 +217,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 patch(answerId) { it.copy(streaming = false) }
                 throw e
             } catch (e: Exception) {
-                patch(answerId) { it.copy(text = "Die Antwort konnte nicht erstellt werden: ${e.message}", streaming = false, failed = true) }
+                patch(answerId) { it.copy(text = tr("Die Antwort konnte nicht erstellt werden: ${e.message}", "The answer could not be created: ${e.message}"), streaming = false, failed = true) }
             }
         }
     }

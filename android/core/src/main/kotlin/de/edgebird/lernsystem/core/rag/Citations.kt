@@ -11,7 +11,7 @@ object Citations {
 
     /** Erkennt die Verweigerungsformel (auch mit Zusatz oder leicht abweichender Schreibweise). */
     fun isNotFound(answer: String): Boolean =
-        answer.lowercase().replace(Regex("\\s+"), " ").contains("nicht im material gefunden")
+        answer.lowercase().replace(Regex("\\s+"), " ").let { it.contains("nicht im material gefunden") || it.contains("not found in the material") }
 
     /**
      * Rückfrage-Erkennung für die Suche: Kurze Fragen („Und wer ernennt ihn?“) tragen ihren Bezug nicht in sich,

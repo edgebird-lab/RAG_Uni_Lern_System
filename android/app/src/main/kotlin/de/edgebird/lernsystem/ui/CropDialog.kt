@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ui
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
@@ -49,10 +51,10 @@ fun CropDialog(file: File, onApply: (List<Pt>) -> Unit, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Seite zuschneiden", style = MaterialTheme.typography.titleLarge)
-                Text("Ziehe die Ecken auf die Ränder des Blatts. Das Foto wird begradigt, das hilft der Texterkennung.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(tr("Seite zuschneiden", "Crop page"), style = MaterialTheme.typography.titleLarge)
+                Text(tr("Ziehe die Ecken auf die Ränder des Blatts. Das Foto wird begradigt, das hilft der Texterkennung.", "Drag the corners onto the edges of the sheet. The photo is straightened, which helps text recognition."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 val b = bmp
-                if (b == null) Text("Wird geladen …", Modifier.weight(1f)) else {
+                if (b == null) Text(tr("Wird geladen …", "Loading …"), Modifier.weight(1f)) else {
                     val accent = MaterialTheme.colorScheme.primary
                     var box by remember { mutableStateOf(IntSize.Zero) }
                     var active by remember { mutableStateOf(-1) }
@@ -96,9 +98,9 @@ fun CropDialog(file: File, onApply: (List<Pt>) -> Unit, onDismiss: () -> Unit) {
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onDismiss, Modifier.weight(1f)) { Text("Abbrechen") }
-                    OutlinedButton(onClick = { bmp?.let { corners = PageScanner.detect(it) } }, Modifier.weight(1f), enabled = bmp != null) { Text("Neu erkennen") }
-                    Button(onClick = { onApply(corners) }, Modifier.weight(1f), enabled = corners.size == 4) { Text("Zuschneiden") }
+                    OutlinedButton(onClick = onDismiss, Modifier.weight(1f)) { Text(tr("Abbrechen", "Cancel")) }
+                    OutlinedButton(onClick = { bmp?.let { corners = PageScanner.detect(it) } }, Modifier.weight(1f), enabled = bmp != null) { Text(tr("Neu erkennen", "Detect again")) }
+                    Button(onClick = { onApply(corners) }, Modifier.weight(1f), enabled = corners.size == 4) { Text(tr("Zuschneiden", "Crop")) }
                 }
             }
         }

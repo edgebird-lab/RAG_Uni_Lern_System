@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.pomodoro
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -18,10 +20,10 @@ class PomodoroNotifier(private val context: Context) {
     private val nm = context.getSystemService(NotificationManager::class.java)
 
     init {
-        nm.createNotificationChannel(NotificationChannel(CHANNEL_RUNNING, "Fokus-Timer", NotificationManager.IMPORTANCE_LOW).apply { description = "Zeigt die Restzeit der laufenden Phase" })
+        nm.createNotificationChannel(NotificationChannel(CHANNEL_RUNNING, tr("Fokus-Timer", "Focus timer"), NotificationManager.IMPORTANCE_LOW).apply { description = tr("Zeigt die Restzeit der laufenden Phase", "Shows the remaining time of the running phase") })
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_ALERT, "Fokus-Erinnerung", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Meldet das Ende einer Fokus- oder Pausenphase"
+            NotificationChannel(CHANNEL_ALERT, tr("Fokus-Erinnerung", "Focus reminder"), NotificationManager.IMPORTANCE_HIGH).apply {
+                description = tr("Meldet das Ende einer Fokus- oder Pausenphase", "Notifies when a focus or break phase ends")
                 enableVibration(true)
             },
         )
@@ -37,9 +39,9 @@ class PomodoroNotifier(private val context: Context) {
     )
 
     private fun label(phase: PomodoroPhase) = when (phase) {
-        PomodoroPhase.FOCUS -> "Fokus"
-        PomodoroPhase.SHORT_BREAK -> "Kurze Pause"
-        PomodoroPhase.LONG_BREAK -> "Lange Pause"
+        PomodoroPhase.FOCUS -> tr("Fokus", "Focus")
+        PomodoroPhase.SHORT_BREAK -> tr("Kurze Pause", "Short break")
+        PomodoroPhase.LONG_BREAK -> tr("Lange Pause", "Long break")
     }
 
     /** Laufende Benachrichtigung passend zum Zustand; bei IDLE wird sie entfernt. */
@@ -55,22 +57,22 @@ class PomodoroNotifier(private val context: Context) {
         val title = label(state.phase) + if (state.phase == PomodoroPhase.FOCUS && documentTitle != null) " · $documentTitle" else ""
         when (state.status) {
             PomodoroStatus.RUNNING -> {
-                b.setContentTitle(title).setContentText("Läuft")
+                b.setContentTitle(title).setContentText(tr("Läuft", "Running"))
                     .setWhen(Pomodoro.endMillis(state) ?: now).setUsesChronometer(true).setChronometerCountDown(true).setShowWhen(true)
-                    .addAction(0, "Pause", action(ACTION_PAUSE, 1))
-                    .addAction(0, "Überspringen", action(ACTION_SKIP, 2))
-                    .addAction(0, "Beenden", action(ACTION_STOP, 3))
+                    .addAction(0, tr("Pause", "Pause"), action(ACTION_PAUSE, 1))
+                    .addAction(0, tr("Überspringen", "Skip"), action(ACTION_SKIP, 2))
+                    .addAction(0, tr("Beenden", "End"), action(ACTION_STOP, 3))
             }
             PomodoroStatus.PAUSED -> {
                 val min = (Pomodoro.remainingMs(state, now) / 60_000.0).let { Math.ceil(it).toInt() }
-                b.setContentTitle("$title (pausiert)").setContentText("Noch $min Min")
-                    .addAction(0, "Fortsetzen", action(ACTION_RESUME, 4))
-                    .addAction(0, "Beenden", action(ACTION_STOP, 3))
+                b.setContentTitle(tr("$title (pausiert)", "$title (paused)")).setContentText(tr("Noch $min Min", "$min min left"))
+                    .addAction(0, tr("Fortsetzen", "Resume"), action(ACTION_RESUME, 4))
+                    .addAction(0, tr("Beenden", "End"), action(ACTION_STOP, 3))
             }
             else -> {
-                b.setContentTitle(label(state.phase) + " bereit").setContentText("Zum Starten tippen")
-                    .addAction(0, "Starten", action(ACTION_START, 5))
-                    .addAction(0, "Beenden", action(ACTION_STOP, 3))
+                b.setContentTitle(label(state.phase) + tr(" bereit", " ready")).setContentText(tr("Zum Starten tippen", "Tap to start"))
+                    .addAction(0, tr("Starten", "Start"), action(ACTION_START, 5))
+                    .addAction(0, tr("Beenden", "End"), action(ACTION_STOP, 3))
             }
         }
         nm.notify(ID_RUNNING, b.build())
@@ -79,9 +81,9 @@ class PomodoroNotifier(private val context: Context) {
     /** Erinnerung (mit Ton/Vibration), wenn eine Phase von selbst zu Ende gegangen ist. */
     fun phaseEnded(newState: PomodoroState, settings: PomodoroSettings) {
         val (title, text) = when (newState.phase) {
-            PomodoroPhase.SHORT_BREAK -> "Fokus geschafft" to "Pause: ${settings.shortBreakSeconds / 60} Min"
-            PomodoroPhase.LONG_BREAK -> "Runde geschafft" to "Lange Pause: ${settings.longBreakSeconds / 60} Min"
-            PomodoroPhase.FOCUS -> "Pause vorbei" to "Bereit für den nächsten Fokus?"
+            PomodoroPhase.SHORT_BREAK -> tr("Fokus geschafft", "Focus done") to tr("Pause: ${settings.shortBreakSeconds / 60} Min", "Break: ${settings.shortBreakSeconds / 60} min")
+            PomodoroPhase.LONG_BREAK -> tr("Runde geschafft", "Round complete") to tr("Lange Pause: ${settings.longBreakSeconds / 60} Min", "Long break: ${settings.longBreakSeconds / 60} min")
+            PomodoroPhase.FOCUS -> tr("Pause vorbei", "Break over") to tr("Bereit für den nächsten Fokus?", "Ready for the next focus?")
         }
         nm.notify(
             ID_ALERT,

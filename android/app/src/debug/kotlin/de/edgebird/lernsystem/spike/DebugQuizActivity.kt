@@ -15,6 +15,7 @@ class DebugQuizActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(android.widget.TextView(this).apply { text = "Quiz-Test läuft …"; textSize = 24f; setPadding(48, 200, 48, 48) })
         if (savedInstanceState != null) return
+        de.edgebird.lernsystem.core.i18n.Lang.fromTag(intent.getStringExtra("lang"))?.let { de.edgebird.lernsystem.core.i18n.Lang.current = it }
         val out = File(filesDir, "debug-out").apply { mkdirs() }.resolve("quiz.txt").also { it.writeText("") }
         Thread {
             val graph = (application as LernsystemApp).graph

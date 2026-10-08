@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ingest
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -44,7 +46,7 @@ object ImageDecoder {
     fun decode(open: () -> InputStream, maxEdge: Int = MAX_EDGE): Bitmap {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         open().use { BitmapFactory.decodeStream(it, null, bounds) }
-        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Das Bild konnte nicht gelesen werden" }
+        require(bounds.outWidth > 0 && bounds.outHeight > 0) { tr("Das Bild konnte nicht gelesen werden", "The image could not be read") }
         var sample = 1
         while (maxOf(bounds.outWidth, bounds.outHeight) / sample > maxEdge * 2) sample *= 2
         val raw = open().use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample }) } ?: error("Das Bild konnte nicht gelesen werden")
@@ -68,8 +70,8 @@ class ImageDocumentLoader(private val recognizer: TextRecognizer) : DocumentLoad
     override val extensions = setOf("jpg", "jpeg", "png", "webp")
 
     override fun load(source: DocumentSource): LoadedDoc {
-        val bitmap = try { ImageDecoder.decode(source.open) } catch (e: Exception) { throw LoadException("Das Bild konnte nicht gelesen werden: ${e.message}", e) }
-        val text = try { TextNormalizer.normalize(recognizer.recognize(bitmap)) } catch (e: Exception) { throw LoadException("Die Texterkennung ist fehlgeschlagen: ${e.message}", e) } finally { bitmap.recycle() }
+        val bitmap = try { ImageDecoder.decode(source.open) } catch (e: Exception) { throw LoadException(tr("Das Bild konnte nicht gelesen werden: ${e.message}", "The image could not be read: ${e.message}"), e) }
+        val text = try { TextNormalizer.normalize(recognizer.recognize(bitmap)) } catch (e: Exception) { throw LoadException(tr("Die Texterkennung ist fehlgeschlagen: ${e.message}", "Text recognition failed: ${e.message}"), e) } finally { bitmap.recycle() }
         if (text.isBlank()) return LoadedDoc(text = "", blocks = emptyList(), emptyPages = 1)
         return LoadedDoc(text = text, blocks = listOf(Block(text, page = 1)))
     }

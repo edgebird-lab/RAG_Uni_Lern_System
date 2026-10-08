@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ui
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -56,13 +58,13 @@ fun PhotoImportScreen(subjectId: Long, onClose: () -> Unit, vm: PhotoImportViewM
     }
 
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Foto zu Text", style = MaterialTheme.typography.headlineMedium)
+        Text(tr("Foto zu Text", "Photo to text"), style = MaterialTheme.typography.headlineMedium)
         when (s.step) {
             PhotoStep.CAPTURE -> {
-                Text("Fotografiere Seiten deiner Unterlagen oder wähle Bilder aus der Galerie. Die Texterkennung läuft komplett auf dem Gerät. Tipp: Seite gerade von oben, scharf und gut beleuchtet, ohne Schatten.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(tr("Fotografiere Seiten deiner Unterlagen oder wähle Bilder aus der Galerie. Die Texterkennung läuft komplett auf dem Gerät. Tipp: Seite gerade von oben, scharf und gut beleuchtet, ohne Schatten.", "Photograph pages of your materials or choose images from the gallery. Text recognition runs entirely on the device. Tip: shoot the page straight from above, sharp and well lit, without shadows."), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { camera.launch(vm.newCaptureUri()) }, modifier = Modifier.weight(1f)) { Text("Fotografieren") }
-                    OutlinedButton(onClick = { gallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.weight(1f)) { Text("Aus Galerie") }
+                    Button(onClick = { camera.launch(vm.newCaptureUri()) }, modifier = Modifier.weight(1f)) { Text(tr("Fotografieren", "Take photo")) }
+                    OutlinedButton(onClick = { gallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.weight(1f)) { Text(tr("Aus Galerie", "From gallery")) }
                 }
                 s.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -70,38 +72,38 @@ fun PhotoImportScreen(subjectId: Long, onClose: () -> Unit, vm: PhotoImportViewM
                         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                             Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 val thumb = remember(f.absolutePath, s.version) { BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = 8 })?.asImageBitmap() }
-                                if (thumb != null) Image(thumb, contentDescription = "Seite ${i + 1}", contentScale = ContentScale.Crop, modifier = Modifier.size(64.dp))
-                                Text("Seite ${i + 1}", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                                TextButton(onClick = { cropping = i }) { Text("Zuschneiden") }
+                                if (thumb != null) Image(thumb, contentDescription = tr("Seite ${i + 1}", "Page ${i + 1}"), contentScale = ContentScale.Crop, modifier = Modifier.size(64.dp))
+                                Text(tr("Seite ${i + 1}", "Page ${i + 1}"), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                                TextButton(onClick = { cropping = i }) { Text(tr("Zuschneiden", "Crop")) }
                                 TextButton(onClick = { vm.move(i, -1) }, enabled = i > 0) { Text("↑") }
                                 TextButton(onClick = { vm.move(i, 1) }, enabled = i < s.pages.lastIndex) { Text("↓") }
-                                TextButton(onClick = { vm.remove(i) }) { Text("Entfernen") }
+                                TextButton(onClick = { vm.remove(i) }) { Text(tr("Entfernen", "Remove")) }
                             }
                         }
                     }
                 }
-                Button(onClick = vm::recognize, enabled = s.pages.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text(if (s.pages.isEmpty()) "Zuerst Seiten hinzufügen" else "Text erkennen (${s.pages.size} ${if (s.pages.size == 1) "Seite" else "Seiten"})") }
-                TextButton(onClick = { vm.discard(); onClose() }) { Text("Abbrechen") }
+                Button(onClick = vm::recognize, enabled = s.pages.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text(if (s.pages.isEmpty()) tr("Zuerst Seiten hinzufügen", "Add pages first") else tr("Text erkennen (${s.pages.size} ${if (s.pages.size == 1) "Seite" else "Seiten"})", "Recognise text (${s.pages.size} ${if (s.pages.size == 1) "page" else "pages"})")) }
+                TextButton(onClick = { vm.discard(); onClose() }) { Text(tr("Abbrechen", "Cancel")) }
             }
             PhotoStep.RECOGNIZING -> {
-                Text("Text wird erkannt: Seite ${s.progress} von ${s.pages.size}", style = MaterialTheme.typography.bodyLarge)
+                Text(tr("Text wird erkannt: Seite ${s.progress} von ${s.pages.size}", "Recognising text: page ${s.progress} of ${s.pages.size}"), style = MaterialTheme.typography.bodyLarge)
                 LinearProgressIndicator(progress = { s.progress.toFloat() / s.pages.size.coerceAtLeast(1) }, modifier = Modifier.fillMaxWidth())
             }
             PhotoStep.REVIEW -> {
-                Text("Prüfe den erkannten Text und korrigiere Fehler, bevor du ihn als Quelle speicherst.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedTextField(value = s.name, onValueChange = vm::setName, label = { Text("Name der Quelle") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text(tr("Prüfe den erkannten Text und korrigiere Fehler, bevor du ihn als Quelle speicherst.", "Check the recognised text and correct mistakes before saving it as a source."), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(value = s.name, onValueChange = vm::setName, label = { Text(tr("Name der Quelle", "Name of the source")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 s.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     itemsIndexed(s.texts) { i, t ->
                         OutlinedTextField(
-                            value = t, onValueChange = { vm.editText(i, it) }, label = { Text("Seite ${i + 1}") }, modifier = Modifier.fillMaxWidth().height(220.dp),
-                            supportingText = { if (t.isBlank()) Text("Kein Text erkannt. Diese Seite wird übersprungen.") },
+                            value = t, onValueChange = { vm.editText(i, it) }, label = { Text(tr("Seite ${i + 1}", "Page ${i + 1}")) }, modifier = Modifier.fillMaxWidth().height(220.dp),
+                            supportingText = { if (t.isBlank()) Text(tr("Kein Text erkannt. Diese Seite wird übersprungen.", "No text recognised. This page will be skipped.")) },
                         )
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = vm::backToCapture, modifier = Modifier.weight(1f)) { Text("Zurück") }
-                    Button(onClick = { vm.save(onClose) }, modifier = Modifier.weight(1f)) { Text("Als Quelle speichern") }
+                    OutlinedButton(onClick = vm::backToCapture, modifier = Modifier.weight(1f)) { Text(tr("Zurück", "Back")) }
+                    Button(onClick = { vm.save(onClose) }, modifier = Modifier.weight(1f)) { Text(tr("Als Quelle speichern", "Save as source")) }
                 }
             }
         }

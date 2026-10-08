@@ -3,10 +3,13 @@ package de.edgebird.lernsystem.core.summary
 /** Prüfungen an Modellantworten für Zusammenfassungen (Port von `_looks_truncated`/`_is_empty_section`, plus Zahlenabgleich). */
 object SummaryChecks {
     /** Wörter, auf die kein vollständiger Satz endet: Steht eines am Ende, ist die Antwort abgebrochen. */
-    private val DANGLING = setOf("und", "oder", "der", "die", "das", "den", "dem", "des", "ein", "eine", "einer", "einem", "einen", "eines", "mit", "von", "zu", "zur", "zum", "in", "im", "auf", "als", "wie", "dass", "bei", "für", "aus", "nach", "durch", "sowie", "sich", "wird", "ist", "sind", "werden", "an", "am", "um", "über", "unter", "zwischen", "gegen", "ohne")
+    private val DANGLING = setOf("und", "oder", "der", "die", "das", "den", "dem", "des", "ein", "eine", "einer", "einem", "einen", "eines", "mit", "von", "zu", "zur", "zum", "in", "im", "auf", "als", "wie", "dass", "bei", "für", "aus", "nach", "durch", "sowie", "sich", "wird", "ist", "sind", "werden", "an", "am", "um", "über", "unter", "zwischen", "gegen", "ohne",
+        "and", "or", "the", "a", "an", "of", "with", "to", "in", "on", "at", "as", "like", "that", "by", "for", "from", "after", "through", "between", "against", "without", "is", "are", "be", "will", "its", "their", "which", "than", "into", "over", "under")
 
-    const val EMPTY_MARKER = "(kein prüfungsrelevanter Inhalt)"
-    private val EMPTY_MARKERS = listOf("(kein pruefungsrelevanter inhalt)", "(kein prüfungsrelevanter inhalt)")
+    const val EMPTY_MARKER_DE = "(kein prüfungsrelevanter Inhalt)"
+    const val EMPTY_MARKER_EN = "(no exam-relevant content)"
+    val EMPTY_MARKER get() = if (de.edgebird.lernsystem.core.i18n.Lang.current == de.edgebird.lernsystem.core.i18n.Lang.EN) EMPTY_MARKER_EN else EMPTY_MARKER_DE
+    private val EMPTY_MARKERS = listOf("(kein pruefungsrelevanter inhalt)", "(kein prüfungsrelevanter inhalt)", "(no exam-relevant content)", "(no exam relevant content)")
 
     /** Endet die Antwort mitten im Satz oder in einem leeren Listenpunkt (Token-Budget aufgebraucht)? */
     fun looksTruncated(md: String): Boolean {

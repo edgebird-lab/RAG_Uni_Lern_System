@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.core.models
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import com.google.gson.Gson
 
 /** Ein Teil einer Modelldatei; [urls] sind gleichwertige Quellen (Primär zuerst, danach Fallbacks). */
@@ -21,7 +23,16 @@ data class ModelInfo(
     val optional: Boolean = false,
     /** Nicht leer: Die geladene ZIP-Datei wird nach `models/<unpack>/` entpackt (die ZIP selbst wird danach gelöscht). */
     val unpack: String = "",
-)
+    /** Sprache einer Stimme (`de`, `en`); `null` bei Modellen ohne Sprache. */
+    val lang: String? = null,
+    val titleEn: String? = null,
+    /** Kurzbeschreibung (Stimmen: Klang, Qualität) in beiden Sprachen. */
+    val description: String? = null,
+    val descriptionEn: String? = null,
+) {
+    fun displayTitle(): String = tr(title, titleEn ?: title)
+    fun displayDescription(): String = tr(description.orEmpty(), (descriptionEn ?: description).orEmpty())
+}
 
 /** `manifest.json` aus dem Modell-Repo (Schema 1). */
 data class ModelManifest(val schemaVersion: Int, val release: String, val minAppVersion: Int = 1, val licenseUrl: String = "", val models: List<ModelInfo>) {
@@ -29,12 +40,12 @@ data class ModelManifest(val schemaVersion: Int, val release: String, val minApp
         const val SUPPORTED_SCHEMA = 1
 
         fun parse(json: String): ModelManifest {
-            val m = try { Gson().fromJson(json, ModelManifest::class.java) } catch (e: Exception) { throw ModelException("Manifest unlesbar: ${e.message}") }
-                ?: throw ModelException("Manifest ist leer")
-            if (m.schemaVersion != SUPPORTED_SCHEMA) throw ModelException("Manifest-Schema ${m.schemaVersion} wird von dieser App-Version nicht unterstützt")
+            val m = try { Gson().fromJson(json, ModelManifest::class.java) } catch (e: Exception) { throw ModelException(tr("Manifest unlesbar: ${e.message}", "Manifest unreadable: ${e.message}")) }
+                ?: throw ModelException(tr("Manifest ist leer", "Manifest is empty"))
+            if (m.schemaVersion != SUPPORTED_SCHEMA) throw ModelException(tr("Manifest-Schema ${m.schemaVersion} wird von dieser App-Version nicht unterstützt", "Manifest schema ${m.schemaVersion} is not supported by this app version"))
             m.models.forEach { mod ->
-                if (mod.parts.isEmpty() || mod.parts.any { it.urls.isEmpty() }) throw ModelException("Manifest unvollständig: ${mod.id}")
-                if (mod.parts.sumOf { it.size } != mod.size) throw ModelException("Manifest widersprüchlich (Teilgrößen): ${mod.id}")
+                if (mod.parts.isEmpty() || mod.parts.any { it.urls.isEmpty() }) throw ModelException(tr("Manifest unvollständig: ${mod.id}", "Manifest incomplete: ${mod.id}"))
+                if (mod.parts.sumOf { it.size } != mod.size) throw ModelException(tr("Manifest widersprüchlich (Teilgrößen): ${mod.id}", "Manifest inconsistent (part sizes): ${mod.id}"))
             }
             return m
         }
@@ -46,8 +57,8 @@ class ModelException(message: String, cause: Throwable? = null) : Exception(mess
 /** Dateien neben dem Modell, die den Einbau-Stand festhalten (für Updates). */
 object ModelPlan {
     /** Welche Modelle müssen geladen werden? [installed]: Dateiname → (Größe, Version aus der Markierung oder null bei manuell abgelegten). */
-    fun pending(manifest: ModelManifest, installed: Map<String, InstalledModel>, includeOptional: Boolean = false): List<ModelInfo> = manifest.models.filter { m ->
-        if (m.optional && !includeOptional && installed[m.fileName] == null) return@filter false
+    fun pending(manifest: ModelManifest, installed: Map<String, InstalledModel>, includeOptional: Boolean = false, optionalIds: Set<String> = emptySet()): List<ModelInfo> = manifest.models.filter { m ->
+        if (m.optional && !includeOptional && m.id !in optionalIds && installed[m.fileName] == null) return@filter false
         val have = installed[m.fileName]
         have == null || have.size != m.size || (have.version != null && have.version != m.version)
     }

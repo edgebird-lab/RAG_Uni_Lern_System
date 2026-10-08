@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ui
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -70,7 +72,7 @@ class SocraticViewModel(app: Application) : AndroidViewModel(app) {
             topicFor = { c -> de.edgebird.lernsystem.core.quiz.Topics.of(c.location, graph.db.documents().byId(c.documentId)?.title.orEmpty()) },
         )
         session = s
-        s.onEvaluated = { e -> subject.value?.let { sid -> graph.db.quiz().insert(QuizResultEntity(subjectId = sid, topic = s.topic.ifBlank { "Allgemein" }, question = e.question, answer = e.answer, verdict = e.verdict.name, at = System.currentTimeMillis())) } }
+        s.onEvaluated = { e -> subject.value?.let { sid -> graph.db.quiz().insert(QuizResultEntity(subjectId = sid, topic = s.topic.ifBlank { tr("Allgemein", "General") }, question = e.question, answer = e.answer, verdict = e.verdict.name, at = System.currentTimeMillis())) } }
         _ui.value = SocraticUi(running = true, busy = true, topic = topic)
         job = viewModelScope.launch {
             try {
@@ -86,7 +88,7 @@ class SocraticViewModel(app: Application) : AndroidViewModel(app) {
         val s = session ?: return
         if (_ui.value.busy) return
         val label = when (action) {
-            Action.Hint -> "Hinweis"; Action.Partial -> "Ich weiß nur einen Teil"; Action.Resolve -> "Auflösen"; Action.Next -> "Nächster Aspekt"
+            Action.Hint -> tr("Hinweis", "Hint"); Action.Partial -> tr("Ich weiß nur einen Teil", "I only know part of it"); Action.Resolve -> tr("Auflösen", "Resolve"); Action.Next -> tr("Nächster Aspekt", "Next aspect")
             is Action.Answer -> action.text.trim()
         }
         if (label.isEmpty()) return
@@ -103,7 +105,7 @@ class SocraticViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun fail(e: Throwable) {
-        _ui.value = _ui.value.copy(busy = false, error = if (e is OutOfMemoryError) "Zu wenig Arbeitsspeicher. Schließe andere Apps und versuche es erneut." else "Die KI konnte nicht antworten: ${e.message}")
+        _ui.value = _ui.value.copy(busy = false, error = if (e is OutOfMemoryError) tr("Zu wenig Arbeitsspeicher. Schließe andere Apps und versuche es erneut.", "Not enough memory. Close other apps and try again.") else tr("Die KI konnte nicht antworten: ${e.message}", "The AI could not answer: ${e.message}"))
     }
 
     /** Beendet die Abfrage; gab es bewertete Antworten, erscheint zuerst das Ergebnis. */

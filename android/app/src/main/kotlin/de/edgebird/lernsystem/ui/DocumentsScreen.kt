@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ui
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -72,29 +74,29 @@ fun SourcesScreen(subjectId: Long, otherSubjects: List<Pair<Long, String>>, vm: 
         LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Quellen", style = MaterialTheme.typography.headlineMedium)
-                    Text("Der Chat nutzt nur die angehakten Quellen.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(tr("Quellen", "Sources"), style = MaterialTheme.typography.headlineMedium)
+                    Text(tr("Der Chat nutzt nur die angehakten Quellen.", "The chat only uses the checked sources."), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     embed?.takeIf { it.running }?.let { e ->
-                        Text(if (e.total > 0) "Indexiere: ${e.done} von ${e.total} Abschnitten" else "Indexierung startet …", style = MaterialTheme.typography.bodySmall)
+                        Text(if (e.total > 0) tr("Indexiere: ${e.done} von ${e.total} Abschnitten", "Indexing: ${e.done} of ${e.total} sections") else tr("Indexierung startet …", "Indexing is starting …"), style = MaterialTheme.typography.bodySmall)
                         if (e.total > 0) LinearProgressIndicator(progress = { e.done.toFloat() / e.total }, modifier = Modifier.fillMaxWidth())
                     }
                     embed?.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                     message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                     cardGen?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                    if (message != null || cardGen?.startsWith("Karten werden erstellt") == false) TextButton(onClick = vm::dismissMessages) { Text("Meldung schließen") }
+                    if (message != null || cardGen?.startsWith(tr("Karten werden erstellt", "Cards are being created")) == false) TextButton(onClick = vm::dismissMessages) { Text(tr("Meldung schließen", "Dismiss message")) }
                 }
             }
             if (docs.size > 1) item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedTextField(value = query, onValueChange = { query = it }, label = { Text("Quellen suchen") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = query, onValueChange = { query = it }, label = { Text(tr("Quellen suchen", "Search sources")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("Neueste", "Name", "Größe").forEachIndexed { i, l -> androidx.compose.material3.FilterChip(selected = sort == i, onClick = { sort = i }, label = { Text(l) }) }
+                        listOf(tr("Neueste", "Newest"), tr("Name", "Name"), tr("Größe", "Size")).forEachIndexed { i, l -> androidx.compose.material3.FilterChip(selected = sort == i, onClick = { sort = i }, label = { Text(l) }) }
                     }
-                    if (query.isNotBlank() && shown.isEmpty()) Text("Keine Quelle mit „$query“ im Namen.", style = MaterialTheme.typography.bodySmall)
+                    if (query.isNotBlank() && shown.isEmpty()) Text(tr("Keine Quelle mit „$query“ im Namen.", "No source with “$query” in its name."), style = MaterialTheme.typography.bodySmall)
                 }
             }
             if (docs.isEmpty()) item {
-                Text("Noch keine Quellen. Tippe auf „Quelle hinzufügen“ und wähle PDFs oder Textdateien.", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 24.dp))
+                Text(tr("Noch keine Quellen. Tippe auf „Quelle hinzufügen“ und wähle PDFs oder Textdateien.", "No sources yet. Tap “Add source” and choose PDFs or text files."), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 24.dp))
             }
             items(shown, key = { it.document.id }) { d ->
                 SourceRow(
@@ -105,7 +107,7 @@ fun SourcesScreen(subjectId: Long, otherSubjects: List<Pair<Long, String>>, vm: 
             }
             if (docs.isNotEmpty()) item {
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Nur am Ladegerät indexieren", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    Text(tr("Nur am Ladegerät indexieren", "Index only while charging"), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                     Switch(checked = onlyCharging, onCheckedChange = vm::setOnlyWhenCharging)
                 }
             }
@@ -113,12 +115,12 @@ fun SourcesScreen(subjectId: Long, otherSubjects: List<Pair<Long, String>>, vm: 
         Box(Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
             ExtendedFloatingActionButton(
                 onClick = { addMenu = true },
-                icon = { Icon(Icons.Default.Add, null) }, text = { Text("Quelle hinzufügen") },
+                icon = { Icon(Icons.Default.Add, null) }, text = { Text(tr("Quelle hinzufügen", "Add source")) },
                 containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary,
             )
             DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
-                DropdownMenuItem(text = { Text("Datei wählen (PDF, Text, Bild)") }, onClick = { addMenu = false; picker.launch(arrayOf("application/pdf", "text/plain", "text/markdown", "image/jpeg", "image/png", "image/webp", "application/octet-stream")) })
-                DropdownMenuItem(text = { Text("Foto aufnehmen oder Bilder wählen") }, onClick = { addMenu = false; photo = true })
+                DropdownMenuItem(text = { Text(tr("Datei wählen (PDF, Text, Bild)", "Choose file (PDF, text, image)")) }, onClick = { addMenu = false; picker.launch(arrayOf("application/pdf", "text/plain", "text/markdown", "image/jpeg", "image/png", "image/webp", "application/octet-stream")) })
+                DropdownMenuItem(text = { Text(tr("Foto aufnehmen oder Bilder wählen", "Take a photo or choose images")) }, onClick = { addMenu = false; photo = true })
             }
         }
     }
@@ -127,17 +129,17 @@ fun SourcesScreen(subjectId: Long, otherSubjects: List<Pair<Long, String>>, vm: 
     renaming?.let { d ->
         var text by remember(d.document.id) { mutableStateOf(d.document.title) }
         AlertDialog(
-            onDismissRequest = { renaming = null }, title = { Text("Quelle umbenennen") },
+            onDismissRequest = { renaming = null }, title = { Text(tr("Quelle umbenennen", "Rename source")) },
             text = { OutlinedTextField(value = text, onValueChange = { text = it.take(120) }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
-            confirmButton = { TextButton(onClick = { vm.rename(d.document.id, text); renaming = null }, enabled = text.isNotBlank()) { Text("Speichern") } },
-            dismissButton = { TextButton(onClick = { renaming = null }) { Text("Abbrechen") } },
+            confirmButton = { TextButton(onClick = { vm.rename(d.document.id, text); renaming = null }, enabled = text.isNotBlank()) { Text(tr("Speichern", "Save")) } },
+            dismissButton = { TextButton(onClick = { renaming = null }) { Text(tr("Abbrechen", "Cancel")) } },
         )
     }
     moving?.let { d ->
         AlertDialog(
-            onDismissRequest = { moving = null }, title = { Text("In welches Fach verschieben?") },
+            onDismissRequest = { moving = null }, title = { Text(tr("In welches Fach verschieben?", "Move to which subject?")) },
             text = { Column { otherSubjects.forEach { (id, name) -> TextButton(onClick = { vm.move(d.document.id, id); moving = null }) { Text(name) } } } },
-            confirmButton = {}, dismissButton = { TextButton(onClick = { moving = null }) { Text("Abbrechen") } },
+            confirmButton = {}, dismissButton = { TextButton(onClick = { moving = null }) { Text(tr("Abbrechen", "Cancel")) } },
         )
     }
 }
@@ -151,16 +153,16 @@ private fun SourceRow(d: DocumentSummary, checked: Boolean, onToggle: () -> Unit
             Checkbox(checked = checked, onCheckedChange = { onToggle() }, enabled = !failed)
             Column(Modifier.weight(1f)) {
                 Text(d.document.title, style = MaterialTheme.typography.titleMedium)
-                val status = when (d.document.status) { DocumentStatus.INDEXED -> "bereit"; DocumentStatus.PENDING -> "wird indexiert"; DocumentStatus.FAILED -> "Fehler" }
-                Text("${d.chunkCount} Abschnitte · $status", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val status = when (d.document.status) { DocumentStatus.INDEXED -> "bereit"; DocumentStatus.PENDING -> tr("wird indexiert", "being indexed"); DocumentStatus.FAILED -> tr("Fehler", "Error") }
+                Text(tr("${d.chunkCount} Abschnitte · $status", "${d.chunkCount} sections · $status"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "Aktionen für ${d.document.title}") }
+                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = tr("Aktionen für ${d.document.title}", "Actions for ${d.document.title}")) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("Karten erzeugen …") }, enabled = d.document.status == DocumentStatus.INDEXED, onClick = { menu = false; onCards() })
-                    DropdownMenuItem(text = { Text("Umbenennen …") }, onClick = { menu = false; onRename() })
-                    if (canMove) DropdownMenuItem(text = { Text("In anderes Fach verschieben …") }, onClick = { menu = false; onMove() })
-                    DropdownMenuItem(text = { Text("Löschen", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onDelete() })
+                    DropdownMenuItem(text = { Text(tr("Karten erzeugen …", "Generate cards …")) }, enabled = d.document.status == DocumentStatus.INDEXED, onClick = { menu = false; onCards() })
+                    DropdownMenuItem(text = { Text(tr("Umbenennen …", "Rename …")) }, onClick = { menu = false; onRename() })
+                    if (canMove) DropdownMenuItem(text = { Text(tr("In anderes Fach verschieben …", "Move to another subject …")) }, onClick = { menu = false; onMove() })
+                    DropdownMenuItem(text = { Text(tr("Löschen", "Delete"), color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onDelete() })
                 }
             }
         }
@@ -173,20 +175,20 @@ private fun CardCountDialog(onPick: (Int, de.edgebird.lernsystem.work.CardGenWor
     var mode by remember { mutableStateOf(de.edgebird.lernsystem.work.CardGenWork.Mode.QA) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Karten erzeugen") },
+        title = { Text(tr("Karten erzeugen", "Generate cards")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Art der Karten", style = MaterialTheme.typography.labelLarge)
+                Text(tr("Art der Karten", "Type of cards"), style = MaterialTheme.typography.labelLarge)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     de.edgebird.lernsystem.work.CardGenWork.Mode.entries.forEach { m -> androidx.compose.material3.FilterChip(selected = mode == m, onClick = { mode = m }, label = { Text(m.label) }) }
                 }
                 Text(mode.hint, style = MaterialTheme.typography.bodySmall)
-                Text("Die App erstellt die Karten im Hintergrund aus gleichmäßig verteilten Abschnitten. Das Display sollte dabei an bleiben.", style = MaterialTheme.typography.bodySmall)
-                Text("Wie viele Karten?", style = MaterialTheme.typography.labelLarge)
+                Text(tr("Die App erstellt die Karten im Hintergrund aus gleichmäßig verteilten Abschnitten. Das Display sollte dabei an bleiben.", "The app creates the cards in the background from evenly distributed sections. The display should stay on."), style = MaterialTheme.typography.bodySmall)
+                Text(tr("Wie viele Karten?", "How many cards?"), style = MaterialTheme.typography.labelLarge)
                 Row { listOf(10, 20, 40).forEach { n -> TextButton(onClick = { onPick(n, mode) }) { Text("$n") } } }
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Abbrechen", "Cancel")) } },
     )
 }

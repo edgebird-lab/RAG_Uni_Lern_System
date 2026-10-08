@@ -1,5 +1,7 @@
 package de.edgebird.lernsystem.ui
 
+import de.edgebird.lernsystem.core.i18n.tr
+
 import android.app.Application
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -42,9 +44,9 @@ class PrivacyViewModel(app: Application) : AndroidViewModel(app) {
 
     fun export(uri: Uri) = viewModelScope.launch {
         _message.value = try {
-            getApplication<Application>().contentResolver.openOutputStream(uri)?.use { data.export(it) } ?: error("Datei nicht beschreibbar")
-            "Export gespeichert."
-        } catch (e: Exception) { "Export fehlgeschlagen: ${e.message}" }
+            getApplication<Application>().contentResolver.openOutputStream(uri)?.use { data.export(it) } ?: error(tr("Datei nicht beschreibbar", "File not writable"))
+            tr("Export gespeichert.", "Export saved.")
+        } catch (e: Exception) { tr("Export fehlgeschlagen: ${e.message}", "Export failed: ${e.message}") }
     }
 
     fun deleteAll() = viewModelScope.launch {
@@ -52,8 +54,8 @@ class PrivacyViewModel(app: Application) : AndroidViewModel(app) {
             graph.pomodoro.stop()
             data.deleteAll()
             graph.cleanInbox(maxAgeMs = 0)
-            "Alle Dokumente, Karten, Zusammenfassungen und Fokus-Daten wurden gelöscht."
-        } catch (e: Exception) { "Löschen fehlgeschlagen: ${e.message}" }
+            tr("Alle Dokumente, Karten, Zusammenfassungen und Fokus-Daten wurden gelöscht.", "All documents, cards, summaries and focus data have been deleted.")
+        } catch (e: Exception) { tr("Löschen fehlgeschlagen: ${e.message}", "Deletion failed: ${e.message}") }
     }
 }
 
@@ -64,21 +66,21 @@ fun PrivacyScreen(onBack: () -> Unit, vm: PrivacyViewModel = viewModel()) {
     val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri -> uri?.let(vm::export) }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Datenschutz", style = MaterialTheme.typography.headlineMedium)
-        Text("Alles bleibt auf deinem Gerät: Dokumente, Abschnitte, Fragen an die KI, Antworten, Karteikarten und Lernzeiten liegen nur im privaten Speicher dieser App. Die KI läuft lokal, es gibt weder Konto noch Tracking noch Werbung.", style = MaterialTheme.typography.bodyMedium)
-        Text("Die Internet-Berechtigung nutzt die App ausschließlich, um die KI-Modelle von GitHub (edgebird-lab/lernsystem-modelle) zu laden und nach Updates zu suchen. Dabei werden keine Daten von dir übertragen, GitHub sieht nur die übliche Verbindungsadresse.", style = MaterialTheme.typography.bodyMedium)
-        Text("Spracheingabe nutzt die Erkennung des Geräts, die Texterkennung für Fotos läuft ebenfalls auf dem Gerät. Das Vorlesen nutzt die Offline-Stimme der App (Stimmenpaket aus „KI-Modelle“); Online-Stimmen werden nicht verwendet.", style = MaterialTheme.typography.bodyMedium)
-        Text("Die App ist von der Android-Datensicherung ausgenommen. Wer seine Daten mitnehmen will, nutzt den Export.", style = MaterialTheme.typography.bodyMedium)
-        Button(onClick = { saver.launch("lernsystem-export.json") }, modifier = Modifier.fillMaxWidth()) { Text("Meine Daten exportieren (JSON)") }
-        OutlinedButton(onClick = { confirm = true }, modifier = Modifier.fillMaxWidth()) { Text("Alle meine Daten löschen") }
+        Text(tr("Datenschutz", "Privacy"), style = MaterialTheme.typography.headlineMedium)
+        Text(tr("Alles bleibt auf deinem Gerät: Dokumente, Abschnitte, Fragen an die KI, Antworten, Karteikarten und Lernzeiten liegen nur im privaten Speicher dieser App. Die KI läuft lokal, es gibt weder Konto noch Tracking noch Werbung.", "Everything stays on your device: documents, sections, questions to the AI, answers, flashcards and study times are stored only in this app’s private storage. The AI runs locally; there is no account, no tracking and no advertising."), style = MaterialTheme.typography.bodyMedium)
+        Text(tr("Die Internet-Berechtigung nutzt die App ausschließlich, um die KI-Modelle und Stimmen von GitHub (edgebird-lab/lernsystem-modelle) zu laden und nach Updates zu suchen. Dabei werden keine Daten von dir übertragen, GitHub sieht nur die übliche Verbindungsadresse.", "The app uses the internet permission solely to download the AI models and voices from GitHub (edgebird-lab/lernsystem-modelle) and to check for updates. No data of yours is transmitted; GitHub only sees the usual connection address."), style = MaterialTheme.typography.bodyMedium)
+        Text(tr("Spracheingabe nutzt die Erkennung des Geräts, die Texterkennung für Fotos läuft ebenfalls auf dem Gerät. Das Vorlesen nutzt die Offline-Stimme der App (Stimmenpaket aus „KI-Modelle“); Online-Stimmen werden nicht verwendet.", "Voice input uses the device’s recognition, and text recognition for photos also runs on the device. Reading aloud uses the app’s offline voice (voice pack from “AI models”); online voices are not used."), style = MaterialTheme.typography.bodyMedium)
+        Text(tr("Die App ist von der Android-Datensicherung ausgenommen. Wer seine Daten mitnehmen will, nutzt den Export.", "The app is excluded from Android backup. If you want to take your data with you, use the export."), style = MaterialTheme.typography.bodyMedium)
+        Button(onClick = { saver.launch("lernsystem-export.json") }, modifier = Modifier.fillMaxWidth()) { Text(tr("Meine Daten exportieren (JSON)", "Export my data (JSON)")) }
+        OutlinedButton(onClick = { confirm = true }, modifier = Modifier.fillMaxWidth()) { Text(tr("Alle meine Daten löschen", "Delete all my data")) }
         message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-        TextButton(onClick = onBack) { Text("Zurück") }
+        TextButton(onClick = onBack) { Text(tr("Zurück", "Back")) }
     }
     if (confirm) AlertDialog(
         onDismissRequest = { confirm = false },
-        title = { Text("Alle Daten löschen?") },
-        text = { Text("Dokumente, Karteikarten, Zusammenfassungen und Fokus-Statistik werden unwiderruflich gelöscht. Die KI-Modelle bleiben erhalten. Tipp: Exportiere vorher, wenn du etwas behalten willst.") },
-        confirmButton = { TextButton(onClick = { confirm = false; vm.deleteAll() }) { Text("Endgültig löschen") } },
-        dismissButton = { TextButton(onClick = { confirm = false }) { Text("Abbrechen") } },
+        title = { Text(tr("Alle Daten löschen?", "Delete all data?")) },
+        text = { Text(tr("Dokumente, Karteikarten, Zusammenfassungen und Fokus-Statistik werden unwiderruflich gelöscht. Die KI-Modelle bleiben erhalten. Tipp: Exportiere vorher, wenn du etwas behalten willst.", "Documents, flashcards, summaries and focus statistics will be deleted irrevocably. The AI models are kept. Tip: export first if you want to keep something.")) },
+        confirmButton = { TextButton(onClick = { confirm = false; vm.deleteAll() }) { Text(tr("Endgültig löschen", "Delete permanently")) } },
+        dismissButton = { TextButton(onClick = { confirm = false }) { Text(tr("Abbrechen", "Cancel")) } },
     )
 }
