@@ -37,7 +37,7 @@ class ImportPipeline(
     private val chunkerConfig: ChunkerConfig = ChunkerConfig(),
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
-    suspend fun import(source: DocumentSource, onStage: (ImportStage) -> Unit = {}, subjectId: Long? = null): ImportResult = withContext(Dispatchers.IO) {
+    suspend fun import(source: DocumentSource, onStage: (ImportStage) -> Unit = {}, subjectId: Long? = null, kind: String = "FILE", folderId: Long? = null): ImportResult = withContext(Dispatchers.IO) {
         val loader = loaders.firstOrNull { source.extension in it.extensions }
             ?: return@withContext ImportResult.Failed(tr("Dateityp „.${source.extension}“ wird nicht unterstützt", "File type \".${source.extension}\" is not supported"))
 
@@ -70,11 +70,16 @@ class ImportPipeline(
         val previous = decision.existing?.let { db.generatedSummaries().forDocument(it.id.toString()) }.orEmpty()
         previous.forEach { db.generatedSummaries().delete(it.id) }   // beziehen sich auf die alte Fassung
         val previousSpecs = previous.map { it.specJson }
+        // Wird eine Quelle ersetzt, behält die neue Fassung Kapitel, Platz in der Reihenfolge und Art der alten
+        val old = decision.existing?.let { db.documents().byId(it.id) }
+        val targetSubject = subjectId ?: old?.subjectId
+        val order = old?.sortOrder ?: ((targetSubject?.let { db.documents().maxSortOrder(it) } ?: 0) + 1)
         val docId = db.importing().replaceDocument(
             replaceId = decision.existing?.id,
             doc = DocumentEntity(
                 path = source.key, title = source.displayName.substringBeforeLast('.'), filetype = source.extension,
-                contentHash = hash, charCount = loaded.text.length, addedAt = clock(), status = DocumentStatus.PENDING, subjectId = subjectId ?: decision.existing?.let { db.documents().byId(it.id)?.subjectId },
+                contentHash = hash, charCount = loaded.text.length, addedAt = clock(), status = DocumentStatus.PENDING, subjectId = targetSubject,
+                folderId = old?.folderId ?: folderId, sortOrder = order, kind = old?.kind ?: kind,
             ),
         ) { id ->
             chunks.mapIndexed { i, c ->
