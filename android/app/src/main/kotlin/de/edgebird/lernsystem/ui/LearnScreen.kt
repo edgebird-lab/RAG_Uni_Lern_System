@@ -64,6 +64,9 @@ private fun LearnHome(vm: StudyViewModel, onManage: () -> Unit) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     var showSettings by remember { mutableStateOf(false) }
     androidx.compose.runtime.LaunchedEffect(Unit) { vm.refresh() }
+    val pomodoroGraph = (androidx.compose.ui.platform.LocalContext.current.applicationContext as de.edgebird.lernsystem.LernsystemApp).graph
+    val focusMinutes by androidx.compose.runtime.produceState(0) { value = pomodoroGraph.pomodoroRepo.todayMinutes() }
+    val focusGoal by pomodoroGraph.pomodoro.goalMinutes.collectAsStateWithLifecycle()
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Lernen", style = MaterialTheme.typography.headlineMedium)
@@ -82,6 +85,7 @@ private fun LearnHome(vm: StudyViewModel, onManage: () -> Unit) {
                     LinearProgressIndicator(progress = { (s.reviewsToday.toFloat() / s.dailyGoal.coerceAtLeast(1)).coerceAtMost(1f) }, modifier = Modifier.fillMaxWidth())
                     WeekBars(s)
                     Text("Gefestigt: ${s.matureCards} von ${s.totalCards} Karten", style = MaterialTheme.typography.bodySmall)
+                    Text("Fokuszeit heute: $focusMinutes von $focusGoal Min", style = MaterialTheme.typography.bodySmall)
                 }
             }
             if (s.totalCards == 0) {
