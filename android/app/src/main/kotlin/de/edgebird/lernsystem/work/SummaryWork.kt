@@ -40,6 +40,7 @@ object SummaryWork {
         SummaryScope.DOC -> docTitle ?: tr("Quelle", "Source")
         SummaryScope.SUBJECT -> tr("Ganzes Fach", "Whole subject")
         SummaryScope.TOPIC -> tr("Thema: ${j.topic.trim()}", "Topic: ${j.topic.trim()}")
+        SummaryScope.CHAPTER -> tr("Kapitel: ${j.topic.trim()}", "Chapter: ${j.topic.trim()}")
     } + " · " + j.spec.format.label
 
     fun enqueue(context: Context, job: Job, label: String = "") {

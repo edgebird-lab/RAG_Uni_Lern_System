@@ -42,8 +42,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 
 /** Fotos von Unterlagen aufnehmen (oder aus der Galerie wählen), Text auf dem Gerät erkennen, korrigieren und als Quelle speichern. */
 @Composable
-fun PhotoImportScreen(subjectId: Long, onClose: () -> Unit, vm: PhotoImportViewModel = viewModel()) {
-    LaunchedEffect(subjectId) { vm.bind(subjectId) }
+fun PhotoImportScreen(subjectId: Long, onClose: () -> Unit, folderId: Long? = null, vm: PhotoImportViewModel = viewModel()) {
+    LaunchedEffect(subjectId, folderId) { vm.bind(subjectId, folderId) }
     val s by vm.state.collectAsStateWithLifecycle()
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> vm.captureDone(ok) }
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(20)) { uris -> vm.addFromGallery(uris) }

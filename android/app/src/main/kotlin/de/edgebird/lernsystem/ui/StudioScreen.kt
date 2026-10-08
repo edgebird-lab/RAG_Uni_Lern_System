@@ -82,7 +82,7 @@ fun StudioScreen(subjectId: Long, vm: StudioViewModel = viewModel(key = "studio$
     val selected by docsVm.selectedIds.collectAsStateWithLifecycle()
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Text(tr("Studio", "Studio"), style = MaterialTheme.typography.headlineMedium) }
+        item { Text(tr("Zusammenfassungen", "Summaries"), style = MaterialTheme.typography.headlineMedium) }
         item { Composer(vm, docs.filter { it.document.status == DocumentStatus.INDEXED }, selected) }
         if (jobs.running.isNotEmpty() || jobs.failed.isNotEmpty()) item { JobsCard(jobs, vm) }
         item { Text(tr("Meine Zusammenfassungen", "My summaries"), style = MaterialTheme.typography.titleMedium) }
@@ -103,13 +103,22 @@ private fun Composer(vm: StudioViewModel, docs: List<de.edgebird.lernsystem.data
     var saving by remember { mutableStateOf(false) }
     var docMenu by remember { mutableStateOf(false) }
     var tplMenu by remember { mutableStateOf(false) }
+    val folders by vm.folders.collectAsStateWithLifecycle()
+    val preset by vm.presetFolder.collectAsStateWithLifecycle()
+    var chapterId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var chapterMenu by remember { mutableStateOf(false) }
+    // Aus dem Kapitelmenü der Quellen: Kapitel vorwählen
+    LaunchedEffect(preset) { preset?.let { chapterId = it; scope = SummaryScope.CHAPTER; vm.consumePreset() } }
+    val chapter = folders.firstOrNull { it.id == chapterId } ?: folders.firstOrNull()
 
     val currentDoc = docs.firstOrNull { it.document.id == docId } ?: docs.firstOrNull()
     val docIds: List<Long> = when (scope) {
         SummaryScope.DOC -> listOfNotNull(currentDoc?.document?.id)
+        SummaryScope.CHAPTER -> docs.filter { it.document.folderId == chapter?.id && it.document.status == de.edgebird.lernsystem.data.DocumentStatus.INDEXED }.map { it.document.id }
         else -> docs.map { it.document.id }.filter { it in selected }
     }
-    val estimate by produceState<Estimate?>(null, scope, docIds, topic, spec) { value = vm.estimate(scope, docIds, topic, spec) }
+    val effTopic = if (scope == SummaryScope.CHAPTER) chapter?.name.orEmpty() else topic
+    val estimate by produceState<Estimate?>(null, scope, docIds, effTopic, spec) { value = vm.estimate(scope, docIds, effTopic, spec) }
     val canStart = docIds.isNotEmpty() && (scope != SummaryScope.TOPIC || topic.isNotBlank())
 
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -118,8 +127,9 @@ private fun Composer(vm: StudioViewModel, docs: List<de.edgebird.lernsystem.data
 
             // 1. Umfang
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                listOf(SummaryScope.DOC to tr("Quelle", "Source"), SummaryScope.SUBJECT to tr("Fach", "Subject"), SummaryScope.TOPIC to tr("Thema", "Topic")).forEachIndexed { i, (s, label) ->
-                    SegmentedButton(selected = scope == s, onClick = { scope = s }, shape = SegmentedButtonDefaults.itemShape(i, 3), icon = {}) { Text(label, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelLarge) }
+                val scopes = buildList { add(SummaryScope.DOC to tr("Quelle", "Source")); if (folders.isNotEmpty()) add(SummaryScope.CHAPTER to tr("Kapitel", "Chapter")); add(SummaryScope.SUBJECT to tr("Fach", "Subject")); add(SummaryScope.TOPIC to tr("Thema", "Topic")) }
+                scopes.forEachIndexed { i, (s, label) ->
+                    SegmentedButton(selected = scope == s, onClick = { scope = s }, shape = SegmentedButtonDefaults.itemShape(i, scopes.size), icon = {}) { Text(label, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelLarge) }
                 }
             }
             when (scope) {
@@ -128,6 +138,13 @@ private fun Composer(vm: StudioViewModel, docs: List<de.edgebird.lernsystem.data
                     DropdownMenu(expanded = docMenu, onDismissRequest = { docMenu = false }) {
                         docs.forEach { d -> DropdownMenuItem(text = { Text(d.document.title) }, onClick = { docId = d.document.id; docMenu = false }) }
                     }
+                }
+                SummaryScope.CHAPTER -> Column {
+                    OutlinedButton(onClick = { chapterMenu = true }, modifier = Modifier.fillMaxWidth()) { Text(chapter?.name ?: tr("Kein Kapitel", "No chapter")) }
+                    DropdownMenu(expanded = chapterMenu, onDismissRequest = { chapterMenu = false }) {
+                        folders.forEach { f -> DropdownMenuItem(text = { Text(f.name) }, onClick = { chapterId = f.id; chapterMenu = false }) }
+                    }
+                    Text(tr("Alle fertigen Quellen des Kapitels (${docIds.size}), unabhängig von den Haken.", "All finished sources of the chapter (${docIds.size}), regardless of the checks."), style = MaterialTheme.typography.bodySmall)
                 }
                 SummaryScope.SUBJECT -> Text(tr("Alle angehakten Quellen (${docIds.size}). Unter „Quellen“ kannst du die Auswahl ändern.", "All checked sources (${docIds.size}). You can change the selection under “Sources”."), style = MaterialTheme.typography.bodySmall)
                 SummaryScope.TOPIC -> {
@@ -151,7 +168,7 @@ private fun Composer(vm: StudioViewModel, docs: List<de.edgebird.lernsystem.data
             }
             // Erst beim Loslassen übernehmen: Der Aufwand wird neu berechnet und die Einstellung gespeichert
             Slider(value = slider, onValueChange = { slider = it }, onValueChangeFinished = { vm.edit { it.copy(targetWords = (slider / 25).toInt() * 25) } }, valueRange = SummarySpec.MIN_TARGET.toFloat()..SummarySpec.MAX_TARGET.toFloat())
-            if (spec.format != SummaryFormat.PROSE && scope != SummaryScope.TOPIC) Text(tr("Bei strukturierten Formen verteilt sich die Länge auf die Abschnitte der Quelle.", "With structured formats the length is spread over the sections of the source."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (spec.format != SummaryFormat.PROSE && scope != SummaryScope.TOPIC && scope != SummaryScope.CHAPTER) Text(tr("Bei strukturierten Formen verteilt sich die Länge auf die Abschnitte der Quelle.", "With structured formats the length is spread over the sections of the source."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             // 4. Weitere Einstellungen
             TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) tr("Weniger Einstellungen ▲", "Fewer settings ▲") else tr("Weitere Einstellungen ▼", "More settings ▼")) }
@@ -179,8 +196,8 @@ private fun Composer(vm: StudioViewModel, docs: List<de.edgebird.lernsystem.data
             if (docIds.isEmpty()) Text(if (scope == SummaryScope.DOC) tr("Diese Quelle ist noch nicht fertig indexiert.", "This source has not finished indexing yet.") else tr("Keine Quelle angehakt. Hake unter „Quellen“ mindestens eine an.", "No source checked. Check at least one under “Sources”."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             Button(
                 onClick = {
-                    val label = when (scope) { SummaryScope.DOC -> currentDoc?.document?.title.orEmpty(); SummaryScope.SUBJECT -> tr("Ganzes Fach", "Whole subject"); SummaryScope.TOPIC -> tr("Thema: ${topic.trim()}", "Topic: ${topic.trim()}") } + " · " + spec.format.label
-                    vm.create(scope, docIds, topic, label)
+                    val label = when (scope) { SummaryScope.DOC -> currentDoc?.document?.title.orEmpty(); SummaryScope.SUBJECT -> tr("Ganzes Fach", "Whole subject"); SummaryScope.TOPIC -> tr("Thema: ${topic.trim()}", "Topic: ${topic.trim()}"); SummaryScope.CHAPTER -> tr("Kapitel: ${effTopic}", "Chapter: ${effTopic}") } + " · " + spec.format.label
+                    vm.create(scope, docIds, effTopic, label)
                 },
                 enabled = canStart, modifier = Modifier.fillMaxWidth(),
             ) { Text(tr("Zusammenfassung erstellen", "Create summary")) }
@@ -263,7 +280,7 @@ private fun ResultCard(r: GeneratedSummaryEntity, stale: Boolean, onOpen: () -> 
     Card(onClick = onOpen, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(r.title, style = MaterialTheme.typography.titleMedium)
-            val scopeText = when (SummaryScope.valueOf(r.scope)) { SummaryScope.DOC -> tr("Eine Quelle", "One source"); SummaryScope.SUBJECT -> tr("${r.docIdList.size} Quellen", "${r.docIdList.size} sources"); SummaryScope.TOPIC -> tr("Thema", "Topic") }
+            val scopeText = when (SummaryScope.valueOf(r.scope)) { SummaryScope.DOC -> tr("Eine Quelle", "One source"); SummaryScope.SUBJECT -> tr("${r.docIdList.size} Quellen", "${r.docIdList.size} sources"); SummaryScope.TOPIC -> tr("Thema", "Topic"); SummaryScope.CHAPTER -> tr("Kapitel", "Chapter") }
             Text("$scopeText · ${spec.format.label} · " + tr("ca. ${MarkdownLite.toPlain(r.text).split(Regex("\\s+")).size} Wörter", "about ${MarkdownLite.toPlain(r.text).split(Regex("\\s+")).size} words") + " · $date", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (stale) Text(tr("Veraltet: Eine Quelle hat sich geändert. Öffne die Zusammenfassung und erstelle sie neu.", "Outdated: a source has changed. Open the summary and recreate it."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
@@ -279,6 +296,14 @@ private fun SummaryViewer(id: Long, vm: StudioViewModel, onBack: () -> Unit) {
     val speaker = rememberSpeechOutput()
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
+    var chooseChapter by remember { mutableStateOf(false) }
+    val folders by vm.folders.collectAsStateWithLifecycle()
+    var fileNotice by remember { mutableStateOf<String?>(null) }
+    var pendingFile by remember { mutableStateOf<SourceFile?>(null) }
+    val fileSaver = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/markdown")) { uri ->
+        val sf = pendingFile; pendingFile = null
+        if (uri != null && sf != null) fileNotice = if (DocumentActions.saveTo(context, uri, sf)) tr("Gespeichert.", "Saved.") else tr("Speichern fehlgeschlagen.", "Saving failed.")
+    }
     var audioStatus by remember { mutableStateOf<String?>(null) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val saveAudio = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("audio/x-wav")) { uri ->
@@ -310,19 +335,35 @@ private fun SummaryViewer(id: Long, vm: StudioViewModel, onBack: () -> Unit) {
             OutlinedButton(onClick = { saveAudio.launch(r.title.take(40).replace(Regex("[^A-Za-z0-9äöüÄÖÜß _-]"), "") + ".wav") }, enabled = audioStatus?.startsWith(tr("Audio wird", "Creating audio")) != true) { Text(tr("Als Audio speichern", "Save as audio")) }
             OutlinedButton(onClick = { vm.rerun(r, r.title); onBack() }) { Text(tr("Neu erstellen", "Recreate")) }
             OutlinedButton(onClick = { vm.adopt(r) }) { Text(tr("Einstellungen übernehmen", "Apply settings")) }
-            OutlinedButton(onClick = { vm.saveAsSource(r); android.widget.Toast.makeText(context, tr("Als Quelle gespeichert (unter „Quellen“)", "Saved as a source (under “Sources”)"), android.widget.Toast.LENGTH_SHORT).show() }) { Text(tr("Als Quelle speichern", "Save as source")) }
+            OutlinedButton(onClick = {
+                if (folders.isEmpty()) { vm.saveAsSource(r); android.widget.Toast.makeText(context, tr("Als Quelle gespeichert (unter „Quellen“)", "Saved as a source (under “Sources”)"), android.widget.Toast.LENGTH_SHORT).show() } else chooseChapter = true
+            }) { Text(tr("Als Quelle speichern", "Save as source")) }
+            OutlinedButton(onClick = { (context as? android.app.Activity)?.let { DocumentActions.print(it, SourceFile(r.title, "md", null) { r.text }, markdown = true) } }) { Text(tr("Drucken", "Print")) }
+            OutlinedButton(onClick = { DocumentActions.share(context, SourceFile(r.title, "md", null) { r.text }, asText = true) }) { Text(tr("Als Datei teilen", "Share as file")) }
+            OutlinedButton(onClick = { val sf = SourceFile(r.title, "md", null) { r.text }; pendingFile = sf; fileSaver.launch(DocumentActions.suggestedName(sf, true)) }) { Text(tr("Speichern unter …", "Save as …")) }
             OutlinedButton(onClick = { renaming = true }) { Text(tr("Umbenennen", "Rename")) }
             OutlinedButton(onClick = { deleting = true }) { Text(tr("Löschen", "Delete")) }
         }
         VoiceMissingHint(speaker)
         if (!speaker.missingVoice) speaker.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         audioStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        fileNotice?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
         val date = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT, de.edgebird.lernsystem.core.i18n.Lang.current.locale).format(Date(r.createdAt))
         Text(tr("Erstellt am $date mit ${r.model}: ${r.sectionsUsed} Abschnitte", "Created on $date with ${r.model}: ${r.sectionsUsed} sections") + (if (r.sectionsSkipped > 0) tr(", ${r.sectionsSkipped} übersprungen", ", ${r.sectionsSkipped} skipped") else "") + " · ${spec.role.label}${if (spec.customRole.isNotBlank()) tr(" (eigener Prompt)", " (own prompt)") else ""}", style = MaterialTheme.typography.labelSmall)
         if (id in stale) Text(tr("Veraltet: Eine Quelle hat sich seit der Erstellung geändert. Mit „Neu erstellen“ aktualisieren.", "Outdated: a source has changed since creation. Update with “Recreate”."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         if (r.warnings > 0) Text(tr("Hinweis: In ${r.warnings} Abschnitt(en) stehen Zahlen, die im Dokument nicht gefunden wurden. Bitte mit dem Original abgleichen.", "Note: in ${r.warnings} section(s) there are numbers that were not found in the document. Please compare with the original."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) { MarkdownView(r.text) }
     }
+    if (chooseChapter) AlertDialog(
+        onDismissRequest = { chooseChapter = false }, title = { Text(tr("Als Quelle in welches Kapitel?", "Save as a source into which chapter?")) },
+        text = {
+            Column {
+                folders.forEach { f -> TextButton(onClick = { vm.saveAsSource(r, f.id); chooseChapter = false; android.widget.Toast.makeText(context, tr("Als Quelle gespeichert (unter „Quellen“)", "Saved as a source (under “Sources”)"), android.widget.Toast.LENGTH_SHORT).show() }) { Text(f.name) } }
+                TextButton(onClick = { vm.saveAsSource(r, null); chooseChapter = false; android.widget.Toast.makeText(context, tr("Als Quelle gespeichert (unter „Quellen“)", "Saved as a source (under “Sources”)"), android.widget.Toast.LENGTH_SHORT).show() }) { Text(tr("Ohne Kapitel", "Without chapter")) }
+            }
+        },
+        confirmButton = {}, dismissButton = { TextButton(onClick = { chooseChapter = false }) { Text(tr("Abbrechen", "Cancel")) } },
+    )
     if (renaming) {
         var name by remember { mutableStateOf(r.title) }
         AlertDialog(

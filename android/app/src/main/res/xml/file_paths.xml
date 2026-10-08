@@ -2,4 +2,8 @@
 <paths>
     <!-- Fotos für die Texterkennung; nur dieser Ordner wird der Kamera-App freigegeben -->
     <cache-path name="photos" path="photos/" />
+    <!-- Originale der Quellen zum Teilen und Öffnen in anderen Apps -->
+    <files-path name="sources" path="sources/" />
+    <!-- Kurzlebige Exportdateien (Text, Sammelpakete) -->
+    <cache-path name="export" path="export/" />
 </paths>

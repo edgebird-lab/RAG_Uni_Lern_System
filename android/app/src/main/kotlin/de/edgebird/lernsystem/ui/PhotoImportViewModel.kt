@@ -45,13 +45,14 @@ class PhotoImportViewModel(app: Application) : AndroidViewModel(app) {
     private val dir = File(app.cacheDir, "photos").apply { mkdirs() }
     private var pendingCapture: File? = null
     private var subject: Long? = null
+    private var folder: Long? = null
 
     private val _state = MutableStateFlow(PhotoState(name = defaultName()))
     val state: StateFlow<PhotoState> = _state
 
     private fun defaultName() = tr("Foto-Notizen ", "Photo notes ") + SimpleDateFormat(tr("d. MMM HH:mm", "MMM d, HH:mm"), de.edgebird.lernsystem.core.i18n.Lang.current.locale).format(Date())
 
-    fun bind(subjectId: Long) { subject = subjectId }
+    fun bind(subjectId: Long, folderId: Long? = null) { subject = subjectId; folder = folderId }
 
     /** Zieldatei für die Kamera-App; sie schreibt das Foto dort hinein. */
     fun newCaptureUri(): Uri {
@@ -137,9 +138,12 @@ class PhotoImportViewModel(app: Application) : AndroidViewModel(app) {
             val item = withContext(Dispatchers.IO) {
                 val f = File(graph.inboxDir, UUID.randomUUID().toString())
                 f.writeText(OcrText.joinPages(s.texts), Charsets.UTF_8)
-                ImportItem("photo:${UUID.randomUUID()}", name, f)
+                // Die Seitenbilder bleiben als PDF erhalten (Ansicht, Teilen, Drucken)
+                val pdf = File(graph.inboxDir, "${UUID.randomUUID()}.pdf")
+                val ok = runCatching { de.edgebird.lernsystem.ingest.PagesPdf.build(s.pages, pdf) > 0 }.getOrDefault(false)
+                ImportItem("photo:${UUID.randomUUID()}", name, f, original = pdf.takeIf { ok })
             }
-            ImportWork.enqueue(getApplication(), listOf(item), graph.prefs.getBoolean("embed_only_when_charging", false), sid)
+            ImportWork.enqueue(getApplication(), listOf(item), graph.prefs.getBoolean("embed_only_when_charging", false), sid, folder)
             discard()
             onDone()
         }

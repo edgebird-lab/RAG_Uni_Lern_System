@@ -43,7 +43,7 @@ enum class SubjectTab(val label: String, val icon: ImageVector) {
     SOURCES(tr("Quellen", "Sources"), Icons.AutoMirrored.Filled.LibraryBooks),
     CHAT(tr("Chat", "Chat"), Icons.AutoMirrored.Filled.Chat),
     LEARN(tr("Lernen", "Study"), Icons.Default.School),
-    STUDIO(tr("Studio", "Studio"), Icons.Default.AutoStories),
+    STUDIO(tr("Kurzfassung", "Summaries"), Icons.Default.AutoStories),
 }
 
 /** Ein Fach mit seinen vier Bereichen (wie ein Notizbuch bei NotebookLM, plus Lernen). */
@@ -55,6 +55,7 @@ fun SubjectScreen(subjectId: Long, tab: SubjectTab, onTab: (SubjectTab) -> Unit,
     val all by remember { graph.subjects.observeSummaries() }.collectAsStateWithLifecycle(emptyList())
     val color = subject?.let { subjectColor(it.colorIndex) } ?: MaterialTheme.colorScheme.primary
     val focusVm: PomodoroViewModel = viewModel()
+    val studioVm: StudioViewModel = viewModel(key = "studio$subjectId")
 
     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
     val wide = maxWidth >= 700.dp   // Querformat und Tablets: seitliche Leiste statt unterer
@@ -90,7 +91,7 @@ fun SubjectScreen(subjectId: Long, tab: SubjectTab, onTab: (SubjectTab) -> Unit,
         }
         Box(Modifier.weight(1f).fillMaxSize()) {
             when (tab) {
-                SubjectTab.SOURCES -> SourcesScreen(subjectId, otherSubjects = all.filter { it.subject.id != subjectId }.map { it.subject.id to it.subject.name })
+                SubjectTab.SOURCES -> SourcesScreen(subjectId, otherSubjects = all.filter { it.subject.id != subjectId }.map { it.subject.id to it.subject.name }, onSummarizeFolder = { f -> studioVm.preset(f); onTab(SubjectTab.STUDIO) })
                 SubjectTab.CHAT -> ChatScreen(subjectId, onModels = onModels, onOpenSources = { onTab(SubjectTab.SOURCES) })
                 SubjectTab.LEARN -> LearnTab(subjectId)
                 SubjectTab.STUDIO -> StudioScreen(subjectId)

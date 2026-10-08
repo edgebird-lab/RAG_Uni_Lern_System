@@ -24,6 +24,8 @@ class AppGraph(private val context: Context) {
 
     val modelsDir = File(context.filesDir, "models")
     val inboxDir = File(context.filesDir, "inbox").apply { mkdirs() }
+    val sources: de.edgebird.lernsystem.source.SourceStore by lazy { de.edgebird.lernsystem.source.SourceStore(context.filesDir) }
+    val sourceRepo: de.edgebird.lernsystem.data.source.SourceRepository by lazy { de.edgebird.lernsystem.data.source.SourceRepository(db) }
 
     /** Entpacktes Stimmenpaket für die Offline-Sprachausgabe (optionaler Download). */
     val voices: de.edgebird.lernsystem.voice.VoiceLibrary by lazy { de.edgebird.lernsystem.voice.VoiceLibrary(modelsDir, prefs) }

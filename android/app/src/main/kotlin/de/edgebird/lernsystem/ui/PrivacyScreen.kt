@@ -54,6 +54,7 @@ class PrivacyViewModel(app: Application) : AndroidViewModel(app) {
             graph.pomodoro.stop()
             data.deleteAll()
             graph.cleanInbox(maxAgeMs = 0)
+            graph.sources.deleteAll()
             tr("Alle Dokumente, Karten, Zusammenfassungen und Fokus-Daten wurden gelöscht.", "All documents, cards, summaries and focus data have been deleted.")
         } catch (e: Exception) { tr("Löschen fehlgeschlagen: ${e.message}", "Deletion failed: ${e.message}") }
     }
