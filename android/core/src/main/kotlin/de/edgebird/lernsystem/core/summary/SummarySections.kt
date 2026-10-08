@@ -13,6 +13,9 @@ data class SourcePiece(val location: String, val text: String)
  */
 object SummarySections {
     const val DEFAULT_BUDGET = 3000
+
+    /** Größtes Zeichenbudget je Abschnitt: Prompt und Antwort müssen noch in den Kontext des Modells passen. */
+    const val MAX_BUDGET = 6000
     private const val MERGE_BELOW = 700
 
     private val HEADER_PREFIX = Regex("^\\[[^\\]]{0,160}]\\n")
@@ -27,8 +30,9 @@ object SummarySections {
             if (last != null && last.first().location == piece.location && last.sumOf { it.text.length } + piece.text.length <= budget) last += piece
             else groups += mutableListOf(piece)
         }
-        val sections = groups.map { g -> SummarySection(g.first().location, joinWithoutOverlap(g.map { it.text }, overlap)) }
-        return mergeSmall(sections, budget)
+        val sections = groups.map { g -> SummarySection(g.first().location.let { if (it.length > 70) shortTitle(it) else it }, joinWithoutOverlap(g.map { it.text }, overlap)) }
+        // Bei einem größeren Budget als üblich (kurze Zielänge) werden Nachbarn bis zum Budget vereint, nicht nur kleine
+        return mergeSmall(sections, budget, if (budget > DEFAULT_BUDGET) budget else MERGE_BELOW)
     }
 
     /** Fügt Texte aneinander und schneidet die vom Chunker vorangestellte Überlappung (letzte Zeichen des Vorgängers) ab. */
@@ -45,11 +49,11 @@ object SummarySections {
         return sb.toString().trim()
     }
 
-    private fun mergeSmall(sections: List<SummarySection>, budget: Int): List<SummarySection> {
+    private fun mergeSmall(sections: List<SummarySection>, budget: Int, mergeBelow: Int): List<SummarySection> {
         val out = mutableListOf<SummarySection>()
         for (s in sections) {
             val last = out.lastOrNull()
-            if (last != null && last.text.length < MERGE_BELOW && last.text.length + s.text.length <= budget) {
+            if (last != null && last.text.length < mergeBelow && last.text.length + s.text.length <= budget) {
                 out[out.lastIndex] = SummarySection(mergeTitles(last.title, s.title), last.text + "\n\n" + s.text)
             } else out += s
         }
@@ -58,12 +62,21 @@ object SummarySections {
 
     private val PAGE = Regex("^(Seite|Folie) (\\d+)(?:–(\\d+))?$")
 
+    /** Der letzte Teil einer Überschriften-Kette („Zelle › Struktur › Ribosomen“ → „Ribosomen“). */
+    internal fun shortTitle(t: String): String = t.substringAfterLast(" › ").trim().ifEmpty { t }
+
+    private const val RANGE = " bis "
+
+    /** Vereinigte Abschnitte heißen „Anfang bis Ende“ (nur die letzten Teile der Überschriften); Seiten werden zu „Seite 3–5“. */
     internal fun mergeTitles(a: String, b: String): String {
         val ma = PAGE.matchEntire(a)
         val mb = PAGE.matchEntire(b)
         if (ma != null && mb != null && ma.groupValues[1] == mb.groupValues[1]) {
             return "${ma.groupValues[1]} ${ma.groupValues[2]}–${mb.groupValues[3].ifEmpty { mb.groupValues[2] }}"
         }
-        return if (a == b) a else "$a / $b"
+        if (a == b) return a
+        val first = if (RANGE in a) a.substringBeforeLast(RANGE) else shortTitle(a)
+        val last = if (RANGE in b) b.substringAfterLast(RANGE) else shortTitle(b)
+        return if (first == last) first else "$first$RANGE$last"
     }
 }

@@ -55,6 +55,22 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Quellen, in denen gesucht wird (angehakte Dokumente des Fachs); `null` = noch nicht gesetzt. */
     @Volatile private var scope: Set<Long>? = null
+    private var subjectId: Long? = null
+    fun bindSubject(id: Long) { subjectId = id }
+
+    /** Eine Antwort samt Frage als Notiz-Quelle im Fach speichern (wird danach mit durchsucht). Gibt `true` zurück, wenn gespeichert wurde. */
+    fun saveAsNote(answerId: Long): Boolean {
+        val sid = subjectId ?: return false
+        val list = _messages.value
+        val idx = list.indexOfFirst { it.id == answerId }
+        val answer = list.getOrNull(idx)?.takeIf { !it.fromUser && it.text.isNotBlank() } ?: return false
+        val question = list.getOrNull(idx - 1)?.takeIf { it.fromUser }?.text.orEmpty()
+        val title = ("Notiz: " + question.ifBlank { "Antwort" }).take(60).trim().replace(Regex("[\\\\/:*?\"<>|]"), " ")
+        val body = buildString { if (question.isNotBlank()) append("# ").append(question.trim()).append("\n\n"); append(answer.text.trim()).append("\n") }
+        val file = java.io.File(graph.inboxDir, java.util.UUID.randomUUID().toString()).also { it.writeText(body, Charsets.UTF_8) }
+        de.edgebird.lernsystem.work.ImportWork.enqueue(getApplication(), listOf(de.edgebird.lernsystem.work.ImportItem("note:${java.util.UUID.randomUUID()}", "$title.md", file)), graph.prefs.getBoolean("embed_only_when_charging", false), sid)
+        return true
+    }
     fun setScope(ids: Set<Long>) { scope = ids }
 
     val busy: Boolean get() = job?.isActive == true

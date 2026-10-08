@@ -12,6 +12,8 @@ object SummaryChecks {
         if (s.last() in "*-:,;(" || s.endsWith("...") || s.endsWith("…")) return true
         val last = s.lines().last().trim()
         if (last in listOf("*", "-", "•") || Regex("^[-*]\\s*$").matches(last)) return true
+        if (last.startsWith("#")) return true                                   // Überschrift ohne Inhalt darunter
+        if (Regex("\\*\\*").findAll(last).count() % 2 == 1) return true      // ein geöffnetes **fett** wurde nie geschlossen
         // Ein langer letzter Satz, der mitten im Wort oder ohne Satzzeichen endet, ist fast immer am Token-Limit abgebrochen
         return last.length > 80 && s.last().isLetterOrDigit()
     }
@@ -20,7 +22,7 @@ object SummaryChecks {
      * Entfernt einen offensichtlich unvollständigen Schluss: ein halber Aufzählungspunkt entfällt, ein halber Satz wird
      * bis zum letzten vollständigen Satz gekürzt. Vollständige Antworten bleiben unverändert.
      */
-    fun trimIncomplete(md: String): String = trimEnd(cutEllipsisLines(md))
+    fun trimIncomplete(md: String, force: Boolean = false): String = trimEnd(cutEllipsisLines(md), force)
 
     private val SENTENCE_END = Regex("[.!?](?=\\s|$)")
 
@@ -36,8 +38,8 @@ object SummaryChecks {
         }
     }
 
-    private fun trimEnd(md: String): String {
-        if (!looksTruncated(md)) return md
+    private fun trimEnd(md: String, force: Boolean = false): String {
+        if (!force && !looksTruncated(md)) return md
         val lines = md.trimEnd().lines().toMutableList()
         val last = lines.last()
         val isBullet = Regex("^\\s*(?:[-*•]|\\d+[.)])\\s+").containsMatchIn(last)
@@ -71,4 +73,7 @@ object SummaryChecks {
         return NUMBER.findAll(LIST_NUMBER.replace(summary, "")).map { it.value }.filter { it.length >= 2 }
             .filter { norm(it) !in src && norm(it) !in srcText }.distinct().toList()
     }
+
+    /** Räumt Reste kleiner Modelle auf: leere Fettmarker („****“), Leerzeichen vor Satzzeichen, mehrfache Leerzeichen. */
+    fun tidy(md: String): String = md.replace(Regex("\\*{4,}"), "").replace(Regex("[ \\t]+([,.;:!?])"), "$1").replace(Regex("(?<=\\S)[ \\t]{2,}"), " ").trim()
 }

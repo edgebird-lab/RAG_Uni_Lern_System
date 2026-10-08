@@ -330,3 +330,44 @@ object SocraticDialog {
         return TurnResult(best.second, attempts, best.third, false, trace)
     }
 }
+
+/** Bewertung einer Antwort im Dialog. */
+enum class Verdict(val label: String) { CORRECT("richtig"), PARTIAL("teilweise"), WRONG("falsch") }
+
+/** Bewertet Antworten der Lernenden gegen den Kontext (für Fortschritt je Thema). Ein eigener, kurzer Modellaufruf mit festem Antwortformat. */
+object SocraticGrader {
+    fun prompt(question: String, answer: String, context: String): String = """Bewerte die Antwort einer/eines Studierenden auf eine Frage ausschließlich anhand des KONTEXTS (nicht anhand von Weltwissen).
+
+KONTEXT:
+$context
+
+FRAGE: ${SocraticText.clip(question, 400)}
+ANTWORT: ${SocraticText.clip(answer, 600)}
+
+War die Antwort richtig, teilweise richtig oder falsch? Eine Antwort ohne Inhalt („weiß nicht“) ist falsch. Antworte mit GENAU EINEM Wort: richtig, teilweise oder falsch."""
+
+    /** Liest das Urteil aus der Modellantwort; `null`, wenn keines erkennbar ist. */
+    fun parse(raw: String): Verdict? {
+        val t = raw.trim().lowercase().replace(Regex("""[^a-zäöüß ]"""), " ").trim()
+        if (t.isEmpty()) return null
+        val first = t.split(Regex("""\s+""")).first()
+        return when {
+            first.startsWith("teilweise") || first.startsWith("teilrichtig") -> Verdict.PARTIAL
+            first.startsWith("falsch") || first.startsWith("nein") -> Verdict.WRONG
+            first.startsWith("richtig") || first.startsWith("korrekt") -> Verdict.CORRECT
+            "teilweise" in t -> Verdict.PARTIAL
+            "nicht richtig" in t || "falsch" in t -> Verdict.WRONG
+            "richtig" in t -> Verdict.CORRECT
+            else -> null
+        }
+    }
+
+    suspend fun grade(llm: LlmEngine, question: String, answer: String, context: String): Verdict? {
+        if (answer.isBlank() || SocraticText.stripCitations(answer).length < 3) return Verdict.WRONG
+        val raw = try {
+            llm.generate(prompt(question, answer, context), GenerationParams(maxTokens = 8, temperature = 0.0f, system = "Du bist ein strenger, fairer Prüfer und antwortest mit einem einzigen Wort.")).toList().joinToString("")
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e
+        } catch (e: Exception) { return null }
+        return parse(raw)
+    }
+}

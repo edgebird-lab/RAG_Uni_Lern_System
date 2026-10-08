@@ -2,45 +2,66 @@ package de.edgebird.lernsystem.spike
 
 import android.app.Activity
 import android.os.Bundle
+import android.view.WindowManager
 import de.edgebird.lernsystem.LernsystemApp
-import de.edgebird.lernsystem.core.summary.SummaryStyle
-import de.edgebird.lernsystem.work.SummaryWork
-import kotlinx.coroutines.Dispatchers
+import de.edgebird.lernsystem.core.summary.SummaryFormat
+import de.edgebird.lernsystem.core.summary.SummaryRole
+import de.edgebird.lernsystem.core.summary.SummarySpec
+import de.edgebird.lernsystem.data.SummaryScope
+import de.edgebird.lernsystem.data.summary.SummaryRequest
+import de.edgebird.lernsystem.data.summary.SummaryRunner
+import de.edgebird.lernsystem.ingest.DocumentSource
+import de.edgebird.lernsystem.ingest.EmbeddingIndexer
 import kotlinx.coroutines.runBlocking
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 
 /**
- * Nur Debug. Zusammenfassungen per adb anstoßen und auslesen:
- *   --es action gen --es doc <Titel> --es style OUTLINE|BULLETS|SHORT [--ez restart true]
-
- *   --es action deldoc --es doc <Titel>   löscht das Dokument (samt Zusammenfassungen)
- *   --es action dump          schreibt alle Zusammenfassungen nach files/spike/summaries.json
+ * Nur Debug: erstellt Zusammenfassungen (Dokument, Fach, Thema; mehrere Einstellungen) mit dem echten Modell auf öffentlichen Testtexten
+ * aus `files/debug-in/`, schreibt Protokoll nach `files/debug-out/summary.txt` und räumt das Test-Fach danach weg.
+ *   adb shell am start -W -n de.edgebird.lernsystem/.spike.DebugSummaryActivity
  */
 class DebugSummaryActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val graph = (application as LernsystemApp).graph
-        if (savedInstanceState == null) when (intent.getStringExtra("action")) {
-            "gen" -> runBlocking(Dispatchers.IO) {
-                val doc = graph.db.documents().getAll().firstOrNull { it.title == intent.getStringExtra("doc") }
-                val style = SummaryStyle.valueOf(intent.getStringExtra("style") ?: "BULLETS")
-                if (doc != null) SummaryWork.enqueue(this@DebugSummaryActivity, doc.id, style, intent.getBooleanExtra("restart", false))
-            }
-            "deldoc" -> runBlocking(Dispatchers.IO) {
-                graph.db.documents().getAll().filter { it.title == intent.getStringExtra("doc") }.forEach { graph.db.documents().delete(it.id) }
-            }
-            "dump" -> runBlocking(Dispatchers.IO) {
-                val arr = JSONArray()
-                for (d in graph.db.documents().getAll()) for (st in SummaryStyle.entries) {
-                    graph.db.summaries().get(d.id, st.name)?.let {
-                        arr.put(JSONObject().put("doc", d.title).put("style", it.style).put("text", it.text).put("warnings", it.warnings).put("used", it.sectionsUsed).put("skipped", it.sectionsSkipped))
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        setContentView(android.widget.TextView(this).apply { text = "Zusammenfassungs-Test läuft …"; textSize = 24f; setPadding(48, 200, 48, 48) })
+        if (savedInstanceState != null) return
+        val out = File(filesDir, "debug-out").apply { mkdirs() }.resolve("summary.txt").also { it.writeText("") }
+        Thread {
+            val graph = (application as LernsystemApp).graph
+            runBlocking {
+                graph.db.subjects().getAll().filter { it.name == "ZZ-Test" }.forEach { graph.subjects.deleteWithContent(it.id) }
+                val subject = graph.subjects.create("ZZ-Test")
+                try {
+                    for (f in File(filesDir, "debug-in").listFiles().orEmpty().filter { it.isFile }) graph.pipeline.import(DocumentSource("debug:${f.name}", f.name) { f.inputStream() }, subjectId = subject)
+                    EmbeddingIndexer(graph.db, graph.sharedEmbedder, graph.embeddingModelId).run()
+                    graph.llm.load()
+                    val docs = graph.db.documents().idsForSubject(subject)
+                    out.appendText("Quellen: ${docs.size}\n\n")
+                    val runner = SummaryRunner(graph.db, graph.llm, graph.retriever)
+                    suspend fun case(name: String, req: SummaryRequest) {
+                        val t0 = System.currentTimeMillis()
+                        try {
+                            val steps = runner.estimateSteps(req)
+                            val r = runner.run(req)
+                            val text = graph.db.generatedSummaries().byId(r.id)!!.text
+                            out.appendText("=== $name (${(System.currentTimeMillis() - t0) / 1000} s, geschätzte Schritte $steps, ${text.split(Regex("\\s+")).size} Wörter, genutzt ${r.used}, übersprungen ${r.skipped}, Warnungen ${r.warnings}) ===\n$text\n\n")
+                        } catch (e: Throwable) { out.appendText("=== $name: FEHLER $e\n\n") }
                     }
+                    val first = docs.first()
+                    case("1 Dokument, Fließtext 120 Wörter, Lektor", SummaryRequest(subject, SummaryScope.DOC, listOf(first), SummarySpec(format = SummaryFormat.PROSE, targetWords = 120, role = SummaryRole.EDITOR)))
+                    case("2 Dokument, Stichpunkte, 'nur Wesentliches', 150 Wörter", SummaryRequest(subject, SummaryScope.DOC, listOf(first), SummarySpec(targetWords = 150, extra = "Fasse nur das Wesentliche zusammen.")))
+                    case("3 Fach, Stichpunkte, 400 Wörter", SummaryRequest(subject, SummaryScope.SUBJECT, docs, SummarySpec(targetWords = 400)))
+                    case("4 Thema 'Zelle', Fließtext 100 Wörter", SummaryRequest(subject, SummaryScope.TOPIC, docs, SummarySpec(format = SummaryFormat.PROSE, targetWords = 100), topic = intent.getStringExtra("topic") ?: "Zelle"))
+                    case("5 Dokument, Glossar", SummaryRequest(subject, SummaryScope.DOC, listOf(first), SummarySpec(format = SummaryFormat.GLOSSARY)))
+                    out.appendText("FERTIG\n")
+                } catch (e: Throwable) {
+                    out.appendText("FEHLER: $e\n")
+                } finally {
+                    graph.subjects.deleteWithContent(subject)
+                    runOnUiThread { finish() }
                 }
-                File(filesDir, "spike").apply { mkdirs() }.let { File(it, "summaries.json").writeText(arr.toString(1)) }
             }
-        }
-        finish()
+        }.start()
     }
 }

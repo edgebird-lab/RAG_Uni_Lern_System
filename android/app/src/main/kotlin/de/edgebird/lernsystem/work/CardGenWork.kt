@@ -20,11 +20,19 @@ object CardGenWork {
     const val TAG = "cardgen"
     const val DOC_ID = "doc"
     const val MAX_CARDS = "max"
+    const val MODE = "mode"
 
-    fun enqueue(context: Context, documentId: Long, maxCards: Int) {
+    /** Welche Karten erzeugt werden. */
+    enum class Mode(val label: String, val hint: String) {
+        QA("Fragen", "Frage und Musterlösung, ca. 7 Sekunden je Karte"),
+        CLOZE("Lückentext", "Satz mit Lücke zum Ergänzen, ca. 3 Sekunden je Karte"),
+        MIXED("Gemischt", "Je Abschnitt eine Frage und ein Lückentext"),
+    }
+
+    fun enqueue(context: Context, documentId: Long, maxCards: Int, mode: Mode = Mode.QA) {
         val req = OneTimeWorkRequestBuilder<CardGenWorker>().addTag(TAG)
-            .setInputData(workDataOf(DOC_ID to documentId, MAX_CARDS to maxCards)).build()
-        WorkManager.getInstance(context).enqueueUniqueWork("cardgen-$documentId", ExistingWorkPolicy.KEEP, req)
+            .setInputData(workDataOf(DOC_ID to documentId, MAX_CARDS to maxCards, MODE to mode.name)).build()
+        WorkManager.getInstance(context).enqueueUniqueWork("cardgen-$documentId-${mode.name}", ExistingWorkPolicy.KEEP, req)
     }
 }
 
@@ -37,6 +45,7 @@ class CardGenWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
         val graph = (applicationContext as LernsystemApp).graph
         val docId = inputData.getLong(CardGenWork.DOC_ID, -1)
         val target = inputData.getInt(CardGenWork.MAX_CARDS, 20)
+        val mode = runCatching { CardGenWork.Mode.valueOf(inputData.getString(CardGenWork.MODE).orEmpty()) }.getOrDefault(CardGenWork.Mode.QA)
         if (docId < 0) return Result.failure()
         if (!graph.llmModelFile.exists()) return Result.failure(workDataOf(ERROR to "Das Sprachmodell fehlt"))
 
@@ -51,7 +60,8 @@ class CardGenWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
 
         val embedder = if (graph.embeddingModelFile.exists()) graph.sharedEmbedder else null
         val generator = CardGenerator(graph.llm, embedder)
-        val vectors = graph.db.cards().allQuestionVectors().map { VectorCodec.decode(it) }.toMutableList()
+        val existing = graph.db.cards().questionVectorsWithText().map { VectorCodec.decode(it.questionVector) as FloatArray? to it.front }.toMutableList()
+        val fronts = graph.db.cards().frontsForDocument(docId).toMutableSet()
         val stats = GenerationStats()
         var created = 0
         for ((i, chunk) in picked.withIndex()) {
@@ -62,15 +72,22 @@ class CardGenWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
                 delay(15_000)
             }
             val cards = try {
-                generator.generate(chunk.text, n = minOf(PER_CHUNK, target - created), existingVectors = vectors, stats = stats)
+                val left = target - created
+                when (mode) {
+                    CardGenWork.Mode.QA -> generator.generate(chunk.text, n = minOf(PER_CHUNK, left), existing = existing, stats = stats)
+                    CardGenWork.Mode.CLOZE -> generator.generateCloze(chunk.text, n = minOf(PER_CHUNK, left), existingFronts = fronts, stats = stats)
+                    CardGenWork.Mode.MIXED -> generator.generate(chunk.text, n = minOf(1, left), existing = existing, stats = stats) +
+                        generator.generateCloze(chunk.text, n = minOf(1, maxOf(0, left - 1)).coerceAtLeast(if (left > 1) 1 else 0), existingFronts = fronts, stats = stats)
+                }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 return Result.failure(workDataOf(ERROR to "Die Erzeugung ist fehlgeschlagen: ${e.message}", CREATED to created))
             }
             for (c in cards) {
-                graph.study.addGenerated(docId, chunk.id, c.question, c.answer, c.questionVector)
-                c.questionVector?.let { vectors += it }
+                graph.study.addGenerated(docId, chunk.id, c.question, c.answer, c.questionVector, c.kind)
+                c.questionVector?.let { existing += it to c.question }
+                fronts += c.question
                 created++
             }
             setProgressAsync(workDataOf(CREATED to created, TOTAL to target, DONE_CHUNKS to i + 1, TOTAL_CHUNKS to picked.size))

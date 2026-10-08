@@ -9,22 +9,46 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import de.edgebird.lernsystem.LernsystemApp
 import de.edgebird.lernsystem.core.ai.PauseReason
-import de.edgebird.lernsystem.core.summary.SummaryStyle
+import de.edgebird.lernsystem.core.summary.SummarySpec
+import de.edgebird.lernsystem.data.SummaryScope
+import de.edgebird.lernsystem.data.summary.SummaryRequest
 import de.edgebird.lernsystem.data.summary.SummaryRunner
 import kotlinx.coroutines.delay
 
 object SummaryWork {
-    const val DOC_ID = "doc"
-    const val STYLE = "style"
+    /** Ein Zusammenfassungs-Auftrag. */
+    data class Job(val subjectId: Long, val scope: SummaryScope, val documentIds: List<Long>, val topic: String, val spec: SummarySpec, val replaceId: Long? = null, val restart: Boolean = false)
+
+    const val SUBJECT = "subject"
+    const val SCOPE = "scope"
+    const val DOCS = "docs"
+    const val TOPIC = "topic"
+    const val SPEC = "spec"
+    const val REPLACE = "replace"
     const val RESTART = "restart"
+    const val LABEL = "label"
+    const val LABEL_TAG = "lbl:"
 
-    fun tag(documentId: Long, style: SummaryStyle) = "summary-doc-$documentId-${style.name}"
+    fun subjectTag(subjectId: Long) = "summary-subject-$subjectId"
 
-    /** @param restart verwirft vorhandene Teile und startet neu; ein laufender Auftrag desselben Stils wird dabei ersetzt */
-    fun enqueue(context: Context, documentId: Long, style: SummaryStyle, restart: Boolean = false) {
-        val req = OneTimeWorkRequestBuilder<SummaryWorker>().addTag(tag(documentId, style))
-            .setInputData(workDataOf(DOC_ID to documentId, STYLE to style.name, RESTART to restart)).build()
-        WorkManager.getInstance(context).enqueueUniqueWork(tag(documentId, style), if (restart) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, req)
+    private fun uniqueName(j: Job) = "summary-${j.subjectId}-${j.scope}-${j.documentIds.sorted().joinToString("_")}-${j.topic.trim().lowercase().hashCode()}-${j.spec.toJson().hashCode()}"
+
+    /** Kurzer Name des Auftrags für die Anzeige. */
+    fun label(j: Job, docTitle: String?): String = when (j.scope) {
+        SummaryScope.DOC -> docTitle ?: "Quelle"
+        SummaryScope.SUBJECT -> "Ganzes Fach"
+        SummaryScope.TOPIC -> "Thema: ${j.topic.trim()}"
+    } + " · " + j.spec.format.label
+
+    fun enqueue(context: Context, job: Job, label: String = "") {
+        val req = OneTimeWorkRequestBuilder<SummaryWorker>().addTag(subjectTag(job.subjectId)).addTag(LABEL_TAG + label.take(80))
+            .setInputData(
+                workDataOf(
+                    SUBJECT to job.subjectId, SCOPE to job.scope.name, DOCS to job.documentIds.joinToString(","), TOPIC to job.topic, SPEC to job.spec.toJson(),
+                    REPLACE to (job.replaceId ?: -1L), RESTART to job.restart, LABEL to label,
+                ),
+            ).build()
+        WorkManager.getInstance(context).enqueueUniqueWork(uniqueName(job), if (job.restart) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, req)
     }
 }
 
@@ -32,17 +56,21 @@ object SummaryWork {
 class SummaryWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
         val graph = (applicationContext as LernsystemApp).graph
-        val docId = inputData.getLong(SummaryWork.DOC_ID, -1)
-        val style = runCatching { SummaryStyle.valueOf(inputData.getString(SummaryWork.STYLE).orEmpty()) }.getOrNull() ?: return Result.failure()
-        if (docId < 0) return Result.failure()
+        val scope = runCatching { SummaryScope.valueOf(inputData.getString(SummaryWork.SCOPE).orEmpty()) }.getOrNull() ?: return Result.failure()
+        val subject = inputData.getLong(SummaryWork.SUBJECT, -1)
+        val docs = inputData.getString(SummaryWork.DOCS).orEmpty().split(',').mapNotNull { it.toLongOrNull() }
+        if (subject < 0 || docs.isEmpty()) return Result.failure()
         if (!graph.llmModelFile.exists()) return Result.failure(workDataOf(ERROR to "Das Sprachmodell fehlt"))
+        val spec = SummarySpec.fromJson(inputData.getString(SummaryWork.SPEC))
+        val label = inputData.getString(SummaryWork.LABEL).orEmpty()
 
         val title = "Zusammenfassung wird erstellt"
-        setForeground(ImportWork.foregroundInfo(applicationContext, "Starte …", 0, 0, title, NOTIFICATION_ID))
+        setForeground(ImportWork.foregroundInfo(applicationContext, label.ifEmpty { "Starte …" }, 0, 0, title, NOTIFICATION_ID))
         val started = System.currentTimeMillis()
         return try {
-            val out = SummaryRunner(graph.db, graph.llm).run(
-                docId, style, restart = inputData.getBoolean(SummaryWork.RESTART, false),
+            val req = SummaryRequest(subject, scope, docs, spec, inputData.getString(SummaryWork.TOPIC).orEmpty(), inputData.getLong(SummaryWork.REPLACE, -1).takeIf { it >= 0 })
+            val out = SummaryRunner(graph.db, graph.llm, graph.retriever).run(
+                req, restart = inputData.getBoolean(SummaryWork.RESTART, false),
                 beforeSection = {
                     while (true) {
                         val reason = DeviceState.pauseReason(applicationContext) ?: break
@@ -52,7 +80,7 @@ class SummaryWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
                 },
                 onProgress = { done, total ->
                     setProgressAsync(workDataOf(DONE to done, TOTAL to total))
-                    setForegroundAsync(ImportWork.foregroundInfo(applicationContext, "Abschnitt $done von $total", done, total, title, NOTIFICATION_ID))
+                    setForegroundAsync(ImportWork.foregroundInfo(applicationContext, "${label.ifEmpty { "Schritt" }}: $done von $total", done, total, title, NOTIFICATION_ID))
                 },
             )
             val msg = buildString {
@@ -60,13 +88,13 @@ class SummaryWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
                 if (out.skipped > 0) append(", ${out.skipped} übersprungen")
                 if (out.failed > 0) append(", ${out.failed} fehlgeschlagen (erneut versuchen)")
             }
-            android.util.Log.i("SUMMARY", "doc=$docId stil=${style.name}: $msg; Warnungen=${out.warnings}; ${(System.currentTimeMillis() - started) / 1000} s")
-            Result.success(workDataOf(MESSAGE to msg))
+            android.util.Log.i("SUMMARY", "$label: $msg; Warnungen=${out.warnings}; ${(System.currentTimeMillis() - started) / 1000} s")
+            Result.success(workDataOf(MESSAGE to msg, RESULT_ID to out.id))
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
-        } catch (e: Exception) {
-            android.util.Log.w("SUMMARY", "doc=$docId stil=${style.name} fehlgeschlagen", e)
-            Result.failure(workDataOf(ERROR to (e.message ?: "Die Zusammenfassung ist fehlgeschlagen")))
+        } catch (e: Throwable) {
+            android.util.Log.w("SUMMARY", "$label fehlgeschlagen", e)
+            Result.failure(workDataOf(ERROR to (if (e is OutOfMemoryError) "Zu wenig Arbeitsspeicher. Schließe andere Apps und versuche es erneut." else e.message ?: "Die Zusammenfassung ist fehlgeschlagen")))
         }
     }
 
@@ -75,6 +103,7 @@ class SummaryWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
         const val TOTAL = "total"
         const val ERROR = "error"
         const val MESSAGE = "message"
+        const val RESULT_ID = "result"
         private const val NOTIFICATION_ID = 3
     }
 }

@@ -16,8 +16,11 @@ enum class CardProblem(val code: String, val label: String) {
 }
 
 object CardQuality {
-    /** Kosinus-Ähnlichkeit, ab der zwei Fragen als Dublette gelten (an bge-m3 kalibriert; für EmbeddingGemma zu prüfen). */
-    const val DUP_THRESHOLD = 0.89
+    /**
+     * Kosinus-Ähnlichkeit, ab der zwei Fragen als Dublette gelten. An EmbeddingGemma 2 gemessen (15 echte Paraphrasen: 0,947 bis 0,991;
+     * 25 verwandte, aber verschiedene Fragen: 0,72 bis 0,975): 0,89 hätte 16 von 25 verschiedenen Fragen verworfen, 0,955 nur 4.
+     */
+    const val DUP_THRESHOLD = 0.955
 
     /**
      * Groß-/Kleinschreibung ignorieren, Wörter und Wortgrenzen Unicode-weit. Die JVM braucht dafür das Flag `U`,
@@ -141,5 +144,35 @@ object CardQuality {
     fun isDuplicate(vec: FloatArray, others: List<FloatArray>, threshold: Double = DUP_THRESHOLD): Boolean {
         val v = VectorCodec.normalize(vec)
         return others.any { VectorCodec.dot(v, VectorCodec.normalize(it)) >= threshold }
+    }
+
+    /** Gemeinsame Inhaltswörter (Stamm 5 Zeichen) zweier Fragen als Anteil der Vereinigung, 0..1. */
+    fun wordOverlap(a: String, b: String): Double {
+        val sa = contentWords(a).map { it.take(5) }.toSet()
+        val sb = contentWords(b).map { it.take(5) }.toSet()
+        if (sa.isEmpty() || sb.isEmpty()) return 0.0
+        return sa.intersect(sb).size.toDouble() / sa.union(sb).size
+    }
+
+    /** Wortüberlappung, ab der bei mäßiger Embedding-Ähnlichkeit ([TEXT_DUP_COS]) von einer Dublette ausgegangen wird. */
+    const val TEXT_DUP_OVERLAP = 0.7
+    const val TEXT_DUP_COS = 0.93
+
+    /** Fast gleiche Wörter (Überlappung ab [NEAR_SAME_OVERLAP]) genügen schon bei [NEAR_SAME_COS]. */
+    const val NEAR_SAME_OVERLAP = 0.85
+    const val NEAR_SAME_COS = 0.90
+
+    /**
+     * Dublette, wenn der Kosinus hoch genug ist ODER Kosinus mäßig hoch und die Fragen viele Wörter teilen. Das fängt Fragen wie
+     * „zyklischer Elektronentransport“ zweimal, die EmbeddingGemma knapp unter der reinen Schwelle bewertet. Gemessen: 13 von 15 echten
+     * Dubletten erkannt, 4 von 25 verschiedenen Fragen fälschlich verworfen (docs/KARTEN_EVAL.md).
+     */
+    fun isDuplicate(vec: FloatArray, question: String, others: List<Pair<FloatArray?, String>>, threshold: Double = DUP_THRESHOLD): Boolean {
+        val v = VectorCodec.normalize(vec)
+        return others.any { (ov, oq) ->
+            val cos: Double = ov?.let { VectorCodec.dot(v, VectorCodec.normalize(it)).toDouble() } ?: 0.0
+            val overlap = wordOverlap(question, oq)
+            cos >= threshold || (cos >= TEXT_DUP_COS && overlap >= TEXT_DUP_OVERLAP) || (cos >= NEAR_SAME_COS && overlap >= NEAR_SAME_OVERLAP)
+        }
     }
 }

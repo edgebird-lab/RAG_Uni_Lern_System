@@ -178,10 +178,16 @@ private fun SessionView(s: SessionState, vm: StudyViewModel) {
         }
         val card = s.card ?: return@Column
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Card(Modifier.fillMaxWidth()) { Text(LatexLite.toPlain(card.front), Modifier.padding(20.dp), style = MaterialTheme.typography.titleLarge) }
+            val cloze = card.kind == "CLOZE"
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (cloze) Text("Lückentext", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    Text(LatexLite.toPlain(card.front), style = MaterialTheme.typography.titleLarge)
+                }
+            }
             if (s.showAnswer) {
                 Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                    Text(LatexLite.toPlain(card.answer), Modifier.padding(20.dp), style = MaterialTheme.typography.bodyLarge)
+                    Text(inline(card.answer), Modifier.padding(20.dp), style = MaterialTheme.typography.bodyLarge)
                 }
             }
         }
