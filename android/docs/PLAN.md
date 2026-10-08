@@ -128,10 +128,10 @@ Jeder Schritt ist klein, einzeln testbar und endet mit einem überprüfbaren Erg
 
 ### Phase 7: Pomodoro
 
-- [ ] 7.1 Zustandsmaschine in `core` (Fokus/Kurzpause/Langpause, Einstellungen), voll unit-getestet.
-- [ ] 7.2 Foreground-Service mit Benachrichtigung, genaue Alarme für Ende der Phase.
-- [ ] 7.3 UI: Timer, Start/Pause, Zuordnung zu einem Fach/Dokument.
-- [ ] 7.4 Lernzeit-Statistik (pro Tag/Woche) und Verknüpfung mit dem Tagesziel.
+- [x] 7.1 Zustandsmaschine in `core` (Fokus/Kurzpause/Langpause, Einstellungen), voll unit-getestet.
+- [x] 7.2 Benachrichtigung mit Chronometer-Countdown und Aktionsknöpfen plus genauer Alarm (`setExactAndAllowWhileIdle`) fürs Phasenende, Boot-Wiederherstellung. Bewusst kein Vordergrunddienst: Der Zustand ist zeitstempelbasiert, nichts muss im Hintergrund laufen.
+- [x] 7.3 UI: Tab „Fokus“ mit Timer, Start/Pause/Überspringen/Beenden, Zuordnung zu einem Dokument (Fach folgt mit dem Feinschliff-Backlog), Einstellungen.
+- [x] 7.4 Lernzeit-Statistik (pro Tag/Woche) und Verknüpfung mit dem Tagesziel.
 
 ### Phase 8: Modell-Download in der App
 
@@ -184,4 +184,4 @@ Vom Nutzer nach dem Test über Nacht genannt oder beim Bauen aufgefallen:
 
 ## 7. Nächster Schritt
 
-Phase 7 (Pomodoro). Danach Phase 8 (Modell-Download über GitHub-Releases), dann Qualität und Release (Phase 9) und das Feinschliff-Backlog.
+Phase 8 (Modell-Download über GitHub-Releases), danach Phase 9. Phase 7 (Pomodoro) ist umgesetzt, die Sichtprüfung des Tabs auf dem Pixel steht aus. Vorher/danach: Phase 8 (Modell-Download über GitHub-Releases), dann Qualität und Release (Phase 9) und das Feinschliff-Backlog.
