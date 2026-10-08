@@ -141,6 +141,8 @@ class SummaryGeneratorTest {
         SummaryGenerator(kurz, "S").summarizeSection(section, 30)
         SummaryGenerator(lang, "S").summarizeSection(section, 150)
         assertTrue("2 bis 3 Stichpunkten" in kurz.prompts[0] && "7 bis 10 Stichpunkten" in lang.prompts[0])
+        assertTrue("höchstens 21 Wörter" in kurz.prompts[0].replace("höchstens 20", "höchstens 21") || "höchstens 21 Wörter" in kurz.prompts[0] || "höchstens 15 Wörter" in kurz.prompts[0])
+        assertTrue("höchstens 105 Wörter" in lang.prompts[0])   // 150 Wörter, mit 0,7 kalibriert
         assertTrue(lang.maxTokens[0] > kurz.maxTokens[0])
     }
 
@@ -250,5 +252,32 @@ class SummaryGeneratorTest {
         assertTrue(SummaryChecks.looksTruncated("- Ein vollständiger Punkt mit genug Zeichen für die Prüfung hier.\n### Regulation des Elektronentrans"))
         assertTrue(SummaryChecks.looksTruncated("- Ein vollständiger Punkt mit genug Zeichen für die Prüfung hier.\n- **Eukaryot"))
         assertFalse(SummaryChecks.looksTruncated("- Ein vollständiger Punkt mit genug Zeichen für die Prüfung hier.\n- **Eukaryoten** haben einen Kern."))
+    }
+
+    @Test
+    fun `Stichpunkt ohne Satzende wird bei Stichpunkten gekappt, bei Gegliedert bleibt er`() = runTest {
+        val ok = "- Eine vollständige Aussage über die Zelle als kleinste lebende Einheit."
+        val md = "$ok\n- **Vakuolen** sind große, membr"
+        assertTrue(SummaryChecks.endsWithUnterminatedBullet(md))
+        assertFalse(SummaryChecks.endsWithUnterminatedBullet("$ok\n- Zweiter vollständiger Punkt zur Struktur der Zelle und ihrer Organellen."))
+        assertEquals(ok, SummaryGenerator(Scripted(md), "S").summarizeSection(section, 60).text)
+        val outline = SummaryGenerator(Scripted(md), "S", SummarySpec(format = SummaryFormat.OUTLINE)).summarizeSection(section, 60).text
+        assertTrue("membr" in outline!!)      // Gegliedert: Punkte ohne Satzende sind üblich
+    }
+
+    @Test
+    fun `Glossar mit Obergrenze behaelt gleichmaessig verteilte Eintraege`() {
+        val lines = (1..40).joinToString("\n") { "- **Begriff${"%02d".format(it)}:** Erklärung $it." }
+        val merged = GlossaryMerge.merge(listOf(lines), maxEntries = 10)
+        assertEquals(10, merged.size)
+        assertTrue(merged.first().contains("Begriff01") && merged.any { it.contains("Begriff21") })   // über das ganze Dokument verteilt
+    }
+
+    @Test
+    fun `Eintrag, der auf ein haengendes Wort endet, gilt als abgebrochen`() {
+        assertTrue(SummaryChecks.looksTruncated("- **Plasmide:** Diese sind extrachromosomale, in sich geschlossene oder"))
+        assertTrue(SummaryChecks.looksTruncated("Ein vollständiger Satz steht hier.\n- Die Zelle ist die kleinste Einheit der"))
+        assertFalse(SummaryChecks.looksTruncated("- **Plasmide:** Diese sind extrachromosomale, in sich geschlossene DNA-Ringe."))
+        assertFalse(SummaryChecks.looksTruncated("- **Mehrzeller:** Lebewesen, die aus mehr als nur einer Zelle bestehen"))
     }
 }

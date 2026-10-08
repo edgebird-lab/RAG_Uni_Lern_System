@@ -218,12 +218,13 @@ object SocraticDialog {
     }
 
     /** Die Nutzernachricht des Zuges; bewusst KEINE früheren Chat-Turns. */
-    fun userMessage(state: DialogState, kind: Kind, note: String?, input: String, context: String, correction: String = ""): String {
+    fun userMessage(state: DialogState, kind: Kind, note: String?, input: String, context: String, correction: String = "", verdict: Verdict? = null): String {
         var task = SocraticPrompts.TASKS.getValue(kind)
         if (kind == Kind.RESOLVE) task += " " + (if (state.answers.isNotEmpty()) SocraticPrompts.RESOLVE_WITH_ANSWERS else SocraticPrompts.RESOLVE_NO_ANSWERS)
         note?.let { SocraticPrompts.NOTES[it] }?.let { task += " $it" }
         if (correction.isNotEmpty()) task += "\n\n$correction"
-        return SocraticPrompts.USER.format(state.topic.ifEmpty { "(frei gewählt)" }, context, stateLines(state, kind, input), task)
+        val lines = stateLines(state, kind, input) + (verdict?.let { "\n- Bewertung der Antwort durch den Prüfer (verbindlich, widersprich ihr nicht): ${it.sentence}" }.orEmpty())
+        return SocraticPrompts.USER.format(state.topic.ifEmpty { "(frei gewählt)" }, context, lines, task)
     }
 
     // ---- Prüfung ------------------------------------------------------------------------------------------------
@@ -303,7 +304,7 @@ object SocraticDialog {
     /** Erzeugt die Antwort für einen Zug, prüft sie und versucht es bei Mängeln neu (höchstens [maxAttempts] Mal). */
     suspend fun generateTurn(
         llm: LlmEngine, kind: Kind, note: String?, state: DialogState, input: String, context: String,
-        fallbackChunks: List<String> = emptyList(), maxAttempts: Int = 3,
+        fallbackChunks: List<String> = emptyList(), maxAttempts: Int = 3, verdict: Verdict? = null,
     ): TurnResult {
         val candidates = mutableListOf<Triple<Int, String, List<String>>>()
         var correction = ""
@@ -311,7 +312,7 @@ object SocraticDialog {
         for (attempt in 1..maxOf(1, maxAttempts)) {
             val params = GenerationParams(maxTokens = if (kind == Kind.RESOLVE) 450 else 300, temperature = TEMPERATURES[minOf(attempt, TEMPERATURES.size) - 1], system = SocraticPrompts.SYSTEM)
             val raw = try {
-                llm.generate(userMessage(state, kind, note, input, context, correction), params).toList().joinToString("")
+                llm.generate(userMessage(state, kind, note, input, context, correction, verdict), params).toList().joinToString("")
             } catch (e: kotlinx.coroutines.CancellationException) { throw e
             } catch (e: Exception) {
                 if (candidates.isEmpty()) throw e
@@ -332,7 +333,11 @@ object SocraticDialog {
 }
 
 /** Bewertung einer Antwort im Dialog. */
-enum class Verdict(val label: String) { CORRECT("richtig"), PARTIAL("teilweise"), WRONG("falsch") }
+enum class Verdict(val label: String, val sentence: String) {
+    CORRECT("richtig", "Die Antwort ist richtig."),
+    PARTIAL("teilweise", "Die Antwort ist teilweise richtig (sage, was stimmt und was fehlt)."),
+    WRONG("falsch", "Die Antwort ist noch nicht richtig (sage freundlich, was nicht stimmt; verrate die Lösung nicht)."),
+}
 
 /** Bewertet Antworten der Lernenden gegen den Kontext (für Fortschritt je Thema). Ein eigener, kurzer Modellaufruf mit festem Antwortformat. */
 object SocraticGrader {
@@ -344,7 +349,11 @@ $context
 FRAGE: ${SocraticText.clip(question, 400)}
 ANTWORT: ${SocraticText.clip(answer, 600)}
 
-War die Antwort richtig, teilweise richtig oder falsch? Eine Antwort ohne Inhalt („weiß nicht“) ist falsch. Antworte mit GENAU EINEM Wort: richtig, teilweise oder falsch."""
+Beurteile die Antwort so:
+- richtig: Sie beantwortet die Frage inhaltlich vollständig und stimmt mit dem KONTEXT überein.
+- teilweise: Sie enthält Zutreffendes, beantwortet die Frage aber nicht vollständig, oder lässt einen wichtigen Teil weg.
+- falsch: Sie widerspricht dem KONTEXT, hat nichts mit der Frage zu tun oder enthält keinen Inhalt („weiß nicht“).
+Antworte mit GENAU EINEM Wort: richtig, teilweise oder falsch."""
 
     /** Liest das Urteil aus der Modellantwort; `null`, wenn keines erkennbar ist. */
     fun parse(raw: String): Verdict? {

@@ -26,8 +26,15 @@ object SummaryPrompts {
 
     private fun emptyRule() = "Wenn der Abschnitt keine prüfungsrelevante Substanz enthält, gib exakt \"${SummaryChecks.EMPTY_MARKER}\" aus."
 
+    /**
+     * Das Modell überschreitet Längenangaben bei Stichpunkten und Gliederung im Mittel um 50 bis 80 Prozent (auf dem Gerät gemessen). Darum wird im
+     * Prompt ein kleinerer Wert genannt und als Obergrenze formuliert.
+     */
+    const val LENGTH_CALIBRATION = 0.7
+
     /** Zusammenfassung EINES Abschnitts im gewählten Format; [words] = Zielumfang dieses Abschnitts. */
     fun section(spec: SummarySpec, label: String, title: String, text: String, words: Int): String {
+        val ask = maxOf(15, (words * LENGTH_CALIBRATION).toInt())
         val head = """Abschnitt der Quelle "$label" (Thema: $title).
 Nur der folgende Quelltext ist erlaubte Wissensgrundlage:
 $Q
@@ -35,7 +42,7 @@ $text
 $Q
 """
         val body = when (spec.format) {
-            SummaryFormat.OUTLINE -> """Schreibe eine prägnante, klausurtaugliche Zusammenfassung DIESES Abschnitts als Markdown, etwa $words Wörter. Regeln:
+            SummaryFormat.OUTLINE -> """Schreibe eine prägnante, klausurtaugliche Zusammenfassung DIESES Abschnitts als Markdown, höchstens $ask Wörter. Regeln:
 ${rules(spec)}
 - Struktur (nur die zutreffenden Punkte, in dieser Reihenfolge):
   - **Kernidee:** 1-2 Sätze, worum es geht.
@@ -45,7 +52,7 @@ ${rules(spec)}
   - **Typische Stolperfallen:** nur falls im Quelltext genannt.
 - Kurz und dicht, keine Wiederholung des Rohtexts.
 - Beginne NICHT mit einer eigenen Überschrift; gib nur den Inhalt aus."""
-            SummaryFormat.BULLETS, SummaryFormat.PROSE -> """Fasse DIESEN Abschnitt in ${bulletCount(words)} Stichpunkten zusammen (Markdown-Liste mit "- "), zusammen etwa $words Wörter. Regeln:
+            SummaryFormat.BULLETS, SummaryFormat.PROSE -> """Fasse DIESEN Abschnitt in ${bulletCount(words)} Stichpunkten zusammen (Markdown-Liste mit "- "), zusammen höchstens $ask Wörter. Regeln:
 ${rules(spec)}
 - Jeder Stichpunkt ist ein vollständiger, verständlicher Satz oder eine klare Aussage.
 - Keine Überschrift, keine Einleitung, nur die Liste."""

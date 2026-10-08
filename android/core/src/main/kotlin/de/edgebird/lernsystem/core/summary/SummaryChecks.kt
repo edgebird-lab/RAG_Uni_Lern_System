@@ -2,6 +2,9 @@ package de.edgebird.lernsystem.core.summary
 
 /** Prüfungen an Modellantworten für Zusammenfassungen (Port von `_looks_truncated`/`_is_empty_section`, plus Zahlenabgleich). */
 object SummaryChecks {
+    /** Wörter, auf die kein vollständiger Satz endet: Steht eines am Ende, ist die Antwort abgebrochen. */
+    private val DANGLING = setOf("und", "oder", "der", "die", "das", "den", "dem", "des", "ein", "eine", "einer", "einem", "einen", "eines", "mit", "von", "zu", "zur", "zum", "in", "im", "auf", "als", "wie", "dass", "bei", "für", "aus", "nach", "durch", "sowie", "sich", "wird", "ist", "sind", "werden", "an", "am", "um", "über", "unter", "zwischen", "gegen", "ohne")
+
     const val EMPTY_MARKER = "(kein prüfungsrelevanter Inhalt)"
     private val EMPTY_MARKERS = listOf("(kein pruefungsrelevanter inhalt)", "(kein prüfungsrelevanter inhalt)")
 
@@ -13,6 +16,7 @@ object SummaryChecks {
         val last = s.lines().last().trim()
         if (last in listOf("*", "-", "•") || Regex("^[-*]\\s*$").matches(last)) return true
         if (last.startsWith("#")) return true                                   // Überschrift ohne Inhalt darunter
+        if (last.length >= 25 && last.last().isLetter() && last.split(Regex("[^\\p{L}]+")).lastOrNull { it.isNotEmpty() }?.lowercase() in DANGLING) return true   // endet auf „… oder“, „… der“
         if (Regex("\\*\\*").findAll(last).count() % 2 == 1) return true      // ein geöffnetes **fett** wurde nie geschlossen
         // Ein langer letzter Satz, der mitten im Wort oder ohne Satzzeichen endet, ist fast immer am Token-Limit abgebrochen
         return last.length > 80 && s.last().isLetterOrDigit()
@@ -76,4 +80,13 @@ object SummaryChecks {
 
     /** Räumt Reste kleiner Modelle auf: leere Fettmarker („****“), Leerzeichen vor Satzzeichen, mehrfache Leerzeichen. */
     fun tidy(md: String): String = md.replace(Regex("\\*{4,}"), "").replace(Regex("[ \\t]+([,.;:!?])"), "$1").replace(Regex("(?<=\\S)[ \\t]{2,}"), " ").trim()
+
+    /**
+     * Endet die Liste mit einem Stichpunkt ohne Satzende? Wo der Prompt ganze Sätze verlangt (Format „Stichpunkte“), ist das fast immer ein mitten im
+     * Wort abgebrochener Punkt; bei „Gegliedert“ sind Punkte ohne Satzende üblich und dürfen bleiben.
+     */
+    fun endsWithUnterminatedBullet(md: String): Boolean {
+        val last = md.trimEnd().lines().lastOrNull()?.trim().orEmpty()
+        return Regex("^(?:[-*•]|\\d+[.)])\\s+").containsMatchIn(last) && last.length >= 25 && last.last() !in ".!?:;)]»”\"*_"
+    }
 }

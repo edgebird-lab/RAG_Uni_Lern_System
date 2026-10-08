@@ -81,6 +81,7 @@ fun SourcesScreen(subjectId: Long, otherSubjects: List<Pair<Long, String>>, vm: 
                     embed?.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                     message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                     cardGen?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    if (message != null || cardGen?.startsWith("Karten werden erstellt") == false) TextButton(onClick = vm::dismissMessages) { Text("Meldung schließen") }
                 }
             }
             if (docs.size > 1) item {

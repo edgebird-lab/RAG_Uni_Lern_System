@@ -104,12 +104,11 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun estimate(scope: SummaryScope, docIds: List<Long>, topic: String, spec: SummarySpec): Estimate? {
         val sid = subject.value ?: return null
         if (docIds.isEmpty()) return null
-        val steps = SummaryRunner(graph.db, graph.llm, graph.retriever).estimateSteps(SummaryRequest(sid, scope, docIds, spec, topic))
+        val runner = SummaryRunner(graph.db, graph.llm, graph.retriever)
+        val request = SummaryRequest(sid, scope, docIds, spec, topic)
+        val steps = runner.estimateSteps(request)
         val perStep = if (spec.format == SummaryFormat.OUTLINE) 23 else 12
-        val words = when (scope) {
-            SummaryScope.TOPIC -> spec.targetWords
-            else -> if (spec.format == SummaryFormat.PROSE) spec.targetWords else spec.expectedWords(maxOf(1, steps))
-        }
+        val words = runner.estimateWords(request)
         return Estimate(steps, maxOf(1, steps * perStep / 60), words)
     }
 

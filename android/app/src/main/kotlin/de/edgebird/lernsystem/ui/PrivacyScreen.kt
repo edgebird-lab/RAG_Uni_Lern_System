@@ -67,6 +67,7 @@ fun PrivacyScreen(onBack: () -> Unit, vm: PrivacyViewModel = viewModel()) {
         Text("Datenschutz", style = MaterialTheme.typography.headlineMedium)
         Text("Alles bleibt auf deinem Gerät: Dokumente, Abschnitte, Fragen an die KI, Antworten, Karteikarten und Lernzeiten liegen nur im privaten Speicher dieser App. Die KI läuft lokal, es gibt weder Konto noch Tracking noch Werbung.", style = MaterialTheme.typography.bodyMedium)
         Text("Die Internet-Berechtigung nutzt die App ausschließlich, um die KI-Modelle von GitHub (edgebird-lab/lernsystem-modelle) zu laden und nach Updates zu suchen. Dabei werden keine Daten von dir übertragen, GitHub sieht nur die übliche Verbindungsadresse.", style = MaterialTheme.typography.bodyMedium)
+        Text("Spracheingabe nutzt die Erkennung des Geräts, die Texterkennung für Fotos läuft ebenfalls auf dem Gerät. Beim Vorlesen verwendet Android die installierte Stimme: Ist keine deutsche Offline-Stimme vorhanden, kann der Sprachdienst des Geräts eine Online-Stimme nutzen (die App warnt dann).", style = MaterialTheme.typography.bodyMedium)
         Text("Die App ist von der Android-Datensicherung ausgenommen. Wer seine Daten mitnehmen will, nutzt den Export.", style = MaterialTheme.typography.bodyMedium)
         Button(onClick = { saver.launch("lernsystem-export.json") }, modifier = Modifier.fillMaxWidth()) { Text("Meine Daten exportieren (JSON)") }
         OutlinedButton(onClick = { confirm = true }, modifier = Modifier.fillMaxWidth()) { Text("Alle meine Daten löschen") }

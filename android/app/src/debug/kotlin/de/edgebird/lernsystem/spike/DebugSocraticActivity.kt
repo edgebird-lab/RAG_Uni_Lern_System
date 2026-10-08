@@ -43,10 +43,11 @@ class DebugSocraticActivity : Activity() {
                     suspend fun go(label: String, f: suspend () -> de.edgebird.lernsystem.data.socratic.TurnOutput) {
                         val t0 = System.currentTimeMillis()
                         val r = f()
-                        out.appendText("#${++step} [$label] (ctx=${s.contextSize}, ${(System.currentTimeMillis() - t0) / 1000.0}s, phase=${r.phase}${if (r.fallback) ", FALLBACK" else ""})\n${r.text}\n" + (if (r.fallback || r.trace.size > 1) r.trace.mapIndexed { i, (t, p) -> "   Versuch ${i + 1} $p: ${t.replace("\n", " ").take(260)}\n" }.joinToString("") else "") + "\n")
+                        out.appendText("#${++step} [$label] (ctx=${s.contextSize}, ${(System.currentTimeMillis() - t0) / 1000.0}s, phase=${r.phase}${if (r.fallback) ", FALLBACK" else ""}${r.verdict?.let { ", BEWERTUNG=${it.label}" } ?: ""})\n${r.text}\n" + (if (r.fallback || r.trace.size > 1) r.trace.mapIndexed { i, (t, p) -> "   Versuch ${i + 1} $p: ${t.replace("\n", " ").take(260)}\n" }.joinToString("") else "") + "\n")
                     }
                     go("Start") { s.start() }
-                    go("Antwort: Zucker") { s.act(Action.Answer("Pflanzen machen aus Licht Zucker.")) }
+                    go("Antwort: richtig (Inhalt aus Text)") { s.act(Action.Answer(intent.getStringExtra("good") ?: "Pflanzen wandeln Lichtenergie in chemische Energie um und bilden dabei Glucose und Sauerstoff.")) }
+                    go("Antwort: falsch") { s.act(Action.Answer("Die Photosynthese findet nachts in den Mitochondrien statt und verbraucht Sauerstoff.")) }
                     go("Hinweis") { s.act(Action.Hint) }
                     go("Teil") { s.act(Action.Partial) }
                     go("Auflösen") { s.act(Action.Resolve) }

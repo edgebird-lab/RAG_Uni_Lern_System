@@ -141,4 +141,16 @@ class SocraticTurnTest {
         assertEquals(Verdict.CORRECT, SocraticGrader.grade(llm, "Was ist ein Vektor?", "Eine Größe mit Betrag und Richtung", "ctx"))
         assertTrue("GENAU EINEM Wort" in llm.prompts[0] && "ANTWORT: Eine Größe" in llm.prompts[0])
     }
+
+    @Test fun `die Bewertung wird dem Tutor verbindlich vorgegeben`() {
+        val st = DialogState("V", Phase.OPEN, goal = "Was ist ein Vektor?")
+        val msg = SocraticDialog.userMessage(st, Kind.ANSWER, null, "Eine Zahl", "ctx", verdict = Verdict.WRONG)
+        assertTrue("verbindlich" in msg && "noch nicht richtig" in msg)
+        assertFalse("verbindlich" in SocraticDialog.userMessage(st, Kind.ANSWER, null, "Eine Zahl", "ctx"))
+    }
+
+    @Test fun `Bewertungskriterien stehen im Pruefer-Prompt`() {
+        val p = SocraticGrader.prompt("Was ist ein Vektor?", "Ein Pfeil", "ctx")
+        assertTrue("teilweise: Sie enthält Zutreffendes" in p && "falsch: Sie widerspricht" in p)
+    }
 }

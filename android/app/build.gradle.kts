@@ -13,6 +13,8 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
+        // Das Sprachmodell (LiteRT-LM) braucht ein 64-Bit-ARM-Gerät; andere Architekturen würden die APK nur um rund 45 MB vergrößern
+        ndk { abiFilters += "arm64-v8a" }
     }
 
     buildTypes {

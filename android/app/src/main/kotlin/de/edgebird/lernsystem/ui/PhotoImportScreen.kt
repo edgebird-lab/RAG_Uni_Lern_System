@@ -58,7 +58,7 @@ fun PhotoImportScreen(subjectId: Long, onClose: () -> Unit, vm: PhotoImportViewM
             PhotoStep.CAPTURE -> {
                 Text("Fotografiere Seiten deiner Unterlagen oder wähle Bilder aus der Galerie. Die Texterkennung läuft komplett auf dem Gerät. Tipp: Seite gerade von oben, scharf und gut beleuchtet, ohne Schatten.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { camera.launch(vm.newCaptureUri()) }, modifier = Modifier.weight(1f)) { Text("Seite fotografieren") }
+                    Button(onClick = { camera.launch(vm.newCaptureUri()) }, modifier = Modifier.weight(1f)) { Text("Fotografieren") }
                     OutlinedButton(onClick = { gallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.weight(1f)) { Text("Aus Galerie") }
                 }
                 s.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }

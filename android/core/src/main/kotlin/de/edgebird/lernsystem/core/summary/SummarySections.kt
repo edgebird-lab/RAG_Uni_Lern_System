@@ -15,7 +15,7 @@ object SummarySections {
     const val DEFAULT_BUDGET = 3000
 
     /** Größtes Zeichenbudget je Abschnitt: Prompt und Antwort müssen noch in den Kontext des Modells passen. */
-    const val MAX_BUDGET = 6000
+    const val MAX_BUDGET = 7500
     private const val MERGE_BELOW = 700
 
     private val HEADER_PREFIX = Regex("^\\[[^\\]]{0,160}]\\n")

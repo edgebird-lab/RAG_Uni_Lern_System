@@ -34,7 +34,10 @@ class SummaryGenerator(
     }
 
     /** Antwort bereinigen: war sie abgeschnitten (Token-Limit oder Heuristik), fällt der unvollständige Schluss weg. */
-    private fun finish(md: String, hitLimit: Boolean): String = SummaryChecks.tidy(SummaryChecks.trimIncomplete(md, force = hitLimit))
+    private fun finish(md: String, hitLimit: Boolean): String {
+        val strict = spec.format == SummaryFormat.BULLETS && SummaryChecks.endsWithUnterminatedBullet(md)
+        return SummaryChecks.tidy(SummaryChecks.trimIncomplete(md, force = hitLimit || strict))
+    }
 
     /** Token-Budget für ungefähr [words] Wörter (deutsch ca. 1,5 bis 2 Token je Wort) mit Puffer. */
     private fun tokensFor(words: Int, factor: Double = 1.0) = (words * 2.2 * factor).toInt().coerceIn(160, 1400)
@@ -74,7 +77,7 @@ class SummaryGenerator(
 
     /** Glossar: alle Begriffszeilen, nach Begriff sortiert, gleiche Begriffe nur einmal (die ausführlichere Erklärung gewinnt). */
     fun assembleGlossary(title: String, parts: List<Pair<String, String>>, modelNote: String): String {
-        val entries = GlossaryMerge.merge(parts.map { it.second })
+        val entries = GlossaryMerge.merge(parts.map { it.second }, maxEntries = maxOf(8, spec.targetWords / 12))
         return "# Glossar: $title\n\n${note(modelNote)}\n\n" + entries.joinToString("\n") + "\n"
     }
 
@@ -172,7 +175,8 @@ class SummaryGenerator(
 object GlossaryMerge {
     private val LINE = Regex("""^\s*[-*•]\s*\*\*(.+?)\*\*\s*[:–-]?\s*(.*)$""")
 
-    fun merge(texts: List<String>): List<String> {
+    /** @param maxEntries höchstens so viele Einträge; sind es mehr, werden gleichmäßig über das Dokument verteilte behalten. */
+    fun merge(texts: List<String>, maxEntries: Int = Int.MAX_VALUE): List<String> {
         val best = LinkedHashMap<String, Pair<String, String>>()   // klein geschriebener Begriff -> (Begriff, Erklärung)
         for (t in texts) for (line in t.lines()) {
             val m = LINE.matchEntire(line.trimEnd()) ?: continue
@@ -183,6 +187,8 @@ object GlossaryMerge {
             val old = best[key]
             if (old == null || def.length > old.second.length) best[key] = term to def
         }
-        return best.values.sortedBy { it.first.lowercase() }.map { (t, d) -> "- **$t:** $d" }
+        val inOrder = best.values.toList()
+        val kept = if (inOrder.size <= maxEntries) inOrder else (0 until maxEntries).map { inOrder[it * inOrder.size / maxEntries] }
+        return kept.sortedBy { it.first.lowercase() }.map { (t, d) -> "- **$t:** $d" }
     }
 }

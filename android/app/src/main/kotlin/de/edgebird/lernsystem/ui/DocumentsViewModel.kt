@@ -95,6 +95,9 @@ class DocumentsViewModel(app: Application) : AndroidViewModel(app) {
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /** Meldungen über beendete Aufträge (Import, Kartenerzeugung) ausblenden. */
+    fun dismissMessages() { work.pruneWork() }
+
     fun generateCards(documentId: Long, maxCards: Int, mode: CardGenWork.Mode = CardGenWork.Mode.QA) = CardGenWork.enqueue(getApplication(), documentId, maxCards, mode)
 
     val importMessage: StateFlow<String?> = work.getWorkInfosForUniqueWorkFlow(ImportWork.UNIQUE_IMPORT).map { infos ->

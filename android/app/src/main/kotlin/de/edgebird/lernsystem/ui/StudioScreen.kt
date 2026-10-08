@@ -58,6 +58,8 @@ import de.edgebird.lernsystem.core.summary.SummarySpec
 import de.edgebird.lernsystem.data.DocumentStatus
 import de.edgebird.lernsystem.data.GeneratedSummaryEntity
 import de.edgebird.lernsystem.data.SummaryScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Date
 
@@ -114,8 +116,8 @@ private fun Composer(vm: StudioViewModel, docs: List<de.edgebird.lernsystem.data
 
             // 1. Umfang
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                listOf(SummaryScope.DOC to "Eine Quelle", SummaryScope.SUBJECT to "Ganzes Fach", SummaryScope.TOPIC to "Thema").forEachIndexed { i, (s, label) ->
-                    SegmentedButton(selected = scope == s, onClick = { scope = s }, shape = SegmentedButtonDefaults.itemShape(i, 3)) { Text(label) }
+                listOf(SummaryScope.DOC to "Quelle", SummaryScope.SUBJECT to "Fach", SummaryScope.TOPIC to "Thema").forEachIndexed { i, (s, label) ->
+                    SegmentedButton(selected = scope == s, onClick = { scope = s }, shape = SegmentedButtonDefaults.itemShape(i, 3), icon = {}) { Text(label, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelLarge) }
                 }
             }
             when (scope) {
@@ -140,11 +142,13 @@ private fun Composer(vm: StudioViewModel, docs: List<de.edgebird.lernsystem.data
             Text(spec.format.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             // 3. Länge
-            Text("Länge: ca. ${spec.targetWords} Wörter", style = MaterialTheme.typography.labelLarge)
+            var slider by remember(spec.targetWords) { mutableStateOf(spec.targetWords.toFloat()) }
+            Text("Länge: ca. ${(slider / 25).toInt() * 25} Wörter", style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Kurz" to 150, "Mittel" to 400, "Ausführlich" to 900).forEach { (l, w) -> FilterChip(selected = spec.targetWords == w, onClick = { vm.edit { it.copy(targetWords = w) } }, label = { Text(l) }) }
             }
-            Slider(value = spec.targetWords.toFloat(), onValueChange = { v -> vm.edit { it.copy(targetWords = (v / 25).toInt() * 25) } }, valueRange = SummarySpec.MIN_TARGET.toFloat()..SummarySpec.MAX_TARGET.toFloat())
+            // Erst beim Loslassen übernehmen: Der Aufwand wird neu berechnet und die Einstellung gespeichert
+            Slider(value = slider, onValueChange = { slider = it }, onValueChangeFinished = { vm.edit { it.copy(targetWords = (slider / 25).toInt() * 25) } }, valueRange = SummarySpec.MIN_TARGET.toFloat()..SummarySpec.MAX_TARGET.toFloat())
             if (spec.format != SummaryFormat.PROSE && scope != SummaryScope.TOPIC) Text("Bei strukturierten Formen verteilt sich die Länge auf die Abschnitte der Quelle.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             // 4. Weitere Einstellungen
@@ -152,7 +156,7 @@ private fun Composer(vm: StudioViewModel, docs: List<de.edgebird.lernsystem.data
             if (advanced) Advanced(spec, vm)
 
             // 5. Vorlagen
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Column {
                     OutlinedButton(onClick = { tplMenu = true }) { Text("Vorlage laden") }
                     DropdownMenu(expanded = tplMenu, onDismissRequest = { tplMenu = false }) {
@@ -162,11 +166,14 @@ private fun Composer(vm: StudioViewModel, docs: List<de.edgebird.lernsystem.data
                         }
                     }
                 }
-                OutlinedButton(onClick = { saving = true }) { Text("Als Vorlage speichern") }
+                OutlinedButton(onClick = { saving = true }) { Text("Als Vorlage speichern", maxLines = 1) }
             }
 
             // 6. Start
-            estimate?.let { Text("Etwa ${it.words} Wörter, ${it.steps} Schritte, ungefähr ${it.minutes} Minute(n) auf diesem Gerät. Das Display sollte dabei an bleiben.", style = MaterialTheme.typography.bodySmall) }
+            estimate?.let {
+                Text("Etwa ${it.words} Wörter, ${it.steps} Schritte, ungefähr ${it.minutes} Minute(n) auf diesem Gerät. Das Display sollte dabei an bleiben.", style = MaterialTheme.typography.bodySmall)
+                if (it.words > spec.targetWords * 1.3) Text("Die Quelle ist so groß, dass jeder Abschnitt mindestens ein paar Zeilen braucht. Für ein kürzeres Ergebnis wähle „Fließtext“.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+            }
             if (docIds.isEmpty()) Text(if (scope == SummaryScope.DOC) "Diese Quelle ist noch nicht fertig indexiert." else "Keine Quelle angehakt. Hake unter „Quellen“ mindestens eine an.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             Button(
                 onClick = {
@@ -270,6 +277,19 @@ private fun SummaryViewer(id: Long, vm: StudioViewModel, onBack: () -> Unit) {
     val speaker = rememberSpeechOutput()
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
+    var audioStatus by remember { mutableStateOf<String?>(null) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val saveAudio = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("audio/x-wav")) { uri ->
+        val text = s?.text
+        if (uri != null && text != null) scope.launch {
+            audioStatus = "Audio wird erstellt …"
+            val bytes = withContext(kotlinx.coroutines.Dispatchers.Default) { speaker.renderWav(text, context.cacheDir) { d, t -> audioStatus = "Audio wird erstellt: $d von $t" } }
+            audioStatus = if (bytes == null) "Das Audio konnte nicht erstellt werden. Ist die deutsche Stimme installiert?" else {
+                withContext(kotlinx.coroutines.Dispatchers.IO) { context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) } }
+                "Audio gespeichert (${maxOf(1, bytes.size / 1_048_576)} MB)"
+            }
+        }
+    }
     val r = s
     if (r == null) { Column(Modifier.padding(16.dp)) { Text("Wird geladen …"); TextButton(onClick = onBack) { Text("Zurück") } }; return }
 
@@ -285,12 +305,15 @@ private fun SummaryViewer(id: Long, vm: StudioViewModel, onBack: () -> Unit) {
             }) { Text("Teilen") }
             OutlinedButton(onClick = { (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Zusammenfassung", MarkdownLite.toPlain(r.text))) }) { Text("Kopieren") }
             OutlinedButton(onClick = { if (speaker.speaking) speaker.stop() else speaker.speak(r.text) }) { Text(if (speaker.speaking) "Stopp" else "Vorlesen") }
+            OutlinedButton(onClick = { saveAudio.launch(r.title.take(40).replace(Regex("[^A-Za-z0-9äöüÄÖÜß _-]"), "") + ".wav") }, enabled = audioStatus?.startsWith("Audio wird") != true) { Text("Als Audio speichern") }
             OutlinedButton(onClick = { vm.rerun(r, r.title); onBack() }) { Text("Neu erstellen") }
             OutlinedButton(onClick = { vm.adopt(r) }) { Text("Einstellungen übernehmen") }
             OutlinedButton(onClick = { renaming = true }) { Text("Umbenennen") }
             OutlinedButton(onClick = { deleting = true }) { Text("Löschen") }
         }
         speaker.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        audioStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        if (speaker.networkVoice) Text("Hinweis: Die verwendete Stimme braucht Internet, der Text wird dafür an den Sprachdienst des Geräts gesendet. Für rein lokales Vorlesen installiere eine deutsche Offline-Stimme (Android-Einstellungen, Sprachausgabe).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         val date = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(r.createdAt))
         Text("Erstellt am $date mit ${r.model}: ${r.sectionsUsed} Abschnitte" + (if (r.sectionsSkipped > 0) ", ${r.sectionsSkipped} übersprungen" else "") + " · ${spec.role.label}${if (spec.customRole.isNotBlank()) " (eigener Prompt)" else ""}", style = MaterialTheme.typography.labelSmall)
         if (id in stale) Text("Veraltet: Eine Quelle hat sich seit der Erstellung geändert. Mit „Neu erstellen“ aktualisieren.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)

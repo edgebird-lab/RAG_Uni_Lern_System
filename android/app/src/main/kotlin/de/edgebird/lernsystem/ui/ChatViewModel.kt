@@ -56,7 +56,41 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     /** Quellen, in denen gesucht wird (angehakte Dokumente des Fachs); `null` = noch nicht gesetzt. */
     @Volatile private var scope: Set<Long>? = null
     private var subjectId: Long? = null
-    fun bindSubject(id: Long) { subjectId = id }
+    fun bindSubject(id: Long) {
+        if (subjectId == id) return
+        subjectId = id
+        // Gespeicherten Verlauf dieses Fachs wiederherstellen (nur, wenn noch nichts im Chat steht)
+        viewModelScope.launch {
+            if (_messages.value.isNotEmpty()) return@launch
+            val saved = graph.db.chatMessages().forSubject(id)
+            if (saved.isNotEmpty()) {
+                _messages.value = saved.mapIndexed { i, m ->
+                    ChatMessage(i.toLong(), m.fromUser, m.text, sources = parseSources(m.sourcesJson), cited = m.cited.split(',').mapNotNull { it.toIntOrNull() }.toSet(), notFound = m.notFound, failed = m.failed, retried = m.retried)
+                }
+                nextId = saved.size.toLong()
+            }
+        }
+    }
+
+    private fun sourcesJson(list: List<Source>): String = org.json.JSONArray().also { a ->
+        list.forEach { s -> a.put(org.json.JSONObject().put("n", s.number).put("c", s.chunkId).put("t", s.documentTitle).put("l", s.location).put("x", s.text)) }
+    }.toString()
+
+    private fun parseSources(json: String): List<Source> = runCatching {
+        val a = org.json.JSONArray(json)
+        (0 until a.length()).map { a.getJSONObject(it).let { o -> Source(o.getInt("n"), o.getLong("c"), o.getString("t"), o.getString("l"), o.getString("x")) } }
+    }.getOrDefault(emptyList())
+
+    /** Speichert den fertigen Verlauf (beendete Nachrichten) für das Fach. */
+    private fun persist() {
+        val sid = subjectId ?: return
+        val done = _messages.value.filter { !it.streaming }
+        viewModelScope.launch(Dispatchers.IO) {
+            graph.db.chatMessages().replaceForSubject(sid, done.mapIndexed { i, m ->
+                de.edgebird.lernsystem.data.ChatMessageEntity(subjectId = sid, seq = i, fromUser = m.fromUser, text = m.text, sourcesJson = sourcesJson(m.sources), cited = m.cited.joinToString(","), notFound = m.notFound, retried = m.retried, failed = m.failed)
+            })
+        }
+    }
 
     /** Eine Antwort samt Frage als Notiz-Quelle im Fach speichern (wird danach mit durchsucht). Gibt `true` zurück, wenn gespeichert wurde. */
     fun saveAsNote(answerId: Long): Boolean {
@@ -134,7 +168,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                         is ChatEvent.Token -> patch(answerId) { it.copy(text = it.text + event.text) }
                         is ChatEvent.Done -> patch(answerId) {
                             it.copy(text = event.answer, cited = event.cited, notFound = event.notFound, streaming = false)
-                        }
+                        }.also { persist() }
                     }
                 }
             } catch (e: CancellationException) {
@@ -153,6 +187,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun newChat() {
         job?.cancel()
         _messages.value = emptyList()
+        subjectId?.let { sid -> viewModelScope.launch(Dispatchers.IO) { graph.db.chatMessages().deleteForSubject(sid) } }
     }
 
     private fun patch(id: Long, change: (ChatMessage) -> ChatMessage) {
