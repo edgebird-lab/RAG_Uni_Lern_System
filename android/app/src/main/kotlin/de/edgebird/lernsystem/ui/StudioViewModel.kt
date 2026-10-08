@@ -123,6 +123,13 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         SummaryWork.enqueue(getApplication(), SummaryWork.Job(s.subjectId, SummaryScope.valueOf(s.scope), s.docIdList, s.topic, SummarySpec.fromJson(s.specJson), replaceId = s.id, restart = true), label)
     }
 
+    /** Speichert die Zusammenfassung als eigene Quelle im Fach, damit Chat, Abfragen und Karten sie mit nutzen. */
+    fun saveAsSource(s: GeneratedSummaryEntity) {
+        val title = ("Zusammenfassung: " + s.title.removePrefix("Zusammenfassung: ")).take(70).replace(Regex("[\\\\/:*?\"<>|]"), " ")
+        val file = java.io.File(graph.inboxDir, java.util.UUID.randomUUID().toString()).also { it.writeText(s.text, Charsets.UTF_8) }
+        de.edgebird.lernsystem.work.ImportWork.enqueue(getApplication(), listOf(de.edgebird.lernsystem.work.ImportItem("summary:${s.id}:${s.createdAt}", "$title.md", file)), graph.prefs.getBoolean("embed_only_when_charging", false), s.subjectId)
+    }
+
     fun rename(id: Long, title: String) { viewModelScope.launch { repo.rename(id, title) } }
     fun delete(id: Long) { viewModelScope.launch { repo.delete(id) } }
 

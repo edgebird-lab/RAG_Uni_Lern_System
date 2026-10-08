@@ -9,6 +9,7 @@ import de.edgebird.lernsystem.LernsystemApp
 import de.edgebird.lernsystem.core.ingest.OcrText
 import de.edgebird.lernsystem.ingest.ImageDecoder
 import de.edgebird.lernsystem.ingest.MlKitTextRecognizer
+import de.edgebird.lernsystem.ingest.PageScanner
 import de.edgebird.lernsystem.work.ImportItem
 import de.edgebird.lernsystem.work.ImportWork
 import kotlinx.coroutines.CancellationException
@@ -33,6 +34,7 @@ data class PhotoState(
     val name: String = "",
     val progress: Int = 0,
     val error: String? = null,
+    val version: Int = 0,
 )
 
 /** Foto-Dokument: mehrere Bilder (Kamera oder Galerie), Texterkennung auf dem Gerät, Korrektur, Import als Quelle. */
@@ -81,6 +83,16 @@ class PhotoImportViewModel(app: Application) : AndroidViewModel(app) {
         val j = i + delta
         if (i !in s.pages.indices || j !in s.pages.indices) return
         _state.value = s.copy(pages = s.pages.toMutableList().also { val t = it[i]; it[i] = it[j]; it[j] = t })
+    }
+
+    /** Schneidet Seite [i] auf das gewählte Viereck zu und begradigt sie. */
+    fun crop(i: Int, corners: List<de.edgebird.lernsystem.core.scan.Pt>) {
+        val f = _state.value.pages.getOrNull(i) ?: return
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.Default) { PageScanner.crop(f, corners) }
+            // neue Version erzwingen, damit die Vorschau neu geladen wird
+            _state.value = _state.value.copy(version = _state.value.version + 1, error = if (ok) null else "Der Zuschnitt ist fehlgeschlagen.")
+        }
     }
 
     fun setName(n: String) { _state.value = _state.value.copy(name = n.take(80)) }

@@ -48,11 +48,11 @@ fun LearnTab(subjectId: Long) {
     var mode by rememberSaveable { mutableStateOf(0) }
     Column(Modifier.fillMaxSize()) {
         androidx.compose.material3.SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            listOf("Karten", "Abfragen").forEachIndexed { i, label ->
-                SegmentedButton(selected = mode == i, onClick = { mode = i }, shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(i, 2), icon = {}) { Text(label, maxLines = 1) }
+            listOf("Karten", "Abfragen", "Quiz").forEachIndexed { i, label ->
+                SegmentedButton(selected = mode == i, onClick = { mode = i }, shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(i, 3), icon = {}) { Text(label, maxLines = 1) }
             }
         }
-        if (mode == 0) LearnScreen(subjectId) else SocraticScreen(subjectId)
+        when (mode) { 0 -> LearnScreen(subjectId); 1 -> SocraticScreen(subjectId); else -> QuizScreen(subjectId) }
     }
 }
 

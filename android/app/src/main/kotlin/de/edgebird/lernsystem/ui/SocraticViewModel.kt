@@ -67,7 +67,7 @@ class SocraticViewModel(app: Application) : AndroidViewModel(app) {
             graph.retriever, graph.llm, documentIds, topic,
             randomChunks = { ids, n -> ids.shuffled().firstOrNull()?.let { graph.db.chunks().byDocument(it).shuffled().take(n) }.orEmpty() },
             // Überschriften wie „Dokument“ oder „Seite 3“ sagen nichts: dann zählt der Name der Quelle als Thema
-            topicFor = { c -> if (Regex("(?i)^(dokument|seite \\d+.*|folie \\d+.*|abschnitt.*)$").matches(c.location.trim())) graph.db.documents().byId(c.documentId)?.title ?: c.location else c.location },
+            topicFor = { c -> de.edgebird.lernsystem.core.quiz.Topics.of(c.location, graph.db.documents().byId(c.documentId)?.title.orEmpty()) },
         )
         session = s
         s.onEvaluated = { e -> subject.value?.let { sid -> graph.db.quiz().insert(QuizResultEntity(subjectId = sid, topic = s.topic.ifBlank { "Allgemein" }, question = e.question, answer = e.answer, verdict = e.verdict.name, at = System.currentTimeMillis())) } }

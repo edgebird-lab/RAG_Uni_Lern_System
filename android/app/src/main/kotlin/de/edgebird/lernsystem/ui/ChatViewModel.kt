@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -56,20 +57,55 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     /** Quellen, in denen gesucht wird (angehakte Dokumente des Fachs); `null` = noch nicht gesetzt. */
     @Volatile private var scope: Set<Long>? = null
     private var subjectId: Long? = null
+    /** Aktueller Chat; `null`, solange der neue Chat noch keine Nachricht hat (er wird erst mit der ersten Antwort angelegt). */
+    private var sessionId: Long? = null
+    private val _currentSession = MutableStateFlow<Long?>(null)
+    val currentSession: StateFlow<Long?> = _currentSession
+
+    private val subjectFlow = MutableStateFlow<Long?>(null)
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val sessions: StateFlow<List<de.edgebird.lernsystem.data.ChatSessionEntity>> = subjectFlow.flatMapLatest { id ->
+        if (id == null) kotlinx.coroutines.flow.flowOf(emptyList()) else graph.db.chatSessions().observeForSubject(id)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     fun bindSubject(id: Long) {
         if (subjectId == id) return
         subjectId = id
-        // Gespeicherten Verlauf dieses Fachs wiederherstellen (nur, wenn noch nichts im Chat steht)
+        subjectFlow.value = id
         viewModelScope.launch {
-            if (_messages.value.isNotEmpty()) return@launch
-            val saved = graph.db.chatMessages().forSubject(id)
-            if (saved.isNotEmpty()) {
-                _messages.value = saved.mapIndexed { i, m ->
-                    ChatMessage(i.toLong(), m.fromUser, m.text, sources = parseSources(m.sourcesJson), cited = m.cited.split(',').mapNotNull { it.toIntOrNull() }.toSet(), notFound = m.notFound, failed = m.failed, retried = m.retried)
-                }
-                nextId = saved.size.toLong()
+            // Nachrichten aus der Zeit vor den mehreren Chats werden zu einem Chat
+            val legacy = graph.db.chatMessages().legacyForSubject(id)
+            if (legacy.isNotEmpty()) {
+                val title = titleFrom(legacy.firstOrNull { it.fromUser }?.text)
+                val sid = graph.db.chatSessions().insert(de.edgebird.lernsystem.data.ChatSessionEntity(subjectId = id, title = title, createdAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis()))
+                graph.db.chatMessages().adoptLegacy(id, sid)
             }
+            if (_messages.value.isEmpty()) graph.db.chatSessions().latest(id)?.let { openSession(it.id) }
         }
+    }
+
+    private fun titleFrom(question: String?) = (question ?: "Neuer Chat").trim().replace(Regex("\\s+"), " ").take(48).ifBlank { "Neuer Chat" }
+
+    /** Wechselt zu einem gespeicherten Chat. */
+    fun openSession(id: Long) {
+        job?.cancel()
+        viewModelScope.launch {
+            val saved = graph.db.chatMessages().forSession(id)
+            sessionId = id; _currentSession.value = id
+            _messages.value = saved.mapIndexed { i, m ->
+                ChatMessage(i.toLong(), m.fromUser, m.text, sources = parseSources(m.sourcesJson), cited = m.cited.split(',').mapNotNull { it.toIntOrNull() }.toSet(), notFound = m.notFound, failed = m.failed, retried = m.retried)
+            }
+            nextId = saved.size.toLong()
+        }
+    }
+
+    fun deleteSession(id: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            graph.db.chatMessages().deleteForSession(id)
+            graph.db.chatSessions().delete(id)
+        }
+        if (sessionId == id) newChat()
     }
 
     private fun sourcesJson(list: List<Source>): String = org.json.JSONArray().also { a ->
@@ -81,13 +117,17 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         (0 until a.length()).map { a.getJSONObject(it).let { o -> Source(o.getInt("n"), o.getLong("c"), o.getString("t"), o.getString("l"), o.getString("x")) } }
     }.getOrDefault(emptyList())
 
-    /** Speichert den fertigen Verlauf (beendete Nachrichten) für das Fach. */
+    /** Speichert den fertigen Verlauf (beendete Nachrichten) im aktuellen Chat; der erste Verlauf legt den Chat an und benennt ihn nach der ersten Frage. */
     private fun persist() {
         val sid = subjectId ?: return
         val done = _messages.value.filter { !it.streaming }
+        if (done.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
-            graph.db.chatMessages().replaceForSubject(sid, done.mapIndexed { i, m ->
-                de.edgebird.lernsystem.data.ChatMessageEntity(subjectId = sid, seq = i, fromUser = m.fromUser, text = m.text, sourcesJson = sourcesJson(m.sources), cited = m.cited.joinToString(","), notFound = m.notFound, retried = m.retried, failed = m.failed)
+            val now = System.currentTimeMillis()
+            val id = sessionId ?: graph.db.chatSessions().insert(de.edgebird.lernsystem.data.ChatSessionEntity(subjectId = sid, title = titleFrom(done.firstOrNull { it.fromUser }?.text), createdAt = now, updatedAt = now)).also { sessionId = it; _currentSession.value = it }
+            graph.db.chatSessions().touch(id, now)
+            graph.db.chatMessages().replaceForSession(id, done.mapIndexed { i, m ->
+                de.edgebird.lernsystem.data.ChatMessageEntity(subjectId = sid, seq = i, fromUser = m.fromUser, text = m.text, sourcesJson = sourcesJson(m.sources), cited = m.cited.joinToString(","), notFound = m.notFound, retried = m.retried, failed = m.failed, sessionId = id)
             })
         }
     }
@@ -184,10 +224,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         job?.cancel()
     }
 
+    /** Beginnt einen neuen, leeren Chat; der bisherige bleibt in der Liste der Chats. */
     fun newChat() {
         job?.cancel()
         _messages.value = emptyList()
-        subjectId?.let { sid -> viewModelScope.launch(Dispatchers.IO) { graph.db.chatMessages().deleteForSubject(sid) } }
+        sessionId = null; _currentSession.value = null
     }
 
     private fun patch(id: Long, change: (ChatMessage) -> ChatMessage) {

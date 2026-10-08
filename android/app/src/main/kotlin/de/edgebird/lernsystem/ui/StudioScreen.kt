@@ -308,6 +308,7 @@ private fun SummaryViewer(id: Long, vm: StudioViewModel, onBack: () -> Unit) {
             OutlinedButton(onClick = { saveAudio.launch(r.title.take(40).replace(Regex("[^A-Za-z0-9äöüÄÖÜß _-]"), "") + ".wav") }, enabled = audioStatus?.startsWith("Audio wird") != true) { Text("Als Audio speichern") }
             OutlinedButton(onClick = { vm.rerun(r, r.title); onBack() }) { Text("Neu erstellen") }
             OutlinedButton(onClick = { vm.adopt(r) }) { Text("Einstellungen übernehmen") }
+            OutlinedButton(onClick = { vm.saveAsSource(r); android.widget.Toast.makeText(context, "Als Quelle gespeichert (unter „Quellen“)", android.widget.Toast.LENGTH_SHORT).show() }) { Text("Als Quelle speichern") }
             OutlinedButton(onClick = { renaming = true }) { Text("Umbenennen") }
             OutlinedButton(onClick = { deleting = true }) { Text("Löschen") }
         }

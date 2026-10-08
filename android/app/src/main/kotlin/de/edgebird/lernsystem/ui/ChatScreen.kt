@@ -55,6 +55,9 @@ fun ChatScreen(subjectId: Long, onModels: () -> Unit = {}, onOpenSources: () -> 
     val messages by vm.messages.collectAsStateWithLifecycle()
     val modelState by vm.modelState.collectAsStateWithLifecycle()
     val loadError by vm.loadError.collectAsStateWithLifecycle()
+    val chats by vm.sessions.collectAsStateWithLifecycle()
+    val currentChat by vm.currentSession.collectAsStateWithLifecycle()
+    var chatMenu by remember { mutableStateOf(false) }
     var input by rememberSaveable { mutableStateOf("") }
     val speech = rememberSpeech(
         onPartial = { input = (speechBase.trim() + " " + it).trim() },
@@ -84,7 +87,19 @@ fun ChatScreen(subjectId: Long, onModels: () -> Unit = {}, onOpenSources: () -> 
                 modifier = Modifier.weight(1f, fill = false),
             )
             androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
-            if (messages.isNotEmpty()) TextButton(onClick = vm::newChat) { Text("Neuer Chat") }
+            Box {
+                TextButton(onClick = { chatMenu = true }) { Text(if (chats.size > 1 || (chats.isNotEmpty() && messages.isEmpty())) "Chats (${chats.size}) ▾" else "Chats ▾") }
+                androidx.compose.material3.DropdownMenu(expanded = chatMenu, onDismissRequest = { chatMenu = false }) {
+                    androidx.compose.material3.DropdownMenuItem(text = { Text("Neuer Chat") }, onClick = { chatMenu = false; vm.newChat() })
+                    chats.forEach { c ->
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text((if (c.id == currentChat) "✓ " else "") + c.title, maxLines = 1) },
+                            onClick = { chatMenu = false; vm.openSession(c.id) },
+                            trailingIcon = { TextButton(onClick = { chatMenu = false; vm.deleteSession(c.id) }) { Text("Löschen") } },
+                        )
+                    }
+                }
+            }
         }
         when (modelState) {
             ModelState.MISSING -> Banner("Das Sprachmodell fehlt.", error = true, actionLabel = "Modelle laden", onAction = onModels)

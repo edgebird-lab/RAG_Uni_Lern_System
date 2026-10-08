@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
@@ -44,6 +45,8 @@ fun PhotoImportScreen(subjectId: Long, onClose: () -> Unit, vm: PhotoImportViewM
     val s by vm.state.collectAsStateWithLifecycle()
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> vm.captureDone(ok) }
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(20)) { uris -> vm.addFromGallery(uris) }
+    var cropping by remember { androidx.compose.runtime.mutableStateOf<Int?>(null) }
+    cropping?.let { i -> s.pages.getOrNull(i)?.let { f -> CropDialog(f, onApply = { vm.crop(i, it); cropping = null }, onDismiss = { cropping = null }) } }
     BackHandler {
         when (s.step) {
             PhotoStep.REVIEW -> vm.backToCapture()
@@ -66,9 +69,10 @@ fun PhotoImportScreen(subjectId: Long, onClose: () -> Unit, vm: PhotoImportViewM
                     itemsIndexed(s.pages, key = { _, f -> f.absolutePath }) { i, f ->
                         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                             Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                val thumb = remember(f.absolutePath) { BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = 8 })?.asImageBitmap() }
+                                val thumb = remember(f.absolutePath, s.version) { BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = 8 })?.asImageBitmap() }
                                 if (thumb != null) Image(thumb, contentDescription = "Seite ${i + 1}", contentScale = ContentScale.Crop, modifier = Modifier.size(64.dp))
                                 Text("Seite ${i + 1}", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                                TextButton(onClick = { cropping = i }) { Text("Zuschneiden") }
                                 TextButton(onClick = { vm.move(i, -1) }, enabled = i > 0) { Text("↑") }
                                 TextButton(onClick = { vm.move(i, 1) }, enabled = i < s.pages.lastIndex) { Text("↓") }
                                 TextButton(onClick = { vm.remove(i) }) { Text("Entfernen") }
