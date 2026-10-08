@@ -5,20 +5,24 @@ import de.edgebird.lernsystem.core.i18n.tr
 import com.google.gson.Gson
 
 /** Ein Teil einer Modelldatei; [urls] sind gleichwertige Quellen (Primär zuerst, danach Fallbacks). */
-data class ModelPart(val name: String, val size: Long, val sha256: String, val urls: List<String>)
+/**
+ * Alle Felder der Manifest-Klassen haben Standardwerte: Dadurch gibt es einen Konstruktor ohne Argumente, und Gson setzt fehlende JSON-Felder auf diese
+ * Werte (sonst blieben sie `null`, und ältere Manifeste ohne neuere Felder wie `unpack` führten zu Abstürzen).
+ */
+data class ModelPart(val name: String = "", val size: Long = 0, val sha256: String = "", val urls: List<String> = emptyList())
 
 data class ModelInfo(
-    val id: String,
-    val role: String,
-    val title: String,
+    val id: String = "",
+    val role: String = "",
+    val title: String = "",
     val source: String = "",
     val minRamMb: Int = 0,
-    val version: String,
-    val fileName: String,
-    val size: Long,
-    val sha256: String,
+    val version: String = "",
+    val fileName: String = "",
+    val size: Long = 0,
+    val sha256: String = "",
     val license: String = "",
-    val parts: List<ModelPart>,
+    val parts: List<ModelPart> = emptyList(),
     /** Wird nur auf Wunsch geladen (z. B. die Stimme für die Sprachausgabe). */
     val optional: Boolean = false,
     /** Nicht leer: Die geladene ZIP-Datei wird nach `models/<unpack>/` entpackt (die ZIP selbst wird danach gelöscht). */
@@ -35,7 +39,7 @@ data class ModelInfo(
 }
 
 /** `manifest.json` aus dem Modell-Repo (Schema 1). */
-data class ModelManifest(val schemaVersion: Int, val release: String, val minAppVersion: Int = 1, val licenseUrl: String = "", val models: List<ModelInfo>) {
+data class ModelManifest(val schemaVersion: Int = 0, val release: String = "", val minAppVersion: Int = 1, val licenseUrl: String = "", val models: List<ModelInfo> = emptyList()) {
     companion object {
         const val SUPPORTED_SCHEMA = 1
 

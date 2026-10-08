@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -17,8 +19,23 @@ android {
         ndk { abiFilters += "arm64-v8a" }
     }
 
+    // Upload-Schlüssel für das App Bundle: Zugangsdaten stehen in keystore.properties (nicht im Repo); ohne die Datei entsteht ein unsigniertes Bundle
+    val keystoreProps = Properties().apply { rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) } }
+    signingConfigs {
+        if (keystoreProps.isNotEmpty()) create("upload") {
+            storeFile = file(keystoreProps.getProperty("storeFile")); storePassword = keystoreProps.getProperty("storePassword")
+            keyAlias = keystoreProps.getProperty("keyAlias"); keyPassword = keystoreProps.getProperty("keyPassword")
+        }
+    }
+
+    // Die Sprache (Deutsch/Englisch) wählt die App selbst; das Bundle darf die Ressourcen nicht nach Gerätesprache aufteilen
+    bundle { language { enableSplit = false } }
+
     buildTypes {
         release {
+            signingConfigs.findByName("upload")?.let { signingConfig = it }
+            // Zum Prüfen des Release-Builds neben der Entwicklerversion: -PappIdSuffix=.rc (eigene App mit eigenen Daten)
+            (project.findProperty("appIdSuffix") as String?)?.let { applicationIdSuffix = it }
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }

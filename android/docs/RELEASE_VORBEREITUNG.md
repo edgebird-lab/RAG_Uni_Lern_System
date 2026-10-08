@@ -14,7 +14,7 @@ Der Akku-Test über 30 Minuten Chat ist **offen**: Am USB-Kabel lädt das Pixel,
 
 ## Entscheidungen
 
-- **Sprache:** Erstes Release nur Deutsch (UI, KI-Prompts und Eval sind deutsch). Englisch kommt später, dafür müssen alle UI-Texte in Ressourcen und die Prompts übersetzt und neu gemessen werden.
+- **Sprache:** Deutsch und Englisch (Umschalter in der App, Standard ist die Systemsprache); Prompts und Prüfregeln gibt es in beiden Sprachen, die Eval-Messungen stammen noch aus der deutschen Fassung.
 - **Backup:** `allowBackup=false`. Datenbank und Modelle (2,8 GB) gehören nicht in Cloud-Backups; Mitnehmen geht über den JSON-Export.
 - **Dark Mode:** folgt dem System, dynamische Farben (Material You).
 - **Barrierefreiheit:** Timer-Ring hat eine gesprochene Beschreibung, alle Aktionen sind Schaltflächen mit Text, Schrift skaliert mit der Systemeinstellung. Ein Durchgang mit TalkBack steht noch aus.

@@ -155,6 +155,15 @@ class ModelDownloaderTest {
         assertEquals(voices.size, voices.map { it.unpack }.toSet().size)   // jede Stimme hat einen eigenen Ordner
     }
 
+    @Test fun `Manifest ohne neuere Felder bekommt Standardwerte statt null`() {
+        // Fassung des Manifests aus der Zeit vor Stimmenpaketen: ohne optional, unpack, lang, license, source
+        val json = """{"schemaVersion":1,"release":"v1","models":[{"id":"a","role":"llm","title":"A","version":"v1","fileName":"a.bin","size":3,"sha256":"x","parts":[{"name":"a.part1","size":3,"sha256":"x","urls":["http://u"]}]}]}"""
+        val m = ModelManifest.parse(json).models.single()
+        assertEquals("", m.unpack); assertEquals(false, m.optional); assertEquals("", m.license); assertEquals("", m.source); assertEquals(0, m.minRamMb)
+        assertEquals(null, m.lang); assertEquals("A", m.displayTitle())
+        assertEquals("", ModelManifest.parse(json).licenseUrl)
+    }
+
     // ---- Pakete (ZIP), z. B. die Stimme ------------------------------------------------------------------------------
 
     private fun zipOf(vararg entries: Pair<String, String>): ByteArray {
