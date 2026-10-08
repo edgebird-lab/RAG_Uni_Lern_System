@@ -39,9 +39,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import de.edgebird.lernsystem.data.chat.Source
 
 @Composable
-fun ChatScreen(vm: ChatViewModel = viewModel()) {
+fun ChatScreen(onModels: () -> Unit = {}, vm: ChatViewModel = viewModel()) {
     val messages by vm.messages.collectAsStateWithLifecycle()
     val modelState by vm.modelState.collectAsStateWithLifecycle()
+    val loadError by vm.loadError.collectAsStateWithLifecycle()
+    val hasDocuments by vm.hasDocuments.collectAsStateWithLifecycle()
     var input by rememberSaveable { mutableStateOf("") }
     var openSource by remember { mutableStateOf<Source?>(null) }
     val listState = rememberLazyListState()
@@ -65,16 +67,20 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
             if (messages.isNotEmpty()) TextButton(onClick = vm::newChat) { Text("Neuer Chat") }
         }
         when (modelState) {
-            ModelState.MISSING -> Banner("Das Sprachmodell fehlt. Der Download in der App folgt; bis dahin liegt es per adb im App-Ordner.", error = true)
+            ModelState.MISSING -> Banner("Das Sprachmodell fehlt.", error = true, actionLabel = "Modelle laden", onAction = onModels)
             ModelState.LOADING -> Banner("Sprachmodell wird geladen (ca. 25 Sekunden).")
             ModelState.OPTIMIZING -> Banner("Erster Start: Die App optimiert das Sprachmodell für dein Gerät. Das dauert einmalig 5 bis 10 Minuten. Bitte Display an und die App geöffnet lassen.")
-            ModelState.ERROR -> Banner("Das Sprachmodell konnte nicht geladen werden.", error = true)
+            ModelState.ERROR -> Banner(
+                "Das Sprachmodell konnte nicht geladen werden" + (loadError?.let { ": $it" } ?: "") + ". Hilft ein erneuter Versuch nicht, ist die Datei evtl. beschädigt (unter „KI-Modelle“ neu laden).",
+                error = true, actionLabel = "Erneut versuchen", onAction = vm::retryLoad,
+            )
             ModelState.READY -> Unit
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (messages.isEmpty()) {
                 Text(
-                    "Stell eine Frage zu deinen Dokumenten. Die Antwort nennt die Quellen; steht nichts dazu im Material, sagt die App das.",
+                    if (hasDocuments == false) "Noch keine Dokumente. Importiere im Tab „Dokumente“ ein PDF oder eine Textdatei, dann kannst du hier Fragen dazu stellen."
+                    else "Stell eine Frage zu deinen Dokumenten. Die Antwort nennt die Quellen; steht nichts dazu im Material, sagt die App das.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
@@ -111,9 +117,12 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
 }
 
 @Composable
-private fun Banner(text: String, error: Boolean = false) {
+private fun Banner(text: String, error: Boolean = false, actionLabel: String? = null, onAction: () -> Unit = {}) {
     Card(colors = CardDefaults.cardColors(containerColor = if (error) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer)) {
-        Text(text, Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
+        Column(Modifier.padding(12.dp)) {
+            Text(text, style = MaterialTheme.typography.bodySmall)
+            if (actionLabel != null) TextButton(onClick = onAction) { Text(actionLabel) }
+        }
     }
 }
 

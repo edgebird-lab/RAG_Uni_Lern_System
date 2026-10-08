@@ -24,6 +24,7 @@ import de.edgebird.lernsystem.ui.DocumentsScreen
 import de.edgebird.lernsystem.ui.LearnScreen
 import de.edgebird.lernsystem.ui.ModelScreen
 import de.edgebird.lernsystem.ui.PomodoroScreen
+import de.edgebird.lernsystem.ui.PrivacyScreen
 
 class MainActivity : ComponentActivity() {
     private val requestedTab = mutableIntStateOf(-1)
@@ -39,7 +40,9 @@ class MainActivity : ComponentActivity() {
         // Benachrichtigungen für den Vordergrunddienst der Indexierung (Android 13+)
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }.launch(Manifest.permission.POST_NOTIFICATIONS)
         setContent {
-            MaterialTheme {
+            val dark = androidx.compose.foundation.isSystemInDarkTheme()
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            MaterialTheme(colorScheme = if (dark) androidx.compose.material3.dynamicDarkColorScheme(ctx) else androidx.compose.material3.dynamicLightColorScheme(ctx)) {
                 val graph = (application as LernsystemApp).graph
                 var modelsOk by rememberSaveable { mutableStateOf(graph.llmModelFile.exists() && graph.embeddingModelFile.exists()) }
                 if (!modelsOk) {
@@ -47,6 +50,11 @@ class MainActivity : ComponentActivity() {
                     return@MaterialTheme
                 }
                 var showModels by rememberSaveable { mutableStateOf(false) }
+                var showPrivacy by rememberSaveable { mutableStateOf(false) }
+                if (showPrivacy) {
+                    Scaffold { inner -> Box(Modifier.padding(inner)) { PrivacyScreen(onBack = { showPrivacy = false }) } }
+                    return@MaterialTheme
+                }
                 if (showModels) {
                     Scaffold { inner -> Box(Modifier.padding(inner)) { ModelScreen(firstRun = false, onDone = {}, onBack = { showModels = false }) } }
                     return@MaterialTheme
@@ -63,7 +71,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                 ) { inner ->
-                    Box(Modifier.padding(inner)) { when (tab) { 0 -> ChatScreen(); 1 -> LearnScreen(); TAB_FOCUS -> PomodoroScreen(); else -> DocumentsScreen(onModels = { showModels = true }) } }
+                    Box(Modifier.padding(inner)) { when (tab) { 0 -> ChatScreen(onModels = { showModels = true }); 1 -> LearnScreen(); TAB_FOCUS -> PomodoroScreen(); else -> DocumentsScreen(onModels = { showModels = true }, onPrivacy = { showPrivacy = true }) } }
                 }
             }
         }

@@ -28,7 +28,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import de.edgebird.lernsystem.data.DocumentStatus
 
 @Composable
-fun DocumentsScreen(onModels: () -> Unit = {}, vm: DocumentsViewModel = viewModel()) {
+fun DocumentsScreen(onModels: () -> Unit = {}, onPrivacy: () -> Unit = {}, vm: DocumentsViewModel = viewModel()) {
     val docs by vm.documents.collectAsStateWithLifecycle()
     val embed by vm.embedStatus.collectAsStateWithLifecycle()
     val message by vm.importMessage.collectAsStateWithLifecycle()
@@ -39,7 +39,10 @@ fun DocumentsScreen(onModels: () -> Unit = {}, vm: DocumentsViewModel = viewMode
     Column(Modifier.padding(horizontal = 16.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Dokumente", style = MaterialTheme.typography.headlineMedium)
-            TextButton(onClick = onModels) { Text("KI-Modelle") }
+            Row {
+                TextButton(onClick = onModels) { Text("KI-Modelle") }
+                TextButton(onClick = onPrivacy) { Text("Datenschutz") }
+            }
         }
         Button(onClick = { picker.launch(arrayOf("application/pdf", "text/plain", "text/markdown", "application/octet-stream")) }) {
             Text("Dokumente hinzufügen")

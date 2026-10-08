@@ -46,6 +46,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -100,7 +102,9 @@ fun PomodoroScreen(vm: PomodoroViewModel = viewModel()) {
                 }
             }
         }
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val secsLeft = ((remaining + 999) / 1000).toInt()
+        val spoken = "$phaseLabel, noch ${secsLeft / 60} Minuten ${secsLeft % 60} Sekunden" + when (state.status) { PomodoroStatus.PAUSED -> ", pausiert"; PomodoroStatus.WAITING -> ", bereit"; else -> "" }
+        Box(Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = spoken }, contentAlignment = Alignment.Center) {
             Canvas(Modifier.size(240.dp)) {
                 val w = 14.dp.toPx()
                 val inset = w / 2

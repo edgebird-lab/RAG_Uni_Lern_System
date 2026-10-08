@@ -15,7 +15,7 @@
         android:name=".LernsystemApp"
         android:allowBackup="false"
         android:label="Lernsystem"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
         <!-- LiteRT-LM: GPU-Backend braucht diese nativen Bibliotheken explizit -->
         <uses-native-library android:name="libvndksupport.so" android:required="false" />
         <uses-native-library android:name="libOpenCL.so" android:required="false" />

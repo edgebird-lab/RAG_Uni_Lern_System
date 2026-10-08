@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -40,10 +41,12 @@ fun ModelScreen(firstRun: Boolean, onDone: () -> Unit, onBack: (() -> Unit)? = n
     val dl by vm.download.collectAsStateWithLifecycle()
     val wifiOnly by vm.wifiOnly.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    var confirmReinstall by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val busy = dl?.running == true || dl?.queued == true
 
     if (firstRun) androidx.compose.runtime.LaunchedEffect(check, dl) { if (check is ModelCheck.Ready && vm.filesReady() && !busy) onDone() }
 
+    if (confirmReinstall) ReinstallDialog(onConfirm = { confirmReinstall = false; vm.reinstall() }, onDismiss = { confirmReinstall = false })
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(if (firstRun) "Willkommen" else "KI-Modelle", style = MaterialTheme.typography.headlineMedium)
         if (firstRun) Text("Die KI läuft komplett auf diesem Gerät. Dafür lädt die App einmalig zwei Modelle herunter. Danach brauchst du kein Internet mehr, und deine Unterlagen verlassen das Gerät nie.", style = MaterialTheme.typography.bodyMedium)
@@ -90,10 +93,20 @@ fun ModelScreen(firstRun: Boolean, onDone: () -> Unit, onBack: (() -> Unit)? = n
                 Text(if (dl?.error != null) "Erneut versuchen" else "Modelle herunterladen (${mb(needed.pending.sumOf { it.size })})")
             }
         }
+        if (check is ModelCheck.Ready && !busy) TextButton(onClick = { confirmReinstall = true }) { Text("Modelle löschen und neu laden") }
         if (onBack != null) TextButton(onClick = onBack) { Text("Zurück") }
         TextButton(onClick = { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/edgebird-lab/lernsystem-modelle"))) }) { Text("Modell-Quelle und Lizenz (Apache 2.0)") }
     }
 }
+
+@Composable
+private fun ReinstallDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) = androidx.compose.material3.AlertDialog(
+    onDismissRequest = onDismiss,
+    title = { Text("Modelle neu laden?") },
+    text = { Text("Beide Modelle (2,8 GB) werden gelöscht und danach erneut heruntergeladen. Deine Dokumente und Karten bleiben unberührt. Der erste Start danach dauert wieder einige Minuten.") },
+    confirmButton = { TextButton(onClick = onConfirm) { Text("Löschen und neu laden") } },
+    dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } },
+)
 
 @Composable
 private fun NeededCard(pending: List<ModelInfo>, ramMb: Long, freeMb: Long, licenseUrl: String, busy: Boolean) {

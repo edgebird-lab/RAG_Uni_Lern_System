@@ -144,10 +144,10 @@ Jeder Schritt ist klein, einzeln testbar und endet mit einem überprüfbaren Erg
 
 ### Phase 9: Qualität, Robustheit, Release
 
-- [ ] 9.1 Fehlerbehandlung: Modell nicht geladen, zu wenig RAM, leere Datenbank, Abbruch mitten im Import.
-- [ ] 9.2 Performance: Kaltstart, Speicherverbrauch, Akku-Test über 30 Minuten Chat.
-- [ ] 9.3 Datenschutz: Datenschutzerklärung (nichts verlässt das Gerät), Backup-Regeln (`allowBackup` bewusst entscheiden), Export/Löschen aller Daten.
-- [ ] 9.4 Barrierefreiheit, Dark Mode, deutsch/englisch.
+- [x] 9.1 (siehe RELEASE_VORBEREITUNG.md) Fehlerbehandlung: Modell nicht geladen, zu wenig RAM, leere Datenbank, Abbruch mitten im Import.
+- [~] 9.2 Performance: Kaltstart (0,53 s) und Speicher (2,6 GB PSS) gemessen; Akku-Test über 30 Minuten Chat steht aus (braucht ein Handy am Akku).
+- [x] 9.3 Datenschutz (`DATENSCHUTZ.md`, Bildschirm „Datenschutz“, Export/Löschen mit Gerätetests; allowBackup=false bewusst): Datenschutzerklärung (nichts verlässt das Gerät), Backup-Regeln (`allowBackup` bewusst entscheiden), Export/Löschen aller Daten.
+- [~] 9.4 Dark Mode und erste Barrierefreiheit fertig; erstes Release nur Deutsch (Entscheidung), TalkBack-Durchgang steht aus.
 - [ ] 9.5 Geschlossener Test mit wenigen Nutzern (Play Console, interne Testspur).
 - [ ] 9.6 Play-Store-Eintrag: Screenshots, Beschreibung, Content-Rating, Data-Safety-Formular, App Bundle signieren.
 - [ ] 9.7 Veröffentlichung auf der Produktionsspur.

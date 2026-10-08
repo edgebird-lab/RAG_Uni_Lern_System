@@ -11,7 +11,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -38,28 +42,49 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages
 
-    private val _modelState = MutableStateFlow(
-        when {
-            !graph.llmModelFile.exists() -> ModelState.MISSING
-            graph.llmCacheWarm() -> ModelState.LOADING
-            else -> ModelState.OPTIMIZING // erster Start: GPU-Kerne werden kompiliert
-        },
-    )
+    private fun initialState() = when {
+        !graph.llmModelFile.exists() -> ModelState.MISSING
+        graph.llmCacheWarm() -> ModelState.LOADING
+        else -> ModelState.OPTIMIZING // erster Start: GPU-Kerne werden kompiliert
+    }
+
+    private val _modelState = MutableStateFlow(initialState())
     val modelState: StateFlow<ModelState> = _modelState
+
+    /** Grund, falls das Sprachmodell nicht geladen werden konnte (für die Anzeige). */
+    private val _loadError = MutableStateFlow<String?>(null)
+    val loadError: StateFlow<String?> = _loadError
+
+    /** Gibt es schon Dokumente? Ohne sie kann der Chat nichts beantworten. */
+    val hasDocuments: StateFlow<Boolean?> = kotlinx.coroutines.flow.flow { emitAll(graph.db.documents().observeSummaries().map { it.isNotEmpty() }) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val busy: Boolean get() = job?.isActive == true
 
-    init {
-        if (_modelState.value == ModelState.LOADING || _modelState.value == ModelState.OPTIMIZING) {
-            viewModelScope.launch(Dispatchers.Default) {
-                _modelState.value = try {
-                    graph.llm.load()
-                    ModelState.READY
-                } catch (e: Exception) {
-                    ModelState.ERROR
-                }
+    init { loadModel() }
+
+    private fun loadModel() {
+        if (_modelState.value != ModelState.LOADING && _modelState.value != ModelState.OPTIMIZING) return
+        _loadError.value = null
+        viewModelScope.launch(Dispatchers.Default) {
+            _modelState.value = try {
+                graph.llm.load()
+                ModelState.READY
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                // Auch OutOfMemoryError und native Fehler: die App soll erklären statt abstürzen
+                _loadError.value = if (t is OutOfMemoryError) "Zu wenig Arbeitsspeicher. Schließe andere Apps und versuche es erneut." else t.message
+                ModelState.ERROR
             }
         }
+    }
+
+    /** Erneut laden, z. B. nach einem Fehler oder nachdem die Modelle heruntergeladen wurden. */
+    fun retryLoad() {
+        if (_modelState.value == ModelState.READY) return
+        _modelState.value = initialState()
+        loadModel()
     }
 
     fun send(question: String) {
