@@ -49,6 +49,12 @@ class DebugSourcesActivity : Activity() {
                     add("Quicksort.md", "# Quicksort\n\n$body", "debug:quicksort", chapter)
                     add("Heaps.md", "# Heaps\n\n$body", "debug:heaps")
                     add("Zusammenfassung Sortieren.md", "# Zusammenfassung: Sortieren\n\n- **Quicksort** teilt um ein Pivotelement.\n- **Mergesort** halbiert und mischt.\n\n$body", "summary:1:1", chapter)
+                    graph.db.generatedSummaries().insert(
+                        de.edgebird.lernsystem.data.GeneratedSummaryEntity(
+                            subjectId = sid, scope = "SUBJECT", documentIds = graph.db.documents().idsForSubject(sid).joinToString(","), title = "Fach: ZZ-Test – Stichpunkte",
+                            specJson = de.edgebird.lernsystem.core.summary.SummarySpec().toJson(), text = "# Fach: ZZ-Test\n\n- **Quicksort** teilt um ein Pivotelement.\n- **Mergesort** halbiert und mischt.\n", model = "Test", createdAt = System.currentTimeMillis(),
+                        ),
+                    )
                     add("Notiz.md", "# Notiz\n\nLaufzeit von Quicksort im Mittel O(n log n). $body", "note:1")
                 }
             }

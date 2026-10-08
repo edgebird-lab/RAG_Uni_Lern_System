@@ -133,7 +133,8 @@ class DocumentsViewModel(app: Application) : AndroidViewModel(app) {
         chunkIds.mapNotNull { byId[it] }.map { c ->
             val text = c.chunk.text.replace(Regex("^\\[[^\\]]{0,160}]\\n"), "").replace(Regex("\\s+"), " ")
             val first = query.trim().split(Regex("\\s+")).firstOrNull { it.length > 2 }?.let { text.indexOf(it, ignoreCase = true) } ?: -1
-            val from = if (first > 40) first - 40 else 0
+            // Ausschnitt an einer Wortgrenze beginnen lassen
+            val from = if (first > 40) (text.indexOf(' ', first - 40).takeIf { it in 0..first } ?: (first - 40)) + 1 else 0
             ContentHit(c.chunk.documentId, c.documentTitle, c.chunk.location, c.chunk.idx, (if (from > 0) "…" else "") + text.substring(from).take(160))
         }
     }
