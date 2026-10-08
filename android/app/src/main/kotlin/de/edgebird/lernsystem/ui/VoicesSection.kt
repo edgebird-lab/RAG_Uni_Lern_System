@@ -1,7 +1,5 @@
 package de.edgebird.lernsystem.ui
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,9 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -33,16 +29,14 @@ import de.edgebird.lernsystem.voice.VoiceEntry
 private fun mb(bytes: Long) = "${bytes / 1_000_000} MB"
 
 /**
- * Stimmen für das Vorlesen: Katalog aus dem Modell-Repo (Download wie bei den KI-Modellen), Auswahl je Sprache, Hörprobe und Import eigener Stimmen.
+ * Stimmen für das Vorlesen (Zusatzpaket): Katalog aus dem Modell-Repo (Download wie bei den KI-Modellen), Auswahl je Sprache und Hörprobe.
  * Die Stimme der App-Sprache wird zum Vorlesen genutzt; nichts verlässt das Gerät.
  */
 @Composable
 fun VoicesSection(vm: ModelViewModel, busy: Boolean) {
     val st by vm.voices.collectAsStateWithLifecycle()
     val speaker = rememberSpeechOutput()
-    var importLang by remember { mutableStateOf(Lang.current) }
     var confirmDelete by remember { mutableStateOf<VoiceEntry?>(null) }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) vm.importVoice(uri, importLang) }
 
     confirmDelete?.let { e ->
         androidx.compose.material3.AlertDialog(
@@ -56,34 +50,21 @@ fun VoicesSection(vm: ModelViewModel, busy: Boolean) {
 
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(tr("Stimmen (Vorlesen)", "Voices (read aloud)"), style = MaterialTheme.typography.titleMedium)
+            Text(tr("Zusatzpaket: Stimmen (Vorlesen)", "Add-on: voices (read aloud)"), style = MaterialTheme.typography.titleMedium)
             Text(
-                tr("Das Vorlesen läuft komplett auf dem Gerät. Je Sprache wird die gewählte Stimme genutzt; Online-Stimmen des Geräts werden bewusst nicht benutzt.", "Reading aloud runs entirely on the device. For each language the chosen voice is used; the device’s online voices are deliberately not used."),
+                tr("Optional und nicht Teil der App selbst: Das Vorlesen läuft komplett auf dem Gerät. Je Sprache wird die gewählte Stimme genutzt; Online-Stimmen des Geräts werden bewusst nicht benutzt. Die Pakete enthalten Daten von espeak-ng (GPL-3.0 oder später).", "Optional and not part of the app itself: reading aloud runs entirely on the device. For each language the chosen voice is used; the device’s online voices are deliberately not used. The packages contain data from espeak-ng (GPL-3.0 or later)."),
                 style = MaterialTheme.typography.bodySmall,
             )
             // Sprache der App zuerst
             for (lang in Lang.entries.sortedBy { if (it == Lang.current) 0 else 1 }) {
                 val catalog = st.catalog.filter { it.lang == lang.tag }
-                val catalogDirs = catalog.map { it.unpack }.toSet()
-                val custom = st.installed.filter { it.lang == lang && (it.custom || it.dir.name !in catalogDirs) }
-                if (catalog.isEmpty() && custom.isEmpty()) continue
+                if (catalog.isEmpty()) continue
                 Text(lang.nativeName, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 6.dp))
                 catalog.forEach { m -> CatalogRow(m, st.entryFor(m), st.selected[lang], busy, vm, speaker) { confirmDelete = it } }
-                custom.forEach { e -> InstalledRow(e.name + tr(" (eigene Stimme)", " (own voice)"), "", e, st.selected[lang] == e.id, vm, speaker) { confirmDelete = it } }
             }
             if (st.catalog.isEmpty()) Text(tr("Die Stimmenliste ist offline nicht verfügbar. Bereits geladene Stimmen funktionieren weiter.", "The voice list is not available offline. Voices already downloaded keep working."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (!st.hasVoiceFor()) Text(tr("Für ${Lang.current.nativeName} ist noch keine Stimme geladen; ohne sie kann die App nicht vorlesen.", "No voice is downloaded for ${Lang.current.nativeName} yet; without one the app cannot read aloud."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
 
-            Text(tr("Eigene Stimme importieren", "Import your own voice"), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
-            Text(
-                tr("ZIP-Datei mit model.onnx, tokens.txt und (optional) espeak-ng-data/ im Format der App; eine Anleitung steht im Modell-Repo (tools/make_voice_pack.sh). Die Stimme bleibt auf dem Gerät.", "ZIP file with model.onnx, tokens.txt and (optionally) espeak-ng-data/ in the app’s format; instructions are in the model repo (tools/make_voice_pack.sh). The voice stays on the device."),
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Lang.entries.forEach { l -> FilterChip(selected = importLang == l, onClick = { importLang = l }, label = { Text(l.nativeName) }) }
-            }
-            OutlinedButton(onClick = { picker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) { Text(tr("ZIP auswählen …", "Choose ZIP …")) }
-            st.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
             speaker.error?.takeIf { !speaker.missingVoice }?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         }
     }

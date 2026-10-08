@@ -75,7 +75,7 @@ fun ModelScreen(firstRun: Boolean, onDone: () -> Unit, onBack: (() -> Unit)? = n
                 voices.recommended()?.takeIf { !voices.hasVoiceFor() }?.let { v ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text(tr("Offline-Stimme für das Vorlesen mitladen (${mb(v.size)})", "Also download the offline voice for reading aloud (${mb(v.size)})"), style = MaterialTheme.typography.bodyMedium)
+                            Text(tr("Zusatzpaket Stimme zum Vorlesen mitladen (${mb(v.size)})", "Also download the voice add-on for reading aloud (${mb(v.size)})"), style = MaterialTheme.typography.bodyMedium)
                             Text(tr("${v.displayTitle()}: läuft komplett auf dem Gerät. Später jederzeit nachladbar.", "${v.displayTitle()}: runs entirely on the device. Can be added any time later."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Switch(checked = withVoice, onCheckedChange = vm::setWithVoice)
