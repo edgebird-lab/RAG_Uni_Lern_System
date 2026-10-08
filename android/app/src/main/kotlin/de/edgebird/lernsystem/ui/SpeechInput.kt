@@ -8,6 +8,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.speech.RecognitionListener
+import android.os.Build
+import android.speech.RecognitionSupport
+import android.speech.RecognitionSupportCallback
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -31,7 +34,7 @@ import androidx.core.content.ContextCompat
 class SpeechController internal constructor(private val context: Context, private val requestPermission: () -> Unit) {
     var listening by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null); private set
-    val available: Boolean = SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+    val available: Boolean = Build.VERSION.SDK_INT >= 33 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
 
     private var recognizer: SpeechRecognizer? = null
     internal var onPartial: (String) -> Unit = {}
@@ -54,7 +57,7 @@ class SpeechController internal constructor(private val context: Context, privat
                 listening = false
                 error = when (code) {
                     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> tr("Nichts verstanden. Tippe auf das Mikrofon und sprich noch einmal.", "Didn’t catch that. Tap the microphone and speak again.")
-                    SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> tr("Das deutsche Sprachpaket fehlt. Lade es in den Android-Einstellungen unter Sprachen und Spracheingabe herunter.", "The language pack is missing. Download it in the Android settings under Languages and voice input.")
+                    SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> tr("Das deutsche Sprachpaket fehlt. Lade es in den Android-Einstellungen unter Sprachen und Spracheingabe herunter.", "The English language pack is missing. Download it in the Android settings under Languages and voice input.")
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> tr("Ohne Mikrofon-Erlaubnis geht keine Spracheingabe.", "Voice input is not possible without microphone permission.")
                     else -> tr("Spracheingabe nicht möglich (Fehler $code).", "Voice input not possible (error $code).")
                 }
@@ -67,13 +70,29 @@ class SpeechController internal constructor(private val context: Context, privat
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
         listening = true
-        r.startListening(
-            Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                .putExtra(RecognizerIntent.EXTRA_LANGUAGE, de.edgebird.lernsystem.core.i18n.tr("de-DE", "en-US"))
-                .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true),
-        )
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, tr("de-DE", "en-US"))
+            .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+        if (Build.VERSION.SDK_INT >= 33) listenChecked(r, intent)
+    }
+
+    /** Ist das Sprachpaket der App-Sprache noch nicht auf dem Gerät, lädt Android es auf Wunsch nach (einmalig, danach offline). */
+    @androidx.annotation.RequiresApi(33)
+    private fun listenChecked(r: SpeechRecognizer, intent: Intent) {
+        r.checkRecognitionSupport(intent, ContextCompat.getMainExecutor(context), object : RecognitionSupportCallback {
+            override fun onSupportResult(support: RecognitionSupport) {
+                val tag = tr("de", "en")
+                if (support.installedOnDeviceLanguages.any { it.startsWith(tag) }) r.startListening(intent)
+                else if (support.supportedOnDeviceLanguages.any { it.startsWith(tag) }) {
+                    r.triggerModelDownload(intent)
+                    listening = false
+                    error = tr("Das deutsche Sprachpaket wird geladen. Tippe in einer Minute noch einmal auf das Mikrofon.", "The English language pack is being downloaded. Tap the microphone again in a minute.")
+                } else { listening = false; error = tr("Für Deutsch gibt es auf diesem Gerät keine Spracheingabe ohne Internet.", "There is no offline voice input for English on this device.") }
+            }
+            override fun onError(code: Int) { r.startListening(intent) }
+        })
     }
 
     fun stop() { recognizer?.stopListening(); listening = false }

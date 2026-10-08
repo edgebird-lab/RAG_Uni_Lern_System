@@ -35,7 +35,7 @@ sealed interface ModelCheck {
 }
 
 /** Stimmen für die Sprachausgabe: Katalog aus dem Manifest, installierte Stimmen und die Wahl je Sprache. */
-data class VoicesState(val catalog: List<ModelInfo> = emptyList(), val installed: List<VoiceEntry> = emptyList(), val selected: Map<Lang, String> = emptyMap(), val message: String? = null) {
+data class VoicesState(val catalog: List<ModelInfo> = emptyList(), val installed: List<VoiceEntry> = emptyList(), val selected: Map<Lang, String> = emptyMap()) {
     /** Empfohlene Stimme für die App-Sprache (erste passende im Katalog). */
     fun recommended(lang: Lang = Lang.current) = catalog.firstOrNull { it.lang == lang.tag }
     fun entryFor(model: ModelInfo) = installed.firstOrNull { it.dir.name == model.unpack }
@@ -52,8 +52,8 @@ class ModelViewModel(app: Application) : AndroidViewModel(app) {
     private val _wifiOnly = MutableStateFlow(graph.prefs.getBoolean(PREF_WIFI_ONLY, true))
     val wifiOnly: StateFlow<Boolean> = _wifiOnly
 
-    private val _withVoice = MutableStateFlow(true)
-    /** Beim Erststart: Stimme mitladen? */
+    private val _withVoice = MutableStateFlow(false)
+    /** Beim Erststart: Stimmen-Zusatzpaket mitladen? (Standard aus, weil es einen GPL-Teil enthält.) */
     val withVoice: StateFlow<Boolean> = _withVoice
     fun setWithVoice(v: Boolean) { _withVoice.value = v }
 
@@ -61,9 +61,9 @@ class ModelViewModel(app: Application) : AndroidViewModel(app) {
     val voices: StateFlow<VoicesState> = _voices
 
     private fun selectedMap(): Map<Lang, String> = Lang.entries.mapNotNull { l -> graph.voices.selected(l)?.let { l to it.id } }.toMap()
-    private fun reloadVoices(manifest: ModelManifest? = null, message: String? = _voices.value.message) {
+    private fun reloadVoices(manifest: ModelManifest? = null) {
         val catalog = manifest?.models?.filter { it.optional && it.role == "tts" } ?: _voices.value.catalog
-        _voices.value = VoicesState(catalog, graph.voices.installed(), selectedMap(), message)
+        _voices.value = VoicesState(catalog, graph.voices.installed(), selectedMap())
     }
 
     private val _check = MutableStateFlow<ModelCheck>(ModelCheck.Loading)
@@ -119,33 +119,16 @@ class ModelViewModel(app: Application) : AndroidViewModel(app) {
     /** Eine Stimme aus dem Katalog (nachträglich) laden. */
     fun downloadVoice(model: ModelInfo) = ModelWork.enqueue(getApplication(), _wifiOnly.value, voiceIds = setOf(model.id))
 
-    fun selectVoice(e: VoiceEntry) { graph.voices.select(e); viewModelScope.launch { graph.voice.release() }; reloadVoices(message = null) }
+    fun selectVoice(e: VoiceEntry) { graph.voices.select(e); viewModelScope.launch { graph.voice.release() }; reloadVoices() }
 
     fun deleteVoice(e: VoiceEntry) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { graph.voice.release(); graph.voices.delete(e) }
             // Katalogstimmen: Marker mit entfernt (Ordner gelöscht), der Download kann erneut starten
-            reloadVoices(message = null)
+            reloadVoices()
         }
     }
 
-    /** Eigene Stimme aus einer ZIP-Datei importieren. */
-    fun importVoice(uri: android.net.Uri, lang: Lang) {
-        viewModelScope.launch {
-            val app = getApplication<Application>()
-            val name = withContext(Dispatchers.IO) { app.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null } } ?: "stimme.zip"
-            val msg = withContext(Dispatchers.IO) {
-                try {
-                    val entry = app.contentResolver.openInputStream(uri)!!.use { graph.voices.importZip(it, name, lang) }
-                    graph.voices.select(entry); graph.voice.release()
-                    tr("Stimme „${entry.name}“ importiert.", "Voice “${entry.name}” imported.")
-                } catch (e: Exception) { e.message ?: tr("Der Import ist fehlgeschlagen.", "The import failed.") }
-            }
-            reloadVoices(message = msg)
-        }
-    }
-
-    fun clearVoiceMessage() = reloadVoices(message = null)
     fun cancel() = ModelWork.cancel(getApplication())
 
     /** Beschädigte oder falsche Modelldateien entfernen, damit der Assistent sie neu lädt. */
