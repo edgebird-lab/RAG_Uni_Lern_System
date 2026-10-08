@@ -32,6 +32,8 @@ fun DocumentsScreen(vm: DocumentsViewModel = viewModel()) {
     val docs by vm.documents.collectAsStateWithLifecycle()
     val embed by vm.embedStatus.collectAsStateWithLifecycle()
     val message by vm.importMessage.collectAsStateWithLifecycle()
+    var summaryDocId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Long?>(null) }
+    summaryDocId?.let { SummaryScreen(it, onBack = { summaryDocId = null }); return }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri> -> vm.import(uris) }
 
     Column(Modifier.padding(horizontal = 16.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -58,18 +60,19 @@ fun DocumentsScreen(vm: DocumentsViewModel = viewModel()) {
         cardDialogFor?.let { id -> CardCountDialog(onPick = { vm.generateCards(id, it); cardDialogFor = null }, onDismiss = { cardDialogFor = null }) }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(docs, key = { it.document.id }) { d ->
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(d.document.title, style = MaterialTheme.typography.titleMedium)
-                        val status = when (d.document.status) {
-                            DocumentStatus.INDEXED -> "bereit"
-                            DocumentStatus.PENDING -> "wird indexiert"
-                            DocumentStatus.FAILED -> "Fehler"
-                        }
-                        Text("${d.chunkCount} Abschnitte · $status", style = MaterialTheme.typography.bodySmall)
+                Column(Modifier.fillMaxWidth()) {
+                    Text(d.document.title, style = MaterialTheme.typography.titleMedium)
+                    val status = when (d.document.status) {
+                        DocumentStatus.INDEXED -> "bereit"
+                        DocumentStatus.PENDING -> "wird indexiert"
+                        DocumentStatus.FAILED -> "Fehler"
                     }
-                    TextButton(onClick = { cardDialogFor = d.document.id }, enabled = d.document.status == DocumentStatus.INDEXED) { Text("Karten") }
-                    TextButton(onClick = { vm.delete(d.document.id) }) { Text("Löschen") }
+                    Text("${d.chunkCount} Abschnitte · $status", style = MaterialTheme.typography.bodySmall)
+                    Row {
+                        TextButton(onClick = { summaryDocId = d.document.id }) { Text("Zusammenfassung") }
+                        TextButton(onClick = { cardDialogFor = d.document.id }, enabled = d.document.status == DocumentStatus.INDEXED) { Text("Karten") }
+                        TextButton(onClick = { vm.delete(d.document.id) }) { Text("Löschen") }
+                    }
                 }
             }
         }

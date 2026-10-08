@@ -74,7 +74,13 @@ class ImportWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
                 file.delete()
             }
             lines += when (result) {
-                is ImportResult.Imported -> "${names[i]}: ${result.chunks} Abschnitte" + if (result.emptyPages > 0) " (${result.emptyPages} Seiten ohne Text)" else ""
+                is ImportResult.Imported -> {
+                    // Geändertes Dokument: vorhandene Zusammenfassungen werden für die neue Fassung neu berechnet
+                    result.previousSummaryStyles.mapNotNull { runCatching { de.edgebird.lernsystem.core.summary.SummaryStyle.valueOf(it) }.getOrNull() }
+                        .forEach { SummaryWork.enqueue(applicationContext, result.documentId, it) }
+                    "${names[i]}: ${result.chunks} Abschnitte" + (if (result.emptyPages > 0) " (${result.emptyPages} Seiten ohne Text)" else "") +
+                        (if (result.previousSummaryStyles.isNotEmpty()) ", Zusammenfassung wird neu erstellt" else "")
+                }
                 is ImportResult.SkippedUnchanged -> "${names[i]}: bereits vorhanden"
                 is ImportResult.SkippedDuplicate -> "${names[i]}: Duplikat eines vorhandenen Dokuments"
                 is ImportResult.Failed -> "${names[i]}: ${result.reason}"
