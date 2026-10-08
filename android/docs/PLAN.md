@@ -135,12 +135,12 @@ Jeder Schritt ist klein, einzeln testbar und endet mit einem überprüfbaren Erg
 
 ### Phase 8: Modell-Download in der App
 
-- [ ] 8.1 Modell-Repo auf GitHub anlegen, Konvertierung/Quantisierung reproduzierbar dokumentieren (Skript im Repo).
-- [ ] 8.2 `manifest.json`-Schema festlegen (Abschnitt 4), Release `v1` mit Teilen erstellen.
-- [ ] 8.3 Downloader: Range-Fortsetzung, SHA-256-Prüfung, Speicherplatz-Check, nur WLAN (einstellbar), Fortschritt und Abbruch.
-- [ ] 8.4 Erststart-Assistent: Gerät prüfen (RAM), Modell empfehlen, Download starten, Lizenz anzeigen.
-- [ ] 8.5 Fallback-URLs und Fehlerfälle testen (Abbruch, kaputte Datei, volles Gerät).
-- [ ] 8.6 Updates: Manifest-Version prüfen, altes Modell erst nach erfolgreichem Download löschen.
+- [x] 8.1 Modell-Repo [edgebird-lab/lernsystem-modelle](https://github.com/edgebird-lab/lernsystem-modelle) angelegt (öffentlich, Apache 2.0, LICENSE + NOTICE). Die Modelle sind unveränderte Kopien der `litert-community`-Dateien (keine eigene Quantisierung nötig); `tools/make_release.py` zerlegt und hasht sie reproduzierbar.
+- [x] 8.2 `manifest.json` (Schema 1: Modelle, Teile mit Größe/SHA-256/URL-Liste, Lizenz, Mindest-RAM) und Release `v1` mit 4 Teilen à höchstens 1 GiB (Download, Range und Prüfsumme gegen GitHub verifiziert).
+- [x] 8.3 Downloader (`core/models/ModelDownloader`, als Worker im Vordergrunddienst): Range-Fortsetzung, SHA-256-Prüfung, Speicherplatz-Check, nur WLAN (einstellbar), Fortschritt und Abbruch.
+- [x] 8.4 Erststart-Assistent (`ModelScreen`; später über „KI-Modelle“ im Tab Dokumente erreichbar): Gerät prüfen (RAM), Modell empfehlen, Download starten, Lizenz anzeigen.
+- [x] 8.5 Fallback-URLs und Fehlerfälle getestet: 12 JVM-Tests gegen lokalen HTTP-Server (Abbruch/Fortsetzen, Server ohne Range, Ausfall und zweite URL, kaputtes Teil, zu wenig Speicher, altes Modell bleibt erhalten) und auf dem Pixel der echte Download mit hartem App-Kill mitten im Laden (Fortsetzen bei 394 MB, Dateien danach bitgleich zu den Originalen).
+- [x] 8.6 Updates (Version aus `.version`-Datei gegen Manifest; Ablegen per atomarem Umbenennen): Manifest-Version prüfen, altes Modell erst nach erfolgreichem Download löschen.
 
 ### Phase 9: Qualität, Robustheit, Release
 
@@ -184,4 +184,4 @@ Vom Nutzer nach dem Test über Nacht genannt oder beim Bauen aufgefallen:
 
 ## 7. Nächster Schritt
 
-Phase 8 (Modell-Download über GitHub-Releases), danach Phase 9. Phase 7 (Pomodoro) ist umgesetzt, die Sichtprüfung des Tabs auf dem Pixel steht aus. Vorher/danach: Phase 8 (Modell-Download über GitHub-Releases), dann Qualität und Release (Phase 9) und das Feinschliff-Backlog.
+Phase 9 (Qualität, Robustheit, Release) und das Feinschliff-Backlog. Phasen 0 bis 8 sind umgesetzt. Bei Phase 9 dran denken: Die App hat jetzt `INTERNET` (nur für den Modell-Download), das gehört in die Datenschutzerklärung.

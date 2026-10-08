@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Nur für den einmaligen Modell-Download (und Update-Prüfung) von GitHub; Dokumente und Chats verlassen das Gerät nie -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Fokus-Timer: Erinnerung zum Phasenende (genau, wenn erlaubt) und Wiederherstellung nach dem Neustart -->

@@ -15,12 +15,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import de.edgebird.lernsystem.ui.ChatScreen
 import de.edgebird.lernsystem.ui.DocumentsScreen
 import de.edgebird.lernsystem.ui.LearnScreen
+import de.edgebird.lernsystem.ui.ModelScreen
 import de.edgebird.lernsystem.ui.PomodoroScreen
 
 class MainActivity : ComponentActivity() {
@@ -38,6 +40,17 @@ class MainActivity : ComponentActivity() {
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }.launch(Manifest.permission.POST_NOTIFICATIONS)
         setContent {
             MaterialTheme {
+                val graph = (application as LernsystemApp).graph
+                var modelsOk by rememberSaveable { mutableStateOf(graph.llmModelFile.exists() && graph.embeddingModelFile.exists()) }
+                if (!modelsOk) {
+                    Scaffold { inner -> Box(Modifier.padding(inner)) { ModelScreen(firstRun = true, onDone = { modelsOk = true }) } }
+                    return@MaterialTheme
+                }
+                var showModels by rememberSaveable { mutableStateOf(false) }
+                if (showModels) {
+                    Scaffold { inner -> Box(Modifier.padding(inner)) { ModelScreen(firstRun = false, onDone = {}, onBack = { showModels = false }) } }
+                    return@MaterialTheme
+                }
                 var tab by rememberSaveable { mutableIntStateOf(0) }
                 if (requestedTab.intValue >= 0) { tab = requestedTab.intValue; requestedTab.intValue = -1 }
                 Scaffold(
@@ -50,7 +63,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                 ) { inner ->
-                    Box(Modifier.padding(inner)) { when (tab) { 0 -> ChatScreen(); 1 -> LearnScreen(); TAB_FOCUS -> PomodoroScreen(); else -> DocumentsScreen() } }
+                    Box(Modifier.padding(inner)) { when (tab) { 0 -> ChatScreen(); 1 -> LearnScreen(); TAB_FOCUS -> PomodoroScreen(); else -> DocumentsScreen(onModels = { showModels = true }) } }
                 }
             }
         }
