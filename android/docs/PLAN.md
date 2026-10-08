@@ -160,21 +160,23 @@ Jeder Schritt ist klein, einzeln testbar und endet mit einem überprüfbaren Erg
 
 ## 5a. Feinschliff (Stand 2026-10-08, Konzept in [DESIGN.md](DESIGN.md))
 
-Erledigt (Branch `android-feinschliff`):
-- [x] **Fächer** als Einstieg (Startseite „Meine Fächer“, Fachfarben), jedes Dokument gehört zu einem Fach; Altbestand landet automatisch in „Allgemein“. Migration 4 → 5 mit echten Daten geprüft.
-- [x] **Chat nur auf angehakte Quellen** (Fach = alles angehakt, ein Haken = ein Dokument), Suchfilter in Stichwort- und Vektorsuche (Gerätetests).
-- [x] Aufbau **Fach → Quellen | Chat | Lernen | Studio** (nach dem NotebookLM-Muster), eigene Optik „Papier und Tinte“, Dark Mode, seitliche Leiste im Querformat und auf Tablets.
-- [x] **Spracheingabe** im Chat und bei den Abfragen (Erkennung auf dem Gerät, ohne Netz).
-- [x] **Sokratischer Dialog** („Abfragen“) nach dem Muster der PC-App: Gesprächsstand statt Verlauf, Absicht und Phase im Code, Prüfung mit Neuversuch und Rückfall; 14 Tests, Praxistest mit dem echten Modell (11 Züge, keine Rückfallantworten mit echtem Kontext).
-- [x] Quellen umbenennen und in ein anderes Fach verschieben, Startfragen im Chat, Formeln lesbar (LaTeX-Kurzform).
+Erledigt:
+- [x] **Fächer** als Einstieg (Startseite, Fachfarben), Dokumente und Karten gehören zu einem Fach; Altbestand landet in „Allgemein“; Migrationen geprüft.
+- [x] **Chat nur auf angehakte Quellen** (Suchfilter in Stichwort- und Vektorsuche), Aufbau **Fach → Quellen | Chat | Lernen | Studio** nach dem NotebookLM-Muster, eigene Optik „Papier und Tinte“, Dark Mode, seitliche Leiste im Querformat.
+- [x] **Spracheingabe** (Erkennung auf dem Gerät) und **Vorlesen** (Sprachausgabe des Geräts) in Chat, Abfragen und Zusammenfassungen.
+- [x] **Sokratischer Dialog** („Abfragen“) nach dem Muster der PC-App, jetzt mit **Auswertung**: Jede Antwort wird bewertet (richtig/teilweise/falsch), Stand je Thema, „Üben“ für das schwächste Thema, schwache Fragen als Karten.
+- [x] **Zusammenfassungen** neu: Umfang (eine Quelle, ganzes Fach, Thema/Unterpunkt), Form (Gegliedert, Stichpunkte, Fließtext, Glossar), Länge in Wörtern, Rolle/Masterprompt frei änderbar, zusätzliche Wünsche, Niveau, Sprache, Formeln/Beispiele/Fettdruck/Fundstellen/Prüfungsfokus, Vorlagen (eigene und fertige), Ergebnisliste mit Teilen, Kopieren, Vorlesen, Neu erstellen, Veraltet-Hinweis.
+- [x] **Karten**: Dublettenschwelle für EmbeddingGemma gemessen und neu gesetzt, **Lückentext-Karten**, bessere Fragen bei **Code-Abschnitten**, Wahl der Kartenart beim Erzeugen.
+- [x] Quellen **suchen und sortieren**, **umbenennen**, **verschieben**; Antworten als **Notiz** in den Quellen speichern.
+- [x] **Foto zu Text** (Texterkennung auf dem Gerät, auch gescannte PDFs und Bilder als Quelle), Korrektur vor dem Speichern.
+- [x] **Teilen mit Lernsystem** aus anderen Apps, **tägliche Lern-Erinnerung**.
 
 Offen:
-- Zusammenfassung eines **ganzen Fachs** aus den Dokumentzusammenfassungen (Studio).
-- Suche und Sortierung in der Quellenliste.
-- Kartenerzeugung: Dublettenschwelle für EmbeddingGemma feiner abstimmen, Lückentext-Karten, bessere Fragen bei Code-Dokumenten.
-- Abfragen: Auswertung der Antworten mit Fortschritt je Thema, Übergabe schwacher Themen als Karten.
-- Audio-Zusammenfassung (Studio), Vorlesen der Antworten.
-- Echte Sprechprobe der Spracheingabe auf dem Pixel (die Erkennung selbst ist nur von Hand testbar).
+- Echte Sprechprobe der Spracheingabe und Hörprobe der Sprachausgabe auf dem Pixel (nur von Hand testbar).
+- Audio-Zusammenfassung als Datei (Vorlesen ist da, Speichern als Audio nicht).
+- Chat-Verläufe dauerhaft speichern; mehrere Chats je Fach.
+- Dokumentenscanner mit Kantenerkennung (jetzt: Systemkamera plus Texterkennung).
+- Fach-Widget mit fälligen Karten.
 
 ## 6. Risiken und Gegenmaßnahmen
 
