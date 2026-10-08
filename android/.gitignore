@@ -1,3 +1,8 @@
 
 # von tools/fetch_sherpa.sh geladen
 ai/src/main/jniLibs/
+
+# Signierschluessel und Zugangsdaten nie einchecken
+keystore.properties
+*.jks
+*.keystore
