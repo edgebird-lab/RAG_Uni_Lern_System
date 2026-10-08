@@ -2,7 +2,7 @@
 
 Abgespeckte, komplett lokale Android-Version des RAG-Lernsystems: Dokumente importieren, Chat mit Quellen (RAG), Karteikarten mit FSRS-6. Die KI (Gemma 4 E2B plus EmbeddingGemma 2) läuft auf dem Gerät, es gibt keine Cloud-Abhängigkeit.
 
-**Stand:** Phasen 0 bis 5 des [Plans](docs/PLAN.md) sind umgesetzt (Import, hybride Suche, Chat, Karteikarten). Zusammenfassungen (Phase 6), Pomodoro (7), Modell-Download in der App (8) und der Store-Release (9) fehlen noch.
+**Stand:** Phasen 0 bis 7 des [Plans](docs/PLAN.md) sind umgesetzt (Import, hybride Suche, Chat, Karteikarten, Zusammenfassungen, Fokus-Timer). Modell-Download in der App (Phase 8) und der Store-Release (9) fehlen noch.
 
 ## Bauen und installieren
 
@@ -35,6 +35,7 @@ adb shell "run-as de.edgebird.lernsystem sh -c 'mkdir -p files/models && cp /dat
 
 - Das Display muss bei langen Hintergrundjobs (Indexieren, Karten erzeugen) an bleiben, sonst bremst die GPU stark.
 - Beim ersten Start nach einer Neuinstallation optimiert die App das Sprachmodell für die GPU (5 bis 10 Minuten, einmalig).
+- Fokus-Timer: genaue Alarme (Android-Einstellung „Alarme und Erinnerungen“) lassen das Phasenende pünktlich melden; ohne sie kann es einige Minuten dauern. Der Timer läuft zeitstempelbasiert, die App muss dafür nicht offen sein. Gerätetest mit kurzen Dauern: `adb shell am start -W -n de.edgebird.lernsystem/.spike.DebugPomodoroActivity --ei focus 15 --ei short 8` (nur Debug-Build).
 - Messergebnisse: [RAG_EVAL](docs/RAG_EVAL.md), [KARTEN_EVAL](docs/KARTEN_EVAL.md), [SPIKE_ERGEBNIS](docs/SPIKE_ERGEBNIS.md).
 
 Persönliche Unterlagen und Eval-Daten gehören nach `eval/private/` (nicht versioniert).

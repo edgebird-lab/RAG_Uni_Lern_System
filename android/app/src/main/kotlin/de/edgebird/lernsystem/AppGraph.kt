@@ -5,6 +5,8 @@ import de.edgebird.lernsystem.ai.LiteRtLmEmbedder
 import de.edgebird.lernsystem.ai.LiteRtLmEngine
 import de.edgebird.lernsystem.ai.LlmBackend
 import de.edgebird.lernsystem.data.AppDatabase
+import de.edgebird.lernsystem.data.PomodoroRepository
+import de.edgebird.lernsystem.pomodoro.PomodoroController
 import de.edgebird.lernsystem.data.chat.RagChat
 import de.edgebird.lernsystem.data.search.HybridRetriever
 import de.edgebird.lernsystem.data.search.KeywordSearch
@@ -55,6 +57,11 @@ class AppGraph(private val context: Context) {
     fun saveStudySettings(s: StudySettings) {
         prefs.edit().putInt(PREF_DAILY_GOAL, s.dailyReviewGoal).putInt(PREF_NEW_PER_DAY, s.newCardsPerDay).apply()
     }
+
+    val pomodoroRepo: PomodoroRepository by lazy { PomodoroRepository(db) }
+
+    /** Fokus-Timer (Pomodoro): hält den Zustand auch ohne offene Oberfläche. */
+    val pomodoro: PomodoroController by lazy { PomodoroController(context, pomodoroRepo, documentTitle = { id -> db.documents().byId(id)?.title }) }
 
     val study: StudyRepository by lazy { StudyRepository(db, settings = ::studySettings) }
 
