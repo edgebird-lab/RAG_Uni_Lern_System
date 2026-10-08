@@ -8,18 +8,23 @@ import de.edgebird.lernsystem.data.CardEntity
 import de.edgebird.lernsystem.data.CardWithSource
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class CardsViewModel(app: Application) : AndroidViewModel(app) {
     private val graph = (app as LernsystemApp).graph
 
-    val cards: StateFlow<List<CardWithSource>> =
-        graph.db.cards().observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    private val subject = kotlinx.coroutines.flow.MutableStateFlow<Long?>(null)
+    fun bind(id: Long?) { subject.value = id }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val cards: StateFlow<List<CardWithSource>> = subject.flatMapLatest { graph.db.cards().observeForSubject(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun add(front: String, answer: String) {
         if (front.isBlank() || answer.isBlank()) return
-        viewModelScope.launch { graph.study.addManual(front, answer) }
+        viewModelScope.launch { graph.study.addManual(front, answer, subject.value) }
     }
 
     fun edit(card: CardEntity, front: String, answer: String) {

@@ -38,18 +38,23 @@ class StudyViewModel(app: Application) : AndroidViewModel(app) {
     private val queue = ArrayDeque<Long>()
     private var shownAt = 0L
 
-    init {
+    private var subjectId: Long? = null
+
+    /** Lernstoff auf ein Fach begrenzen (idempotent). */
+    fun bind(id: Long?) {
+        if (id == subjectId && _summary.value != null) return
+        subjectId = id
         refresh()
     }
 
     fun refresh() {
-        viewModelScope.launch { _summary.value = repo.summary() }
+        viewModelScope.launch { _summary.value = repo.summary(subjectId) }
     }
 
     fun start() {
         viewModelScope.launch {
             queue.clear()
-            queue.addAll(repo.buildQueue())
+            queue.addAll(repo.buildQueue(subjectId))
             _session.value = SessionState(remaining = queue.size, finished = queue.isEmpty())
             if (queue.isNotEmpty()) showNext(reviewed = 0)
         }

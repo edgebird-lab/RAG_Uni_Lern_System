@@ -2,7 +2,7 @@
 
 Abgespeckte, komplett lokale Android-Version des RAG-Lernsystems: Dokumente importieren, Chat mit Quellen (RAG), Karteikarten mit FSRS-6. Die KI (Gemma 4 E2B plus EmbeddingGemma 2) läuft auf dem Gerät, es gibt keine Cloud-Abhängigkeit.
 
-**Stand:** Phasen 0 bis 8 des [Plans](docs/PLAN.md) sind umgesetzt (Import, hybride Suche, Chat, Karteikarten, Zusammenfassungen, Fokus-Timer). Der Store-Release (Phase 9) fehlt noch.
+**Stand:** Phasen 0 bis 8 des [Plans](docs/PLAN.md) sind umgesetzt (Import, hybride Suche, Chat, Karteikarten, Zusammenfassungen, Fokus-Timer, Fächer, Spracheingabe, sokratische Abfragen; Konzept in [DESIGN.md](docs/DESIGN.md)). Der Store-Release (Phase 9) fehlt noch.
 
 ## Bauen und installieren
 

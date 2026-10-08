@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -27,6 +28,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -38,13 +41,23 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import de.edgebird.lernsystem.data.chat.Source
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun ChatScreen(onModels: () -> Unit = {}, vm: ChatViewModel = viewModel()) {
+fun ChatScreen(subjectId: Long, onModels: () -> Unit = {}, onOpenSources: () -> Unit = {}, vm: ChatViewModel = viewModel(key = "chat$subjectId"), docsVm: DocumentsViewModel = viewModel(key = "docs$subjectId")) {
+    androidx.compose.runtime.LaunchedEffect(subjectId) { docsVm.bind(subjectId) }
+    val docs by docsVm.documents.collectAsStateWithLifecycle()
+    val selected by docsVm.selectedIds.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(selected) { vm.setScope(selected) }
+    var picking by remember { mutableStateOf(false) }
+    var speechBase by remember { mutableStateOf("") }
     val messages by vm.messages.collectAsStateWithLifecycle()
     val modelState by vm.modelState.collectAsStateWithLifecycle()
     val loadError by vm.loadError.collectAsStateWithLifecycle()
-    val hasDocuments by vm.hasDocuments.collectAsStateWithLifecycle()
     var input by rememberSaveable { mutableStateOf("") }
+    val speech = rememberSpeech(
+        onPartial = { input = (speechBase.trim() + " " + it).trim() },
+        onFinal = { input = (speechBase.trim() + " " + it).trim() },
+    )
     var openSource by remember { mutableStateOf<Source?>(null) }
     val listState = rememberLazyListState()
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
@@ -63,7 +76,12 @@ fun ChatScreen(onModels: () -> Unit = {}, vm: ChatViewModel = viewModel()) {
 
     Column(Modifier.fillMaxSize().imePadding().padding(horizontal = 16.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Chat", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+            androidx.compose.material3.AssistChip(
+                onClick = { picking = true },
+                label = { Text(if (docs.isEmpty()) "Keine Quellen" else "${selected.size} von ${docs.size} Quellen") },
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
             if (messages.isNotEmpty()) TextButton(onClick = vm::newChat) { Text("Neuer Chat") }
         }
         when (modelState) {
@@ -79,15 +97,24 @@ fun ChatScreen(onModels: () -> Unit = {}, vm: ChatViewModel = viewModel()) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (messages.isEmpty()) {
                 Text(
-                    if (hasDocuments == false) "Noch keine Dokumente. Importiere im Tab „Dokumente“ ein PDF oder eine Textdatei, dann kannst du hier Fragen dazu stellen."
-                    else "Stell eine Frage zu deinen Dokumenten. Die Antwort nennt die Quellen; steht nichts dazu im Material, sagt die App das.",
+                    if (docs.isEmpty()) "Dieses Fach hat noch keine Quellen. Füge unter „Quellen“ ein PDF oder eine Textdatei hinzu, dann kannst du hier Fragen dazu stellen."
+                    else if (selected.isEmpty()) "Keine Quelle angehakt. Wähle oben die Quellen, auf die sich die Antworten stützen sollen."
+                    else "Stell eine Frage zu deinen Quellen. Die Antwort nennt die Quellen; steht nichts dazu im Material, sagt die App das.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                if (docs.isNotEmpty() && selected.isNotEmpty() && modelState == ModelState.READY) {
+                    androidx.compose.foundation.layout.FlowRow(Modifier.align(Alignment.BottomStart), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Worum geht es in diesen Quellen?", "Was sind die wichtigsten Begriffe?", "Welche Definitionen kommen vor?").forEach { q ->
+                            androidx.compose.material3.SuggestionChip(onClick = { vm.send(q) }, label = { Text(q) })
+                        }
+                    }
+                }
             }
             LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
                 items(messages, key = { it.id }) { m -> MessageBubble(m, onSource = { openSource = it }, onRetry = { vm.retryWithMoreSources(m.id) }, canRetry = !streaming) }
             }
         }
+        speech.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = input,
@@ -98,6 +125,16 @@ fun ChatScreen(onModels: () -> Unit = {}, vm: ChatViewModel = viewModel()) {
                 enabled = modelState == ModelState.READY,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
             )
+            if (speech.available && !streaming) {
+                androidx.compose.material3.FilledTonalIconButton(
+                    onClick = { if (!speech.listening) speechBase = input; speech.toggle() },
+                    enabled = modelState == ModelState.READY,
+                    colors = if (speech.listening) androidx.compose.material3.IconButtonDefaults.filledTonalIconButtonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError) else androidx.compose.material3.IconButtonDefaults.filledTonalIconButtonColors(),
+                    modifier = Modifier.size(56.dp),
+                ) {
+                    androidx.compose.material3.Icon(if (speech.listening) androidx.compose.material.icons.Icons.Default.MicOff else androidx.compose.material.icons.Icons.Default.Mic, contentDescription = if (speech.listening) "Aufnahme beenden" else "Frage einsprechen")
+                }
+            }
             if (streaming) {
                 Button(onClick = vm::stop) { Text("Stopp") }
             } else {
@@ -105,6 +142,8 @@ fun ChatScreen(onModels: () -> Unit = {}, vm: ChatViewModel = viewModel()) {
             }
         }
     }
+
+    if (picking) SourcePickerDialog(docs, selected, docsVm::toggle, docsVm::selectAll) { picking = false }
 
     openSource?.let { s ->
         AlertDialog(
@@ -141,7 +180,7 @@ private fun MessageBubble(m: ChatMessage, onSource: (Source) -> Unit, onRetry: (
                     if (!m.retried && canRetry) TextButton(onClick = onRetry) { Text("Mit mehr Quellen erneut versuchen") }
                 }
                 m.text.isEmpty() && m.streaming -> Text("Suche und formuliere …", style = MaterialTheme.typography.bodySmall)
-                else -> Text(m.text, style = MaterialTheme.typography.bodyMedium, color = if (m.failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                else -> Text(de.edgebird.lernsystem.core.cards.LatexLite.toPlain(m.text), style = MaterialTheme.typography.bodyMedium, color = if (m.failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
             }
             if (m.retried && !m.streaming && !m.notFound) Text("Zweiter Versuch mit mehr Quellen: bitte die Quellen prüfen.", style = MaterialTheme.typography.labelSmall)
             if (!m.fromUser && !m.notFound && m.sources.isNotEmpty() && !m.streaming) {
@@ -158,4 +197,24 @@ private fun MessageBubble(m: ChatMessage, onSource: (Source) -> Unit, onRetry: (
             }
         }
     }
+}
+
+@Composable
+private fun SourcePickerDialog(docs: List<de.edgebird.lernsystem.data.DocumentSummary>, selected: Set<Long>, onToggle: (Long) -> Unit, onAll: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss, title = { Text("Quellen für den Chat") },
+        text = {
+            androidx.compose.foundation.lazy.LazyColumn {
+                items(docs.size) { i ->
+                    val d = docs[i].document
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(checked = d.id in selected, onCheckedChange = { onToggle(d.id) }, enabled = d.status != de.edgebird.lernsystem.data.DocumentStatus.FAILED)
+                        Text(d.title, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Fertig") } },
+        dismissButton = { TextButton(onClick = onAll) { Text("Alle") } },
+    )
 }

@@ -8,7 +8,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import de.edgebird.lernsystem.LernsystemApp
+import de.edgebird.lernsystem.data.DocumentStatus
 import de.edgebird.lernsystem.data.DocumentSummary
+import kotlinx.coroutines.flow.flatMapLatest
 import de.edgebird.lernsystem.work.CardGenWork
 import de.edgebird.lernsystem.work.CardGenWorker
 import de.edgebird.lernsystem.work.EmbedWorker
@@ -40,8 +42,32 @@ class DocumentsViewModel(app: Application) : AndroidViewModel(app) {
         _onlyWhenCharging.value = value
     }
 
-    val documents: StateFlow<List<DocumentSummary>> =
-        graph.db.documents().observeSummaries().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    private val subject = kotlinx.coroutines.flow.MutableStateFlow<Long?>(null)
+    val subjectId: Long? get() = subject.value
+
+    /** Das Fach, dessen Quellen angezeigt werden (idempotent). */
+    fun bind(id: Long) { subject.value = id }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val documents: StateFlow<List<DocumentSummary>> = subject.flatMapLatest { id ->
+        if (id == null) kotlinx.coroutines.flow.flowOf(emptyList()) else graph.db.documents().observeSummariesForSubject(id)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Abgewählte Quellen; neue Quellen sind automatisch angehakt. */
+    private val excluded = kotlinx.coroutines.flow.MutableStateFlow<Set<Long>>(emptySet())
+
+    /** Angehakte, nutzbare Quellen: der Chat sucht nur hier. */
+    val selectedIds: StateFlow<Set<Long>> = kotlinx.coroutines.flow.combine(documents, excluded) { docs, ex ->
+        docs.filter { it.document.status != DocumentStatus.FAILED && it.document.id !in ex }.map { it.document.id }.toSet()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    fun toggle(id: Long) { excluded.value = excluded.value.let { if (id in it) it - id else it + id } }
+    fun selectAll() { excluded.value = emptySet() }
+    fun selectOnly(id: Long) { excluded.value = documents.value.map { it.document.id }.toSet() - id }
+
+    fun rename(id: Long, title: String) { if (title.isNotBlank()) viewModelScope.launch { graph.db.documents().rename(id, title.trim()) } }
+
+    fun move(id: Long, subject: Long) { viewModelScope.launch { graph.subjects.moveDocument(id, subject) } }
 
     val embedStatus: StateFlow<EmbedStatus?> = work.getWorkInfosByTagFlow(ImportWork.TAG_EMBED).map { infos ->
         val active = infos.firstOrNull { it.state == WorkInfo.State.RUNNING } ?: infos.firstOrNull { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED }
@@ -92,7 +118,7 @@ class DocumentsViewModel(app: Application) : AndroidViewModel(app) {
                     }.getOrNull()
                 }
             }
-            if (items.isNotEmpty()) ImportWork.enqueue(getApplication(), items, _onlyWhenCharging.value)
+            if (items.isNotEmpty()) ImportWork.enqueue(getApplication(), items, _onlyWhenCharging.value, subject.value)
         }
     }
 

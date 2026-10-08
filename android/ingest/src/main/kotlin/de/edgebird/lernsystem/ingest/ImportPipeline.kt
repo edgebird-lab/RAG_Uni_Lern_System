@@ -35,7 +35,7 @@ class ImportPipeline(
     private val chunkerConfig: ChunkerConfig = ChunkerConfig(),
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
-    suspend fun import(source: DocumentSource, onStage: (ImportStage) -> Unit = {}): ImportResult = withContext(Dispatchers.IO) {
+    suspend fun import(source: DocumentSource, onStage: (ImportStage) -> Unit = {}, subjectId: Long? = null): ImportResult = withContext(Dispatchers.IO) {
         val loader = loaders.firstOrNull { source.extension in it.extensions }
             ?: return@withContext ImportResult.Failed("Dateityp „.${source.extension}“ wird nicht unterstützt")
 
@@ -70,7 +70,7 @@ class ImportPipeline(
             replaceId = decision.existing?.id,
             doc = DocumentEntity(
                 path = source.key, title = source.displayName.substringBeforeLast('.'), filetype = source.extension,
-                contentHash = hash, charCount = loaded.text.length, addedAt = clock(), status = DocumentStatus.PENDING,
+                contentHash = hash, charCount = loaded.text.length, addedAt = clock(), status = DocumentStatus.PENDING, subjectId = subjectId ?: decision.existing?.let { db.documents().byId(it.id)?.subjectId },
             ),
         ) { id ->
             chunks.mapIndexed { i, c ->
