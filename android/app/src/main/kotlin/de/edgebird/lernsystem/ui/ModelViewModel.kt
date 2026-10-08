@@ -30,6 +30,9 @@ sealed interface ModelCheck {
     data class Failed(val message: String) : ModelCheck
 }
 
+/** Die optionale Offline-Stimme für die Sprachausgabe. */
+data class VoiceInfo(val model: ModelInfo, val installed: Boolean)
+
 data class DownloadState(val running: Boolean, val queued: Boolean, val done: Long, val total: Long, val name: String, val error: String?)
 
 class ModelViewModel(app: Application) : AndroidViewModel(app) {
@@ -39,6 +42,14 @@ class ModelViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _wifiOnly = MutableStateFlow(graph.prefs.getBoolean(PREF_WIFI_ONLY, true))
     val wifiOnly: StateFlow<Boolean> = _wifiOnly
+
+    private val _withVoice = MutableStateFlow(true)
+    /** Beim Erststart: Stimme mitladen? */
+    val withVoice: StateFlow<Boolean> = _withVoice
+    fun setWithVoice(v: Boolean) { _withVoice.value = v }
+
+    private val _voice = MutableStateFlow<VoiceInfo?>(null)
+    val voice: StateFlow<VoiceInfo?> = _voice
 
     private val _check = MutableStateFlow<ModelCheck>(ModelCheck.Loading)
     val check: StateFlow<ModelCheck> = _check
@@ -69,6 +80,8 @@ class ModelViewModel(app: Application) : AndroidViewModel(app) {
             val present = filesPresent()
             val res = withContext(Dispatchers.IO) { runCatching { downloader.fetchManifest(ModelWork.MANIFEST_URLS) } }
             val manifest = res.getOrNull()
+            _voice.value = manifest?.models?.firstOrNull { it.optional && it.role == "tts" }?.let { VoiceInfo(it, graph.voice.installed()) }
+            graph.voice.release()   // nach einem Download oder Löschen neu laden
             _check.value = when {
                 manifest != null -> {
                     val pending = ModelPlan.pending(manifest, installed)
@@ -82,14 +95,17 @@ class ModelViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setWifiOnly(v: Boolean) { graph.prefs.edit().putBoolean(PREF_WIFI_ONLY, v).apply(); _wifiOnly.value = v }
-    fun start() = ModelWork.enqueue(getApplication(), _wifiOnly.value)
+    fun start() = ModelWork.enqueue(getApplication(), _wifiOnly.value, withVoice = _withVoice.value && _voice.value?.installed == false)
+
+    /** Nur die Stimme (nachträglich) laden. */
+    fun downloadVoice() = ModelWork.enqueue(getApplication(), _wifiOnly.value, withVoice = true)
     fun cancel() = ModelWork.cancel(getApplication())
 
     /** Beschädigte oder falsche Modelldateien entfernen, damit der Assistent sie neu lädt. */
     fun reinstall() {
         cancel()
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { graph.modelsDir.listFiles().orEmpty().forEach { it.delete() } }
+            withContext(Dispatchers.IO) { graph.voice.release(); graph.modelsDir.listFiles().orEmpty().forEach { it.deleteRecursively() } }
             refresh()
         }
     }

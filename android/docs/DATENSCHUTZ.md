@@ -10,7 +10,7 @@ Die App speichert ausschließlich lokal im privaten App-Speicher: importierte Do
 
 ## Netzwerkzugriff
 
-Die App benötigt die Berechtigung „Internet“ ausschließlich, um beim ersten Start und bei Updates die KI-Modelle von GitHub (Repository `edgebird-lab/lernsystem-modelle`) zu laden und die Modellliste (`manifest.json`) abzurufen. Dabei werden keine Inhalte aus der App übertragen. Wie jeder Webserver sieht GitHub technisch bedingt deine IP-Adresse und den Zeitpunkt der Anfrage; dafür gilt die Datenschutzerklärung von GitHub.
+Die App benötigt die Berechtigung „Internet“ ausschließlich, um beim ersten Start und bei Updates die KI-Modelle und das optionale Stimmenpaket von GitHub (Repository `edgebird-lab/lernsystem-modelle`) zu laden und die Modellliste (`manifest.json`) abzurufen. Dabei werden keine Inhalte aus der App übertragen. Wie jeder Webserver sieht GitHub technisch bedingt deine IP-Adresse und den Zeitpunkt der Anfrage; dafür gilt die Datenschutzerklärung von GitHub.
 
 ## Weitergabe
 
@@ -22,7 +22,7 @@ Es werden keine personenbezogenen Daten an den Anbieter oder an Dritte weitergeg
 - Mikrofon (optional): für die Spracheingabe. Die Erkennung läuft mit der Spracherkennung des Geräts **auf dem Gerät**; es wird nichts aufgezeichnet oder gesendet.
 - Fotos: Zum Fotografieren öffnet die App die Kamera-App des Geräts (keine Kamera-Berechtigung nötig). Die Bilder bleiben im Zwischenspeicher der App und werden nach dem Erkennen des Textes gelöscht.
 - Teilen: Du kannst PDFs, Texte und Bilder aus anderen Apps mit dem Lernsystem teilen; sie werden erst nach deiner Wahl eines Fachs importiert.
-- Sprachausgabe (Vorlesen): nutzt die Sprachausgabe des Geräts. Ist eine deutsche **Offline-Stimme** installiert, läuft alles lokal. Fehlt sie, kann der Sprachdienst des Geräteherstellers (z. B. Google) eine Online-Stimme verwenden; dann wird der vorzulesende Text zur Sprachsynthese an diesen Dienst gesendet. Die App weist darauf hin. Wer das vermeiden will, installiert eine Offline-Stimme in den Android-Einstellungen unter Sprachausgabe oder nutzt Vorlesen nicht.
+- Sprachausgabe (Vorlesen): Die App verwendet ausschließlich ihre **eigene Offline-Stimme** (ein optional geladenes Stimmenpaket, Piper über sherpa-onnx). Das Vorlesen und das Erzeugen von Audiodateien laufen vollständig auf dem Gerät. Online-Stimmen der System-Sprachausgabe werden bewusst nicht benutzt.
 - Genaue Alarme (optional): damit das Ende einer Fokusphase pünktlich gemeldet wird.
 - Nach Neustart starten: stellt einen laufenden Fokus-Timer wieder her.
 - Vordergrunddienst (Datensynchronisierung): lässt Import, Indexierung und Download bei ausgeschaltetem Display weiterlaufen.

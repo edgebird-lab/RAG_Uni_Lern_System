@@ -283,8 +283,8 @@ private fun SummaryViewer(id: Long, vm: StudioViewModel, onBack: () -> Unit) {
         val text = s?.text
         if (uri != null && text != null) scope.launch {
             audioStatus = "Audio wird erstellt …"
-            val bytes = withContext(kotlinx.coroutines.Dispatchers.Default) { speaker.renderWav(text, context.cacheDir) { d, t -> audioStatus = "Audio wird erstellt: $d von $t" } }
-            audioStatus = if (bytes == null) "Das Audio konnte nicht erstellt werden. Ist die deutsche Stimme installiert?" else {
+            val bytes = speaker.renderWav(text) { d, t -> audioStatus = "Audio wird erstellt: $d von $t" }
+            audioStatus = if (bytes == null) "Das Audio konnte nicht erstellt werden." else {
                 withContext(kotlinx.coroutines.Dispatchers.IO) { context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) } }
                 "Audio gespeichert (${maxOf(1, bytes.size / 1_048_576)} MB)"
             }
@@ -311,9 +311,9 @@ private fun SummaryViewer(id: Long, vm: StudioViewModel, onBack: () -> Unit) {
             OutlinedButton(onClick = { renaming = true }) { Text("Umbenennen") }
             OutlinedButton(onClick = { deleting = true }) { Text("Löschen") }
         }
-        speaker.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        VoiceMissingHint(speaker)
+        if (!speaker.missingVoice) speaker.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         audioStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-        if (speaker.networkVoice) Text("Hinweis: Die verwendete Stimme braucht Internet, der Text wird dafür an den Sprachdienst des Geräts gesendet. Für rein lokales Vorlesen installiere eine deutsche Offline-Stimme (Android-Einstellungen, Sprachausgabe).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         val date = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(r.createdAt))
         Text("Erstellt am $date mit ${r.model}: ${r.sectionsUsed} Abschnitte" + (if (r.sectionsSkipped > 0) ", ${r.sectionsSkipped} übersprungen" else "") + " · ${spec.role.label}${if (spec.customRole.isNotBlank()) " (eigener Prompt)" else ""}", style = MaterialTheme.typography.labelSmall)
         if (id in stale) Text("Veraltet: Eine Quelle hat sich seit der Erstellung geändert. Mit „Neu erstellen“ aktualisieren.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)

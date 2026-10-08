@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
@@ -59,7 +60,7 @@ fun SocraticScreen(subjectId: Long, vm: SocraticViewModel = viewModel(key = "soc
     LaunchedEffect(ui.messages.size, ui.busy) { if (ui.messages.isNotEmpty()) listState.animateScrollToItem(ui.messages.lastIndex) }
 
     if (!ui.running) {
-        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Abfrage", style = MaterialTheme.typography.headlineMedium)
             Text("Ich stelle dir Fragen zu deinen Quellen und helfe dir beim Draufkommen, ohne gleich die Lösung zu verraten. Du kannst jederzeit einen Hinweis bekommen oder dir die Auflösung zeigen lassen.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(value = topic, onValueChange = { topic = it.take(80) }, label = { Text("Thema (leer lassen: ich suche eins aus)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -68,8 +69,8 @@ fun SocraticScreen(subjectId: Long, vm: SocraticViewModel = viewModel(key = "soc
             if (topics.isNotEmpty()) {
                 Text("Dein Stand je Thema", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
                 Text("Schwächste zuerst. Tippe auf „Üben“, um genau dazu abgefragt zu werden.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                androidx.compose.foundation.lazy.LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(topics, key = { it.topic }) { t ->
+                androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    topics.forEach { t ->
                         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.fillMaxWidth()) {
                             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
@@ -101,6 +102,7 @@ fun SocraticScreen(subjectId: Long, vm: SocraticViewModel = viewModel(key = "soc
             items(ui.messages) { m -> Bubble(m, onSpeak = { if (speaker.speaking) speaker.stop() else speaker.speak(m.text) }, speaking = speaker.speaking) }
             if (ui.busy) item { Column(Modifier.padding(8.dp)) { Text("Ich denke nach …", style = MaterialTheme.typography.bodySmall); LinearProgressIndicator(Modifier.fillMaxWidth()) } }
         }
+        VoiceMissingHint(speaker)
         ui.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         speech.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

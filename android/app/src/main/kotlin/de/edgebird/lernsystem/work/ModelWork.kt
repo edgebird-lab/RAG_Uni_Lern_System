@@ -27,8 +27,11 @@ object ModelWork {
         "https://github.com/edgebird-lab/lernsystem-modelle/releases/latest/download/manifest.json",
     )
 
-    fun enqueue(context: Context, wifiOnly: Boolean) {
-        val req = OneTimeWorkRequestBuilder<ModelDownloadWorker>()
+    const val INCLUDE_VOICE = "include_voice"
+
+    /** @param withVoice auch die optionale Offline-Stimme (Sprachausgabe) laden */
+    fun enqueue(context: Context, wifiOnly: Boolean, withVoice: Boolean = false) {
+        val req = OneTimeWorkRequestBuilder<ModelDownloadWorker>().setInputData(workDataOf(INCLUDE_VOICE to withVoice))
             .setConstraints(Constraints.Builder().setRequiredNetworkType(if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED).build())
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(UNIQUE, ExistingWorkPolicy.REPLACE, req)
@@ -46,7 +49,7 @@ class ModelDownloadWorker(ctx: Context, params: WorkerParameters) : CoroutineWor
         return withContext(Dispatchers.IO) {
             try {
                 val manifest = dl.fetchManifest(ModelWork.MANIFEST_URLS)
-                val todo = ModelPlan.pending(manifest, dl.installed())
+                val todo = ModelPlan.pending(manifest, dl.installed(), includeOptional = inputData.getBoolean(ModelWork.INCLUDE_VOICE, false))
                 val grand = todo.sumOf { it.size }
                 var finished = 0L
                 var lastReport = 0L

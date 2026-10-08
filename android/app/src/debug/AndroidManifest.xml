@@ -10,6 +10,7 @@
         <activity android:name=".spike.DebugCardsActivity" android:exported="true" />
         <activity android:name=".spike.DebugPomodoroActivity" android:exported="true" />
         <activity android:name=".spike.DebugSocraticActivity" android:exported="true" />
+        <activity android:name=".spike.DebugTtsActivity" android:exported="true" />
         <activity android:name=".spike.DebugClozeActivity" android:exported="true" />
         <activity android:name=".spike.DebugDupActivity" android:exported="true" />
         <activity android:name=".spike.DebugSummaryActivity" android:exported="true" />

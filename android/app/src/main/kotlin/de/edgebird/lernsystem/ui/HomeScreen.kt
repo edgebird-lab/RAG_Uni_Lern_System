@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -195,7 +196,7 @@ private fun SubjectDialog(title: String, initialName: String, initialColor: Int,
     AlertDialog(
         onDismissRequest = onDismiss, title = { Text(title) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(value = name, onValueChange = { name = it.take(40) }, label = { Text("Name des Fachs") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Text("Farbe", style = MaterialTheme.typography.labelLarge)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -226,7 +227,7 @@ private fun ReminderDialog(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss, title = { Text("Lern-Erinnerung") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Täglich zur gewählten Zeit, wenn Karten fällig sind und dein Tagesziel noch nicht erreicht ist. Android darf die Zeit um einige Minuten verschieben.", style = MaterialTheme.typography.bodySmall)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Erinnerung an", Modifier.weight(1f))

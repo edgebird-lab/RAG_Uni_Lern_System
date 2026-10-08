@@ -117,6 +117,7 @@ fun ChatScreen(subjectId: Long, onModels: () -> Unit = {}, onOpenSources: () -> 
                     onNote = { if (vm.saveAsNote(m.id)) android.widget.Toast.makeText(context, "Als Notiz in den Quellen gespeichert", android.widget.Toast.LENGTH_SHORT).show() }) }
             }
         }
+        VoiceMissingHint(speaker)
         speech.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(

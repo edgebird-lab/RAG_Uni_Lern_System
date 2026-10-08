@@ -21,9 +21,44 @@ class ModelDownloader(
 ) {
     class Cancelled : Exception("Abgebrochen")
 
+    /** Entpackt [zip] erst in einen Nebenordner und ersetzt dann [target]; so bleibt eine ältere Fassung bis zum Erfolg erhalten. Schutz vor Pfaden außerhalb des Ordners. */
+    internal fun unzipAtomic(zip: File, target: File, marker: String, maxBytes: Long = 600L * 1024 * 1024) {
+        val tmp = File(target.parentFile, target.name + ".new").also { it.deleteRecursively(); it.mkdirs() }
+        try {
+            var total = 0L
+            java.util.zip.ZipInputStream(zip.inputStream().buffered()).use { zin ->
+                while (true) {
+                    val e = zin.nextEntry ?: break
+                    val out = File(tmp, e.name)
+                    if (!out.canonicalPath.startsWith(tmp.canonicalPath + File.separator)) throw ModelException("Ungültiges Paket (Pfad außerhalb des Ordners)")
+                    if (e.isDirectory) { out.mkdirs(); continue }
+                    out.parentFile?.mkdirs()
+                    out.outputStream().use { o ->
+                        val buf = ByteArray(64 * 1024)
+                        while (true) { val n = zin.read(buf); if (n < 0) break; total += n; if (total > maxBytes) throw ModelException("Paket ist größer als erlaubt"); o.write(buf, 0, n) }
+                    }
+                }
+            }
+            File(tmp, MARKER).writeText(marker)
+            target.deleteRecursively()
+            if (!tmp.renameTo(target)) throw ModelException("Paket konnte nicht abgelegt werden")
+        } catch (e: Exception) {
+            tmp.deleteRecursively()
+            throw if (e is ModelException) e else ModelException("Paket konnte nicht entpackt werden: ${e.message}", e)
+        }
+    }
+
     fun versionFile(model: ModelInfo) = File(dir, model.fileName + ".version")
-    fun installed(): Map<String, InstalledModel> = dir.listFiles().orEmpty().filter { it.isFile && !it.name.endsWith(".partial") && !it.name.endsWith(".version") }
-        .associate { f -> f.name to InstalledModel(f.length(), File(dir, f.name + ".version").takeIf { it.exists() }?.readText()?.trim()) }
+    fun installed(): Map<String, InstalledModel> {
+        val files = dir.listFiles().orEmpty()
+        val plain = files.filter { it.isFile && !it.name.endsWith(".partial") && !it.name.endsWith(".version") }
+            .associate { f -> f.name to InstalledModel(f.length(), File(dir, f.name + ".version").takeIf { it.exists() }?.readText()?.trim()) }
+        // Entpackte Pakete (Stimme): Der Marker im Ordner nennt Dateiname, Größe und Version des geladenen Pakets
+        val unpacked = files.filter { it.isDirectory }.mapNotNull { d ->
+            File(d, MARKER).takeIf { it.isFile }?.readText()?.split('|')?.takeIf { it.size == 3 }?.let { (name, size, version) -> name to InstalledModel(size.toLongOrNull() ?: 0, version) }
+        }.toMap()
+        return plain + unpacked
+    }
 
     /** Manifest von der ersten erreichbaren URL holen. */
     fun fetchManifest(urls: List<String>): ModelManifest {
@@ -67,9 +102,14 @@ class ModelDownloader(
                 raf.setLength(model.size)
             }
             if (sha256(partial) != model.sha256) { partial.delete(); throw ModelException("Prüfsumme von ${model.fileName} stimmt nicht, Datei wurde verworfen") }
-            val target = File(dir, model.fileName)
-            if (!partial.renameTo(target)) throw ModelException("Modell konnte nicht abgelegt werden")
-            versionFile(model).writeText(model.version)
+            if (model.unpack.isNotEmpty()) {
+                unzipAtomic(partial, File(dir, model.unpack), "${model.fileName}|${model.size}|${model.version}")
+                partial.delete()
+            } else {
+                val target = File(dir, model.fileName)
+                if (!partial.renameTo(target)) throw ModelException("Modell konnte nicht abgelegt werden")
+                versionFile(model).writeText(model.version)
+            }
         } catch (e: Cancelled) { throw e }
     }
 
@@ -139,6 +179,9 @@ class ModelDownloader(
     }
 
     companion object {
+        /** Datei im entpackten Ordner, die Dateiname, Größe und Version des Pakets festhält. */
+        const val MARKER = ".installed"
+
         fun sha256(f: File): String {
             val md = MessageDigest.getInstance("SHA-256")
             f.inputStream().use { i -> val b = ByteArray(1 shl 20); while (true) { val n = i.read(b); if (n < 0) break; md.update(b, 0, n) } }

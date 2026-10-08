@@ -146,7 +146,55 @@ class ModelDownloaderTest {
         val f = File(System.getProperty("user.home"), "lernsystem-modelle-repo/manifest.json")
         org.junit.jupiter.api.Assumptions.assumeTrue(f.exists())
         val m = ModelManifest.parse(f.readText())
-        assertEquals(2, m.models.size)
-        assertTrue(m.models.all { it.license == "Apache-2.0" })
+        assertEquals(3, m.models.size)
+        assertTrue(m.models.filter { !it.optional }.all { it.license == "Apache-2.0" })
+        val voice = m.models.single { it.optional }
+        assertEquals("tts", voice.role); assertEquals("tts-de", voice.unpack); assertTrue(voice.license.contains("espeak-ng"))
+    }
+
+    // ---- Pakete (ZIP), z. B. die Stimme ------------------------------------------------------------------------------
+
+    private fun zipOf(vararg entries: Pair<String, String>): ByteArray {
+        val bo = java.io.ByteArrayOutputStream()
+        java.util.zip.ZipOutputStream(bo).use { z -> entries.forEach { (n, c) -> z.putNextEntry(java.util.zip.ZipEntry(n)); z.write(c.toByteArray()); z.closeEntry() } }
+        return bo.toByteArray()
+    }
+
+    @Test fun `ZIP-Paket wird entpackt, mit Marker versehen und gilt danach als installiert`() {
+        val zip = zipOf("model.onnx" to "daten", "espeak-ng-data/de_dict" to "dict")
+        val f = File(dir, "pack.zip.partial").also { it.writeBytes(zip) }
+        ModelDownloader(dir).unzipAtomic(f, File(dir, "tts-de"), "voice.zip|${zip.size}|v1")
+        assertEquals("daten", File(dir, "tts-de/model.onnx").readText())
+        assertEquals("dict", File(dir, "tts-de/espeak-ng-data/de_dict").readText())
+        val inst = ModelDownloader(dir).installed()
+        assertEquals(InstalledModel(zip.size.toLong(), "v1"), inst["voice.zip"])
+    }
+
+    @Test fun `Paket mit Pfad ausserhalb des Ordners wird abgelehnt und hinterlaesst nichts`() {
+        val f = File(dir, "bad.zip").also { it.writeBytes(zipOf("../boese.txt" to "x")) }
+        assertThrows(ModelException::class.java) { ModelDownloader(dir).unzipAtomic(f, File(dir, "tts-de"), "a|1|v") }
+        assertFalse(File(dir.parentFile, "boese.txt").exists())
+        assertFalse(File(dir, "tts-de.new").exists())
+    }
+
+    @Test fun `ein aelteres Paket bleibt bei einem Fehler erhalten`() {
+        File(dir, "tts-de").mkdirs(); File(dir, "tts-de/alt.txt").writeText("alt")
+        val f = File(dir, "bad.zip").also { it.writeBytes(zipOf("../x.txt" to "x")) }
+        assertThrows(ModelException::class.java) { ModelDownloader(dir).unzipAtomic(f, File(dir, "tts-de"), "a|1|v") }
+        assertEquals("alt", File(dir, "tts-de/alt.txt").readText())
+    }
+
+    @Test fun `Paket ueber dem Groessenlimit wird abgelehnt`() {
+        val f = File(dir, "big.zip").also { it.writeBytes(zipOf("a.bin" to "x".repeat(5000))) }
+        assertThrows(ModelException::class.java) { ModelDownloader(dir).unzipAtomic(f, File(dir, "t"), "a|1|v", maxBytes = 1000) }
+    }
+
+    @Test fun `optionale Modelle werden nur auf Wunsch oder bei vorhandener Fassung eingeplant`() {
+        val voice = model().copy(id = "voice", fileName = "voice.zip", optional = true, unpack = "tts-de", version = "v2")
+        val man = ModelManifest(1, "v2", 1, "", listOf(model(), voice))
+        assertEquals(listOf("m.bin"), ModelPlan.pending(man, emptyMap()).map { it.fileName })
+        assertEquals(listOf("m.bin", "voice.zip"), ModelPlan.pending(man, emptyMap(), includeOptional = true).map { it.fileName })
+        // schon installiert, aber ältere Version: gilt als Update, auch ohne Wunsch
+        assertEquals(listOf("voice.zip"), ModelPlan.pending(man, mapOf("m.bin" to InstalledModel(data.size.toLong(), null), "voice.zip" to InstalledModel(voice.size, "v1"))).map { it.fileName })
     }
 }

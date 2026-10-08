@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 val parts = parse(route)
+                androidx.compose.runtime.CompositionLocalProvider(de.edgebird.lernsystem.ui.LocalOpenModels provides { route = "models:$route" }) {
                 when (parts[0]) {
                     "subject" -> {
                         val id = parts[1].toLong()
@@ -95,6 +96,7 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
+                }
                 }
             }
         }
