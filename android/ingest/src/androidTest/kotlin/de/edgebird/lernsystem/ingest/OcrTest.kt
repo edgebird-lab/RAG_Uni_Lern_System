@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem.ingest
 
 import android.graphics.Bitmap
@@ -19,9 +22,9 @@ import java.io.ByteArrayOutputStream
 @RunWith(AndroidJUnit4::class)
 class OcrTest {
     private val ctx get() = InstrumentationRegistry.getInstrumentation().targetContext
-    private lateinit var recognizer: MlKitTextRecognizer
+    private lateinit var recognizer: TesseractTextRecognizer
 
-    @Before fun setUp() { recognizer = MlKitTextRecognizer() }
+    @Before fun setUp() { recognizer = TesseractTextRecognizer({ Tessdata.ensure(ctx) }) }
     @After fun tearDown() = recognizer.close()
 
     /** Eine weiße „Seite“ mit schwarzem Text (so, wie ein Scan aussieht). */

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem.ui
 
 import de.edgebird.lernsystem.core.i18n.tr
@@ -131,7 +134,8 @@ fun ChatScreen(subjectId: Long, onModels: () -> Unit = {}, onOpenSources: () -> 
             }
             LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
                 items(messages, key = { it.id }) { m -> MessageBubble(m, onSource = { openSource = it }, onRetry = { vm.retryWithMoreSources(m.id) }, canRetry = !streaming, onSpeak = { if (speaker.speaking) speaker.stop() else speaker.speak(m.text) }, speaking = speaker.speaking,
-                    onNote = { if (vm.saveAsNote(m.id)) android.widget.Toast.makeText(context, tr("Als Notiz in den Quellen gespeichert", "Saved as a note in the sources"), android.widget.Toast.LENGTH_SHORT).show() }) }
+                    onNote = { if (vm.saveAsNote(m.id)) android.widget.Toast.makeText(context, tr("Als Notiz in den Quellen gespeichert", "Saved as a note in the sources"), android.widget.Toast.LENGTH_SHORT).show() },
+                    onReport = { val i = messages.indexOfFirst { it.id == m.id }; Feedback.reportAnswer(context, tr("Chat-Antwort", "chat answer"), messages.getOrNull(i - 1)?.takeIf { it.fromUser }?.text.orEmpty(), m.text) }) }
             }
         }
         VoiceMissingHint(speaker)
@@ -170,6 +174,7 @@ fun ChatScreen(subjectId: Long, onModels: () -> Unit = {}, onOpenSources: () -> 
         AlertDialog(
             onDismissRequest = { openSource = null },
             confirmButton = { TextButton(onClick = { openSource = null }) { Text(tr("Schließen", "Close")) } },
+            dismissButton = { TextButton(onClick = { docsVm.requestViewChunk(s.chunkId); openSource = null; onOpenSources() }) { Text(tr("In der Quelle ansehen", "View in the source")) } },
             title = { Text("[${s.number}] ${s.documentTitle}, ${s.location}") },
             text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(s.text, style = MaterialTheme.typography.bodyMedium) } },
         )
@@ -188,7 +193,7 @@ private fun Banner(text: String, error: Boolean = false, actionLabel: String? = 
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun MessageBubble(m: ChatMessage, onSource: (Source) -> Unit, onRetry: () -> Unit, canRetry: Boolean, onSpeak: () -> Unit = {}, speaking: Boolean = false, onNote: () -> Unit = {}) {
+private fun MessageBubble(m: ChatMessage, onSource: (Source) -> Unit, onRetry: () -> Unit, canRetry: Boolean, onSpeak: () -> Unit = {}, speaking: Boolean = false, onNote: () -> Unit = {}, onReport: () -> Unit = {}) {
     val container = if (m.fromUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
     Card(
         colors = CardDefaults.cardColors(containerColor = container),
@@ -206,6 +211,7 @@ private fun MessageBubble(m: ChatMessage, onSource: (Source) -> Unit, onRetry: (
             if (!m.fromUser && !m.streaming && !m.failed && !m.notFound && m.text.isNotBlank()) Row {
                 TextButton(onClick = onSpeak) { Text(if (speaking) tr("Stopp", "Stop") else tr("Vorlesen", "Read aloud")) }
                 TextButton(onClick = onNote) { Text(tr("Als Notiz speichern", "Save as note")) }
+                TextButton(onClick = onReport) { Text(tr("Melden", "Report")) }
             }
             if (m.retried && !m.streaming && !m.notFound) Text(tr("Zweiter Versuch mit mehr Quellen: bitte die Quellen prüfen.", "Second attempt with more sources: please check the sources."), style = MaterialTheme.typography.labelSmall)
             if (!m.fromUser && !m.notFound && m.sources.isNotEmpty() && !m.streaming) {

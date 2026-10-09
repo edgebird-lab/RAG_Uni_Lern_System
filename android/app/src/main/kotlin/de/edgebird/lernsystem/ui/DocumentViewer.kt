@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem.ui
 
 import android.app.Activity
@@ -106,7 +109,7 @@ fun DocumentViewer(documentId: Long, onClose: () -> Unit, startChunk: Int? = nul
     val isPdf = orig?.extension.equals("pdf", true)
     val isImage = orig?.extension?.lowercase() in setOf("jpg", "jpeg", "png", "webp")
     val markdownText = d.markdown
-    var mode by remember(documentId) { mutableStateOf(if (isPdf || isImage) 0 else 1) }   // 0 Original, 1 Text
+    var mode by remember(documentId) { mutableStateOf(if ((isPdf || isImage) && startChunk == null) 0 else 1) }   // 0 Original, 1 Text; ein Sprung zu einer Stelle zeigt den Text
     var menu by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }

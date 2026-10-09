@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Hybrid-Suche offline: Geraete-Vektoren (emb-dump-*.vec) + BM25 (Snowball, wie PC-App) mit RRF.
 Aufruf: ../../../.venv/bin/python3 hybrid_auswertung.py emb-dump-768-raw"""
 import json, re, sys

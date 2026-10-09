@@ -1,9 +1,14 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem.ingest
 
 import de.edgebird.lernsystem.core.i18n.tr
 
 import android.content.Context
 import de.edgebird.lernsystem.core.ingest.Block
+import de.edgebird.lernsystem.core.ingest.BlockKind
+import de.edgebird.lernsystem.core.ingest.OfficeText
 import de.edgebird.lernsystem.core.ingest.LoadedDoc
 import de.edgebird.lernsystem.core.ingest.OcrText
 import de.edgebird.lernsystem.core.ingest.TextNormalizer
@@ -101,6 +106,34 @@ internal fun stripPdfiumMarkers(text: String): String = text.filterNot { it == '
 
 object Loaders {
     /** Mit Texterkennung für Fotos und gescannte PDFs (Modell ist in der App, kein Netz nötig). */
-    fun default(context: Context, recognizer: TextRecognizer? = MlKitTextRecognizer()): List<DocumentLoader> =
-        listOfNotNull(TextDocumentLoader(), PdfDocumentLoader(context, recognizer), recognizer?.let { ImageDocumentLoader(it) })
+    fun default(context: Context, recognizer: TextRecognizer? = TesseractTextRecognizer({ Tessdata.ensure(context) })): List<DocumentLoader> =
+        listOfNotNull(TextDocumentLoader(), PdfDocumentLoader(context, recognizer), OfficeDocumentLoader(), recognizer?.let { ImageDocumentLoader(it) })
+}
+
+/** Word (`.docx`), PowerPoint (`.pptx`) und OpenDocument (`.odt`, `.odp`): Text, Überschriften und Folien ohne Zusatzbibliothek. Folien kommen als Folien („Folie 3“). */
+class OfficeDocumentLoader : DocumentLoader {
+    override val extensions = setOf("docx", "pptx", "odt", "odp")
+
+    override fun load(source: DocumentSource): LoadedDoc {
+        try {
+            return when (source.extension) {
+                "docx" -> markdown(source.open().use { OfficeText.docxToMarkdown(it) })
+                "odt" -> markdown(source.open().use { OfficeText.odtToMarkdown(it) })
+                "pptx" -> slides(source.open().use { OfficeText.pptxSlides(it) })
+                else -> slides(source.open().use { OfficeText.odpSlides(it) })
+            }
+        } catch (e: OfficeText.OfficeException) {
+            throw LoadException(e.message ?: tr("Die Datei konnte nicht gelesen werden", "The file could not be read"), e)
+        }
+    }
+
+    private fun markdown(raw: String): LoadedDoc {
+        val text = TextNormalizer.normalize(raw)
+        return LoadedDoc(text = text, blocks = listOf(Block(text)), isMarkdown = true)
+    }
+
+    private fun slides(all: List<String>): LoadedDoc {
+        val blocks = all.mapIndexedNotNull { i, t -> TextNormalizer.normalize(t).takeIf { it.isNotBlank() }?.let { Block(it, page = i + 1, kind = BlockKind.SLIDE) } }
+        return LoadedDoc(text = blocks.joinToString("\n\n") { it.text }, blocks = blocks, emptyPages = all.size - blocks.size)
+    }
 }

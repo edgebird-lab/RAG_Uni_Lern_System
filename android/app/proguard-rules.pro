@@ -11,3 +11,5 @@
 # Ohne diese Zeilen stürzt die App im Release-Build beim ersten Chat ab (NoSuchMethodError in LiteRtLmJni$JniMessageCallback).
 -keep class com.google.ai.edge.litertlm.** { *; }
 -keep class io.legere.pdfiumandroid.** { *; }
+-keep class com.googlecode.tesseract.android.** { *; }
+-keep class com.googlecode.leptonica.android.** { *; }

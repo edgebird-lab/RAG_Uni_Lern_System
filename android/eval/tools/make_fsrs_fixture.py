@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Referenzdaten fuer den FSRS-Paritaetstest: zufaellige Bewertungsfolgen mit py-fsrs (wie die PC-App konfiguriert).
 Aufruf (Repo-Root, mit .venv): .venv/bin/python android/eval/tools/make_fsrs_fixture.py"""
 import json

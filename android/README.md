@@ -1,8 +1,10 @@
-# RAG-Lernsystem Android (Lite)
+# Local Study AI (Android, „Lernsystem Lite“)
+
+**Lizenz:** GPL-3.0-or-later (siehe [LICENSE](LICENSE) und [NOTICE.md](NOTICE.md)); Anbieter edgebird-lab, Kontakt kontakt@olbricht-digital.de. Die PC-App im Hauptordner steht weiterhin unter MIT.
 
 Abgespeckte, komplett lokale Android-Version des RAG-Lernsystems: Dokumente importieren, Chat mit Quellen (RAG), Karteikarten mit FSRS-6. Die KI (Gemma 4 E2B plus EmbeddingGemma 2) läuft auf dem Gerät, es gibt keine Cloud-Abhängigkeit.
 
-**Stand:** Phasen 0 bis 8 des [Plans](docs/PLAN.md) sind umgesetzt (Import, hybride Suche, Chat, Karteikarten, Zusammenfassungen, Fokus-Timer, Fächer, Deutsch und Englisch umschaltbar (Oberfläche, KI-Antworten, Stimme), Spracheingabe, sokratische Abfragen mit Auswertung, einstellbare Zusammenfassungen, Lückentext-Karten, Foto-Texterkennung mit Dokumentenscanner, Kapitel und Quellenverwaltung (ansehen, ordnen, teilen, drucken), Quiz und Probeklausur, mehrere Chats je Fach, Teilen aus anderen Apps, Lern-Erinnerung, Offline-Sprachausgabe; Konzept in [DESIGN.md](docs/DESIGN.md)). Der Store-Release (Phase 9) fehlt noch.
+**Stand:** Phasen 0 bis 8 des [Plans](docs/PLAN.md) sind umgesetzt (Import, hybride Suche, Chat, Karteikarten, Zusammenfassungen, Fokus-Timer, Fächer, Deutsch und Englisch umschaltbar (Oberfläche, KI-Antworten, Stimme), Spracheingabe, sokratische Abfragen mit Auswertung, einstellbare Zusammenfassungen, Lückentext-Karten, Foto-Texterkennung mit Dokumentenscanner, Kapitel und Quellenverwaltung (ansehen, ordnen, teilen, drucken), Quiz und Probeklausur, mehrere Chats je Fach, Teilen aus anderen Apps, Lern-Erinnerung, Offline-Sprachausgabe; Konzept in [DESIGN.md](docs/DESIGN.md)). Dazu Office-Import (DOCX, PPTX, ODT, ODP), ein Beispiel-Fach zum Ausprobieren, Melden von KI-Inhalten und Rückmeldung per E-Mail. Der Release-Build (Phase 9) liegt als signiertes Bundle für den internen Test vor.
 
 ## Bauen und installieren
 
@@ -12,6 +14,10 @@ export ANDROID_HOME=$HOME/android-sdk
 ./gradlew assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk   # -r behält die App-Daten
 ```
+
+Die Texterkennung (Tesseract4Android, Apache-2.0) bringt ihre Sprachdaten mit: `tools/fetch_tessdata.sh` lädt `deu`/`eng.traineddata` (tessdata_best, mit Prüfsumme) beim Bauen; die Bibliothek kommt über JitPack (siehe `settings.gradle.kts`). Ohne Internet beim ersten Bauen schlägt der Download fehl.
+
+Release-Bundle: Upload-Schlüssel in `keystore.properties` (nicht im Repo), dann `./gradlew :app:bundleRelease`; Anleitung in [docs/INTERNER_TEST.md](docs/INTERNER_TEST.md), Store-Texte in [docs/STORE_EINTRAG.md](docs/STORE_EINTRAG.md).
 
 Tests: `./gradlew :core:test testDebugUnitTest` (JVM) und `./gradlew :data:connectedDebugAndroidTest :ingest:connectedDebugAndroidTest` (Gerät).
 

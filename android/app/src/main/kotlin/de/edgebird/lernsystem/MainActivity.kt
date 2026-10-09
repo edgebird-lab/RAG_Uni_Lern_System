@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem
 
 import android.Manifest
@@ -91,14 +94,20 @@ class MainActivity : ComponentActivity() {
                         Box(Modifier.padding(inner)) { ModelScreen(firstRun = false, onDone = {}, onBack = { route = back }) }
                     }
                     "privacy" -> Scaffold { inner ->
+                        val back = parts.drop(1).joinToString(":").ifEmpty { "home" }
+                        BackHandler { route = back }
+                        Box(Modifier.padding(inner)) { PrivacyScreen(onBack = { route = back }) }
+                    }
+                    "about" -> Scaffold { inner ->
                         BackHandler { route = "home" }
-                        Box(Modifier.padding(inner)) { PrivacyScreen(onBack = { route = "home" }) }
+                        Box(Modifier.padding(inner)) { de.edgebird.lernsystem.ui.AboutScreen(onBack = { route = "home" }, onPrivacy = { route = "privacy:about" }) }
                     }
                     else -> Scaffold { inner ->
                         Box(Modifier.padding(inner)) {
                             HomeScreen(
                                 onOpen = { route = "subject:$it:${SubjectTab.CHAT.ordinal}" }, onFocus = { route = "focus" },
-                                onModels = { route = "models" }, onPrivacy = { route = "privacy" },
+                                onModels = { route = "models" }, onPrivacy = { route = "privacy" }, onAbout = { route = "about" },
+                                onOpenSources = { route = "subject:$it:${SubjectTab.SOURCES.ordinal}" },
                             )
                         }
                     }

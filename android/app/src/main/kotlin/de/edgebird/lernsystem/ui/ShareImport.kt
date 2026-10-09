@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem.ui
 
 import de.edgebird.lernsystem.core.i18n.tr
@@ -61,7 +64,7 @@ internal object ImportHelper {
             runCatching {
                 val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
                     ?: uri.lastPathSegment ?: "datei"
-                val named = if ('.' in name) name else name + when (resolver.getType(uri)) { "application/pdf" -> ".pdf"; "image/png" -> ".png"; "image/webp" -> ".webp"; "image/jpeg" -> ".jpg"; "text/markdown" -> ".md"; else -> ".txt" }
+                val named = if ('.' in name) name else name + when (resolver.getType(uri)) { "application/pdf" -> ".pdf"; "image/png" -> ".png"; "image/webp" -> ".webp"; "image/jpeg" -> ".jpg"; "text/markdown" -> ".md"; "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> ".docx"; "application/vnd.openxmlformats-officedocument.presentationml.presentation" -> ".pptx"; "application/vnd.oasis.opendocument.text" -> ".odt"; "application/vnd.oasis.opendocument.presentation" -> ".odp"; else -> ".txt" }
                 val copy = File(graph.inboxDir, UUID.randomUUID().toString())
                 resolver.openInputStream(uri)!!.use { input -> copy.outputStream().use { input.copyTo(it) } }
                 ImportItem(uri.toString(), named, copy)

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Referenzdaten fuer den Paritaetstest der Kartenqualitaet (Kotlin vs. ragapp/card_quality.py und question_gen.py).
 Aufruf (Repo-Root, .venv): .venv/bin/python android/eval/tools/make_cards_fixture.py"""
 import json

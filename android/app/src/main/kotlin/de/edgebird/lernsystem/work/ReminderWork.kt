@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem.work
 
 import de.edgebird.lernsystem.core.i18n.tr
@@ -53,7 +56,7 @@ class ReminderWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
         val open2 = PendingIntent.getActivity(applicationContext, 40, Intent(applicationContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         nm.notify(
             41,
-            NotificationCompat.Builder(applicationContext, ReminderWork.CHANNEL).setSmallIcon(android.R.drawable.ic_menu_agenda)
+            NotificationCompat.Builder(applicationContext, ReminderWork.CHANNEL).setSmallIcon(de.edgebird.lernsystem.R.drawable.ic_stat_lernsystem)
                 .setContentTitle(tr("Zeit zum Lernen", "Time to study"))
                 .setContentText(if (s.due > 0) tr("${s.due} Karten sind fällig", "${s.due} cards are due") + if (s.streak > 0) tr(" – halte deine Serie von ${s.streak} Tagen!", " – keep your ${s.streak}-day streak going!") else "" else tr("${s.newToday} neue Karten warten", "${s.newToday} new cards are waiting"))
                 .setContentIntent(open2).setAutoCancel(true).build(),

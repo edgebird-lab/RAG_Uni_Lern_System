@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem.ingest
 
 import de.edgebird.lernsystem.core.i18n.tr
@@ -11,13 +14,8 @@ import android.graphics.Paint
 import android.graphics.pdf.PdfRenderer
 import android.media.ExifInterface
 import android.os.ParcelFileDescriptor
-import com.google.android.gms.tasks.Tasks
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import de.edgebird.lernsystem.core.ingest.Block
 import de.edgebird.lernsystem.core.ingest.LoadedDoc
-import de.edgebird.lernsystem.core.ingest.OcrText
 import de.edgebird.lernsystem.core.ingest.TextNormalizer
 import java.io.File
 import java.io.InputStream
@@ -25,18 +23,6 @@ import java.io.InputStream
 /** Texterkennung für ein Bild (blockierend, auf einem IO-Thread aufrufen). */
 interface TextRecognizer {
     fun recognize(bitmap: Bitmap): String
-}
-
-/** Texterkennung mit ML Kit (lateinische Schrift, Modell ist in der App enthalten, es braucht kein Netz). */
-class MlKitTextRecognizer : TextRecognizer, AutoCloseable {
-    private val client by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
-
-    override fun recognize(bitmap: Bitmap): String {
-        val result = Tasks.await(client.process(InputImage.fromBitmap(bitmap, 0)))
-        return OcrText.joinBlocks(result.textBlocks.map { b -> b.lines.map { it.text } })
-    }
-
-    override fun close() { client.close() }
 }
 
 /** Bilder laden: verkleinern (Speicher), nach EXIF-Ausrichtung drehen. */

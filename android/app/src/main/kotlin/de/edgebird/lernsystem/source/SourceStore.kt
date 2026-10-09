@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem.source
 
 import de.edgebird.lernsystem.data.DocumentEntity
@@ -35,7 +38,7 @@ class SourceStore(filesDir: File) {
     companion object {
         /** Endungen, die sich als Original anzeigen und weiterreichen lassen. */
         fun mimeFor(ext: String): String = when (ext.lowercase()) {
-            "pdf" -> "application/pdf"; "png" -> "image/png"; "jpg", "jpeg" -> "image/jpeg"; "webp" -> "image/webp"
+            "pdf" -> "application/pdf"; "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"; "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"; "odt" -> "application/vnd.oasis.opendocument.text"; "odp" -> "application/vnd.oasis.opendocument.presentation"; "png" -> "image/png"; "jpg", "jpeg" -> "image/jpeg"; "webp" -> "image/webp"
             "md", "markdown" -> "text/markdown"; "txt" -> "text/plain"; else -> "application/octet-stream"
         }
     }

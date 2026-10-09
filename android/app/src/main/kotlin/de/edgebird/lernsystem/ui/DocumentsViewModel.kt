@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem.ui
 
 import de.edgebird.lernsystem.core.i18n.tr
@@ -179,6 +182,19 @@ class DocumentsViewModel(app: Application) : AndroidViewModel(app) {
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Kopiert die gewählten Dateien in den App-Speicher und startet den Import im Hintergrund. */
+    /** Wunsch aus dem Chat: eine Quelle an einer bestimmten Stelle ansehen (Quelle, Abschnittsnummer). */
+    private val _viewRequest = kotlinx.coroutines.flow.MutableStateFlow<Pair<Long, Int>?>(null)
+    val viewRequest: StateFlow<Pair<Long, Int>?> = _viewRequest
+
+    fun requestViewChunk(chunkId: Long) {
+        viewModelScope.launch {
+            val c = withContext(Dispatchers.IO) { graph.db.chunks().withTitles(listOf(chunkId)).firstOrNull() } ?: return@launch
+            _viewRequest.value = c.chunk.documentId to c.chunk.idx
+        }
+    }
+
+    fun consumeViewRequest() { _viewRequest.value = null }
+
     /** Kapitel, in das die nächsten Importe gehen (vom Menü eines Kapitels gesetzt). */
     var importFolder: Long? = null
 

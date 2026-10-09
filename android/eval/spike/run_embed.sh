@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Aufruf: run_embed.sh <tag> <cpu|gpu> <dim> <prefix true|false> <maxlen> <batch> <limit> [timeout_s]
 set -euo pipefail
 export PATH="$HOME/android-sdk/platform-tools:$PATH"

@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Name der App (Play Store, Startbildschirm, Widget) -->
+    <string name="app_name" translatable="false">Local Study AI</string>
     <string name="widget_description">Zeigt, wie viele Karteikarten heute fällig sind</string>
 </resources>

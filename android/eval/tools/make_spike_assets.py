@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Erzeugt die Prompts fuer den Geraete-Spike (Phase 1) aus dem Goldset.
 
 Je Frage werden 4 Kontext-Abschnitte gebaut: die Beleg-Abschnitte (Gold) plus Ablenker

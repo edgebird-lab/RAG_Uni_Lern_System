@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem.ui
 
 import de.edgebird.lernsystem.core.i18n.tr
@@ -69,6 +72,13 @@ import de.edgebird.lernsystem.data.DocumentSummary
 import de.edgebird.lernsystem.data.FolderEntity
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+/** Dateitypen, die sich als Quelle importieren lassen (am Ende „alles“, weil manche Geräte Office-Dateien ohne passenden Typ melden). */
+private val SOURCE_MIME_TYPES = arrayOf(
+    "application/pdf", "text/plain", "text/markdown", "image/jpeg", "image/png", "image/webp",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.oasis.opendocument.text", "application/vnd.oasis.opendocument.presentation", "application/octet-stream",
+)
 
 /** Zeile der Quellenliste: Kapitel-Kopf, Quelle oder der Kopf „Ohne Kapitel“. */
 private sealed interface Row { val key: String }
@@ -142,6 +152,9 @@ fun SourcesScreen(subjectId: Long, otherSubjects: List<Pair<Long, String>>, onSu
     var photo by rememberSaveable { mutableStateOf(false) }
     var viewing by rememberSaveable { mutableStateOf<Long?>(null) }
     var viewChunk by rememberSaveable { mutableStateOf<Int?>(null) }
+    val viewRequest by vm.viewRequest.collectAsStateWithLifecycle()
+    // Aus dem Chat: „In der Quelle ansehen“ öffnet die Quelle an der zitierten Stelle
+    LaunchedEffect(viewRequest) { viewRequest?.let { (doc, idx) -> viewing = doc; viewChunk = idx; vm.consumeViewRequest() } }
     if (photo) { PhotoImportScreen(subjectId, folderId = vm.importFolder, onClose = { photo = false }); return }
     viewing?.let { id -> DocumentViewer(id, startChunk = viewChunk, onClose = { viewing = null; viewChunk = null }); return }
 
@@ -290,7 +303,7 @@ fun SourcesScreen(subjectId: Long, otherSubjects: List<Pair<Long, String>>, onSu
                         onCheck = { vm.setChecked(row.docIds, !(row.docIds.isNotEmpty() && row.docIds.all { it in selected })) },
                         onRename = { renamingFolder = row.folder }, onDelete = { deletingFolder = row.folder },
                         onUp = { vm.moveFolder(row.folder.id, -1) }, onDown = { vm.moveFolder(row.folder.id, 1) },
-                        onAddFile = { vm.importFolder = row.folder.id; picker.launch(arrayOf("application/pdf", "text/plain", "text/markdown", "image/jpeg", "image/png", "image/webp", "application/octet-stream")) },
+                        onAddFile = { vm.importFolder = row.folder.id; picker.launch(SOURCE_MIME_TYPES) },
                         onAddPhoto = { vm.importFolder = row.folder.id; photo = true },
                         onSummarize = { onSummarizeFolder(row.folder.id) },
                         onShare = { vm.withSources(row.docIds) { DocumentActions.shareMany(context, it) } },
@@ -335,7 +348,7 @@ fun SourcesScreen(subjectId: Long, otherSubjects: List<Pair<Long, String>>, onSu
                 containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary,
             )
             DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
-                DropdownMenuItem(text = { Text(tr("Datei wählen (PDF, Text, Bild)", "Choose file (PDF, text, image)")) }, onClick = { addMenu = false; vm.importFolder = null; picker.launch(arrayOf("application/pdf", "text/plain", "text/markdown", "image/jpeg", "image/png", "image/webp", "application/octet-stream")) })
+                DropdownMenuItem(text = { Text(tr("Datei wählen (PDF, Text, Bild)", "Choose file (PDF, text, image)")) }, onClick = { addMenu = false; vm.importFolder = null; picker.launch(SOURCE_MIME_TYPES) })
                 DropdownMenuItem(text = { Text(tr("Foto aufnehmen oder Bilder wählen", "Take a photo or choose images")) }, onClick = { addMenu = false; vm.importFolder = null; photo = true })
                 DropdownMenuItem(text = { Text(tr("Notiz schreiben", "Write a note")) }, onClick = { addMenu = false; addingNote = true })
                 DropdownMenuItem(text = { Text(tr("Neues Kapitel", "New chapter")) }, onClick = { addMenu = false; newFolderFor = emptyList() })

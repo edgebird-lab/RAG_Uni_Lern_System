@@ -6,3 +6,6 @@ ai/src/main/jniLibs/
 keystore.properties
 *.jks
 *.keystore
+
+# von tools/fetch_tessdata.sh geladen
+ingest/src/main/assets/tessdata/

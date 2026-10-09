@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Prueft die Goldset-Kandidaten maschinell vor (zweites, groesseres Modell als Richter).
 
 Pro Kandidat wird die Frage gegen die dichteste Umgebung im GANZEN Korpus gehalten:

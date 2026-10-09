@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem.ui
 
 import de.edgebird.lernsystem.core.i18n.tr
@@ -63,13 +66,14 @@ import de.edgebird.lernsystem.ui.theme.SubjectColors
 import de.edgebird.lernsystem.ui.theme.subjectColor
 
 @Composable
-fun HomeScreen(onOpen: (Long) -> Unit, onFocus: () -> Unit, onModels: () -> Unit, onPrivacy: () -> Unit, vm: HomeViewModel = viewModel(), focusVm: PomodoroViewModel = viewModel()) {
+fun HomeScreen(onOpen: (Long) -> Unit, onFocus: () -> Unit, onModels: () -> Unit, onPrivacy: () -> Unit, onAbout: () -> Unit = {}, onOpenSources: (Long) -> Unit = onOpen, vm: HomeViewModel = viewModel(), focusVm: PomodoroViewModel = viewModel()) {
     val subjects by vm.subjects.collectAsStateWithLifecycle()
     val strip by vm.strip.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { vm.refresh() }
     var editing by remember { mutableStateOf<SubjectSummary?>(null) }
     var creating by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<SubjectSummary?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
     var menu by remember { mutableStateOf(false) }
     var reminder by remember { mutableStateOf(false) }
     var language by remember { mutableStateOf(false) }
@@ -79,6 +83,7 @@ fun HomeScreen(onOpen: (Long) -> Unit, onFocus: () -> Unit, onModels: () -> Unit
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
+                        AppBrand()
                         Text(tr("Meine Fächer", "My subjects"), style = MaterialTheme.typography.headlineLarge)
                         Text(java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern(tr("EEEE, d. MMMM", "EEEE, MMMM d"), de.edgebird.lernsystem.core.i18n.Lang.current.locale)), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -90,13 +95,15 @@ fun HomeScreen(onOpen: (Long) -> Unit, onFocus: () -> Unit, onModels: () -> Unit
                             DropdownMenuItem(text = { Text(tr("Lern-Erinnerung", "Study reminder")) }, onClick = { menu = false; reminder = true })
                             DropdownMenuItem(text = { Text(tr("KI-Modelle", "AI models")) }, onClick = { menu = false; onModels() })
                             DropdownMenuItem(text = { Text(tr("Datenschutz", "Privacy")) }, onClick = { menu = false; onPrivacy() })
+                            DropdownMenuItem(text = { Text(tr("Über die App und Lizenz", "About the app and licence")) }, onClick = { menu = false; onAbout() })
+                            DropdownMenuItem(text = { Text(tr("Rückmeldung senden", "Send feedback")) }, onClick = { menu = false; Feedback.general(context) })
                         }
                     }
                 }
             }
             strip?.let { s -> item { DayStripCard(s) } }
             val list = subjects
-            if (list != null && list.isEmpty()) item { EmptyHome() }
+            if (list != null && list.isEmpty()) item { EmptyHome(onExample = { vm.createExample(onOpenSources) }) }
             items(list.orEmpty(), key = { it.subject.id }) { s -> SubjectCard(s, onClick = { onOpen(s.subject.id) }, onLongClick = { editing = s }) }
         }
         ExtendedFloatingActionButton(
@@ -162,10 +169,12 @@ private fun StripStat(label: String, value: String) {
 }
 
 @Composable
-private fun EmptyHome() {
+private fun EmptyHome(onExample: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(vertical = 40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(tr("Noch kein Fach", "No subject yet"), style = MaterialTheme.typography.headlineSmall)
         Text(tr("Lege ein Fach an, füge deine Unterlagen als Quellen hinzu und stelle dann Fragen, lerne mit Karten oder lass dich abfragen.", "Create a subject, add your materials as sources, then ask questions, study with cards or have yourself quizzed."), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        androidx.compose.material3.OutlinedButton(onClick = onExample, modifier = Modifier.padding(top = 12.dp)) { Text(tr("Mit einem Beispiel ausprobieren", "Try it with an example")) }
+        Text(tr("Legt ein Fach mit zwei kurzen Lehrtexten an, damit du Chat, Karten und Quiz ohne eigene Unterlagen testen kannst.", "Creates a subject with two short lecture texts so you can try chat, cards and quiz without your own materials."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

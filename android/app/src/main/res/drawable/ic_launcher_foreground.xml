@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Vordergrund des Launcher-Symbols: aufgeschlagenes Buch mit Funken (Lernen mit KI); alles innerhalb der Sicherheitszone (66 dp Kreis um die Mitte) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- linke Seite -->
+    <path android:fillColor="#F5EFE2" android:pathData="M54,77 L54,41 C48,36.5 38,35.5 30,37.5 L30,72.5 C38,70.5 48,71.5 54,77 Z" />
+    <!-- rechte Seite (etwas dunkler, wirkt gewölbt) -->
+    <path android:fillColor="#E4D8BE" android:pathData="M54,77 L54,41 C60,36.5 70,35.5 78,37.5 L78,72.5 C70,70.5 60,71.5 54,77 Z" />
+    <!-- Textzeilen -->
+    <path android:fillColor="#B7A785" android:pathData="M35,46 L49,47 L49,49 L35,48 Z M35,52 L49,53 L49,55 L35,54 Z M35,58 L45,58.8 L45,60.8 L35,60 Z" />
+    <path android:fillColor="#B7A785" android:pathData="M59,47 L73,46 L73,48 L59,49 Z M59,53 L73,52 L73,54 L59,55 Z M59,59 L69,58.2 L69,60.2 L59,61 Z" />
+    <!-- Funke (KI) -->
+    <path android:fillColor="#E8A93A" android:pathData="M54,22 L56.4,28.6 L63,31 L56.4,33.4 L54,40 L51.6,33.4 L45,31 L51.6,28.6 Z" />
+</vector>

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Erzeugt Referenz-Chunks mit dem PC-Chunker (ragapp) fuer den Paritaetstest des Kotlin-Chunkers.
 Aufruf (aus dem Repo-Root, mit .venv): .venv/bin/python android/eval/tools/make_chunker_fixture.py"""
 import json
