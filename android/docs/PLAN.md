@@ -169,7 +169,8 @@ Erledigt:
 - [x] **Karten**: Dublettenschwelle für EmbeddingGemma gemessen und neu gesetzt, **Lückentext-Karten**, bessere Fragen bei **Code-Abschnitten**, Wahl der Kartenart beim Erzeugen.
 - [x] Quellen **suchen und sortieren**, **umbenennen**, **verschieben**; Antworten als **Notiz** in den Quellen speichern.
 - [x] **Foto zu Text** (Texterkennung auf dem Gerät, auch gescannte PDFs und Bilder als Quelle), Korrektur vor dem Speichern.
-- [x] **Teilen mit Lernsystem** aus anderen Apps, **tägliche Lern-Erinnerung**, Home-Widget.
+- [x] **Office-Import** (DOCX, PPTX, ODT, ODP, ohne Zusatzbibliothek), **Beispiel-Fach** zum Ausprobieren, **Über die App** (Lizenz, Quelltext, Kontakt), **Melden** von KI-Inhalten und Rückmeldung per E-Mail, App-Name „Local Study AI“ mit Logo und Icon.
+- [x] **Teilen mit Local Study AI** aus anderen Apps, **tägliche Lern-Erinnerung**, Home-Widget.
 - [x] **Zweisprachig (Deutsch/Englisch)**: Umschalter im Menü (und im Erststart), Standard ist die Systemsprache. Oberfläche, Anweisungen an die KI (Chat, Zusammenfassung, Karten, Quiz, sokratischer Dialog) und deren Prüfregeln, Vorlesen und Spracheingabe folgen der Sprache; englische Tests mit dem echten Modell (Quiz, Lückentext, Zusammenfassung, Dialog) bestanden. Stimmenkatalog (GitHub, wie die KI-Modelle) als Zusatzpaket mit Auswahl je Sprache und Hörprobe; Spracheingabe (Diktat im Chat) auf dem Pixel mit deutschem und englischem Sprachpaket durchgespielt (Lautsprecher zu Mikrofon). Texte im Code über `tr("deutsch", "english")`; bereits gespeicherte Inhalte bleiben in ihrer Sprache.
 - [x] **Quellenverwaltung**: Kapitel (Unterpunkte) im Fach, eigene Reihenfolge per langem Drücken und Ziehen (auch in ein anderes Kapitel), Ansicht der Quellen (PDF seitenweise mit Zoom, Bilder, Text mit Suche, Zusammenfassungen formatiert), Originale werden aufbewahrt; Teilen/Weiterleiten, Öffnen in anderer App, Drucken (auch „Als PDF speichern“), Speichern unter (Download), Volltextsuche in den Quellen, Notizen schreiben; Zusammenfassungen und Notizen sind eigene Quellenarten mit Umschalter „Einbeziehen“, Zusammenfassungen lassen sich in ein Kapitel legen und pro Kapitel erstellen; Reiter „Studio“ heißt jetzt „Kurzfassung“ (Seitentitel „Zusammenfassungen“). Datenbank v11.
 - [x] **Chats**: Verlauf bleibt erhalten, mehrere Chats je Fach (Datenbank v10). **Zusammenfassung als Quelle speichern** (dann im Chat durchsuchbar).
@@ -178,7 +179,7 @@ Erledigt:
 
 Offen:
 - Handarbeit auf dem Pixel: Sprechprobe der Spracheingabe, Hörprobe der Piper-Stimme, echtes Fotografieren und Zuschneiden, Widget auf dem Startbildschirm.
-- Lizenzfolge der Offline-Stimme (espeak-ng, GPL-3.0+) vor dem Store-Release entscheiden, siehe `NOTICE.md`.
+- Entschieden: Die Android-App steht unter **GPL-3.0-or-later** (espeak-ng in der Offline-Stimme). Dafür wurde ML Kit durch **Tesseract** ersetzt (Apache-2.0, Qualität gleichwertig gemessen, mit Leptonica-Vorverarbeitung). iOS/App Store ist mit GPL nicht vereinbar; eine iOS-Fassung bräuchte eine andere Sprachausgabe.
 
 ## 6. Risiken und Gegenmaßnahmen
 

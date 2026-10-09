@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Wertet RAG-Laeufe (rag-*.json, SpikeRagEvalActivity) aus.
 
 Beantwortbare Fragen:  Quellen-Treffer (alle Belege unter den 4 Quellen), falsche Verweigerung,

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Prompt-/Top-k-Experimente fuer die RAG-Auswertung (Phase 4, offene Punkte)
 set -u
 cd "$(dirname "$0")"

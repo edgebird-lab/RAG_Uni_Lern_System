@@ -1,6 +1,12 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem.ui
 
 import android.app.Application
+import de.edgebird.lernsystem.core.i18n.tr
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import de.edgebird.lernsystem.LernsystemApp
@@ -40,6 +46,25 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun create(name: String, color: Int) = viewModelScope.launch { graph.subjects.create(name, color) }
+
+    /** Legt ein Beispiel-Fach mit zwei kurzen Lehrtexten an (in der Sprache der App), damit man alles ohne eigene Unterlagen ausprobieren kann. */
+    fun createExample(onCreated: (Long) -> Unit) {
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val dir = "samples/${de.edgebird.lernsystem.core.i18n.Lang.current.tag}"
+            val items = withContext(Dispatchers.IO) {
+                app.assets.list(dir).orEmpty().filter { it.endsWith(".md") }.map { name ->
+                    val file = java.io.File(graph.inboxDir, java.util.UUID.randomUUID().toString())
+                    app.assets.open("$dir/$name").use { i -> file.outputStream().use { o -> i.copyTo(o) } }
+                    de.edgebird.lernsystem.work.ImportItem("sample:$dir/$name", name, file)
+                }
+            }
+            if (items.isEmpty()) return@launch
+            val id = graph.subjects.create(tr("Beispiel: Algorithmen", "Example: Algorithms"))
+            de.edgebird.lernsystem.work.ImportWork.enqueue(app, items, graph.prefs.getBoolean("embed_only_when_charging", false), id)
+            onCreated(id)
+        }
+    }
     fun update(id: Long, name: String, color: Int) = viewModelScope.launch { graph.subjects.update(id, name, color) }
     fun delete(id: Long) = viewModelScope.launch { graph.subjects.deleteWithContent(id) }
 }

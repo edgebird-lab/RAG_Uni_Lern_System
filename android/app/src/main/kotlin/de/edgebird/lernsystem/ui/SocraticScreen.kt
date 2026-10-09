@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem.ui
 
 import de.edgebird.lernsystem.core.i18n.tr
@@ -160,7 +163,11 @@ private fun Bubble(m: DialogMessage, onSpeak: () -> Unit = {}, speaking: Boolean
             Column(Modifier.padding(12.dp)) {
                 Text(de.edgebird.lernsystem.core.cards.LatexLite.toPlain(m.text), style = MaterialTheme.typography.bodyMedium)
                 m.verdict?.let { v -> Text(when (v) { de.edgebird.lernsystem.core.socratic.Verdict.CORRECT -> tr("✓ richtig", "✓ correct"); de.edgebird.lernsystem.core.socratic.Verdict.PARTIAL -> tr("◐ teilweise richtig", "◐ partly correct"); de.edgebird.lernsystem.core.socratic.Verdict.WRONG -> tr("✗ noch nicht richtig", "✗ not correct yet") }, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
-                if (!m.fromUser) TextButton(onClick = onSpeak) { Text(if (speaking) tr("Stopp", "Stop") else tr("Vorlesen", "Read aloud")) }
+                if (!m.fromUser) Row {
+                    TextButton(onClick = onSpeak) { Text(if (speaking) tr("Stopp", "Stop") else tr("Vorlesen", "Read aloud")) }
+                    val ctx = androidx.compose.ui.platform.LocalContext.current
+                    TextButton(onClick = { Feedback.reportAnswer(ctx, tr("Abfrage", "Q&A"), "", m.text) }) { Text(tr("Melden", "Report")) }
+                }
                 if (m.fallback) Text(tr("Die KI hat sich im Kreis gedreht, darum diese feste Antwort.", "The AI went in circles, so this is a fixed answer."), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }

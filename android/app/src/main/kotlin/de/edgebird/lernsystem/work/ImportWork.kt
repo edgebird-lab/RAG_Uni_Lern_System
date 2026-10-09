@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem.work
 
 import de.edgebird.lernsystem.core.i18n.tr
@@ -58,7 +61,7 @@ object ImportWork {
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, tr("Indexierung", "Indexing"), NotificationManager.IMPORTANCE_LOW))
         val n = NotificationCompat.Builder(context, CHANNEL)
-            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setSmallIcon(de.edgebird.lernsystem.R.drawable.ic_stat_lernsystem)
             .setContentTitle(title)
             .setContentText(text)
             .setOngoing(true)
@@ -109,6 +112,7 @@ class ImportWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
                 is ImportResult.Failed -> "${names[i]}: ${result.reason}"
             }
         }
+        graph.ocr.release()   // Sprachmodelle der Texterkennung aus dem Speicher nehmen
         return Result.success(Data.Builder().putString(MESSAGE, lines.joinToString("\n")).build())
     }
 

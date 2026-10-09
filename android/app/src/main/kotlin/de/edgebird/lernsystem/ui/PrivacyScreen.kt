@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem.ui
 
 import de.edgebird.lernsystem.core.i18n.tr
@@ -71,7 +74,9 @@ fun PrivacyScreen(onBack: () -> Unit, vm: PrivacyViewModel = viewModel()) {
         Text(tr("Alles bleibt auf deinem Gerät: Dokumente, Abschnitte, Fragen an die KI, Antworten, Karteikarten und Lernzeiten liegen nur im privaten Speicher dieser App. Die KI läuft lokal, es gibt weder Konto noch Tracking noch Werbung.", "Everything stays on your device: documents, sections, questions to the AI, answers, flashcards and study times are stored only in this app’s private storage. The AI runs locally; there is no account, no tracking and no advertising."), style = MaterialTheme.typography.bodyMedium)
         Text(tr("Die Internet-Berechtigung nutzt die App ausschließlich, um die KI-Modelle und Stimmen von GitHub (edgebird-lab/lernsystem-modelle) zu laden und nach Updates zu suchen. Dabei werden keine Daten von dir übertragen, GitHub sieht nur die übliche Verbindungsadresse.", "The app uses the internet permission solely to download the AI models and voices from GitHub (edgebird-lab/lernsystem-modelle) and to check for updates. No data of yours is transmitted; GitHub only sees the usual connection address."), style = MaterialTheme.typography.bodyMedium)
         Text(tr("Spracheingabe nutzt die Erkennung des Geräts, die Texterkennung für Fotos läuft ebenfalls auf dem Gerät. Das Vorlesen nutzt die Offline-Stimme der App (Stimmenpaket aus „KI-Modelle“); Online-Stimmen werden nicht verwendet.", "Voice input uses the device’s recognition, and text recognition for photos also runs on the device. Reading aloud uses the app’s offline voice (voice pack from “AI models”); online voices are not used."), style = MaterialTheme.typography.bodyMedium)
+        Text(tr("Teilen, Drucken, Speichern und „Melden“ geben Inhalte nur weiter, wenn du es selbst auslöst: Beim Melden und bei der Rückmeldung öffnet sich ein E-Mail-Entwurf an den Anbieter, gesendet wird erst, wenn du in deinem E-Mail-Programm auf „Senden“ tippst.", "Sharing, printing, saving and “Report” pass content on only when you trigger it: for reports and feedback an email draft to the provider opens, and nothing is sent until you tap “Send” in your email app."), style = MaterialTheme.typography.bodyMedium)
         Text(tr("Die App ist von der Android-Datensicherung ausgenommen. Wer seine Daten mitnehmen will, nutzt den Export.", "The app is excluded from Android backup. If you want to take your data with you, use the export."), style = MaterialTheme.typography.bodyMedium)
+        Text(tr("Anbieter und Kontakt: ${Feedback.PROVIDER}, ${Feedback.EMAIL}", "Provider and contact: ${Feedback.PROVIDER}, ${Feedback.EMAIL}"), style = MaterialTheme.typography.bodyMedium)
         Button(onClick = { saver.launch("lernsystem-export.json") }, modifier = Modifier.fillMaxWidth()) { Text(tr("Meine Daten exportieren (JSON)", "Export my data (JSON)")) }
         OutlinedButton(onClick = { confirm = true }, modifier = Modifier.fillMaxWidth()) { Text(tr("Alle meine Daten löschen", "Delete all my data")) }
         message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }

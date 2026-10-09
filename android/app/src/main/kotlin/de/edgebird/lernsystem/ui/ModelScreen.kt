@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem.ui
 
 import de.edgebird.lernsystem.core.i18n.tr
@@ -52,6 +55,10 @@ fun ModelScreen(firstRun: Boolean, onDone: () -> Unit, onBack: (() -> Unit)? = n
 
     if (confirmReinstall) ReinstallDialog(onConfirm = { confirmReinstall = false; vm.reinstall() }, onDismiss = { confirmReinstall = false })
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (firstRun) androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            AppLogo(44.dp)
+            Text(de.edgebird.lernsystem.AppInfo.NAME, style = MaterialTheme.typography.titleLarge)
+        }
         Text(if (firstRun) tr("Willkommen", "Welcome") else tr("KI-Modelle", "AI models"), style = MaterialTheme.typography.headlineMedium)
         if (firstRun) LanguageChips()
         if (firstRun) Text(tr("Die KI läuft komplett auf diesem Gerät. Dafür lädt die App einmalig zwei Modelle herunter. Danach brauchst du kein Internet mehr, und deine Unterlagen verlassen das Gerät nie.", "The AI runs entirely on this device. For that the app downloads two models once. After that you need no internet, and your materials never leave the device."), style = MaterialTheme.typography.bodyMedium)

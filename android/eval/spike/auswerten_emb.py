@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Treffer@k fuer Embedding-Laeufe (emb-*.json) gegen die PC-Baseline (bge-m3)."""
 import json, sys
 from pathlib import Path

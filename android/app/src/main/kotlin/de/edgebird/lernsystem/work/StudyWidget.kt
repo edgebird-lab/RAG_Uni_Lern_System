@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem.work
 
 import de.edgebird.lernsystem.core.i18n.tr
@@ -40,7 +43,7 @@ class StudyWidgetProvider : AppWidgetProvider() {
             for (id in ids) {
                 val v = RemoteViews(context.packageName, R.layout.study_widget)
                 v.setTextViewText(R.id.widget_count, when {
-                    s == null -> tr("Lernsystem", "Lernsystem")
+                    s == null -> de.edgebird.lernsystem.AppInfo.NAME
                     s.due > 0 -> tr("${s.due} fällig", "${s.due} due")
                     s.newToday > 0 -> tr("${s.newToday} neue Karten", "${s.newToday} new cards")
                     else -> tr("Alles geschafft", "All done")

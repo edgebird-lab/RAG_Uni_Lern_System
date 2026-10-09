@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+# SPDX-License-Identifier: GPL-3.0-or-later
 set -u
 cd "$(dirname "$0")"
 export PATH="$HOME/android-sdk/platform-tools:$PATH"

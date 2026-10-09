@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem.ui
 
 import de.edgebird.lernsystem.core.i18n.tr
@@ -10,7 +13,6 @@ import androidx.lifecycle.viewModelScope
 import de.edgebird.lernsystem.LernsystemApp
 import de.edgebird.lernsystem.core.ingest.OcrText
 import de.edgebird.lernsystem.ingest.ImageDecoder
-import de.edgebird.lernsystem.ingest.MlKitTextRecognizer
 import de.edgebird.lernsystem.ingest.PageScanner
 import de.edgebird.lernsystem.work.ImportItem
 import de.edgebird.lernsystem.work.ImportWork
@@ -109,14 +111,14 @@ class PhotoImportViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 val texts = withContext(Dispatchers.IO) {
-                    MlKitTextRecognizer().use { rec ->
+                    try {
                         pages.mapIndexed { i, f ->
                             val bmp = ImageDecoder.decode({ f.inputStream() })
-                            val t = try { de.edgebird.lernsystem.core.ingest.TextNormalizer.normalize(rec.recognize(bmp)) } finally { bmp.recycle() }
+                            val t = try { de.edgebird.lernsystem.core.ingest.TextNormalizer.normalize(graph.ocr.recognize(bmp)) } finally { bmp.recycle() }
                             _state.value = _state.value.copy(progress = i + 1)
                             t
                         }
-                    }
+                    } finally { graph.ocr.release() }
                 }
                 _state.value = _state.value.copy(step = PhotoStep.REVIEW, texts = texts)
             } catch (e: CancellationException) { throw e

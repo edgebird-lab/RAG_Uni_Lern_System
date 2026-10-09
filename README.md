@@ -543,7 +543,8 @@ Entwickelt und gepflegt von **Robin Olbricht** – **Olbricht Digital** (Einzelu
 
 ## 📄 Lizenz
 
-Der **Code** steht unter der **MIT-Lizenz** – © 2026 Robin Olbricht · Olbricht Digital, siehe [`LICENSE`](LICENSE).
+Der **Code der PC-App** steht unter der **MIT-Lizenz** – © 2026 Robin Olbricht · Olbricht Digital, siehe [`LICENSE`](LICENSE).
+Die **Android-App „Local Study AI“** (Ordner [`android/`](android/)) steht unter der **GPL-3.0-or-later** (wegen der enthaltenen Sprachausgabe eSpeak NG), siehe [`android/LICENSE`](android/LICENSE) und [`android/NOTICE.md`](android/NOTICE.md).
 Die **Modelle** haben **eigene Lizenzen** (u. a. Gemma Terms bzw. – ab Gemma 4 –
 Apache 2.0, Qwen/Apache-2.0, bge-m3 MIT, bge-reranker Apache-2.0) und werden über
 Ollama bzw. Hugging Face geladen; für deren Einhaltung bist du selbst

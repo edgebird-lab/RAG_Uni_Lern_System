@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem.ui
 
 import de.edgebird.lernsystem.core.i18n.tr
@@ -341,6 +344,7 @@ private fun SummaryViewer(id: Long, vm: StudioViewModel, onBack: () -> Unit) {
             OutlinedButton(onClick = { (context as? android.app.Activity)?.let { DocumentActions.print(it, SourceFile(r.title, "md", null) { r.text }, markdown = true) } }) { Text(tr("Drucken", "Print")) }
             OutlinedButton(onClick = { DocumentActions.share(context, SourceFile(r.title, "md", null) { r.text }, asText = true) }) { Text(tr("Als Datei teilen", "Share as file")) }
             OutlinedButton(onClick = { val sf = SourceFile(r.title, "md", null) { r.text }; pendingFile = sf; fileSaver.launch(DocumentActions.suggestedName(sf, true)) }) { Text(tr("Speichern unter …", "Save as …")) }
+            OutlinedButton(onClick = { Feedback.reportAnswer(context, tr("Zusammenfassung", "summary"), r.title, r.text) }) { Text(tr("Melden", "Report")) }
             OutlinedButton(onClick = { renaming = true }) { Text(tr("Umbenennen", "Rename")) }
             OutlinedButton(onClick = { deleting = true }) { Text(tr("Löschen", "Delete")) }
         }

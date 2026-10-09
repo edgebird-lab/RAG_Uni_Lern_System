@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Holt die nativen Bibliotheken von sherpa-onnx (Apache-2.0, k2-fsa) für die Offline-Sprachausgabe nach ai/src/main/jniLibs/arm64-v8a.
 # Sie liegen nicht im Repo (27 MB); der Gradle-Task `fetchSherpa` ruft dieses Skript bei Bedarf auf.
 set -euo pipefail

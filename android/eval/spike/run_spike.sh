@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Startet einen Spike-Lauf auf dem Pixel und holt das Ergebnis.
 # Aufruf: run_spike.sh <tag> <modell-datei> <cpu|gpu> <mtp true|false> <n> [timeout_s]
 set -euo pipefail

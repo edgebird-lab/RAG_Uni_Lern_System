@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Robin Olbricht – Olbricht Digital (edgebird-lab)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package de.edgebird.lernsystem
 
 import android.content.Context
@@ -20,7 +23,9 @@ import java.io.File
 /** Einfacher Abhängigkeits-Container der App (ohne DI-Framework). */
 class AppGraph(private val context: Context) {
     val db: AppDatabase by lazy { AppDatabase.build(context) }
-    val pipeline: ImportPipeline by lazy { ImportPipeline(db, Loaders.default(context)) }
+    /** Texterkennung (Tesseract): ein gemeinsamer Erkenner für Import und Foto-Dokumente; gibt seinen Speicher nach Gebrauch mit `release()` frei. */
+    val ocr: de.edgebird.lernsystem.ingest.TesseractTextRecognizer by lazy { de.edgebird.lernsystem.ingest.TesseractTextRecognizer({ de.edgebird.lernsystem.ingest.Tessdata.ensure(context) }) }
+    val pipeline: ImportPipeline by lazy { ImportPipeline(db, Loaders.default(context, ocr)) }
 
     val modelsDir = File(context.filesDir, "models")
     val inboxDir = File(context.filesDir, "inbox").apply { mkdirs() }
