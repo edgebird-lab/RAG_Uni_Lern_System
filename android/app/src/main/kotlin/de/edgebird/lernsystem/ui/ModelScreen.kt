@@ -47,6 +47,7 @@ fun ModelScreen(firstRun: Boolean, onDone: () -> Unit, onBack: (() -> Unit)? = n
     val wifiOnly by vm.wifiOnly.collectAsStateWithLifecycle()
     val voices by vm.voices.collectAsStateWithLifecycle()
     val withVoice by vm.withVoice.collectAsStateWithLifecycle()
+    val llm by vm.llm.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var confirmReinstall by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val busy = dl?.running == true || dl?.queued == true
@@ -70,6 +71,7 @@ fun ModelScreen(firstRun: Boolean, onDone: () -> Unit, onBack: (() -> Unit)? = n
                 Button(onClick = vm::refresh) { Text(tr("Erneut versuchen", "Try again")) }
             }
             is ModelCheck.Ready -> {
+                LlmSection(llm, ramMb = vm.ramMb(), busy = busy, firstRun = false, onChoose = vm::chooseLlm, onDelete = vm::deleteLlm)
                 VoicesSection(vm, busy)
                 Text(if (c.updates.isEmpty()) tr("Alle Modelle sind vorhanden und aktuell.", "All models are present and up to date.") else tr("Neuere Modelle verfügbar: ${c.updates.joinToString { it.title }}.", "Newer models available: ${c.updates.joinToString { it.title }}."))
                 if (c.updates.isNotEmpty()) {
@@ -78,6 +80,7 @@ fun ModelScreen(firstRun: Boolean, onDone: () -> Unit, onBack: (() -> Unit)? = n
                 } else OutlinedButton(onClick = vm::refresh) { Text(tr("Nach Updates suchen", "Check for updates")) }
             }
             is ModelCheck.Needed -> {
+                LlmSection(llm, ramMb = c.ramMb, busy = busy, firstRun = true, onChoose = vm::chooseLlm, onDelete = vm::deleteLlm)
                 NeededCard(c.pending, c.ramMb, c.freeMb, c.manifest.licenseUrl, busy)
                 voices.recommended()?.takeIf { !voices.hasVoiceFor() }?.let { v ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -145,5 +148,36 @@ private fun NeededCard(pending: List<ModelInfo>, ramMb: Long, freeMb: Long, lice
             Text(tr("Beide Modelle stehen unter der Apache-Lizenz 2.0 (Google LLC und Beitragende) und werden unverändert verteilt. Mit dem Download erkennst du die Lizenz an.", "Both models are licensed under the Apache License 2.0 (Google LLC and contributors) and are distributed unchanged. By downloading you accept the licence."), style = MaterialTheme.typography.bodySmall)
             if (!busy) Text(tr("Beim ersten Start danach optimiert die App das Sprachmodell für die Grafikeinheit; das dauert einmalig einige Minuten.", "On the first start afterwards the app optimises the language model for the graphics unit; this takes a few minutes once."), style = MaterialTheme.typography.bodySmall)
         }
+    }
+}
+
+/** Auswahl des Sprachmodells: Standard E2B (schnell, wenig Speicher) oder größere Modelle aus dem Katalog (genauer, langsamer, mehr Arbeitsspeicher). */
+@Composable
+private fun LlmSection(state: LlmState, ramMb: Long, busy: Boolean, firstRun: Boolean, onChoose: (ModelInfo) -> Unit, onDelete: (ModelInfo) -> Unit) {
+    if (state.choices.size < 2) return
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(if (firstRun) tr("Welches Sprachmodell?", "Which language model?") else tr("Sprachmodell", "Language model"), style = MaterialTheme.typography.titleMedium)
+        state.choices.forEach { m ->
+            val active = m.fileName == state.active
+            val present = m.fileName in state.present
+            Card(colors = CardDefaults.cardColors(containerColor = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(m.displayTitle() + " · " + mb(m.size), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                        if (active) Text(if (firstRun) tr("gewählt", "selected") else tr("aktiv", "active"), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    }
+                    m.displayDescription().takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    if (!ModelPlan.fitsRam(m, ramMb)) Text(tr("Braucht mindestens ${m.minRamMb / 1000} GB Arbeitsspeicher (dieses Gerät: ${ramMb / 1024} GB); kann langsam sein oder abstürzen.", "Needs at least ${m.minRamMb / 1000} GB of memory (this device: ${ramMb / 1024} GB); may be slow or crash."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    if (!active) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        when {
+                            firstRun -> Button(onClick = { onChoose(m) }) { Text(tr("Dieses wählen", "Choose this one")) }
+                            present -> { Button(onClick = { onChoose(m) }, enabled = !busy) { Text(tr("Verwenden", "Use")) }; OutlinedButton(onClick = { onDelete(m) }, enabled = !busy) { Text(tr("Löschen", "Delete")) } }
+                            else -> Button(onClick = { onChoose(m) }, enabled = !busy) { Text(tr("Laden und verwenden (${mb(m.size)})", "Download and use (${mb(m.size)})")) }
+                        }
+                    }
+                }
+            }
+        }
+        if (state.restartNeeded) Text(tr("Das neue Sprachmodell gilt nach einem Neustart: App einmal komplett schließen und neu öffnen. Der erste Start damit dauert einige Minuten (GPU-Einrichtung).", "The new language model applies after a restart: close the app completely and reopen it. The first start with it takes a few minutes (GPU setup)."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
     }
 }

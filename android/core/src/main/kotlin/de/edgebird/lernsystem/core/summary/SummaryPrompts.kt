@@ -3,10 +3,18 @@
 
 package de.edgebird.lernsystem.core.summary
 
+import de.edgebird.lernsystem.core.i18n.Lang
 import de.edgebird.lernsystem.core.i18n.tr
 
 /** Prompts der Zusammenfassung; alle Einstellungen aus [SummarySpec] fließen hier ein. */
 object SummaryPrompts {
+    fun rules(spec: SummarySpec): String = Lang.using(spec.language.lang) { rulesRaw(spec) }
+    fun section(spec: SummarySpec, label: String, title: String, text: String, words: Int): String = Lang.using(spec.language.lang) { sectionRaw(spec, label, title, text, words) }
+    fun proseFinal(spec: SummarySpec, label: String, parts: String): String = Lang.using(spec.language.lang) { proseFinalRaw(spec, label, parts) }
+    fun intermediate(spec: SummarySpec, label: String, parts: String, words: Int): String = Lang.using(spec.language.lang) { intermediateRaw(spec, label, parts, words) }
+    fun condense(spec: SummarySpec, label: String, text: String, words: Int): String = Lang.using(spec.language.lang) { condenseRaw(spec, label, text, words) }
+    fun overview(spec: SummarySpec, subject: String, perDoc: String, words: Int): String = Lang.using(spec.language.lang) { overviewRaw(spec, subject, perDoc, words) }
+
     private const val Q = "\"\"\""
 
     private fun grounding() = tr(
@@ -17,7 +25,7 @@ object SummaryPrompts {
     )
 
     /** Regelzeilen aus den Einstellungen (ohne Länge und Form, die je Format anders sind). */
-    fun rules(spec: SummarySpec): String = buildList {
+    private fun rulesRaw(spec: SummarySpec): String = buildList {
         add(grounding())
         spec.level.hint.takeIf { it.isNotEmpty() }?.let { add("- $it") }
         add("- " + spec.language.instruction)
@@ -42,7 +50,7 @@ object SummaryPrompts {
     const val LENGTH_CALIBRATION = 0.7
 
     /** Zusammenfassung EINES Abschnitts im gewählten Format; [words] = Zielumfang dieses Abschnitts. */
-    fun section(spec: SummarySpec, label: String, title: String, text: String, words: Int): String {
+    private fun sectionRaw(spec: SummarySpec, label: String, title: String, text: String, words: Int): String {
         val ask = maxOf(15, (words * LENGTH_CALIBRATION).toInt())
         val head = tr(
             """Abschnitt der Quelle "$label" (Thema: $title).
@@ -108,7 +116,7 @@ ${rules(spec)}
     }
 
     /** Letzter Schritt des Formats Fließtext: aus allen Abschnittsstichpunkten ein zusammenhängender Text. */
-    fun proseFinal(spec: SummarySpec, label: String, parts: String): String = tr(
+    private fun proseFinalRaw(spec: SummarySpec, label: String, parts: String): String = tr(
         """Dies sind Stichpunkte zu den einzelnen Abschnitten der Quelle "$label":
 $Q
 $parts
@@ -136,7 +144,7 @@ ${rules(spec)}
     }
 
     /** Zwischenschritt, wenn die Stichpunkte nicht in einen Aufruf passen. */
-    fun intermediate(spec: SummarySpec, label: String, parts: String, words: Int): String = tr(
+    private fun intermediateRaw(spec: SummarySpec, label: String, parts: String, words: Int): String = tr(
         """Dies sind Stichpunkte zu aufeinanderfolgenden Abschnitten der Quelle "$label":
 $Q
 $parts
@@ -156,7 +164,7 @@ ${rules(spec)}
     )
 
     /** Kürzt eine fertige strukturierte Zusammenfassung (Gruppe von Abschnitten) auf [words] Wörter. */
-    fun condense(spec: SummarySpec, label: String, text: String, words: Int): String = tr(
+    private fun condenseRaw(spec: SummarySpec, label: String, text: String, words: Int): String = tr(
         """Dies ist ein Teil einer Zusammenfassung der Quelle "$label":
 $Q
 $text
@@ -176,7 +184,7 @@ ${rules(spec)}
     )
 
     /** Überblicksabsatz über mehrere Dokumente (Fach-Zusammenfassung). */
-    fun overview(spec: SummarySpec, subject: String, perDoc: String, words: Int): String = tr(
+    private fun overviewRaw(spec: SummarySpec, subject: String, perDoc: String, words: Int): String = tr(
         """Dies sind Zusammenfassungen mehrerer Quellen zum Fach "$subject":
 $Q
 $perDoc
@@ -195,5 +203,6 @@ ${rules(spec)}
 - No heading, no list.${extra(spec)}""",
     )
 
-    val RETRY_NUMBERS get() = tr("\n\nWICHTIG: Der letzte Versuch enthielt Zahlen, die im Quelltext nicht stehen. Verwende nur Zahlen aus dem Quelltext oder gar keine.", "\n\nIMPORTANT: The last attempt contained numbers that are not in the source text. Use only numbers from the source text or none at all.")
+    fun retryNumbers(spec: SummarySpec) = Lang.using(spec.language.lang) { RETRY_NUMBERS }
+    private val RETRY_NUMBERS get() = tr("\n\nWICHTIG: Der letzte Versuch enthielt Zahlen, die im Quelltext nicht stehen. Verwende nur Zahlen aus dem Quelltext oder gar keine.", "\n\nIMPORTANT: The last attempt contained numbers that are not in the source text. Use only numbers from the source text or none at all.")
 }

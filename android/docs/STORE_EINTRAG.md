@@ -40,12 +40,12 @@ Was du damit machst
 • Deutsch und Englisch, umschaltbar in der App.
 
 Gut zu wissen
-• Beim ersten Start lädt die App einmalig die KI-Modelle (rund 2,8 GB, am besten im WLAN). Danach brauchst du kein Internet mehr.
+• Beim ersten Start wählst du das Sprachmodell (Standard E2B; größeres E4B optional) und lädt die KI-Modelle einmalig (rund 2,8 GB, am besten im WLAN). Danach brauchst du kein Internet mehr.
 • Die KI arbeitet auf der Grafikeinheit deines Geräts. Empfohlen: Android 12 oder neuer, mindestens 8 GB Arbeitsspeicher und rund 4 GB freier Speicher. Der erste Start nach dem Download dauert 5 bis 10 Minuten, weil die App das Sprachmodell einmalig für dein Gerät einrichtet.
 • KI-Antworten können falsch sein. Prüfe wichtige Aussagen in deinen Quellen. Fehlerhafte oder unpassende Inhalte kannst du in der App über „Melden“ an uns schicken.
 
 Freie Software
-Local Study AI ist freie Software unter der GNU General Public License (Version 3 oder später). Den Quelltext findest du auf GitHub: github.com/edgebird-lab/RAG_Uni_Lern_System. Die Modelle (Gemma 4 und EmbeddingGemma von Google) stehen unter der Apache-Lizenz 2.0.
+Local Study AI ist freie Software unter der GNU General Public License (Version 3 oder später). Den Quelltext findest du auf GitHub: github.com/edgebird-lab/RAG_Uni_Lern_System. Die Modelle (Gemma 4 E2B oder optional E4B und EmbeddingGemma von Google) stehen unter der Apache-Lizenz 2.0.
 ```
 
 ## Ausführliche Beschreibung, Englisch
@@ -70,7 +70,7 @@ Good to know
 • AI answers can be wrong. Check important statements in your sources. You can send wrong or inappropriate content to us with "Report" in the app.
 
 Free software
-Local Study AI is free software under the GNU General Public License (version 3 or later). Find the source code on GitHub: github.com/edgebird-lab/RAG_Uni_Lern_System. The models (Gemma 4 and EmbeddingGemma by Google) are licensed under the Apache License 2.0.
+Local Study AI is free software under the GNU General Public License (version 3 or later). Find the source code on GitHub: github.com/edgebird-lab/RAG_Uni_Lern_System. The models (Gemma 4 E2B or optionally E4B, and EmbeddingGemma by Google) are licensed under the Apache License 2.0.
 ```
 
 ## Angaben in der Play Console (App-Inhalt)

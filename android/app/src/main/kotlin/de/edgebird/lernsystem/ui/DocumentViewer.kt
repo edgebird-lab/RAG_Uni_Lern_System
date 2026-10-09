@@ -110,6 +110,8 @@ fun DocumentViewer(documentId: Long, onClose: () -> Unit, startChunk: Int? = nul
     val isImage = orig?.extension?.lowercase() in setOf("jpg", "jpeg", "png", "webp")
     val markdownText = d.markdown
     var mode by remember(documentId) { mutableStateOf(if ((isPdf || isImage) && startChunk == null) 0 else 1) }   // 0 Original, 1 Text; ein Sprung zu einer Stelle zeigt den Text
+    // Aktuelle Seite (1-basiert), gemeinsam für Original und erkannten Text: Beim Umschalten bleibt man an derselben Stelle
+    var page by remember(documentId, startChunk) { mutableStateOf(startChunk?.let { sc -> d.chunks.firstOrNull { it.idx == sc }?.page }) }
     var menu by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
@@ -143,10 +145,10 @@ fun DocumentViewer(documentId: Long, onClose: () -> Unit, startChunk: Int? = nul
             FilterChip(selected = mode == 1, onClick = { mode = 1 }, label = { Text(tr("Erkannter Text", "Recognised text")) })
         }
         when {
-            mode == 0 && isPdf && orig != null -> PdfView(orig)
+            mode == 0 && isPdf && orig != null -> PdfView(orig, page) { page = it }
             mode == 0 && isImage && orig != null -> ImageView(orig)
             markdownText != null -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) { MarkdownView(markdownText) }
-            else -> TextView(d.chunks, startChunk, doc.status == de.edgebird.lernsystem.data.DocumentStatus.INDEXED)
+            else -> TextView(d.chunks, startChunk, doc.status == de.edgebird.lernsystem.data.DocumentStatus.INDEXED, page) { page = it }
         }
     }
 
@@ -173,7 +175,7 @@ private fun isNoteLike(doc: DocumentEntity, orig: File) = doc.kind == "SUMMARY" 
 private fun ColumnScopeFill(content: @Composable () -> Unit) = content()
 
 @Composable
-private fun androidx.compose.foundation.layout.ColumnScope.PdfView(file: File) {
+private fun androidx.compose.foundation.layout.ColumnScope.PdfView(file: File, startPage: Int?, onPage: (Int) -> Unit) {
     var doc by remember(file) { mutableStateOf<PdfDoc?>(null) }
     var error by remember(file) { mutableStateOf(false) }
     var zoom by remember(file) { mutableStateOf(1f) }
@@ -182,22 +184,28 @@ private fun androidx.compose.foundation.layout.ColumnScope.PdfView(file: File) {
     if (error) { Text(tr("Das PDF lässt sich nicht anzeigen. Du kannst es in einer anderen App öffnen.", "The PDF cannot be displayed. You can open it in another app."), color = MaterialTheme.colorScheme.error); return }
     val pdf = doc ?: run { Text(tr("Wird geladen …", "Loading …")); return }
     val cache = remember(pdf) { LruCache<String, Bitmap>(6) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = ((startPage ?: 1) - 1).coerceIn(0, maxOf(0, pdf.pageCount - 1)))
+    val current by remember(listState) { androidx.compose.runtime.derivedStateOf { listState.firstVisibleItemIndex + 1 } }
+    LaunchedEffect(current) { onPage(current) }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(tr("${pdf.pageCount} S.", "${pdf.pageCount} p."), style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false, modifier = Modifier.weight(1f))
+        Text(tr("Seite $current von ${pdf.pageCount}", "Page $current of ${pdf.pageCount}"), style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false, modifier = Modifier.weight(1f))
         listOf(1f, 1.5f, 2f, 3f).forEach { z -> FilterChip(selected = zoom == z, onClick = { zoom = z }, label = { Text(if (z == z.toInt().toFloat()) "${z.toInt()}×" else "$z×") }) }
     }
     BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
         val widthDp = maxWidth * zoom
         val widthPx = with(LocalDensity.current) { widthDp.roundToPx() }
         Box2(Modifier.fillMaxSize().then(if (zoom > 1f) Modifier.horizontalScroll(rememberScrollState()) else Modifier)) {
-            LazyColumn(Modifier.width(widthDp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(Modifier.width(widthDp), state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 itemsIndexed(List(pdf.pageCount) { it }) { i, _ ->
+                  Column {
+                    Text(tr("Seite ${i + 1}", "Page ${i + 1}"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                     val key = "$i@$widthPx"
                     var bmp by remember(key) { mutableStateOf(cache.get(key)) }
                     LaunchedEffect(key) { if (bmp == null) bmp = runCatching { pdf.render(i, widthPx) }.getOrNull()?.also { cache.put(key, it) } }
                     val b = bmp
                     if (b != null) Image(b.asImageBitmap(), contentDescription = tr("Seite ${i + 1}", "Page ${i + 1}"), contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth())
                     else androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().aspectRatio(pdf.ratios[i]).background(Color.White.copy(alpha = 0.9f)))
+                  }
                 }
             }
         }
@@ -215,12 +223,22 @@ private fun androidx.compose.foundation.layout.ColumnScope.ImageView(file: File)
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.ColumnScope.TextView(chunks: List<ChunkEntity>, startChunk: Int?, indexed: Boolean) {
+private fun androidx.compose.foundation.layout.ColumnScope.TextView(chunks: List<ChunkEntity>, startChunk: Int?, indexed: Boolean, page: Int?, onPage: (Int) -> Unit) {
     var query by remember { mutableStateOf("") }
     val state = rememberLazyListState()
     val q = query.trim()
     val shown = remember(chunks, q) { chunks.filter { q.isEmpty() || it.text.contains(q, ignoreCase = true) } }
-    LaunchedEffect(startChunk, chunks.size) { if (startChunk != null && q.isEmpty()) chunks.indexOfFirst { it.idx == startChunk }.takeIf { it >= 0 }?.let { state.scrollToItem(it + 1) } }
+    val initialPage = remember { page }
+    LaunchedEffect(startChunk, chunks.size) {
+        if (q.isNotEmpty() || chunks.isEmpty()) return@LaunchedEffect
+        // Sprung zur zitierten Stelle; sonst zur Seite, an der man im Original war
+        val at = if (startChunk != null) chunks.indexOfFirst { it.idx == startChunk }
+        else if (initialPage != null) chunks.indexOfFirst { (it.page ?: 0) >= initialPage } else -1
+        if (at >= 0) state.scrollToItem(at + 1)
+    }
+    LaunchedEffect(shown, q) {
+        if (q.isEmpty()) androidx.compose.runtime.snapshotFlow { state.firstVisibleItemIndex }.collect { i -> shown.getOrNull((i - 1).coerceAtLeast(0))?.page?.let(onPage) }
+    }
     OutlinedTextField(value = query, onValueChange = { query = it }, singleLine = true, label = { Text(tr("Im Text suchen", "Search in text")) }, modifier = Modifier.fillMaxWidth())
     if (q.isNotEmpty()) Text(tr("${shown.size} Abschnitte mit „$q“", "${shown.size} sections containing “$q”"), style = MaterialTheme.typography.bodySmall)
     if (chunks.isEmpty()) Text(if (indexed) tr("Kein Text.", "No text.") else tr("Wird noch indexiert …", "Still being indexed …"), style = MaterialTheme.typography.bodyMedium)

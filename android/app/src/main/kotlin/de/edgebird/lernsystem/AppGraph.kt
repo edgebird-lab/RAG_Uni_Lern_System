@@ -52,7 +52,17 @@ class AppGraph(private val context: Context) {
     fun newEmbedder() = LiteRtLmEmbedder(embeddingModelFile.absolutePath, litertCache.absolutePath, LlmBackend.GPU, dimensions = 768, maxInputLength = 512)
 
     /** Sprachmodell (bis zum Download in Phase 8 manuell abgelegt). GPU mit Multi-Token-Prediction, siehe SPIKE_ERGEBNIS.md. */
-    val llmModelFile = File(modelsDir, "gemma-4-E2B-it.litertlm")
+    val llmModelFile: File get() = File(modelsDir, activeLlmFile)
+
+    /** Dateiname des gewählten Sprachmodells (Katalog: E2B als Standard, E4B optional). Ein Wechsel gilt nach einem Neustart der App. */
+    var activeLlmFile: String
+        get() = prefs.getString(PREF_LLM, null) ?: de.edgebird.lernsystem.core.models.ModelPlan.DEFAULT_LLM_FILE
+        set(v) { prefs.edit().putString(PREF_LLM, v).apply() }
+
+    /** Sprachmodell, das gerade geladen wird und nach vollständigem Download das aktive wird (bis dahin bleibt das alte in Betrieb). */
+    var pendingLlmFile: String?
+        get() = prefs.getString(PREF_LLM_PENDING, null)
+        set(v) { prefs.edit().apply { if (v == null) remove(PREF_LLM_PENDING) else putString(PREF_LLM_PENDING, v) }.apply() }
     val llm: LiteRtLmEngine by lazy {
         LiteRtLmEngine(llmModelFile.absolutePath, litertCache.absolutePath, LlmBackend.GPU, maxNumTokens = 4096, speculativeDecoding = true)
     }
@@ -85,6 +95,8 @@ class AppGraph(private val context: Context) {
     val study: StudyRepository by lazy { StudyRepository(db, settings = ::studySettings) }
 
     private companion object {
+        const val PREF_LLM = "llm_model"
+        const val PREF_LLM_PENDING = "llm_model_pending"
         const val PREF_DAILY_GOAL = "daily_goal"
         const val PREF_NEW_PER_DAY = "new_per_day"
     }

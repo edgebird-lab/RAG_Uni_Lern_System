@@ -3,6 +3,7 @@
 
 package de.edgebird.lernsystem.core.summary
 
+import de.edgebird.lernsystem.core.i18n.Lang
 import de.edgebird.lernsystem.core.i18n.tr
 
 import de.edgebird.lernsystem.core.ai.GenerationParams
@@ -60,7 +61,7 @@ class SummaryGenerator(
             if (SummaryChecks.isEmptySection(md)) return PartResult(section.title, null, SkipReason.NOT_RELEVANT)
             var bad = SummaryChecks.unsupportedNumbers(md, section.text)
             if (bad.isNotEmpty()) {
-                val again = finish(ask(prompt + SummaryPrompts.RETRY_NUMBERS, 0.1f, maxTokens), lastHitLimit)
+                val again = finish(ask(prompt + SummaryPrompts.retryNumbers(spec), 0.1f, maxTokens), lastHitLimit)
                 val againBad = if (again.isBlank() || SummaryChecks.isEmptySection(again)) bad else SummaryChecks.unsupportedNumbers(again, section.text)
                 if (again.isNotBlank() && !SummaryChecks.isEmptySection(again) && againBad.size < bad.size) { md = again; bad = againBad }
             }
@@ -72,10 +73,10 @@ class SummaryGenerator(
         }
     }
 
-    private fun note(modelNote: String) = tr("*KI-Zusammenfassung aus deinen Dokumenten ($modelNote). Im Zweifel mit dem Original abgleichen.*", "*AI summary of your documents ($modelNote). When in doubt, check against the original.*")
+    private fun note(modelNote: String) = Lang.using(spec.language.lang) { tr("*KI-Zusammenfassung aus deinen Dokumenten ($modelNote). Im Zweifel mit dem Original abgleichen.*", "*AI summary of your documents ($modelNote). When in doubt, check against the original.*") }
 
     /** Setzt aus Teilergebnissen das Markdown-Dokument zusammen (Formate Gegliedert und Stichpunkte). */
-    fun assemble(title: String, parts: List<Pair<String, String>>, modelNote: String, heading: String = tr("Zusammenfassung", "Summary")): String = buildString {
+    fun assemble(title: String, parts: List<Pair<String, String>>, modelNote: String, heading: String = tr("Zusammenfassung", "Summary", spec.language.lang)): String = buildString {
         append("# ").append(heading).append(": ").append(title).append("\n\n").append(note(modelNote)).append("\n")
         for ((sectionTitle, text) in parts) append("\n## ").append(sectionTitle).append("\n\n").append(text.trim()).append("\n")
     }
@@ -83,7 +84,7 @@ class SummaryGenerator(
     /** Glossar: alle Begriffszeilen, nach Begriff sortiert, gleiche Begriffe nur einmal (die ausführlichere Erklärung gewinnt). */
     fun assembleGlossary(title: String, parts: List<Pair<String, String>>, modelNote: String): String {
         val entries = GlossaryMerge.merge(parts.map { it.second }, maxEntries = maxOf(8, spec.targetWords / 12))
-        return "# ${tr("Glossar", "Glossary")}: $title\n\n${note(modelNote)}\n\n" + entries.joinToString("\n") + "\n"
+        return "# ${tr("Glossar", "Glossary", spec.language.lang)}: $title\n\n${note(modelNote)}\n\n" + entries.joinToString("\n") + "\n"
     }
 
     /**
@@ -98,7 +99,7 @@ class SummaryGenerator(
         md = finish(md, hit)
         val words = wordCount(md)
         if (words > target * TOO_LONG) {
-            val again = finish(ask(prompt + tr("\n\nWICHTIG: Der letzte Versuch hatte $words Wörter und war damit viel zu lang. Schreibe höchstens $target Wörter: lasse Nebensächliches und Wiederholungen weg.", "\n\nIMPORTANT: The last attempt had $words words and was far too long. Write at most $target words: leave out side issues and repetition."), 0.1f, tokens), lastHitLimit)
+            val again = finish(ask(prompt + Lang.using(spec.language.lang) { tr("\n\nWICHTIG: Der letzte Versuch hatte $words Wörter und war damit viel zu lang. Schreibe höchstens $target Wörter: lasse Nebensächliches und Wiederholungen weg.", "\n\nIMPORTANT: The last attempt had $words words and was far too long. Write at most $target words: leave out side issues and repetition.") }, 0.1f, tokens), lastHitLimit)
             if (again.isNotBlank() && kotlin.math.abs(wordCount(again) - target) < kotlin.math.abs(words - target)) md = again
         }
         return md

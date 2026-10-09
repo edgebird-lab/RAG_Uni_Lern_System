@@ -63,9 +63,20 @@ class ModelException(message: String, cause: Throwable? = null) : Exception(mess
 
 /** Dateien neben dem Modell, die den Einbau-Stand festhalten (für Updates). */
 object ModelPlan {
-    /** Welche Modelle müssen geladen werden? [installed]: Dateiname → (Größe, Version aus der Markierung oder null bei manuell abgelegten). */
-    fun pending(manifest: ModelManifest, installed: Map<String, InstalledModel>, includeOptional: Boolean = false, optionalIds: Set<String> = emptySet()): List<ModelInfo> = manifest.models.filter { m ->
-        if (m.optional && !includeOptional && m.id !in optionalIds && installed[m.fileName] == null) return@filter false
+    /** Standard-Sprachmodell (Dateiname), solange nichts anderes gewählt ist. */
+    const val DEFAULT_LLM_FILE = "gemma-4-E2B-it.litertlm"
+
+    /** Alle wählbaren Sprachmodelle des Katalogs (Rolle `llm`), das Standardmodell zuerst. */
+    fun llmChoices(manifest: ModelManifest): List<ModelInfo> = manifest.models.filter { it.role == "llm" }.sortedBy { it.fileName != DEFAULT_LLM_FILE }
+
+    /**
+     * Welche Modelle müssen geladen werden? [installed]: Dateiname → (Größe, Version aus der Markierung oder null bei manuell abgelegten).
+     * Von den Sprachmodellen (Rolle `llm`) zählt nur das gewählte [llmFile]; die anderen werden nie automatisch geladen.
+     */
+    fun pending(manifest: ModelManifest, installed: Map<String, InstalledModel>, includeOptional: Boolean = false, optionalIds: Set<String> = emptySet(), llmFile: String = DEFAULT_LLM_FILE): List<ModelInfo> = manifest.models.filter { m ->
+        if (m.role == "llm") {
+            if (m.fileName != llmFile) return@filter false
+        } else if (m.optional && !includeOptional && m.id !in optionalIds && installed[m.fileName] == null) return@filter false
         val have = installed[m.fileName]
         have == null || have.size != m.size || (have.version != null && have.version != m.version)
     }

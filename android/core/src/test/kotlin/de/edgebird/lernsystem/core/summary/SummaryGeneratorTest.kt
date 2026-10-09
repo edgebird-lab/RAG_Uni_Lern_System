@@ -125,9 +125,10 @@ class SummaryGeneratorTest {
         SummaryGenerator(llm, "Skript", spec).summarizeSection(section, 60)
         val p = llm.prompts[0]
         assertTrue("Fasse nur das Wesentliche zusammen" in p)
-        assertTrue("Einsteiger" in p && "Beispiel" in p && "Fundstelle" in p && "Prüfung" in p && "in English" in p)
-        assertTrue("Erfinde nichts" in p)
-        assertTrue("wissenschaftlicher Lektor" in spec.system && "erfindest nichts" in spec.system)
+        // Sprache EN: die ganze Anweisung ist englisch, auch bei deutscher Oberfläche (kein Sprachmischmasch)
+        assertTrue("beginners" in p && "example" in p && "location" in p && "exam" in p && "exclusively in English" in p, p)
+        assertTrue("Invent nothing" in p)
+        assertTrue("academic editor" in spec.system && "add nothing of your own" in spec.system)
     }
 
     @Test

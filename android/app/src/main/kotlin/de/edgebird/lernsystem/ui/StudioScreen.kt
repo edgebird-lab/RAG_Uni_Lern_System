@@ -26,6 +26,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -290,7 +291,7 @@ private fun ResultCard(r: GeneratedSummaryEntity, stale: Boolean, onOpen: () -> 
     }
 }
 
-/** Anzeige einer Zusammenfassung mit Teilen, Kopieren, Vorlesen, Neu erstellen, Umbenennen und Löschen. */
+/** Anzeige einer Zusammenfassung; alle Aktionen (Teilen, Kopieren, Vorlesen, Drucken, …) liegen im Drei-Punkte-Menü, damit der Text lesbar bleibt. */
 @Composable
 private fun SummaryViewer(id: Long, vm: StudioViewModel, onBack: () -> Unit) {
     val s by remember(id) { vm.observe(id) }.collectAsStateWithLifecycle(null)
@@ -324,30 +325,30 @@ private fun SummaryViewer(id: Long, vm: StudioViewModel, onBack: () -> Unit) {
     if (r == null) { Column(Modifier.padding(16.dp)) { Text(tr("Wird geladen …", "Loading …")); TextButton(onClick = onBack) { Text(tr("Zurück", "Back")) } }; return }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        var menu by remember { mutableStateOf(false) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text(tr("Zurück", "Back")) }
             Text(r.title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 2)
+            androidx.compose.foundation.layout.Box {
+                androidx.compose.material3.IconButton(onClick = { menu = true }) { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.MoreVert, contentDescription = tr("Aktionen", "Actions")) }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text(tr("Teilen", "Share")) }, onClick = { menu = false; context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, MarkdownLite.toPlain(r.text)), tr("Zusammenfassung teilen", "Share summary"))) })
+                    DropdownMenuItem(text = { Text(tr("Kopieren", "Copy")) }, onClick = { menu = false; (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText(tr("Zusammenfassung", "Summary"), MarkdownLite.toPlain(r.text))) })
+                    DropdownMenuItem(text = { Text(if (speaker.speaking) tr("Stopp", "Stop") else tr("Vorlesen", "Read aloud")) }, onClick = { menu = false; if (speaker.speaking) speaker.stop() else speaker.speak(r.text) })
+                    DropdownMenuItem(text = { Text(tr("Als Audio speichern", "Save as audio")) }, onClick = { menu = false; saveAudio.launch(r.title.take(40).replace(Regex("[^A-Za-z0-9äöüÄÖÜß _-]"), "") + ".wav") }, enabled = audioStatus?.startsWith(tr("Audio wird", "Creating audio")) != true)
+                    DropdownMenuItem(text = { Text(tr("Neu erstellen", "Recreate")) }, onClick = { menu = false; vm.rerun(r, r.title); onBack() })
+                    DropdownMenuItem(text = { Text(tr("Einstellungen übernehmen", "Apply settings")) }, onClick = { menu = false; vm.adopt(r) })
+                    DropdownMenuItem(text = { Text(tr("Als Quelle speichern", "Save as source")) }, onClick = { menu = false; if (folders.isEmpty()) { vm.saveAsSource(r); android.widget.Toast.makeText(context, tr("Als Quelle gespeichert (unter „Quellen“)", "Saved as a source (under “Sources”)"), android.widget.Toast.LENGTH_SHORT).show() } else chooseChapter = true })
+                    DropdownMenuItem(text = { Text(tr("Drucken", "Print")) }, onClick = { menu = false; (context as? android.app.Activity)?.let { DocumentActions.print(it, SourceFile(r.title, "md", null) { r.text }, markdown = true) } })
+                    DropdownMenuItem(text = { Text(tr("Als Datei teilen", "Share as file")) }, onClick = { menu = false; DocumentActions.share(context, SourceFile(r.title, "md", null) { r.text }, asText = true) })
+                    DropdownMenuItem(text = { Text(tr("Speichern unter …", "Save as …")) }, onClick = { menu = false; val sf = SourceFile(r.title, "md", null) { r.text }; pendingFile = sf; fileSaver.launch(DocumentActions.suggestedName(sf, true)) })
+                    DropdownMenuItem(text = { Text(tr("Melden", "Report")) }, onClick = { menu = false; Feedback.reportAnswer(context, tr("Zusammenfassung", "summary"), r.title, r.text) })
+                    DropdownMenuItem(text = { Text(tr("Umbenennen", "Rename")) }, onClick = { menu = false; renaming = true })
+                    DropdownMenuItem(text = { Text(tr("Löschen", "Delete")) }, onClick = { menu = false; deleting = true })
+                }
+            }
         }
         val spec = SummarySpec.fromJson(r.specJson)
-        FlowRow2 {
-            OutlinedButton(onClick = {
-                context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, MarkdownLite.toPlain(r.text)), tr("Zusammenfassung teilen", "Share summary")))
-            }) { Text(tr("Teilen", "Share")) }
-            OutlinedButton(onClick = { (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText(tr("Zusammenfassung", "Summary"), MarkdownLite.toPlain(r.text))) }) { Text(tr("Kopieren", "Copy")) }
-            OutlinedButton(onClick = { if (speaker.speaking) speaker.stop() else speaker.speak(r.text) }) { Text(if (speaker.speaking) tr("Stopp", "Stop") else tr("Vorlesen", "Read aloud")) }
-            OutlinedButton(onClick = { saveAudio.launch(r.title.take(40).replace(Regex("[^A-Za-z0-9äöüÄÖÜß _-]"), "") + ".wav") }, enabled = audioStatus?.startsWith(tr("Audio wird", "Creating audio")) != true) { Text(tr("Als Audio speichern", "Save as audio")) }
-            OutlinedButton(onClick = { vm.rerun(r, r.title); onBack() }) { Text(tr("Neu erstellen", "Recreate")) }
-            OutlinedButton(onClick = { vm.adopt(r) }) { Text(tr("Einstellungen übernehmen", "Apply settings")) }
-            OutlinedButton(onClick = {
-                if (folders.isEmpty()) { vm.saveAsSource(r); android.widget.Toast.makeText(context, tr("Als Quelle gespeichert (unter „Quellen“)", "Saved as a source (under “Sources”)"), android.widget.Toast.LENGTH_SHORT).show() } else chooseChapter = true
-            }) { Text(tr("Als Quelle speichern", "Save as source")) }
-            OutlinedButton(onClick = { (context as? android.app.Activity)?.let { DocumentActions.print(it, SourceFile(r.title, "md", null) { r.text }, markdown = true) } }) { Text(tr("Drucken", "Print")) }
-            OutlinedButton(onClick = { DocumentActions.share(context, SourceFile(r.title, "md", null) { r.text }, asText = true) }) { Text(tr("Als Datei teilen", "Share as file")) }
-            OutlinedButton(onClick = { val sf = SourceFile(r.title, "md", null) { r.text }; pendingFile = sf; fileSaver.launch(DocumentActions.suggestedName(sf, true)) }) { Text(tr("Speichern unter …", "Save as …")) }
-            OutlinedButton(onClick = { Feedback.reportAnswer(context, tr("Zusammenfassung", "summary"), r.title, r.text) }) { Text(tr("Melden", "Report")) }
-            OutlinedButton(onClick = { renaming = true }) { Text(tr("Umbenennen", "Rename")) }
-            OutlinedButton(onClick = { deleting = true }) { Text(tr("Löschen", "Delete")) }
-        }
         VoiceMissingHint(speaker)
         if (!speaker.missingVoice) speaker.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         audioStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -355,7 +356,7 @@ private fun SummaryViewer(id: Long, vm: StudioViewModel, onBack: () -> Unit) {
         val date = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT, de.edgebird.lernsystem.core.i18n.Lang.current.locale).format(Date(r.createdAt))
         Text(tr("Erstellt am $date mit ${r.model}: ${r.sectionsUsed} Abschnitte", "Created on $date with ${r.model}: ${r.sectionsUsed} sections") + (if (r.sectionsSkipped > 0) tr(", ${r.sectionsSkipped} übersprungen", ", ${r.sectionsSkipped} skipped") else "") + " · ${spec.role.label}${if (spec.customRole.isNotBlank()) tr(" (eigener Prompt)", " (own prompt)") else ""}", style = MaterialTheme.typography.labelSmall)
         if (id in stale) Text(tr("Veraltet: Eine Quelle hat sich seit der Erstellung geändert. Mit „Neu erstellen“ aktualisieren.", "Outdated: a source has changed since creation. Update with “Recreate”."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-        if (r.warnings > 0) Text(tr("Hinweis: In ${r.warnings} Abschnitt(en) stehen Zahlen, die im Dokument nicht gefunden wurden. Bitte mit dem Original abgleichen.", "Note: in ${r.warnings} section(s) there are numbers that were not found in the document. Please compare with the original."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        if (r.warnings > 0) Text(tr("Hinweis: In ${r.warnings} Abschnitt(en) stehen Zahlen, die im Dokument nicht gefunden wurden. Welche das sind, steht am Ende der Zusammenfassung unter „Zu prüfen“.", "Note: in ${r.warnings} section(s) there are numbers that were not found in the document. They are listed at the end of the summary under “To check”."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) { MarkdownView(r.text) }
     }
     if (chooseChapter) AlertDialog(
