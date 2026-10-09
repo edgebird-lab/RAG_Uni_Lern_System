@@ -7,6 +7,7 @@ import de.edgebird.lernsystem.core.i18n.tr
 
 import android.app.ActivityManager
 import android.app.Application
+import java.io.File
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.WorkInfo
@@ -45,6 +46,9 @@ data class VoicesState(val catalog: List<ModelInfo> = emptyList(), val installed
     fun hasVoiceFor(lang: Lang = Lang.current) = installed.any { it.lang == lang }
 }
 
+/** Wählbare Sprachmodelle: Katalog, aktives Modell (Dateiname), schon geladene Dateien und ob ein Neustart nach einem Wechsel nötig ist. */
+data class LlmState(val choices: List<ModelInfo> = emptyList(), val active: String = ModelPlan.DEFAULT_LLM_FILE, val present: Set<String> = emptySet(), val restartNeeded: Boolean = false)
+
 data class DownloadState(val running: Boolean, val queued: Boolean, val done: Long, val total: Long, val name: String, val error: String?)
 
 class ModelViewModel(app: Application) : AndroidViewModel(app) {
@@ -67,6 +71,32 @@ class ModelViewModel(app: Application) : AndroidViewModel(app) {
     private fun reloadVoices(manifest: ModelManifest? = null) {
         val catalog = manifest?.models?.filter { it.optional && it.role == "tts" } ?: _voices.value.catalog
         _voices.value = VoicesState(catalog, graph.voices.installed(), selectedMap())
+    }
+
+    private val _llm = MutableStateFlow(LlmState(active = graph.activeLlmFile))
+    val llm: StateFlow<LlmState> = _llm
+
+    private fun reloadLlm(manifest: ModelManifest? = null, installed: Map<String, de.edgebird.lernsystem.core.models.InstalledModel> = emptyMap(), restart: Boolean = _llm.value.restartNeeded) {
+        val choices = manifest?.let { ModelPlan.llmChoices(it) } ?: _llm.value.choices
+        val present = choices.filter { m -> installed[m.fileName]?.size == m.size }.map { it.fileName }.toSet()
+        _llm.value = LlmState(choices, graph.activeLlmFile, present, restart)
+    }
+
+    /** Wählt ein Sprachmodell. Im Erststart zählt die Wahl sofort; später wird ein noch nicht geladenes Modell erst nach dem Download aktiv. */
+    fun chooseLlm(m: ModelInfo) {
+        if (!filesPresent()) { graph.activeLlmFile = m.fileName; graph.pendingLlmFile = null; refresh(); return }
+        if (m.fileName in _llm.value.present) { graph.activeLlmFile = m.fileName; graph.pendingLlmFile = null; reloadLlm(restart = true); return }
+        graph.pendingLlmFile = m.fileName
+        ModelWork.enqueue(getApplication(), _wifiOnly.value)
+    }
+
+    /** Ein nicht aktives Sprachmodell löschen (gibt Speicher frei). */
+    fun deleteLlm(m: ModelInfo) {
+        if (m.fileName == graph.activeLlmFile) return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { File(graph.modelsDir, m.fileName).delete(); File(graph.modelsDir, m.fileName + ".version").delete() }
+            refresh()
+        }
     }
 
     private val _check = MutableStateFlow<ModelCheck>(ModelCheck.Loading)
@@ -100,9 +130,16 @@ class ModelViewModel(app: Application) : AndroidViewModel(app) {
             val manifest = res.getOrNull()
             withContext(Dispatchers.IO) { graph.voice.release() }   // nach einem Download oder Löschen neu laden
             reloadVoices(manifest)
+            // Ein nachträglich gewähltes Sprachmodell wird aktiv, sobald es vollständig da ist
+            var restart = _llm.value.restartNeeded
+            graph.pendingLlmFile?.let { p ->
+                val m = manifest?.models?.firstOrNull { it.fileName == p }
+                if (m != null && installed[p]?.size == m.size) { graph.activeLlmFile = p; graph.pendingLlmFile = null; restart = true }
+            }
+            reloadLlm(manifest, installed, restart)
             _check.value = when {
                 manifest != null -> {
-                    val pending = ModelPlan.pending(manifest, installed)
+                    val pending = ModelPlan.pending(manifest, installed, llmFile = graph.pendingLlmFile ?: graph.activeLlmFile)
                     if (!present) ModelCheck.Needed(manifest, pending, totalRamMb(), graph.modelsDir.apply { mkdirs() }.usableSpace / 1_048_576)
                     else ModelCheck.Ready(manifest, pending)   // alles da; offene Einträge sind neuere Versionen
                 }
@@ -144,6 +181,8 @@ class ModelViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun filesReady(): Boolean = filesPresent()
+
+    fun ramMb(): Long = totalRamMb()
 
     private fun totalRamMb(): Long = ActivityManager.MemoryInfo().also { getApplication<Application>().getSystemService(ActivityManager::class.java).getMemoryInfo(it) }.totalMem / 1_048_576
 

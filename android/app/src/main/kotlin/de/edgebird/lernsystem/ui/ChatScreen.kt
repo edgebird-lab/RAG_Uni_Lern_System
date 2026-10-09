@@ -208,7 +208,7 @@ private fun MessageBubble(m: ChatMessage, onSource: (Source) -> Unit, onRetry: (
                 m.text.isEmpty() && m.streaming -> Text(tr("Suche und formuliere …", "Searching and writing …"), style = MaterialTheme.typography.bodySmall)
                 else -> Text(de.edgebird.lernsystem.core.cards.LatexLite.toPlain(m.text), style = MaterialTheme.typography.bodyMedium, color = if (m.failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
             }
-            if (!m.fromUser && !m.streaming && !m.failed && !m.notFound && m.text.isNotBlank()) Row {
+            if (!m.fromUser && !m.streaming && !m.failed && !m.notFound && m.text.isNotBlank()) androidx.compose.foundation.layout.FlowRow {
                 TextButton(onClick = onSpeak) { Text(if (speaking) tr("Stopp", "Stop") else tr("Vorlesen", "Read aloud")) }
                 TextButton(onClick = onNote) { Text(tr("Als Notiz speichern", "Save as note")) }
                 TextButton(onClick = onReport) { Text(tr("Melden", "Report")) }

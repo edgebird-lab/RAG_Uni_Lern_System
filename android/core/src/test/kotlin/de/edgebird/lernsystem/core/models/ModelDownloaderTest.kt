@@ -48,7 +48,7 @@ class ModelDownloaderTest {
     @AfterEach fun stop() = server.stop(0)
 
     private fun model(urls: (Int) -> List<String> = { listOf("http://127.0.0.1:$port/p$it") }) = ModelInfo(
-        id = "m", role = "llm", title = "m", version = "v1", fileName = "m.bin", size = data.size.toLong(), sha256 = sha(data),
+        id = "m", role = "embedding", title = "m", version = "v1", fileName = "m.bin", size = data.size.toLong(), sha256 = sha(data),
         parts = parts.mapIndexed { i, (a, b) -> ModelPart("m.bin.part${i + 1}", (b - a).toLong(), sha(data.copyOfRange(a, b)), urls(i)) },
     )
 
@@ -132,6 +132,16 @@ class ModelDownloaderTest {
         assertEquals("m.bin", m.models.single().fileName)
         assertThrows(ModelException::class.java) { ModelManifest.parse(json.replace("\"schemaVersion\":1", "\"schemaVersion\":2")) }
         assertThrows(ModelException::class.java) { ModelManifest.parse("{kaputt") }
+    }
+
+    @Test fun `Nur das gewaehlte Sprachmodell wird geplant`() {
+        val e2b = model().copy(id = "e2b", role = "llm", fileName = ModelPlan.DEFAULT_LLM_FILE)
+        val e4b = model().copy(id = "e4b", role = "llm", fileName = "gemma-4-E4B-it.litertlm", optional = true)
+        val emb = model().copy(id = "emb", role = "embedding", fileName = "emb.bin")
+        val man = ModelManifest(1, "v1", 1, "", listOf(e4b, emb, e2b))
+        assertEquals(listOf("emb", "e2b"), ModelPlan.pending(man, emptyMap()).map { it.id })
+        assertEquals(listOf("e4b", "emb"), ModelPlan.pending(man, emptyMap(), llmFile = e4b.fileName).map { it.id })
+        assertEquals(listOf("e2b", "e4b"), ModelPlan.llmChoices(man).map { it.id }.let { listOf(it[0], it[1]) })
     }
 
     @Test fun `Plan erkennt fehlende und veraltete Modelle`() {

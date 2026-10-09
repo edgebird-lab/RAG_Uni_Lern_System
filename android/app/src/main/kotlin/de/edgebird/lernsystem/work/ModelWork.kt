@@ -54,7 +54,7 @@ class ModelDownloadWorker(ctx: Context, params: WorkerParameters) : CoroutineWor
         return withContext(Dispatchers.IO) {
             try {
                 val manifest = dl.fetchManifest(ModelWork.MANIFEST_URLS)
-                val todo = ModelPlan.pending(manifest, dl.installed(), optionalIds = inputData.getStringArray(ModelWork.VOICE_IDS).orEmpty().toSet())
+                val todo = ModelPlan.pending(manifest, dl.installed(), optionalIds = inputData.getStringArray(ModelWork.VOICE_IDS).orEmpty().toSet(), llmFile = graph.pendingLlmFile ?: graph.activeLlmFile)
                 val grand = todo.sumOf { it.size }
                 var finished = 0L
                 var lastReport = 0L

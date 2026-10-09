@@ -11,7 +11,7 @@ object SummaryChecks {
 
     const val EMPTY_MARKER_DE = "(kein prüfungsrelevanter Inhalt)"
     const val EMPTY_MARKER_EN = "(no exam-relevant content)"
-    val EMPTY_MARKER get() = if (de.edgebird.lernsystem.core.i18n.Lang.current == de.edgebird.lernsystem.core.i18n.Lang.EN) EMPTY_MARKER_EN else EMPTY_MARKER_DE
+    val EMPTY_MARKER get() = if (de.edgebird.lernsystem.core.i18n.Lang.effective == de.edgebird.lernsystem.core.i18n.Lang.EN) EMPTY_MARKER_EN else EMPTY_MARKER_DE
     private val EMPTY_MARKERS = listOf("(kein pruefungsrelevanter inhalt)", "(kein prüfungsrelevanter inhalt)", "(no exam-relevant content)", "(no exam relevant content)")
 
     /** Endet die Antwort mitten im Satz oder in einem leeren Listenpunkt (Token-Budget aufgebraucht)? */

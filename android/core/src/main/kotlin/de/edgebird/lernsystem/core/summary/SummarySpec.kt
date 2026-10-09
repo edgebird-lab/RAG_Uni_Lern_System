@@ -56,9 +56,10 @@ enum class SummaryLanguage {
     DE, EN;
 
     val label: String get() = when (this) { DE -> tr("Deutsch", "German"); EN -> tr("Englisch", "English") }
+    val lang: de.edgebird.lernsystem.core.i18n.Lang get() = if (this == EN) de.edgebird.lernsystem.core.i18n.Lang.EN else de.edgebird.lernsystem.core.i18n.Lang.DE
     val instruction: String get() = when (this) {
-        DE -> tr("Schreibe auf Deutsch.", "Write the summary in German (keep technical terms in their original form where sensible).")
-        EN -> tr("Write the summary in English (keep technical terms in their original form where sensible).", "Write the summary in English (keep technical terms in their original form where sensible).")
+        DE -> "Schreibe die gesamte Zusammenfassung ausschließlich auf Deutsch, auch wenn der Quelltext in einer anderen Sprache ist (Fachbegriffe dürfen in der Originalform stehen)."
+        EN -> "Write the entire summary exclusively in English, even if the source text is in another language: translate the content (technical terms may stay in their original form)."
     }
 
     companion object { fun forApp(lang: Lang = Lang.current) = if (lang == Lang.EN) EN else DE }
@@ -88,7 +89,7 @@ data class SummarySpec(
     val roleText: String get() = customRole.trim().ifEmpty { role.prompt }
 
     /** Systemanweisung: Rolle plus feste Regeln gegen Erfinden (nicht abschaltbar). */
-    val system: String get() = roleText + " " + FIXED_SYSTEM
+    val system: String get() = de.edgebird.lernsystem.core.i18n.Lang.using(language.lang) { roleText + " " + FIXED_SYSTEM }
 
     /** Wörter je Abschnitt bei [sections] nutzbaren Abschnitten. */
     fun wordsPerSection(sections: Int): Int = (targetWords / maxOf(1, sections)).coerceIn(MIN_SECTION_WORDS, MAX_SECTION_WORDS)
