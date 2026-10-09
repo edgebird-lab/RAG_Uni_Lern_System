@@ -47,7 +47,11 @@ data class VoicesState(val catalog: List<ModelInfo> = emptyList(), val installed
 }
 
 /** Wählbare Sprachmodelle: Katalog, aktives Modell (Dateiname), schon geladene Dateien und ob ein Neustart nach einem Wechsel nötig ist. */
-data class LlmState(val choices: List<ModelInfo> = emptyList(), val active: String = ModelPlan.DEFAULT_LLM_FILE, val present: Set<String> = emptySet(), val restartNeeded: Boolean = false)
+data class LlmState(
+    val choices: List<ModelInfo> = emptyList(), val active: String = ModelPlan.DEFAULT_LLM_FILE, val present: Set<String> = emptySet(), val restartNeeded: Boolean = false,
+    /** Selbst hinzugefügte Modelldateien (Dateiname → Größe in Byte), die nicht im Katalog stehen. */
+    val custom: Map<String, Long> = emptyMap(), val importing: Boolean = false, val message: String? = null,
+)
 
 data class DownloadState(val running: Boolean, val queued: Boolean, val done: Long, val total: Long, val name: String, val error: String?)
 
@@ -79,8 +83,57 @@ class ModelViewModel(app: Application) : AndroidViewModel(app) {
     private fun reloadLlm(manifest: ModelManifest? = null, installed: Map<String, de.edgebird.lernsystem.core.models.InstalledModel> = emptyMap(), restart: Boolean = _llm.value.restartNeeded) {
         val choices = manifest?.let { ModelPlan.llmChoices(it) } ?: _llm.value.choices
         val present = choices.filter { m -> installed[m.fileName]?.size == m.size }.map { it.fileName }.toSet()
-        _llm.value = LlmState(choices, graph.activeLlmFile, present, restart)
+        _llm.value = LlmState(choices, graph.activeLlmFile, present, restart, customFiles(), _llm.value.importing, _llm.value.message)
     }
+
+    private fun customFiles(): Map<String, Long> = graph.modelsDir.listFiles().orEmpty()
+        .filter { it.isFile && it.name.startsWith(CUSTOM_PREFIX) && it.name.endsWith(MODEL_EXT) }.sortedBy { it.name }.associate { it.name to it.length() }
+
+    /**
+     * Übernimmt eine selbst heruntergeladene Modelldatei (LiteRT-LM, `.litertlm`) als Sprachmodell. Die Datei wird in den App-Speicher kopiert
+     * und sofort zum aktiven Modell; ob sie wirklich läuft, zeigt sich beim ersten Laden (Neustart der App nötig).
+     */
+    fun importLlm(uri: android.net.Uri) {
+        val app = getApplication<Application>()
+        viewModelScope.launch {
+            val had = filesPresent()   // nur dann läuft schon ein Modell und ein Neustart ist nötig
+            _llm.value = _llm.value.copy(importing = true, message = null)
+            val msg = withContext(Dispatchers.IO) {
+                runCatching {
+                    val (rawName, size) = app.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME, android.provider.OpenableColumns.SIZE), null, null, null)?.use { c ->
+                        if (c.moveToFirst()) c.getString(0).orEmpty() to (if (c.isNull(1)) -1L else c.getLong(1)) else null
+                    } ?: ("" to -1L)
+                    if (!rawName.endsWith(MODEL_EXT, ignoreCase = true)) return@runCatching tr("Das ist keine .litertlm-Datei. Die App kann nur Modelle im LiteRT-LM-Format laden.", "That is not a .litertlm file. The app can only load models in the LiteRT-LM format.")
+                    val safe = CUSTOM_PREFIX + rawName.dropLast(MODEL_EXT.length).replace(Regex("[^A-Za-z0-9._-]"), "_").take(60) + MODEL_EXT
+                    graph.modelsDir.mkdirs()
+                    if (size > 0 && graph.modelsDir.usableSpace < size + 300L * 1_048_576) return@runCatching tr("Zu wenig freier Speicher für diese Datei.", "Not enough free storage for this file.")
+                    val tmp = File(graph.modelsDir, "$safe.partial")
+                    app.contentResolver.openInputStream(uri)!!.use { input -> tmp.outputStream().use { input.copyTo(it, 1 shl 20) } }
+                    val target = File(graph.modelsDir, safe)
+                    target.delete()
+                    check(tmp.renameTo(target)) { "rename" }
+                    graph.activeLlmFile = safe
+                    graph.pendingLlmFile = null
+                    null
+                }.getOrElse { tr("Die Datei konnte nicht übernommen werden: ${it.message}", "The file could not be imported: ${it.message}") }
+            }
+            _llm.value = _llm.value.copy(importing = false, message = msg ?: tr("Eigenes Modell übernommen.", "Custom model imported."), restartNeeded = _llm.value.restartNeeded || (msg == null && had))
+            refresh()
+        }
+    }
+
+    /** Eine selbst hinzugefügte Modelldatei löschen; war sie aktiv, gilt wieder das Standardmodell. */
+    fun deleteCustom(name: String) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { File(graph.modelsDir, name).delete() }
+            if (graph.activeLlmFile == name) graph.activeLlmFile = ModelPlan.DEFAULT_LLM_FILE
+            _llm.value = _llm.value.copy(restartNeeded = true)
+            refresh()
+        }
+    }
+
+    /** Eine schon vorhandene eigene Datei wieder als aktives Modell verwenden. */
+    fun useCustom(name: String) { graph.activeLlmFile = name; graph.pendingLlmFile = null; reloadLlm(restart = true) }
 
     /** Wählt ein Sprachmodell. Im Erststart zählt die Wahl sofort; später wird ein noch nicht geladenes Modell erst nach dem Download aktiv. */
     fun chooseLlm(m: ModelInfo) {
@@ -186,5 +239,8 @@ class ModelViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun totalRamMb(): Long = ActivityManager.MemoryInfo().also { getApplication<Application>().getSystemService(ActivityManager::class.java).getMemoryInfo(it) }.totalMem / 1_048_576
 
-    companion object { const val PREF_WIFI_ONLY = "models_wifi_only" }
+    companion object {
+        const val CUSTOM_PREFIX = "custom-"
+        const val MODEL_EXT = ".litertlm"
+        const val PREF_WIFI_ONLY = "models_wifi_only" }
 }

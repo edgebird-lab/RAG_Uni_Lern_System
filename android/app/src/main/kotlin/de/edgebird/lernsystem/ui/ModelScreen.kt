@@ -49,6 +49,7 @@ fun ModelScreen(firstRun: Boolean, onDone: () -> Unit, onBack: (() -> Unit)? = n
     val withVoice by vm.withVoice.collectAsStateWithLifecycle()
     val llm by vm.llm.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val picker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::importLlm) }
     var confirmReinstall by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val busy = dl?.running == true || dl?.queued == true
 
@@ -71,7 +72,7 @@ fun ModelScreen(firstRun: Boolean, onDone: () -> Unit, onBack: (() -> Unit)? = n
                 Button(onClick = vm::refresh) { Text(tr("Erneut versuchen", "Try again")) }
             }
             is ModelCheck.Ready -> {
-                LlmSection(llm, ramMb = vm.ramMb(), busy = busy, firstRun = false, onChoose = vm::chooseLlm, onDelete = vm::deleteLlm)
+                LlmSection(llm, ramMb = vm.ramMb(), busy = busy, firstRun = false, onChoose = vm::chooseLlm, onDelete = vm::deleteLlm, vm = vm, onPick = { picker.launch(arrayOf("*/*")) })
                 VoicesSection(vm, busy)
                 Text(if (c.updates.isEmpty()) tr("Alle Modelle sind vorhanden und aktuell.", "All models are present and up to date.") else tr("Neuere Modelle verfügbar: ${c.updates.joinToString { it.title }}.", "Newer models available: ${c.updates.joinToString { it.title }}."))
                 if (c.updates.isNotEmpty()) {
@@ -80,7 +81,7 @@ fun ModelScreen(firstRun: Boolean, onDone: () -> Unit, onBack: (() -> Unit)? = n
                 } else OutlinedButton(onClick = vm::refresh) { Text(tr("Nach Updates suchen", "Check for updates")) }
             }
             is ModelCheck.Needed -> {
-                LlmSection(llm, ramMb = c.ramMb, busy = busy, firstRun = true, onChoose = vm::chooseLlm, onDelete = vm::deleteLlm)
+                LlmSection(llm, ramMb = c.ramMb, busy = busy, firstRun = true, onChoose = vm::chooseLlm, onDelete = vm::deleteLlm, vm = vm, onPick = { picker.launch(arrayOf("*/*")) })
                 NeededCard(c.pending, c.ramMb, c.freeMb, c.manifest.licenseUrl, busy)
                 voices.recommended()?.takeIf { !voices.hasVoiceFor() }?.let { v ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -153,8 +154,7 @@ private fun NeededCard(pending: List<ModelInfo>, ramMb: Long, freeMb: Long, lice
 
 /** Auswahl des Sprachmodells: Standard E2B (schnell, wenig Speicher) oder größere Modelle aus dem Katalog (genauer, langsamer, mehr Arbeitsspeicher). */
 @Composable
-private fun LlmSection(state: LlmState, ramMb: Long, busy: Boolean, firstRun: Boolean, onChoose: (ModelInfo) -> Unit, onDelete: (ModelInfo) -> Unit) {
-    if (state.choices.size < 2) return
+private fun LlmSection(state: LlmState, ramMb: Long, busy: Boolean, firstRun: Boolean, onChoose: (ModelInfo) -> Unit, onDelete: (ModelInfo) -> Unit, vm: ModelViewModel, onPick: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(if (firstRun) tr("Welches Sprachmodell?", "Which language model?") else tr("Sprachmodell", "Language model"), style = MaterialTheme.typography.titleMedium)
         state.choices.forEach { m ->
@@ -178,6 +178,26 @@ private fun LlmSection(state: LlmState, ramMb: Long, busy: Boolean, firstRun: Bo
                 }
             }
         }
+        state.custom.forEach { (name, size) ->
+            val active = name == state.active
+            Card(colors = CardDefaults.cardColors(containerColor = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(tr("Eigenes Modell: ", "Own model: ") + name.removePrefix(ModelViewModel.CUSTOM_PREFIX) + " · " + mb(size), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                        if (active) Text(tr("aktiv", "active"), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (!active) Button(onClick = { vm.useCustom(name) }, enabled = !busy) { Text(tr("Verwenden", "Use")) }
+                        OutlinedButton(onClick = { vm.deleteCustom(name) }, enabled = !busy) { Text(tr("Löschen", "Delete")) }
+                    }
+                }
+            }
+        }
+        OutlinedButton(onClick = onPick, enabled = !busy && !state.importing, modifier = Modifier.fillMaxWidth()) {
+            Text(if (state.importing) tr("Wird kopiert …", "Copying …") else tr("Eigenes Modell aus einer Datei wählen (.litertlm)", "Choose your own model from a file (.litertlm)"))
+        }
+        Text(tr("Für Modelle, die du selbst heruntergeladen hast (z. B. von Hugging Face, Format LiteRT-LM). Die Datei wird in den App-Speicher kopiert. Nicht jedes Modell läuft auf jedem Gerät; beachte die Lizenz des Modells.", "For models you downloaded yourself (e.g. from Hugging Face, LiteRT-LM format). The file is copied into the app's storage. Not every model runs on every device; observe the model's licence."), style = MaterialTheme.typography.bodySmall)
+        state.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
         if (state.restartNeeded) Text(tr("Das neue Sprachmodell gilt nach einem Neustart: App einmal komplett schließen und neu öffnen. Der erste Start damit dauert einige Minuten (GPU-Einrichtung).", "The new language model applies after a restart: close the app completely and reopen it. The first start with it takes a few minutes (GPU setup)."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
     }
 }
