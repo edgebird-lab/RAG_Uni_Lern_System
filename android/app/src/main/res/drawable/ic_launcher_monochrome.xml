@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Einfarbige Fassung für „Designierte Symbole“ (Android 13+): Buch und Funke -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#000000" android:pathData="M52.6,77 L52.6,41.5 C47,37.3 38,36.4 30,38.2 L30,72.5 C38,70.8 47,71.8 52.6,77 Z M55.4,77 L55.4,41.5 C61,37.3 70,36.4 78,38.2 L78,72.5 C70,70.8 61,71.8 55.4,77 Z" />
-    <path android:fillColor="#000000" android:pathData="M54,22 L56.4,28.6 L63,31 L56.4,33.4 L54,40 L51.6,33.4 L45,31 L51.6,28.6 Z" />
-</vector>
