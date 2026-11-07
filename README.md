@@ -246,6 +246,12 @@ cd RAG_Uni_Lern_System
 1. Repo klonen (siehe oben) oder auf GitHub **„Code → Download ZIP"**.
 2. Doppelklick auf **`Installieren.bat`** (richtet venv, Abhängigkeiten, Ollama & Modell ein), dann **`Start.bat`** → http://localhost:8501.
 
+> Beide Windows-Wege richten auch **ffmpeg 6.1** (M4A/MP3-Download, Hörbuch-Export, Vortrag als MP4)
+> und – falls noch kein Node.js da ist – ein **portables Node.js mit Marp-CLI** (Vortragsfolien) im
+> App-Ordner `.tools\` ein. Die Downloads werden per SHA256 geprüft; System-PATH und Adminrechte
+> bleiben unberührt, die App bindet die Werkzeuge beim Start selbst ein. Unter Linux installiert
+> `install.sh` ffmpeg über apt (fragt ggf. nach dem sudo-Passwort) und Marp-CLI, wenn npm vorhanden ist.
+
 > Beim allerersten Download kann Windows warnen (SmartScreen/„Unbekannter Herausgeber"). Das ist bei neuer, **noch nicht signierter** Software normal und **kein Virus** → „Weitere Informationen" → „Trotzdem ausführen". Details: [Warnt Windows beim Start?](#-warnt-windows-beim-start-kein-virus).
 
 **Linux / macOS:**

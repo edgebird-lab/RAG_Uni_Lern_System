@@ -9,7 +9,7 @@
 ; ============================================================================
 
 #define MyAppName "RAG-Lernsystem"
-#define MyAppVersion "0.1"
+#define MyAppVersion "0.2"
 #define MyAppPublisher "edgebird-lab"
 #define MyAppURL "https://github.com/edgebird-lab/RAG_Uni_Lern_System"
 
@@ -25,7 +25,7 @@ AppCopyright=Copyright (C) edgebird-lab - MIT License
 ; ausgefuellte "Details"-Registerkarte (Herausgeber/Produkt/Version) SmartScreen-
 ; Misstrauen und wirkt serioeser. Die eigentliche Vertrauensstufe kommt aber erst
 ; ueber die Code-Signatur (siehe SignTool-Block weiter unten).
-VersionInfoVersion=0.1.0.0
+VersionInfoVersion=0.2.0.0
 VersionInfoProductVersion={#MyAppVersion}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoProductName={#MyAppName}
@@ -115,4 +115,6 @@ Filename: "{app}\Installieren.bat"; \
 Type: filesandordirs; Name: "{app}\.venv"
 Type: filesandordirs; Name: "{app}\data"
 Type: filesandordirs; Name: "{app}\ipex-ollama"
+; vom Installer geladene Werkzeuge (ffmpeg, Node.js, Marp-CLI, puppeteer-core)
+Type: filesandordirs; Name: "{app}\.tools"
 Type: filesandordirs; Name: "{app}\__pycache__"

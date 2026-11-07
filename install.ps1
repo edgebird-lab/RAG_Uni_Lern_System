@@ -14,6 +14,8 @@
    7. Richtet Ollama ein:
         - NVIDIA/AMD/keine -> Standard-Ollama (ollama.com), zieht bge-m3
         - Intel            -> IPEX-LLM "Ollama Portable Zip" (SYCL), zieht bge-m3
+      7b. ffmpeg 6.1 (shared-Build, SHA256-geprueft) nach .tools\ffmpeg
+      7c. Node.js (portabel, nur falls keins da) + Marp-CLI fuer den Vortrag
    8. Misst die Hardware und waehlt/laedt/testet das passende LLM
         (ragapp.scripts.cli recommend --set --test)
    9. Gibt eine Erfolgsmeldung + Start-Hinweis aus
@@ -60,6 +62,17 @@ $IpexZip  = Join-Path $Root 'ipex-ollama.zip'
 $IpexUrl  = 'https://github.com/ipex-llm/ipex-llm/releases/download/v2.3.0-nightly/ollama-ipex-llm-2.3.0b20250725-win.zip'
 $VenvPy   = Join-Path $Root '.venv\Scripts\python.exe'
 
+# Fest gepinnte Downloads mit SHA256 (Werte von der jeweiligen Release-Seite:
+# FFmpeg-Builds "checksums.sha256", nodejs.org "SHASUMS256.txt").
+# FFmpeg 6.1 als "shared"-Build: torchaudio 2.6-2.8 laedt die DLLs der Version 4-6;
+# GPL-Variante, weil nur sie H.264 (Vortrag als MP4) und MP3 mitbringt.
+$FfmpegUrl    = 'https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2025-08-31-13-00/ffmpeg-n6.1.3-win64-gpl-shared-6.1.zip'
+$FfmpegSha256 = 'bfd85c9977d61f05ab00349d0d172555870f9d0772138806ed9e00e4179b8e21'
+$NodeVersion  = 'v24.22.2'
+$NodeUrl      = "https://nodejs.org/dist/$NodeVersion/node-$NodeVersion-win-x64.zip"
+$NodeSha256   = 'ca1bff5d8ead13c9f2ea404a176db46bd430704d5b5113734049fa365e7799e2'
+$ToolsDir     = Join-Path $Root '.tools'
+
 # --------------------------------------------------------------------------- #
 # Ausgabe-Helfer
 # --------------------------------------------------------------------------- #
@@ -68,6 +81,31 @@ function Write-Info($m) { Write-Host "    $m" -ForegroundColor Gray }
 function Write-Ok  ($m) { Write-Host "    [OK] $m" -ForegroundColor Green }
 function Write-Warn2($m){ Write-Host "    [!] $m" -ForegroundColor Yellow }
 function Write-Err ($m) { Write-Host "    [X] $m" -ForegroundColor Red }
+
+# --------------------------------------------------------------------------- #
+# Download mit Pruefsummen-Kontrolle; entpackt das ZIP und liefert den Ordner
+# der obersten Ebene im ZIP (z. B. "ffmpeg-n6.1.3-win64-gpl-shared-6.1").
+# --------------------------------------------------------------------------- #
+function Get-VerifiedZip {
+    param([Parameter(Mandatory)][string]$Url, [Parameter(Mandatory)][string]$Sha256,
+          [Parameter(Mandatory)][string]$What)
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
+    $zip = Join-Path $env:TEMP ('rag-' + [guid]::NewGuid().ToString('N') + '.zip')
+    Write-Info "Lade $What herunter ..."
+    Invoke-WebRequest -Uri $Url -OutFile $zip -UseBasicParsing -ErrorAction Stop
+    $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLower()
+    if ($hash -ne $Sha256.ToLower()) {
+        Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+        throw "${What}: Pruefsumme stimmt nicht (erwartet $Sha256, erhalten $hash)."
+    }
+    Write-Info "Pruefsumme stimmt (SHA256 $($hash.Substring(0,16))...)."
+    $tmp = Join-Path $env:TEMP ('rag-' + [guid]::NewGuid().ToString('N'))
+    Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force -ErrorAction Stop
+    Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+    $inner = Get-ChildItem -LiteralPath $tmp -Directory | Select-Object -First 1
+    if (-not $inner) { throw "${What}: unerwarteter ZIP-Inhalt." }
+    return $inner.FullName
+}
 
 function Invoke-Native {
     param([Parameter(Mandatory)][string]$File,
@@ -404,31 +442,73 @@ try {
         catch { Write-Warn2 $_.Exception.Message }
     }
 
-    # ---- 7b) ffmpeg fuer den Hoerbuch-Export (Audio-Overview) --------------- #
-    # Einzige echte System-Abhaengigkeit der App (sonst bewusst vermieden, siehe
-    # easyocr statt System-Tesseract, kein System-Graphviz bei der Mindmap):
-    # torchaudios AAC-Encoder braucht ffmpeg vom System, um mehrere Audio-
-    # Overviews zu einem getaggten Hoerbuch-ZIP zu exportieren (ragapp/
-    # audiobook.py). Ohne ffmpeg funktioniert die App normal weiter - nur
-    # dieser eine Export-Knopf zeigt dann einen klaren Fehlerhinweis.
-    # Unter Windows sind das zwei Dinge: ffmpeg.exe (Vortrag als MP4) und die
-    # ffmpeg-DLLs fuer torchaudio (Version 4-6, "shared"-Build im PATH; fuer M4A/MP3-
-    # Download, Hoerbuch-Export und Lautheits-Normierung). Das reine ffmpeg.exe aus
-    # "winget install ffmpeg" genuegt torchaudio nicht.
-    Write-Step "ffmpeg fuer Hoerbuch-Export und Vortrags-Video pruefen (optional)"
-    if (Get-Command ffmpeg -ErrorAction SilentlyContinue) {
-        Write-Ok "ffmpeg.exe gefunden - Vortrag als MP4 moeglich."
+    # ---- 7b) ffmpeg 6.1 (shared) fuer Audio-Export, Hoerbuch, Lautheit, MP4 ---- #
+    # torchaudio laedt die ffmpeg-DLLs (M4A/MP3-Download, Hoerbuch-Export, Lautheits-
+    # Normierung), der Vortrag ruft ffmpeg.exe auf. Der Build landet in .tools\ffmpeg;
+    # die App traegt ihn beim Start selbst ein (ragapp/config.py: PATH dieses Prozesses
+    # + os.add_dll_directory) - kein System-PATH, keine Adminrechte. Scheitert der
+    # Download, laeuft die App trotzdem, nur diese Exporte fehlen.
+    Write-Step "ffmpeg 6.1 (shared-Build) fuer Audio-Export und Vortrags-Video bereitstellen"
+    $FfDir = Join-Path $ToolsDir 'ffmpeg'
+    if (Test-Path -LiteralPath (Join-Path $FfDir 'bin\ffmpeg.exe')) {
+        Write-Ok "ffmpeg liegt bereits in .tools\ffmpeg - uebersprungen."
     } else {
-        Write-Warn2 "ffmpeg.exe nicht gefunden - Vortrag als MP4 geht dann nicht."
-        Write-Warn2 "Nachinstallieren:  winget install ffmpeg"
+        try {
+            $ffSrc = Get-VerifiedZip -Url $FfmpegUrl -Sha256 $FfmpegSha256 -What 'ffmpeg 6.1 (ca. 60 MB)'
+            New-Item -ItemType Directory -Force -Path $FfDir | Out-Null
+            # Nur bin\ (DLLs + ffmpeg/ffprobe) und die Lizenz - include\, lib\, doc\ braucht die App nicht.
+            Copy-Item -LiteralPath (Join-Path $ffSrc 'bin') -Destination $FfDir -Recurse -Force -ErrorAction Stop
+            Copy-Item -LiteralPath (Join-Path $ffSrc 'LICENSE.txt') -Destination $FfDir -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath (Split-Path -Parent $ffSrc) -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Ok "ffmpeg 6.1 nach .tools\ffmpeg entpackt."
+        } catch {
+            Write-Warn2 "ffmpeg konnte nicht eingerichtet werden: $($_.Exception.Message)"
+            Write-Warn2 "Die App laeuft trotzdem; es fehlen nur M4A/MP3, Hoerbuch-Export, Lautheits-Normierung und MP4."
+        }
     }
-    & $VenvPy -c "import sys; from ragapp.audio_convert import available_audio_encoders as a; sys.exit(0 if 'aac' in a() else 1)" 1>$null 2>$null
+    & $VenvPy -c "import sys, ragapp.config; from ragapp.audio_convert import available_audio_encoders as a; sys.exit(0 if {'aac', 'libmp3lame'} <= a() else 1)" 1>$null 2>$null
     if ($LASTEXITCODE -eq 0) {
-        Write-Ok "ffmpeg-Bibliotheken fuer torchaudio gefunden - Hoerbuch-/M4A-Export einsatzbereit."
+        Write-Ok "torchaudio findet ffmpeg - M4A/MP3, Hoerbuch-Export und Lautheits-Normierung einsatzbereit."
     } else {
-        Write-Warn2 "torchaudio findet keine ffmpeg-Bibliotheken (Version 4-6) - M4A/MP3-Download,"
-        Write-Warn2 "Hoerbuch-Export und Lautheits-Normierung gehen dann nicht (WAV und alles andere schon)."
-        Write-Warn2 "Abhilfe: einen FFmpeg-6-'shared'-Build entpacken und dessen bin-Ordner in den PATH legen."
+        Write-Warn2 "torchaudio findet die ffmpeg-Bibliotheken nicht - M4A/MP3 und Hoerbuch-Export bleiben aus."
+    }
+
+    # ---- 7c) Node.js + Marp-CLI fuer den Vortrag ---------------------------- #
+    # Bewusst ein portables Node im App-Ordner statt nur eines Hinweises: Es ist die
+    # einzige Zutat, die fuer Vortragsfolien/-video sonst fehlt (Chrome bzw. Edge ist
+    # unter Windows ohnehin da), braucht keine Adminrechte und wird NUR geladen, wenn
+    # kein Node im PATH liegt. Marp-CLI und puppeteer-core werden gleich mitinstalliert,
+    # damit der Vortrag spaeter ohne Internet laeuft (sonst laedt npx beim ersten Mal).
+    Write-Step "Node.js und Marp-CLI fuer den Vortrag bereitstellen"
+    $NodeDir = Join-Path $ToolsDir 'node'
+    if (-not (Get-Command node -ErrorAction SilentlyContinue) -and
+        -not (Test-Path -LiteralPath (Join-Path $NodeDir 'node.exe'))) {
+        try {
+            $nodeSrc = Get-VerifiedZip -Url $NodeUrl -Sha256 $NodeSha256 -What "Node.js $NodeVersion (ca. 38 MB)"
+            New-Item -ItemType Directory -Force -Path $ToolsDir | Out-Null
+            Move-Item -LiteralPath $nodeSrc -Destination $NodeDir -Force -ErrorAction Stop
+            Write-Ok "Node.js $NodeVersion nach .tools\node entpackt."
+        } catch {
+            Write-Warn2 "Node.js konnte nicht eingerichtet werden: $($_.Exception.Message)"
+        }
+    }
+    if (Test-Path -LiteralPath (Join-Path $NodeDir 'node.exe')) { $env:Path = "$NodeDir;$env:Path" }
+    $npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if ($npmCmd) {
+        try {
+            $MarpDir = Join-Path $ToolsDir 'marp'
+            if (-not (Test-Path -LiteralPath (Join-Path $MarpDir 'node_modules\.bin\marp.cmd'))) {
+                New-Item -ItemType Directory -Force -Path $MarpDir | Out-Null
+                Invoke-Native -File $npmCmd.Source -Arguments @('install','--prefix',$MarpDir,'--no-audit','--no-fund','@marp-team/marp-cli@4') -What 'Marp-CLI'
+            }
+            Invoke-Native -File $VenvPy -Arguments @('-c','from ragapp.talk import ensure_marp_shot_deps; ensure_marp_shot_deps()') -What 'puppeteer-core'
+            Write-Ok "Marp-CLI und puppeteer-core installiert - Vortragsfolien und -video einsatzbereit."
+        } catch {
+            Write-Warn2 "Marp-CLI konnte nicht installiert werden: $($_.Exception.Message)"
+            Write-Warn2 "Der Vortrag laedt Marp dann beim ersten Export per npx nach (Internet noetig)."
+        }
+    } else {
+        Write-Warn2 "Kein Node.js/npm - der Vortrag liefert dann nur Markdown und Audio, keine Folien/Video."
     }
 
     # ---- 8) recommend: Hardware messen, Modell waehlen/laden/testen -------- #

@@ -16,6 +16,8 @@
 #         - macOS: Hinweis auf ollama.com/download
 #         - Intel-Linux: IPEX-LLM "Ollama Portable" (Ubuntu-Paket)
 #       und zieht das Embedding-Modell bge-m3
+#       7b. ffmpeg (Paketmanager) fuer Audio-Export, Hoerbuch und Vortrags-Video
+#       7c. Marp-CLI fuer den Vortrag (wenn Node/npm vorhanden ist)
 #    8. Misst die Hardware und waehlt/laedt/testet das passende LLM
 #         (ragapp.scripts.cli recommend --set --test)
 #    9. Erfolgsmeldung + Start-Hinweis
@@ -155,8 +157,11 @@ info "pip / setuptools / wheel aktualisieren ..."
 # (easyocr/chatterbox-tts) eine unpassende (CUDA-)torch nach und ueberschreibt die
 # GPU-Variante (z. B. ROCm).
 #
-# Untergrenze 2.6 (Chatterbox braucht mindestens das), Obergrenze <3 als
-# konservativer Schutz vor einem kuenftigen, potenziell brechenden Major-Release.
+# Untergrenze 2.6 (Chatterbox braucht mindestens das), Obergrenze <2.9: ab
+# torchaudio 2.9 fehlen torchaudio.io und utils.ffmpeg_utils, und load/save brauchen
+# torchcodec - darauf bauen M4A/MP3-Download, Hoerbuch-Export und Lautheits-
+# Normierung. Gibt es fuer das Python keine 2.6-2.8 (z. B. 3.14), faellt pip_torch
+# mit Warnung auf die neueste Version (<3) zurueck.
 # Bewusst KEIN harter ==-Pin, da die verfuegbaren Versionen je Index
 # (cpu / rocm6.x / default) unterschiedlich sind.
 # Bekannt-gute, getestete Referenz auf diesem Rechner (RX 7900 XTX, gfx1100):
@@ -165,29 +170,35 @@ info "pip / setuptools / wheel aktualisieren ..."
 # Chatterbox zu alt ist; auf AELTEREN AMD-Karten (vor RDNA3) kann rocm6.3 ggf.
 # Probleme machen - dann manuell auf einen passenden aelteren ROCm-Index pinnen.
 # (fuer volle Reproduzierbarkeit ggf. exakt auf die eigene Version pinnen).
-TORCH_SPEC="torch>=2.6,<3"
-TV_SPEC="torchvision<1"
-TA_SPEC="torchaudio>=2.6,<3"
+TORCH_SPEC="torch>=2.6,<2.9"
+TV_SPEC="torchvision<0.24"
+TA_SPEC="torchaudio>=2.6,<2.9"
+pip_torch() {   # Argumente: zusaetzliche pip-Optionen (z. B. --index-url ...)
+    "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" "$TA_SPEC" "$@" && return 0
+    warn "torch 2.6-2.8 gibt es fuer dieses Python/diesen Index nicht - nehme die neueste Version."
+    warn "Dann fehlen M4A/MP3-Download, Hoerbuch-Export und Lautheits-Normierung (WAV geht)."
+    "$VENV_PY" -m pip install "torch>=2.6,<3" "torchvision<1" "torchaudio>=2.6,<3" "$@"
+}
 step "PyTorch (+ torchvision fuer OCR, torchaudio fuer Audio-Overview) installieren"
-if "$VENV_PY" -c "import torch, torchvision, torchaudio" >/dev/null 2>&1; then
+if "$VENV_PY" -c "import torch, torchvision, torchaudio.io" >/dev/null 2>&1; then
     ok "torch + torchvision + torchaudio bereits installiert - uebersprungen."
 else
     case "$GPU_VENDOR" in
         nvidia)
             info "Installiere torch + torchvision + torchaudio (CUDA/Default-Index) ..."
-            "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" "$TA_SPEC" ;;
+            pip_torch ;;
         amd)
             info "Installiere torch + torchvision + torchaudio (ROCm 6.3-Index) ..."
-            if ! "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" "$TA_SPEC" --index-url https://download.pytorch.org/whl/rocm6.3; then
+            if ! pip_torch --index-url https://download.pytorch.org/whl/rocm6.3; then
                 warn "ROCm-torch fehlgeschlagen - fallback auf CPU-Build."
-                "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" "$TA_SPEC" --index-url https://download.pytorch.org/whl/cpu
+                pip_torch --index-url https://download.pytorch.org/whl/cpu
             fi ;;
         apple)
             info "Installiere torch + torchvision + torchaudio (Default-Index, MPS-faehig) ..."
-            "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" "$TA_SPEC" ;;
+            pip_torch ;;
         *)
             info "Installiere torch + torchvision + torchaudio (CPU-Build) ..."
-            "$VENV_PY" -m pip install "$TORCH_SPEC" "$TV_SPEC" "$TA_SPEC" --index-url https://download.pytorch.org/whl/cpu ;;
+            pip_torch --index-url https://download.pytorch.org/whl/cpu ;;
     esac
     ok "torch + torchvision + torchaudio installiert."
 fi
@@ -309,20 +320,55 @@ else
     ollama pull bge-m3 || warn "bge-m3-Pull fehlgeschlagen (spaeter wiederholbar)."
 fi
 
-# ---- 7b) ffmpeg fuer den Hoerbuch-Export (Audio-Overview) ------------------- #
-# Einzige echte System-Abhaengigkeit der App (sonst bewusst vermieden, siehe
-# easyocr statt System-Tesseract, kein System-Graphviz bei der Mindmap):
-# torchaudios AAC-Encoder braucht ffmpeg's Shared-Libraries vom System, um
-# mehrere Audio-Overviews zu einem getaggten Hoerbuch-ZIP zu exportieren
-# (ragapp/audiobook.py). Ohne ffmpeg funktioniert die App normal weiter - nur
-# dieser eine Export-Knopf zeigt dann einen klaren Fehlerhinweis.
-step "ffmpeg fuer den Hoerbuch-Export pruefen (optional)"
+# ---- 7b) ffmpeg fuer Audio-Export, Hoerbuch, Lautheit und Vortrags-Video ---- #
+# torchaudio laedt die ffmpeg-Bibliotheken (Version 4-6) des Systems fuer M4A/MP3-
+# Download, Hoerbuch-Export und Lautheits-Normierung; der Vortrag ruft ffmpeg fuer
+# das MP4 auf. Unter Linux kommt beides am saubersten aus dem Paketmanager (Ubuntu
+# 22.04: 4.4, 24.04: 6.1, Debian 12: 5.1 - alle passend). Mit apt wird es daher
+# direkt installiert (sudo fragt ggf. nach dem Passwort); sonst gibt es einen Hinweis.
+# Ohne ffmpeg laeuft die App normal weiter, nur diese Exporte fehlen.
+step "ffmpeg fuer Audio-Export, Hoerbuch und Vortrags-Video einrichten"
 if command -v ffmpeg >/dev/null 2>&1; then
-    ok "ffmpeg gefunden - Hoerbuch-Export einsatzbereit."
+    ok "ffmpeg gefunden."
+elif [ "$OS" = "Linux" ] && command -v apt-get >/dev/null 2>&1; then
+    SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
+    info "Installiere ffmpeg ueber apt ..."
+    if $SUDO apt-get install -y ffmpeg; then
+        ok "ffmpeg installiert."
+    else
+        warn "ffmpeg-Installation fehlgeschlagen. Nachholen:  sudo apt install ffmpeg"
+    fi
+elif [ "$OS" = "Darwin" ]; then
+    warn "ffmpeg nicht gefunden. Nachinstallieren:  brew install ffmpeg@6"
 else
-    warn "ffmpeg nicht gefunden - der Hoerbuch-Export (mehrere Audio-Overviews zu"
-    warn "einem Hoerbuch buendeln) funktioniert dann nicht. Alles andere ist davon"
-    warn "nicht betroffen. Nachinstallieren:  sudo apt install ffmpeg"
+    warn "ffmpeg nicht gefunden. Bitte ueber den Paketmanager nachinstallieren"
+    warn "(z. B. 'sudo dnf install ffmpeg-free' oder 'sudo pacman -S ffmpeg')."
+fi
+if "$VENV_PY" -c "import sys, ragapp.config; from ragapp.audio_convert import available_audio_encoders as a; sys.exit(0 if {'aac', 'libmp3lame'} <= a() else 1)" >/dev/null 2>&1; then
+    ok "torchaudio findet ffmpeg - M4A/MP3, Hoerbuch-Export und Lautheits-Normierung einsatzbereit."
+else
+    warn "torchaudio findet keine passenden ffmpeg-Bibliotheken (Version 4-6) - M4A/MP3"
+    warn "und Hoerbuch-Export bleiben aus. Alles andere ist davon nicht betroffen."
+fi
+
+# ---- 7c) Marp-CLI fuer den Vortrag (Folien/Video) -------------------------- #
+# Ist Node/npm vorhanden, werden Marp-CLI und puppeteer-core gleich nach .tools/
+# installiert, damit der Vortrag spaeter offline laeuft. Ohne Node nur ein Hinweis -
+# unter Linux/macOS kommt Node am saubersten aus dem Paketmanager.
+step "Marp-CLI fuer den Vortrag bereitstellen (optional)"
+if command -v npm >/dev/null 2>&1; then
+    MARP_DIR="$ROOT/.tools/marp"
+    if [ ! -x "$MARP_DIR/node_modules/.bin/marp" ]; then
+        mkdir -p "$MARP_DIR"
+        npm install --prefix "$MARP_DIR" --no-audit --no-fund "@marp-team/marp-cli@4" \
+            || warn "Marp-CLI-Installation fehlgeschlagen (der Vortrag laedt es dann per npx nach)."
+    fi
+    "$VENV_PY" -c "from ragapp.talk import ensure_marp_shot_deps; ensure_marp_shot_deps()" \
+        && ok "Marp-CLI und puppeteer-core installiert." \
+        || warn "puppeteer-core konnte nicht installiert werden (wird beim ersten Export nachgeholt)."
+else
+    warn "Kein Node.js/npm - der Vortrag liefert dann nur Markdown und Audio, keine Folien/Video."
+    warn "Nachinstallieren z. B.:  sudo apt install nodejs npm"
 fi
 
 # ---- 8) recommend ---------------------------------------------------------- #

@@ -17,9 +17,9 @@ if (-not (Test-Path $installerDir)) {
     Write-Error "Ordner 'installer' nicht gefunden. Zuerst die Setup.exe bauen (ISCC.exe setup.iss)."
 }
 
-# Alle veroeffentlichbaren Artefakte einsammeln (Setup.exe; bei Bedarf erweitern).
+# Alle veroeffentlichbaren Artefakte einsammeln (Setup.exe, Linux-Paket .tar.gz).
 $files = Get-ChildItem -Path $installerDir -File |
-    Where-Object { $_.Extension -in @(".exe", ".zip") }
+    Where-Object { $_.Extension -in @(".exe", ".zip") -or $_.Name -like "*.tar.gz" }
 
 if (-not $files) {
     Write-Error "Keine .exe/.zip in 'installer' gefunden."
