@@ -253,16 +253,28 @@ try {
     # torchaudio nur fuers TTS - beide laufen bewusst auf der CPU (langsamer,
     # aber deutlich zuverlaessiger auf Windows als ein GPU-Build). Darum
     # ueberall der schlanke CPU-Build statt des CUDA-Builds.
-    Write-Step "PyTorch + torchaudio installieren (Reranker + Audio-Overview, laeuft auf der CPU)"
-    & $VenvPy -c "import torch, torchaudio" 1>$null 2>$null
+    #
+    # torchvision (fuer easyocr) kommt bewusst aus DEMSELBEN Index wie bei install.sh:
+    # sonst zieht easyocr spaeter ein torchvision von PyPI nach, das eine neuere torch
+    # erzwingt - die passt dann nicht mehr zu torchaudio.
+    # Obergrenze <2.9: ab torchaudio 2.9 fehlen torchaudio.io (StreamWriter) und
+    # utils.ffmpeg_utils, und load/save brauchen torchcodec - darauf bauen M4A/MP3-
+    # Download, Hoerbuch-Export und Lautheits-Normierung. Fuer ein sehr neues Python
+    # ohne torch 2.6-2.8 (z. B. 3.14) faellt der Schritt auf die neueste Version zurueck.
+    Write-Step "PyTorch + torchvision + torchaudio installieren (Reranker, OCR, Audio-Overview; CPU)"
+    & $VenvPy -c "import torch, torchvision, torchaudio.io" 1>$null 2>$null
     if ($LASTEXITCODE -eq 0) {
-        Write-Ok "torch + torchaudio sind bereits installiert - uebersprungen."
+        Write-Ok "torch + torchvision + torchaudio sind bereits installiert - uebersprungen."
     } else {
-        Write-Info "Installiere torch + torchaudio (schlanker CPU-Build) ..."
-        # Untergrenze 2.6 (Chatterbox braucht mindestens das), Obergrenze <3 als
-        # konservativer Schutz vor einem kuenftigen, brechenden Major-Release.
-        Invoke-Native -File $VenvPy -Arguments @('-m','pip','install','torch>=2.6,<3','torchaudio>=2.6,<3','--index-url','https://download.pytorch.org/whl/cpu') -What "torch + torchaudio (CPU)"
-        Write-Ok "torch + torchaudio installiert."
+        Write-Info "Installiere torch + torchvision + torchaudio (schlanker CPU-Build) ..."
+        try {
+            Invoke-Native -File $VenvPy -Arguments @('-m','pip','install','torch>=2.6,<2.9','torchvision<0.24','torchaudio>=2.6,<2.9','--index-url','https://download.pytorch.org/whl/cpu') -What "torch + torchvision + torchaudio (CPU)"
+        } catch {
+            Write-Warn2 "torch 2.6-2.8 gibt es fuer dieses Python nicht - installiere die neueste Version."
+            Write-Warn2 "Dann fehlen M4A/MP3-Download, Hoerbuch-Export und Lautheits-Normierung (WAV geht)."
+            Invoke-Native -File $VenvPy -Arguments @('-m','pip','install','torch>=2.6,<3','torchvision<1','torchaudio>=2.6,<3','--index-url','https://download.pytorch.org/whl/cpu') -What "torch + torchvision + torchaudio (CPU)"
+        }
+        Write-Ok "torch + torchvision + torchaudio installiert."
     }
 
     # ---- 5) chatterbox-tts (Audio-Overview-TTS) ----------------------------- #
@@ -399,13 +411,24 @@ try {
     # Overviews zu einem getaggten Hoerbuch-ZIP zu exportieren (ragapp/
     # audiobook.py). Ohne ffmpeg funktioniert die App normal weiter - nur
     # dieser eine Export-Knopf zeigt dann einen klaren Fehlerhinweis.
-    Write-Step "ffmpeg fuer den Hoerbuch-Export pruefen (optional)"
+    # Unter Windows sind das zwei Dinge: ffmpeg.exe (Vortrag als MP4) und die
+    # ffmpeg-DLLs fuer torchaudio (Version 4-6, "shared"-Build im PATH; fuer M4A/MP3-
+    # Download, Hoerbuch-Export und Lautheits-Normierung). Das reine ffmpeg.exe aus
+    # "winget install ffmpeg" genuegt torchaudio nicht.
+    Write-Step "ffmpeg fuer Hoerbuch-Export und Vortrags-Video pruefen (optional)"
     if (Get-Command ffmpeg -ErrorAction SilentlyContinue) {
-        Write-Ok "ffmpeg gefunden - Hoerbuch-Export einsatzbereit."
+        Write-Ok "ffmpeg.exe gefunden - Vortrag als MP4 moeglich."
     } else {
-        Write-Warn2 "ffmpeg nicht gefunden - der Hoerbuch-Export (mehrere Audio-Overviews zu"
-        Write-Warn2 "einem Hoerbuch buendeln) funktioniert dann nicht. Alles andere ist davon"
-        Write-Warn2 "nicht betroffen. Nachinstallieren:  winget install ffmpeg"
+        Write-Warn2 "ffmpeg.exe nicht gefunden - Vortrag als MP4 geht dann nicht."
+        Write-Warn2 "Nachinstallieren:  winget install ffmpeg"
+    }
+    & $VenvPy -c "import sys; from ragapp.audio_convert import available_audio_encoders as a; sys.exit(0 if 'aac' in a() else 1)" 1>$null 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Ok "ffmpeg-Bibliotheken fuer torchaudio gefunden - Hoerbuch-/M4A-Export einsatzbereit."
+    } else {
+        Write-Warn2 "torchaudio findet keine ffmpeg-Bibliotheken (Version 4-6) - M4A/MP3-Download,"
+        Write-Warn2 "Hoerbuch-Export und Lautheits-Normierung gehen dann nicht (WAV und alles andere schon)."
+        Write-Warn2 "Abhilfe: einen FFmpeg-6-'shared'-Build entpacken und dessen bin-Ordner in den PATH legen."
     }
 
     # ---- 8) recommend: Hardware messen, Modell waehlen/laden/testen -------- #

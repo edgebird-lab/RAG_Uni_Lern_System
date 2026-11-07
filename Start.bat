@@ -18,5 +18,10 @@ setlocal
 cd /d "%~dp0"
 set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8
+REM Wie start.sh: bei einem nativen Absturz (torch/chromadb) noch einen Traceback
+REM ins Log schreiben, und ungepuffert, damit data\app.log schon waehrend des
+REM Laufs mitliest (sonst steht dort erst nach dem Beenden etwas).
+set PYTHONFAULTHANDLER=1
+set PYTHONUNBUFFERED=1
 if not exist "data" mkdir "data"
-".venv\Scripts\python.exe" -m ragapp.desktop > "data\app.log" 2>&1
+".venv\Scripts\python.exe" -u -m ragapp.desktop > "data\app.log" 2>&1
