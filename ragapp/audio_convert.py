@@ -17,6 +17,8 @@ import io
 import tempfile
 from pathlib import Path
 
+import ragapp.config  # noqa: F401 - stellt ein mitgeliefertes ffmpeg (.tools/ffmpeg) bereit
+
 # label = UI-Text, ext = Datei-Endung, mime = fuer st.download_button(),
 # encoder = torchaudio/ffmpeg-Encoder-Name ("" = WAV, keine Konvertierung noetig).
 SUPPORTED_FORMATS: dict[str, dict] = {

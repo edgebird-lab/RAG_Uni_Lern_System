@@ -46,6 +46,55 @@ from typing import Any
 # Projektwurzel = d:\RAG  (zwei Ebenen über dieser Datei: ragapp/config.py)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+# --------------------------------------------------------------------------- #
+# Mitgelieferte Werkzeuge (.tools/) fuer diesen Prozess bereitstellen
+# --------------------------------------------------------------------------- #
+# Der Windows-Installer legt ffmpeg (shared-Build) nach .tools/ffmpeg und bei Bedarf
+# ein portables Node.js nach .tools/node. Beides muss weder im System-PATH stehen
+# noch braucht es Adminrechte: Hier kommt es in den PATH dieses Prozesses (Kind-
+# prozesse wie Streamlit, ffmpeg, npx erben ihn). torchaudio sucht die ffmpeg-DLLs
+# unter Windows ab Python 3.8 NICHT mehr ueber den PATH, sondern nur in Ordnern aus
+# os.add_dll_directory - deshalb wird der bin-Ordner zusaetzlich dort eingetragen,
+# und zwar auch fuer ein ffmpeg, das der Nutzer selbst in den PATH gelegt hat.
+# config.py wird praktisch ueberall zuerst importiert, also vor torchaudio.
+_DLL_DIR_HANDLES: list = []
+
+
+def _add_dll_dir(path: Path) -> None:
+    if hasattr(os, "add_dll_directory"):
+        try:
+            _DLL_DIR_HANDLES.append(os.add_dll_directory(str(path)))
+        except OSError:
+            pass
+
+
+def _provide_bundled_tools() -> None:
+    import shutil
+    exe = ".exe" if os.name == "nt" else ""
+    extra: list[str] = []
+    ff_bins = [Path(os.environ["RAG_FFMPEG_DIR"])] if os.environ.get("RAG_FFMPEG_DIR") else []
+    ff_bins.append(PROJECT_ROOT / ".tools" / "ffmpeg")
+    for base in ff_bins:
+        bindir = base / "bin" if (base / "bin").is_dir() else base
+        if (bindir / f"ffmpeg{exe}").is_file():
+            extra.append(str(bindir))
+            _add_dll_dir(bindir)
+            break
+    else:
+        on_path = shutil.which("ffmpeg")
+        if on_path and os.name == "nt" and any(Path(on_path).parent.glob("avutil-*.dll")):
+            _add_dll_dir(Path(on_path).parent)
+    node_dir = PROJECT_ROOT / ".tools" / "node"
+    if (node_dir / f"node{exe}").is_file() or (node_dir / "bin" / "node").is_file():
+        extra.append(str(node_dir if os.name == "nt" else node_dir / "bin"))
+    if extra:
+        parts = os.environ.get("PATH", "").split(os.pathsep)
+        os.environ["PATH"] = os.pathsep.join(
+            [p for p in extra if p not in parts] + parts)
+
+
+_provide_bundled_tools()
+
 # Quell-Dokumente: nimmt den ersten existierenden Kandidaten (portabel).
 # Auf diesem Rechner "Zusammenfassungen SoSE26"; bei einer frischen Installation
 # der generische Ordner "Zusammenfassungen". Kann per Umgebungsvariable

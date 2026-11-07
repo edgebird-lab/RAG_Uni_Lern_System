@@ -382,7 +382,7 @@ def test_build_ffmpeg_concat_cmd_structure(tmp_path):
     out = tmp_path / "o.mp4"
     audio.write_bytes(b"x")
     cmd = build_ffmpeg_concat_cmd(concat, audio, out)
-    assert cmd[0].endswith("ffmpeg") or cmd[0] == "ffmpeg"
+    assert Path(cmd[0]).stem.lower() == "ffmpeg"   # auch "...\\ffmpeg.EXE" unter Windows
     assert "-f" in cmd and "concat" in cmd
     assert str(audio) in cmd
     assert str(out) in cmd

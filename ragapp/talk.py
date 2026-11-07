@@ -1426,6 +1426,11 @@ def find_marp_cli() -> Optional[list[str]]:
     which = shutil.which("marp")
     if which:
         return [which]
+    # Vom Installer vorab nach .tools/marp installiert (laeuft dann offline, ohne npx-Download).
+    local_bin = Path(__file__).resolve().parents[1] / ".tools" / "marp" / "node_modules" / ".bin"
+    for name in ("marp.cmd", "marp"):
+        if (local_bin / name).is_file() and shutil.which("node"):
+            return [str(local_bin / name)]
     npx = shutil.which("npx")
     if npx:
         return [npx, "--yes", "@marp-team/marp-cli"]

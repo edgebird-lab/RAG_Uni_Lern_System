@@ -4,6 +4,8 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+import ragapp.config  # noqa: F401 - stellt ein mitgeliefertes ffmpeg (.tools/ffmpeg) bereit
+
 # Audible/ACX-typische Sprach-Ziele: -16 LUFS, True-Peak -1.5 dB.
 LOUDNORM_FILTER = "loudnorm=I=-16:TP=-1.5:LRA=11"
 
