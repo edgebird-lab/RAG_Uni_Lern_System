@@ -33,6 +33,25 @@ class AudioConvertError(RuntimeError):
     """Konvertierung fehlgeschlagen (Encoder fehlt, kaputte Eingabedatei)."""
 
 
+# torchaudio (2.6-2.8) laedt die ffmpeg-Bibliotheken des Systems (Version 4-6). Unter
+# Linux liefert sie das Paket "ffmpeg"; unter Windows braucht es einen "shared"-Build,
+# dessen bin-Ordner im PATH liegt (das reine ffmpeg.exe genuegt torchaudio nicht).
+FFMPEG_INSTALL_HINT = (
+    "unter Linux hilft `sudo apt install ffmpeg`; unter Windows einen FFmpeg-6-"
+    "„shared“-Build entpacken und dessen bin-Ordner in den PATH aufnehmen")
+
+
+def available_audio_encoders() -> "set[str]":
+    """Namen der Audio-Encoder, die torchaudios ffmpeg-Backend kennt. Leere Menge,
+    wenn die ffmpeg-Bibliotheken fehlen (dann wirft schon der Import von
+    ``ffmpeg_utils`` bzw. der erste Aufruf einen ImportError/OSError)."""
+    try:
+        from torchaudio.utils import ffmpeg_utils
+        return set(ffmpeg_utils.get_audio_encoders())
+    except Exception:  # noqa: BLE001 - jede Ladepanne heisst: kein Encoder verfuegbar
+        return set()
+
+
 def convert_wav_bytes(wav_bytes: bytes, target_format: str) -> bytes:
     """Wandelt WAV-Bytes in das gewuenschte Zielformat (siehe SUPPORTED_FORMATS)
     um. ``target_format="wav"`` gibt die Eingabe unveraendert zurueck (kein
@@ -47,17 +66,17 @@ def convert_wav_bytes(wav_bytes: bytes, target_format: str) -> bytes:
 
     import torchaudio
     import torchaudio.io as tio
-    from torchaudio.utils import ffmpeg_utils
 
     # Gleiche Absicherung wie beim Hoerbuch-Export: klar abbrechen statt
     # kryptisch mitten in der Kodierung zu crashen, wenn der System-ffmpeg
-    # (torchaudios Backend) den Encoder nicht mitbringt.
-    if spec["encoder"] not in ffmpeg_utils.get_audio_encoders():
+    # (torchaudios Backend) den Encoder nicht mitbringt. Fehlen die ffmpeg-
+    # Bibliotheken ganz (typisch unter Windows), wirft schon der Import von
+    # ffmpeg_utils - das zaehlt hier genauso als "Encoder fehlt".
+    if spec["encoder"] not in available_audio_encoders():
         raise AudioConvertError(
             f"Für {target_format.upper()} wird der Encoder „{spec['encoder']}\" benötigt, "
             "den torchaudio hier nicht findet - meist fehlt dafür ffmpeg auf dem "
-            "System (unter Linux hilft `sudo apt install ffmpeg`, danach die App "
-            "neu starten).")
+            f"System ({FFMPEG_INSTALL_HINT}, danach die App neu starten).")
 
     try:
         wav, sr = torchaudio.load(io.BytesIO(wav_bytes))

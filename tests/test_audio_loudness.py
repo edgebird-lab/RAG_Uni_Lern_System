@@ -7,6 +7,7 @@ import pytest
 
 torch = pytest.importorskip("torch")          # schwer: fehlt in der schlanken CI -> Modul wird uebersprungen
 
+from ragapp.audio_convert import available_audio_encoders
 from ragapp.audio_loudness import LOUDNORM_FILTER, loudnorm_waveform
 
 
@@ -21,6 +22,8 @@ def test_loudnorm_filter_ist_ebu_sprache():
     assert "TP=-1.5" in LOUDNORM_FILTER
 
 
+@pytest.mark.skipif(not available_audio_encoders(),
+                    reason="ffmpeg-Backend von torchaudio fehlt (loudnorm-Filter)")
 def test_loudnorm_zieht_leise_und_laute_clips_zusammen():
     quiet, sr = _sine(0.05)
     loud, _ = _sine(0.8)

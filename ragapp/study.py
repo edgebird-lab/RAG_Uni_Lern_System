@@ -559,7 +559,13 @@ def _scheduler() -> Scheduler:
 
 
 def _to_utc(ts: "float | None") -> "datetime | None":
-    return datetime.fromtimestamp(float(ts), tz=timezone.utc) if ts is not None else None
+    if ts is None:
+        return None
+    # Epoche + timedelta statt datetime.fromtimestamp: Letzteres wirft unter Windows bei
+    # Zeitstempeln vor 1970 (z. B. in Tests mit now=0) OSError [Errno 22]. Lokaler Import,
+    # damit die Funktion auch isoliert geladen (tests/test_study_fsrs.py) funktioniert.
+    from datetime import timedelta
+    return datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=float(ts))
 
 
 def fsrs_next(rating: int, card_row: dict, now: "float | None" = None,

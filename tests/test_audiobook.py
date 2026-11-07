@@ -14,6 +14,12 @@ torch = pytest.importorskip("torch")          # schwer: fehlt in der schlanken C
 torchaudio = pytest.importorskip("torchaudio")
 
 from ragapp import audiobook, manifest
+from ragapp.audio_convert import available_audio_encoders
+
+# Echtes Kodieren braucht torchaudios ffmpeg-Backend (System-ffmpeg 4-6); fehlt es
+# (z. B. Windows ohne FFmpeg-shared-Build im PATH), diese Tests ueberspringen.
+needs_aac = pytest.mark.skipif("aac" not in available_audio_encoders(),
+                               reason="ffmpeg-Backend von torchaudio (AAC) fehlt")
 
 
 @pytest.fixture()
@@ -64,6 +70,7 @@ def test_fehlende_audiodatei_wirft_error(isolated_env):
         audiobook.export_audiobook([oid], "Mein Buch")
 
 
+@needs_aac
 def test_export_erzeugt_zip_mit_korrekter_kapitel_reihenfolge_und_tags(isolated_env):
     oid1 = _make_overview(isolated_env, title="Kapitel Eins", filename="a.wav")
     oid2 = _make_overview(isolated_env, title="Kapitel Zwei", filename="b.wav")
@@ -77,6 +84,7 @@ def test_export_erzeugt_zip_mit_korrekter_kapitel_reihenfolge_und_tags(isolated_
     assert names == ["01 - Kapitel Eins.m4a", "02 - Kapitel Zwei.m4a"]
 
 
+@needs_aac
 def test_export_reihenfolge_folgt_uebergebener_liste_nicht_erstellungsreihenfolge(isolated_env):
     # oid2 wurde ZUERST angelegt, soll aber als KAPITEL 2 exportiert werden,
     # weil die uebergebene overview_ids-Liste das so vorgibt
@@ -89,6 +97,7 @@ def test_export_reihenfolge_folgt_uebergebener_liste_nicht_erstellungsreihenfolg
     assert names == ["01 - Wird Kapitel Eins.m4a", "02 - Wird Kapitel Zwei.m4a"]
 
 
+@needs_aac
 def test_zip_eintraege_haben_keine_ueberfluessigen_temp_dateien_hinterlassen(isolated_env):
     oid = _make_overview(isolated_env, title="Einzelkapitel", filename="a.wav")
     audiobook.export_audiobook([oid], "Solobuch")
@@ -96,6 +105,7 @@ def test_zip_eintraege_haben_keine_ueberfluessigen_temp_dateien_hinterlassen(iso
     assert leftover == []
 
 
+@needs_aac
 def test_on_progress_wird_je_kapitel_aufgerufen(isolated_env):
     oid1 = _make_overview(isolated_env, title="Eins", filename="a.wav")
     oid2 = _make_overview(isolated_env, title="Zwei", filename="b.wav")
@@ -114,6 +124,7 @@ def test_safe_filename_leer_nach_bereinigung_gibt_fallback():
     assert audiobook._safe_filename("###???") == "Hoerbuch"
 
 
+@needs_aac
 def test_fehler_beim_kodieren_raeumt_bereits_erzeugte_temp_dateien_auf(isolated_env, monkeypatch):
     oid1 = _make_overview(isolated_env, title="Eins", filename="a.wav")
     oid2 = _make_overview(isolated_env, title="Zwei", filename="b.wav")

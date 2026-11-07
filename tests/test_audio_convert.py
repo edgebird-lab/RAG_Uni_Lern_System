@@ -15,6 +15,12 @@ from ragapp import audio_convert
 # Das echte Enkodieren laeuft ueber torchaudio (schwer: fehlt in der schlanken CI).
 needs_torchaudio = pytest.mark.skipif(
     importlib.util.find_spec("torchaudio") is None, reason="torchaudio nicht installiert")
+# ... und fuer M4A/MP3 dessen ffmpeg-Backend (System-ffmpeg 4-6; fehlt z. B. unter Windows
+# ohne FFmpeg-shared-Build im PATH).
+needs_encoders = pytest.mark.skipif(
+    importlib.util.find_spec("torchaudio") is None
+    or not {"aac", "libmp3lame"} <= audio_convert.available_audio_encoders(),
+    reason="ffmpeg-Backend von torchaudio (AAC/MP3) fehlt")
 
 
 @pytest.fixture()
@@ -43,7 +49,7 @@ def test_convert_wav_bytes_unbekanntes_format_wirft_fehler(tiny_wav_bytes):
         audio_convert.convert_wav_bytes(tiny_wav_bytes, "ogg")
 
 
-@needs_torchaudio
+@needs_encoders
 def test_convert_wav_bytes_nach_m4a_liefert_kleinere_valide_datei(tiny_wav_bytes):
     out = audio_convert.convert_wav_bytes(tiny_wav_bytes, "m4a")
     assert isinstance(out, bytes)
@@ -52,7 +58,7 @@ def test_convert_wav_bytes_nach_m4a_liefert_kleinere_valide_datei(tiny_wav_bytes
     assert b"ftyp" in out[:64]
 
 
-@needs_torchaudio
+@needs_encoders
 def test_convert_wav_bytes_nach_mp3_liefert_valide_datei(tiny_wav_bytes):
     out = audio_convert.convert_wav_bytes(tiny_wav_bytes, "mp3")
     assert isinstance(out, bytes)

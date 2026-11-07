@@ -82,7 +82,7 @@ def export_audiobook(overview_ids: list[str], book_title: str, *,
 
     import torchaudio
     import torchaudio.io as tio
-    from torchaudio.utils import ffmpeg_utils
+    from ragapp.audio_convert import FFMPEG_INSTALL_HINT, available_audio_encoders
 
     # torchaudios AAC-Encoder braucht die ffmpeg-Shared-Libraries des
     # SYSTEMS (bestaetigt per ldd: das venv bringt sie NICHT selbst mit, nur
@@ -92,11 +92,11 @@ def export_audiobook(overview_ids: list[str], book_title: str, *,
     # System-Abhaengigkeit (``apt install ffmpeg`` unter Linux, siehe
     # install.sh). Klar abbrechen statt kryptisch mitten in der Kodierung zu
     # crashen, wenn sie fehlt.
-    if "aac" not in ffmpeg_utils.get_audio_encoders():
+    if "aac" not in available_audio_encoders():
         raise AudiobookError(
             "Für den Hörbuch-Export wird ein AAC-Encoder benötigt, den torchaudio "
-            "hier nicht findet - meist fehlt dafür ffmpeg auf dem System. Unter "
-            "Linux hilft `sudo apt install ffmpeg` (danach die App neu starten).")
+            "hier nicht findet - meist fehlt dafür ffmpeg auf dem System "
+            f"({FFMPEG_INSTALL_HINT}, danach die App neu starten).")
 
     AUDIOBOOK_DIR.mkdir(parents=True, exist_ok=True)
     total = len(rows)

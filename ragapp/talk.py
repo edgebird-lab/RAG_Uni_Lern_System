@@ -18,6 +18,7 @@ import logging
 import re
 import shutil
 import subprocess
+import sys
 import uuid
 from pathlib import Path
 from typing import Callable, Optional
@@ -1440,15 +1441,34 @@ def marp_install_hint() -> str:
     )
 
 
+def _windows_chrome_candidates() -> list[str]:
+    """Uebliche Installationsorte von Chrome (und Edge als Chromium-Ersatz) unter
+    Windows - dort liegen sie meist nicht im PATH."""
+    import os
+    env = os.environ
+    roots = [env.get("PROGRAMFILES"), env.get("PROGRAMFILES(X86)"), env.get("LOCALAPPDATA")]
+    out = []
+    for rel in (r"Google\Chrome\Application\chrome.exe",
+                r"Microsoft\Edge\Application\msedge.exe"):
+        out += [str(Path(r) / rel) for r in roots if r]
+    return out
+
+
 def find_chrome_binary() -> Optional[str]:
     """Echte Chrome-Binary (nicht der nosandbox-Wrapper) fuer Puppeteer."""
     for name in ("google-chrome-stable", "google-chrome", "chromium", "chromium-browser"):
         p = shutil.which(name)
         if p:
             return p
+    if sys.platform == "win32":
+        for cand in _windows_chrome_candidates():
+            if Path(cand).is_file():
+                return cand
     cache = Path.home() / ".cache" / "puppeteer" / "chrome"
     if cache.is_dir():
         matches = sorted(cache.glob("linux-*/chrome-linux64/chrome"))
+        if sys.platform == "win32":
+            matches = sorted(cache.glob("win64-*/chrome-win64/chrome.exe"))
         if matches:
             return str(matches[-1])
     return None
@@ -1464,6 +1484,10 @@ def find_chrome_for_marp() -> Optional[str]:
     chrome = find_chrome_binary()
     if not chrome:
         return None
+    if sys.platform == "win32":
+        # Kein Bash-Wrapper unter Windows (ein .sh liesse sich dort nicht starten);
+        # die Linux-Sandbox-Probleme (AppArmor/userns) gibt es hier nicht.
+        return chrome
     wrap = TALK_DIR / ".chrome-nosandbox.sh"
     TALK_DIR.mkdir(parents=True, exist_ok=True)
     body = (
