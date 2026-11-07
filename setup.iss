@@ -72,7 +72,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 ; __pycache__/*.pyc NICHT mitliefern - Python kompiliert beim ersten Start frisch
 ; (verhindert veralteten Bytecode und haelt den Installer sauber/kleiner).
 Source: "ragapp\*";               DestDir: "{app}\ragapp";      Excludes: "*.pyc,*\__pycache__\*"; Flags: recursesubdirs createallsubdirs
-Source: "docs\*.md";              DestDir: "{app}\docs";        Excludes: "Lernkatalog_*.md"; Flags: skipifsourcedoesntexist
+Source: "docs\*.md";              DestDir: "{app}\docs";        Excludes: "Lernkatalog_*.md,Zusammenfassung_*.md"; Flags: skipifsourcedoesntexist
 Source: ".streamlit\config.toml"; DestDir: "{app}\.streamlit"
 Source: "requirements.txt";       DestDir: "{app}"
 Source: "install.ps1";            DestDir: "{app}"
