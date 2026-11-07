@@ -118,3 +118,8 @@ Type: filesandordirs; Name: "{app}\ipex-ollama"
 ; vom Installer geladene Werkzeuge (ffmpeg, Node.js, Marp-CLI, puppeteer-core)
 Type: filesandordirs; Name: "{app}\.tools"
 Type: filesandordirs; Name: "{app}\__pycache__"
+; Bytecode-Ordner, die Python neben den installierten Dateien anlegt, und Installer-Reste
+Type: filesandordirs; Name: "{app}agapp"
+Type: files; Name: "{app}\install-log.txt"
+Type: files; Name: "{app}\ipex-ollama.zip"
+Type: files; Name: "{app}\ipex-ollama-serve.log"

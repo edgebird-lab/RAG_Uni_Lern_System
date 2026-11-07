@@ -368,20 +368,19 @@ try {
                 Write-Info "IPEX-Zip bereits vorhanden - wird wiederverwendet."
             }
             Write-Info "Entpacke IPEX-LLM ..."
-            Expand-Archive -LiteralPath $IpexZip -DestinationPath $Root -Force -ErrorAction Stop
-            # Das Zip entpackt in einen Unterordner (ollama-ipex-llm-...-win).
+            # In einen Temp-Ordner entpacken: Je nach Version liegt der Inhalt im Zip in
+            # einem Unterordner (ollama-ipex-llm-...-win) oder direkt auf oberster Ebene -
+            # Letzteres verstreute frueher DLLs und ollama.exe in den App-Ordner.
             # Inhalt nach .\ipex-ollama\ normalisieren, damit Start_GPU_Ollama.bat passt.
-            if (-not (Test-Path -LiteralPath $IpexExe)) {
-                $found = Get-ChildItem -LiteralPath $Root -Recurse -Filter 'ollama.exe' -ErrorAction SilentlyContinue |
-                         Where-Object { $_.FullName -notmatch '\\\.venv\\' } | Select-Object -First 1
-                if ($found) {
-                    $srcDir = $found.Directory.FullName
-                    if ($srcDir -ne $IpexDir) {
-                        if (-not (Test-Path -LiteralPath $IpexDir)) { New-Item -ItemType Directory -Path $IpexDir | Out-Null }
-                        Copy-Item -Path (Join-Path $srcDir '*') -Destination $IpexDir -Recurse -Force
-                    }
-                }
+            $ipexTmp = Join-Path $env:TEMP ('rag-ipex-' + [guid]::NewGuid().ToString('N'))
+            Expand-Archive -LiteralPath $IpexZip -DestinationPath $ipexTmp -Force -ErrorAction Stop
+            $found = Get-ChildItem -LiteralPath $ipexTmp -Recurse -Filter 'ollama.exe' -ErrorAction SilentlyContinue |
+                     Select-Object -First 1
+            if ($found) {
+                if (-not (Test-Path -LiteralPath $IpexDir)) { New-Item -ItemType Directory -Path $IpexDir | Out-Null }
+                Copy-Item -Path (Join-Path $found.Directory.FullName '*') -Destination $IpexDir -Recurse -Force
             }
+            Remove-Item -LiteralPath $ipexTmp -Recurse -Force -ErrorAction SilentlyContinue
             if (-not (Test-Path -LiteralPath $IpexExe)) {
                 throw "ipex-ollama\ollama.exe wurde nach dem Entpacken nicht gefunden."
             }
