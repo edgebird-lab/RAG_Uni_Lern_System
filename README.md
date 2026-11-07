@@ -141,13 +141,76 @@ eigenen Kurs- und Klausurunterlagen bleiben ausschließlich auf deinem Rechner:
 
 ## 📸 Screenshots
 
+Aufgenommen unter Windows 11 mit `gemma3:4b` auf einer Intel-Arc-iGPU (IPEX-LLM) und echten
+Uni-Unterlagen; Antworten, Dialog, Bewertung, Zusammenfassung und Lernplan stammen vom Modell.
+
+**🏠 Home – was heute dran ist: fällige Karten, Rückstand und der nächste Schritt mit einem Klick**
+
+![Home](docs/img/home.png)
+
 **💬 Chat – Fragen an deine Unterlagen, belegte Antworten mit Quellenangaben (und ehrlichem „weiß ich nicht", statt zu halluzinieren)**
 
 ![Chat](docs/img/chat.png)
 
-**📥 Ingestion – Dokumente hochladen oder ganzen Quellordner importieren; automatische Deduplizierung, OCR für Scans, Fach-Zuordnung**
+**🧭 Sokratischer Dialog – die KI fragt, du antwortest; Hinweis, Teilweise, Auflösen oder Nächster Aspekt**
 
-![Dokumente & Ingestion](docs/img/ingestion.png)
+![Sokratischer Dialog](docs/img/sokratisch.png)
+
+**🗃️ Dokumente – Fächer als Ordner, Upload mit Fach-Zuordnung, Bibliothek mit Index-Status (früher „Ingestion“)**
+
+![Dokumente](docs/img/ingestion.png)
+
+**🗂️ Kurse & Stundenplan – je Fach Unterlagen, Lernstand, fällige Karten und die nächste Aktion**
+
+![Kurse & Stundenplan](docs/img/kurse.png)
+
+**🎓 Karteikarten – Spaced Repetition mit FSRS-6, Quelle und Seite zu jeder Karte, Bewertung per Klick oder Taste 1–3**
+
+![Karteikarten & Spaced Repetition](docs/img/lernen.png)
+
+**📈 Fortschritt – Behalten-Schätzung und Vergessenskurve aus echten Wiederholungen, Analyse, Errungenschaften, Datenexport**
+
+![Fortschritt & Analytics](docs/img/fortschritt.png)
+
+**📝 Prüfung – schriftlich mit Zeitlimit oder mündlich Frage für Frage; die KI bewertet jede Antwort und nennt, was fehlt**
+
+![Probeklausur](docs/img/pruefung.png)
+
+**📄 Zusammenfassung schreiben – gegroundete Markdown-Zusammenfassung je Dokument/Fach, Abschnitt für Abschnitt**
+
+![Zusammenfassung schreiben](docs/img/zusammenfassung.png)
+
+**📋 Lernplan – Schrittleiste, Lerneinheiten je Thema, Lernstand und Termine auf den Kacheln**
+
+![Lernplan](docs/img/lernplan.png)
+
+**📋 Lernplan auf dem Handy – dieselbe Seite bei 390 px Breite**
+
+<img src="docs/img/lernplan-handy.png" alt="Lernplan auf dem Handy" width="320" />
+
+**🧠 Mindmap – Themenbaum aus dem Inhaltsverzeichnis eines Dokuments, nur vorhandener Stoff**
+
+![Mindmap](docs/img/mindmap.png)
+
+**🧮 Übungsaufgaben – mehrschrittige Rechen- und Anwendungsaufgaben aus deinem Stoff, mit Musterlösung**
+
+![Übungsaufgaben](docs/img/uebungsaufgaben.png)
+
+**⏱️ Lernzeit – Pomodoro oder freie Stoppuhr, echte Lernzeit je Fach**
+
+![Lernzeit](docs/img/lernzeit.png)
+
+**📚 Semester einrichten – Modulhandbuch oder Prüfungsordnung hochladen, die KI übernimmt Fächer, Klausurtermine und ECTS**
+
+![Semester einrichten](docs/img/semesterplan.png)
+
+**🎧 Audio-Übersicht – Erklär-Skript aus deinen Unterlagen, vorgelesen mit deiner eigenen (geklonten) Stimme**
+
+![Audio-Übersicht](docs/img/audio-overview.png)
+
+**🎤 Vortrag – Marp-Folien und Sprecher-Skript aus Unterlagen, vertont, optional als MP4**
+
+![Vortrag](docs/img/vortrag.png)
 
 **📊 Evaluation – misst die Trefferquote (Hit@k / MRR) über ein Held-out-Gold-Set gegen die echte Retrieval-Pipeline**
 
@@ -156,34 +219,6 @@ eigenen Kurs- und Klausurunterlagen bleiben ausschließlich auf deinem Rechner:
 **⚙️ Einstellungen – automatische Hardware-Erkennung & Modellwahl, tok/s-Benchmark und alle Tuning-Parameter**
 
 ![Einstellungen & Modellwahl](docs/img/settings.png)
-
-**🎓 Lernen – Karteikarten mit Spaced Repetition (FSRS-6) und vier Übungsmodi: Aufdecken, Tippen & Benoten, Lückentext, Multiple Choice**
-
-![Karteikarten & Spaced Repetition](docs/img/lernen.png)
-
-**📈 Fortschritt – objektiver Lernstand aus echten Wiederholungen: Mastery, Streak, Klausur-Bereitschaft, Leech-Erkennung und Klausurtermin-Priorisierung**
-
-![Fortschritt & Analytics](docs/img/fortschritt.png)
-
-**📝 Prüfung – schriftlich mit Zeitlimit oder mündlich Frage für Frage**
-
-![Probeklausur](docs/img/pruefung.png)
-
-**📄 Zusammenfassung schreiben – gegroundete Markdown-Zusammenfassung je Dokument/Fach (großes „Autoren"-Modell, nur aus deinen Inhalten)**
-
-![Zusammenfassung schreiben](docs/img/zusammenfassung.png)
-
-**📋 Lernplan – Schrittleiste, Lerneinheiten je Thema, Lernstand und Termine auf den Kacheln (Beispieldaten)**
-
-![Lernplan](docs/img/lernplan.png)
-
-**📋 Lernplan auf dem Handy – dieselbe Seite bei 390 px Breite**
-
-<img src="docs/img/lernplan-handy.png" alt="Lernplan auf dem Handy" width="320" />
-
-**🧭 Sokratischer Dialog – die KI fragt, du antwortest; Hinweis, Teilweise, Auflösen oder Nächster Aspekt (Beispieldaten)**
-
-![Sokratischer Dialog](docs/img/sokratisch.png)
 
 ---
 

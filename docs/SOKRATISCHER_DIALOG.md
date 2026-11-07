@@ -10,7 +10,7 @@ Im **💬 Chat** wählst du den **Gesprächsmodus**:
 
 ![Sokratischer Dialog: Einstiegsfrage, Antwort, Hinweis – darunter die vier Impulse](img/sokratisch.png)
 
-> Die Beispiel-Unterlagen im Bild sind ausgedacht. Die Antworten stammen vom echten Modell.
+> Im Bild: echte Unterlagen (Kosten- und Leistungsrechnung), die Fragen und Hinweise stammen von `gemma3:4b`.
 
 Im sokratischen Modus gibt es unter jeder offenen Frage vier Impulse:
 

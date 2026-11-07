@@ -7,8 +7,8 @@ App sagt dir, was als Nächstes dran ist.
 
 ![Lernplan: Schrittleiste, Lerneinheiten, Themenkacheln](img/lernplan.png)
 
-> Die Bilder zeigen ausgedachte Beispiel-Skripte („Vektorrechnung“, „Matrizen“) – keine echten
-> Unterlagen. Die wissenschaftliche Herleitung der Zeitschätzung steht in
+> Die Bilder zeigen einen Plan aus zwei echten Statistik-Vorlesungen; Gliederung, Karten und
+> Übungen hat `gemma3:4b` erzeugt. Die wissenschaftliche Herleitung der Zeitschätzung steht in
 > [LERNPLAN_FORSCHUNG.md](LERNPLAN_FORSCHUNG.md).
 
 ## Der Ablauf in vier Schritten
@@ -153,7 +153,7 @@ App Karten automatisch (regelbasiert, ohne KI-Aufruf):
 * **Vorhandene Karten** prüft der Bereich **🧹 Kartenqualität**: Er listet auffällige Karten mit
   dem Mangel.
 
-  ![Bereich Kartenqualität mit einer auffälligen Karte](img/lernplan-qualitaet.png)
+  ![Bereich Kartenqualität (hier ohne Mängel) mit dem Knopf „Mängel beheben“](img/lernplan-qualitaet.png)
 
   **🧹 Mängel beheben** (mit Rückfrage) prüft zusätzlich auf Dubletten, ersetzt Karten mit
   Mangel in der **Frage** und formuliert Antworten mit Mangel neu.
