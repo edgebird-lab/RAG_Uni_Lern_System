@@ -95,6 +95,22 @@ def _tests_never_touch_real_backups(tmp_path_factory, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _tests_never_create_real_course_folders(tmp_path_factory, monkeypatch):
+    """Kein Test darf Fach-Ordner im ECHTEN Quellordner anlegen.
+
+    ``student_flow.ensure_course_folder`` (z. B. über ``syllabus_import.apply_extracted_subjects``)
+    legt ``SOURCE_DIR/<Fach>`` an und liest ``ragapp.config.SOURCE_DIR`` erst beim Aufruf. Tests, die
+    nur die Datenbank umbiegen, erzeugten so leere Ordner wie „M31“ in ``Zusammenfassungen SoSE26``.
+    Hier zeigt ``SOURCE_DIR`` in jedem Test auf ein Wegwerf-Verzeichnis; Tests, die den Quellordner
+    prüfen, biegen ihn wie bisher selbst um."""
+    try:
+        from ragapp import config
+    except Exception:  # noqa: BLE001 - Modul nicht importierbar (schlanke Umgebung)
+        return
+    monkeypatch.setattr(config, "SOURCE_DIR", tmp_path_factory.mktemp("quellen_isolated"))
+
+
+@pytest.fixture(autouse=True)
 def _tests_ignore_the_users_daily_goal_file(tmp_path_factory, monkeypatch):
     """Das Tagesziel liegt in ``data/daily_goal.json``. Ein Test, der ``daily_goal_status`` ohne
     eigene Datei aufruft, las bisher die ECHTE Datei: Hat die Nutzerin dort „minutes“ gewählt,
