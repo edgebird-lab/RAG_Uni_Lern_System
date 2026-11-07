@@ -341,14 +341,9 @@ def _disable_host_iframe_js() -> str:
     var f = window.frameElement;
     if (!f) return;
     f.style.cssText = 'pointer-events:none!important;width:0!important;height:0!important;position:absolute!important;border:0!important;';
-    var p = f.parentElement;
-    if (p) {
-      p.style.pointerEvents = 'none';
-      p.style.height = '0';
-      p.style.overflow = 'hidden';
-      p.style.margin = '0';
-      p.style.padding = '0';
-    }
+    // Container klappt per CSS (:has, siehe _style._BASE_CSS) ein - kein Inline-Stil
+    // am Container, der bei einem Rerun an einem anderen Element haengen bliebe.
+    f.setAttribute('data-rag-hidden-frame', '1');
   } catch (e) {}
 })();
 """

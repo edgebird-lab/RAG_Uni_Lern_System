@@ -435,6 +435,14 @@ html.rag-dark [role="tab"]:focus-visible {{
 
 /* Native Streamlit-Seitenliste aus - ersetzt durch Hamburger + Home-Kacheln. */
 [data-testid="stSidebarNav"] {{display:none;}}
+/* Unsichtbare Hilfs-Iframes (components.html mit height=0): Container per :has()
+   einklappen statt per Inline-Stil am Container. Streamlit verwendet den Container
+   bei einem Rerun fuer ein anderes Element weiter; ein dort gesetztes Inline-height:0
+   blieb haengen und liess z. B. die Seitenueberschrift verschwinden. */
+.stElementContainer:has(> iframe[data-rag-hidden-frame]) {{
+  height:0 !important; overflow:hidden !important; margin:0 !important;
+  padding:0 !important; pointer-events:none !important;
+}}
 /* Zusammengeklappte Sidebar laesst sonst einen >>Chevron oben links stehen,
    obwohl die Seitenliste aus ist – zweites, totes Menue neben ☰. */
 [data-testid="collapsedControl"],
@@ -1698,11 +1706,9 @@ def _bottom_nav_html(page_key: str) -> str:
     var f = window.frameElement;
     if (f) {
       f.style.cssText = 'pointer-events:none!important;width:0!important;height:0!important;position:absolute!important;border:0!important;';
-      if (f.parentElement) {
-        f.parentElement.style.pointerEvents = 'none';
-        f.parentElement.style.height = '0';
-        f.parentElement.style.overflow = 'hidden';
-      }
+      // Container klappt per CSS (:has, siehe _BASE_CSS) ein - kein Inline-Stil am
+      // Container, der bei einem Rerun an einem anderen Element haengen bliebe.
+      f.setAttribute('data-rag-hidden-frame', '1');
     }
     var nav = doc.getElementById('rag-bottom-nav');
     if (!nav) {
