@@ -86,6 +86,20 @@ function Write-Err ($m) { Write-Host "    [X] $m" -ForegroundColor Red }
 # Download mit Pruefsummen-Kontrolle; entpackt das ZIP und liefert den Ordner
 # der obersten Ebene im ZIP (z. B. "ffmpeg-n6.1.3-win64-gpl-shared-6.1").
 # --------------------------------------------------------------------------- #
+# IPEX-Ollama startet den eigentlichen Server als Kindprozess ollama-lib.exe (haelt
+# Port 11434). Stop-Process auf ollama.exe allein liess ihn weiterlaufen - daher den
+# ganzen Prozessbaum beenden und Reste aus diesem ipex-ollama-Ordner gezielt stoppen
+# (ein fremdes Ollama, z. B. das normale, bleibt unberuehrt).
+function Stop-IpexServer {
+    param($Proc)
+    if ($Proc -and -not $Proc.HasExited) {
+        & taskkill.exe /PID $Proc.Id /T /F 1>$null 2>$null
+    }
+    Get-Process -Name 'ollama-lib','ollama' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -and $_.Path.StartsWith($IpexDir, [StringComparison]::OrdinalIgnoreCase) } |
+        ForEach-Object { try { Stop-Process -Id $_.Id -Force -ErrorAction Stop } catch { } }
+}
+
 function Get-VerifiedZip {
     param([Parameter(Mandatory)][string]$Url, [Parameter(Mandatory)][string]$Sha256,
           [Parameter(Mandatory)][string]$What)
@@ -545,9 +559,9 @@ try {
     }
 
     # ---- 9) IPEX-Server (falls von uns gestartet) wieder beenden ----------- #
-    if ($ipexProc -and -not $ipexProc.HasExited) {
+    if ($ipexProc) {
         Write-Info "Beende temporaeren IPEX-Server (fuer den Alltag startet ihn Start.bat)."
-        try { Stop-Process -Id $ipexProc.Id -Force -ErrorAction SilentlyContinue } catch {}
+        Stop-IpexServer $ipexProc
     }
 
     # ---- Erfolgsmeldung ---------------------------------------------------- #
@@ -573,9 +587,7 @@ try {
     try { Stop-Transcript | Out-Null } catch { }
 }
 catch {
-    if ($ipexProc -and -not $ipexProc.HasExited) {
-        try { Stop-Process -Id $ipexProc.Id -Force -ErrorAction SilentlyContinue } catch {}
-    }
+    if ($ipexProc) { Stop-IpexServer $ipexProc }
     Write-Host ""
     Write-Err "Installation abgebrochen: $($_.Exception.Message)"
     Write-Info "Vollstaendiges Protokoll (zeigt die echte Ursache): $LogFile"
