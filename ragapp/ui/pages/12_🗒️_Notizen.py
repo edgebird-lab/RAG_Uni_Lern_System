@@ -368,9 +368,9 @@ with col_editor:
                                  body="Diese Notiz wirklich löschen?",
                                  key=f"notiz_del_{_nid}"):
                     manifest.delete_note(_nid)
-                st.session_state["_notiz_pending_choice"] = None
-                st.success("Notiz gelöscht.")
-                st.rerun()
+                    st.session_state["_notiz_pending_choice"] = None
+                    st.success("Notiz gelöscht.")
+                    st.rerun()
             if st.button("🎴 Karten aus dieser Notiz", key=f"notiz_cards_{_nid}"):
                 from ragapp.student_flow import cards_from_markdown
                 _ids = cards_from_markdown(
