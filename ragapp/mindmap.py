@@ -262,7 +262,10 @@ def _repair_mindmap(data: object, n: int) -> Optional[dict]:
         return None
 
     # 4) Querverbindungen: nur zwischen tatsaechlich vorhandenen Knoten, keine
-    #    Selbst-Links.
+    #    Selbst-Links, keine Wiederholung einer Eltern-Kind-Kante und je
+    #    Knotenpaar nur eine (sonst stapeln sich die Beschriftungen).
+    from ragapp.mindmap_render import clean_links
+
     valid_ids = {c["id"] for c in cleaned}
     links = []
     for lk in (data.get("links") or []):
@@ -272,6 +275,7 @@ def _repair_mindmap(data: object, n: int) -> Optional[dict]:
         t = str(lk.get("to") or "").strip()
         if f and t and f != t and f in valid_ids and t in valid_ids:
             links.append({"from": f, "to": t, "label": str(lk.get("label") or "").strip()})
+    links = clean_links({"nodes": cleaned, "links": links})
 
     return {"root": root, "nodes": cleaned, "links": links}
 

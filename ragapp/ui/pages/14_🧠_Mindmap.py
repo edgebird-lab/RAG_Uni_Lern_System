@@ -131,6 +131,14 @@ def _render_clickable_svg(svg: str, height: float) -> None:
   }}
   var root = document.querySelector('.mm-svg-frame');
   if (!root) return;
+  // Zu lange Knotentitel schmaler setzen, damit sie nicht ueber den Kasten ragen.
+  root.querySelectorAll('text[data-fit-w]').forEach(function(t) {{
+    var w = parseFloat(t.getAttribute('data-fit-w'));
+    if (w > 0 && t.getComputedTextLength() > w) {{
+      t.setAttribute('textLength', w);
+      t.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+    }}
+  }});
   root.addEventListener('click', function(e) {{
     var g = e.target.closest ? e.target.closest('[data-mm-id]') : null;
     if (!g) return;

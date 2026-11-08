@@ -214,3 +214,21 @@ def test_repair_mindmap_links_ohne_label_bekommen_leeren_string(repair_mindmap):
     ], links=[{"from": "n1", "to": "n2"}])
     out = f(data, 5)
     assert out["links"] == [{"from": "n1", "to": "n2", "label": ""}]
+
+
+def test_repair_mindmap_verwirft_doppelte_und_eltern_kind_links(repair_mindmap):
+    # So kam es aus gemma3:4b: fuenf "Querverbindungen" zwischen Thema und
+    # Unterthema, deren Beschriftungen in der Karte uebereinanderlagen.
+    f = repair_mindmap()
+    data = _valid_data(nodes=[
+        {"id": "n1", "title": "Verantwortlichkeit", "parent": None, "indices": [0]},
+        {"id": "n2", "title": "Rechte", "parent": None, "indices": [1]},
+        {"id": "n8", "title": "Datensicherheit", "parent": "n1", "indices": [2]},
+    ], links=[
+        {"from": "n8", "to": "n1", "label": "Grundlagen"},
+        {"from": "n1", "to": "n8", "label": "Rechte"},
+        {"from": "n8", "to": "n2", "label": "Schutz"},
+        {"from": "n2", "to": "n8", "label": "Schutz 2"},
+    ])
+    out = f(data, 5)
+    assert out["links"] == [{"from": "n8", "to": "n2", "label": "Schutz"}]

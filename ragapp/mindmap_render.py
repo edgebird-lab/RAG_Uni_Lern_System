@@ -27,6 +27,11 @@ CHAR_PX = 7.5
 NODE_MIN_WIDTH = 70
 NODE_MAX_WIDTH = 220
 _MAX_TITLE_CHARS = 34
+TEXT_INSET = 8          # Mindestabstand des Titels zum Knotenrand
+LABEL_DY = 12           # Hoehe einer Link-Beschriftung (font-size 10)
+LINK_SAG = 20           # so weit haengt eine Querverbindung unter die Knoten
+LINK_BULGE = 34         # so weit laeuft sie in derselben Spalte rechts aussen
+LABEL_CHAR_PX = 5.6     # geschaetzte Zeichenbreite bei font-size 10
 
 
 def _truncate_title(title: str) -> str:
@@ -125,6 +130,105 @@ def _edge_path(x1: float, y1: float, x2: float, y2: float) -> str:
     return f"M {x1:.1f} {y1:.1f} C {mx:.1f} {y1:.1f}, {mx:.1f} {y2:.1f}, {x2:.1f} {y2:.1f}"
 
 
+def clean_links(graph: dict) -> list[dict]:
+    """Die Querverbindungen, die wirklich gezeichnet werden.
+
+    Verworfen werden Links zu unbekannten Knoten, Selbst-Links, Links, die nur
+    eine Eltern-Kind-Kante wiederholen (die zeichnet der Baum schon), und jede
+    weitere Verbindung desselben Knotenpaars, egal in welcher Richtung. Sonst
+    liegen gestrichelte Kurven und Beschriftungen exakt uebereinander: kleine
+    Modelle liefern gern fuenf Links zwischen Thema und Unterthema."""
+    parent_of = {n.get("id"): n.get("parent")
+                 for n in graph.get("nodes") or [] if isinstance(n, dict)}
+    out: list[dict] = []
+    seen: set = set()
+    for lk in graph.get("links") or []:
+        if not isinstance(lk, dict):
+            continue
+        f, t = lk.get("from"), lk.get("to")
+        if f is None or t is None or f == t or f not in parent_of or t not in parent_of:
+            continue
+        if parent_of.get(f) == t or parent_of.get(t) == f:
+            continue
+        pair = frozenset((f, t))
+        if pair in seen:
+            continue
+        seen.add(pair)
+        out.append(lk)
+    return out
+
+
+def _link_path(a: dict, b: dict) -> tuple:
+    """Querverbindung zwischen zwei Knoten-Boxen als gestrichelter Bogen. Liegen
+    beide in derselben Spalte, laeuft der Bogen rechts aussen herum (sonst
+    ginge er mitten durch die Knoten dazwischen), ansonsten haengt er von
+    Unterkante zu Unterkante nach unten durch. Gibt den SVG-Pfad und die vier
+    Bezier-Punkte zurueck."""
+    if a["x"] < b["x"] + b["w"] and b["x"] < a["x"] + a["w"]:
+        xa, xb = a["x"] + a["w"], b["x"] + b["w"]
+        ya, yb = a["y"] + a["h"] / 2, b["y"] + b["h"] / 2
+        bulge = max(xa, xb) + LINK_BULGE
+        pts = ((xa, ya), (bulge, ya), (bulge, yb), (xb, yb))
+    else:
+        xa, xb = a["x"] + a["w"] / 2, b["x"] + b["w"] / 2
+        ya, yb = a["y"] + a["h"], b["y"] + b["h"]
+        pts = ((xa, ya), (xa, ya + LINK_SAG), (xb, yb + LINK_SAG), (xb, yb))
+    (ax, ay), (bx, by), (cx, cy), (dx, dy) = pts
+    return (f"M {ax:.1f} {ay:.1f} C {bx:.1f} {by:.1f}, {cx:.1f} {cy:.1f}, "
+            f"{dx:.1f} {dy:.1f}"), pts
+
+
+def _bezier_point(pts: tuple, t: float) -> tuple:
+    (ax, ay), (bx, by), (cx, cy), (dx, dy) = pts
+    u = 1 - t
+    return (u ** 3 * ax + 3 * u * u * t * bx + 3 * u * t * t * cx + t ** 3 * dx,
+            u ** 3 * ay + 3 * u * u * t * by + 3 * u * t * t * cy + t ** 3 * dy)
+
+
+def _overlaps(box: tuple, other: tuple, pad: float = 2.0) -> bool:
+    x0, y0, x1, y1 = box
+    a0, b0, a1, b1 = other
+    return x0 < a1 + pad and a0 < x1 + pad and y0 < b1 + pad and b0 < y1 + pad
+
+
+def _place_label(pts: tuple, w: float, node_boxes: list, label_boxes: list) -> tuple:
+    """Sucht fuer eine Link-Beschriftung (Breite ``w``) einen Platz auf oder
+    nahe am Bogen, der weder einen Knoten noch eine schon gesetzte Beschriftung
+    ueberdeckt (Boxen als (x0, y0, x1, y1)). Die gewaehlte Box wird an
+    ``label_boxes`` angehaengt. Gibt den Mittelpunkt (x, y) zurueck."""
+    h = LABEL_DY
+
+    def _box(px: float, py: float) -> tuple:
+        return (px - w / 2, py - h / 2, px + w / 2, py + h / 2)
+
+    blocked = node_boxes + label_boxes
+    for t in (0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8, 0.12, 0.88):
+        px, py = _bezier_point(pts, t)
+        for dx in (0.0, w / 2 + 4, -(w / 2 + 4)):
+            for dy in (0.0, -4.0, 4.0, -8.0, 8.0, -12.0, 12.0, -18.0, 18.0, -24.0, 24.0):
+                box = _box(px + dx, py + dy)
+                if not any(_overlaps(box, bb) for bb in blocked):
+                    label_boxes.append(box)
+                    return px + dx, py + dy
+    # Kein freier Platz: in der Bogenmitte, aber nie auf einer anderen
+    # Beschriftung (dann eine Zeile tiefer).
+    px, py = _bezier_point(pts, 0.5)
+    for _ in range(20):
+        if not any(_overlaps(_box(px, py), bb) for bb in label_boxes):
+            break
+        py += h
+    label_boxes.append(_box(px, py))
+    return px, py
+
+
+def _fit_text_attrs(box_w: float) -> str:
+    """Verfuegbare Textbreite im Knoten als ``data-fit-w``. Die Knotenbreite ist
+    bei ``NODE_MAX_WIDTH`` gedeckelt und die Schrift je nach System breiter;
+    das Skript der Mindmap-Seite misst deshalb im Browser nach und setzt nur
+    zu lange Titel per ``textLength`` schmaler (gestreckt wird nie)."""
+    return f' data-fit-w="{box_w - 2 * TEXT_INSET:.1f}"'
+
+
 def render_svg(graph: dict, layout: dict, *, base_color: str = "#4A45C4",
                selected_ids: Optional[set] = None,
                labels: Optional[dict] = None) -> str:
@@ -151,18 +255,26 @@ def render_svg(graph: dict, layout: dict, *, base_color: str = "#4A45C4",
         parts.append(f'<path d="{_edge_path(x1, y1, x2, y2)}" fill="none" '
                     f'stroke="#94a3b8" stroke-width="1.5" />')
 
-    for lk in graph.get("links", []):
+    label_parts: list[str] = []
+    node_boxes = [(l["x"], l["y"], l["x"] + l["w"], l["y"] + l["h"]) for l in lnodes.values()]
+    label_boxes: list = []
+    for lk in clean_links(graph):
         a, b = lnodes.get(lk.get("from")), lnodes.get(lk.get("to"))
         if not a or not b:
             continue
-        x1, y1 = a["x"] + a["w"] / 2, a["y"] + a["h"]
-        x2, y2 = b["x"] + b["w"] / 2, b["y"] + b["h"]
-        parts.append(f'<path d="{_edge_path(x1, y1, x2, y2)}" fill="none" '
-                    f'stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4,3" />')
-        if lk.get("label"):
-            mx, my = (x1 + x2) / 2, (y1 + y2) / 2
-            parts.append(f'<text x="{mx:.1f}" y="{my:.1f}" font-size="10" '
-                        f'fill="#64748b">{html.escape(lk["label"])}</text>')
+        d, pts = _link_path(a, b)
+        parts.append(f'<path d="{d}" fill="none" stroke="#94a3b8" '
+                    f'stroke-width="1.2" stroke-dasharray="4,3" />')
+        label = str(lk.get("label") or "").strip()
+        if label:
+            mx, my = _place_label(pts, len(label) * LABEL_CHAR_PX, node_boxes, label_boxes)
+            # Beschriftungen erst NACH den Knoten zeichnen und mit hellem Rand
+            # (Halo), damit Kanten sie nicht durchstreichen.
+            label_parts.append(
+                f'<text x="{mx:.1f}" y="{my:.1f}" text-anchor="middle" '
+                f'dominant-baseline="middle" font-size="10" '
+                f'fill="#64748b" stroke="#ffffff" stroke-width="3" '
+                f'stroke-linejoin="round" paint-order="stroke">{html.escape(label)}</text>')
 
     for nid, l in sorted(lnodes.items(), key=lambda kv: kv[1]["depth"]):
         bg = _depth_color(base_color, l["depth"])
@@ -182,10 +294,12 @@ def render_svg(graph: dict, layout: dict, *, base_color: str = "#4A45C4",
             f'stroke="{stroke}" stroke-width="{sw}" />')
         parts.append(
             f'<text x="{cx:.1f}" y="{cy:.1f}" text-anchor="middle" '
-            f'dominant-baseline="middle" font-size="12.5" fill="{fg}">'
+            f'dominant-baseline="middle" font-size="12.5" fill="{fg}"'
+            f'{_fit_text_attrs(l["w"])}>'
             f'{html.escape(title)}</text>')
         if nid is not None:
             parts.append("</g>")
 
+    parts.extend(label_parts)
     parts.append("</svg>")
     return "".join(parts)

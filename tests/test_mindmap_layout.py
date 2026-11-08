@@ -163,3 +163,88 @@ def test_layout_tree_beruecksichtigt_labels_bei_der_breite():
     short = layout_tree(graph)
     long = layout_tree(graph, labels={"a": "Ein deutlich längerer Anzeigename"})
     assert long["nodes"]["a"]["w"] > short["nodes"]["a"]["w"]
+
+
+def _gestapelter_graph():
+    # Gespeicherte Mindmap aus der Sandbox: 5 Links, alle zwischen n1 und
+    # seinem Kind n8 -> fuenf Beschriftungen exakt am selben Punkt.
+    return {
+        "root": "Datenschutz Grundlagen",
+        "nodes": [
+            {"id": "n1", "title": "Verantwortlichkeit und Rechte", "parent": None, "indices": [0]},
+            {"id": "n2", "title": "Rechte der Betroffenen", "parent": None, "indices": [1]},
+            {"id": "n8", "title": "Datensicherheit und Schutzziele", "parent": "n1", "indices": [2]},
+        ],
+        "links": [
+            {"from": "n8", "to": "n1", "label": "Grundlagen"},
+            {"from": "n8", "to": "n1", "label": "Rechte"},
+            {"from": "n1", "to": "n8", "label": "Datenschutz"},
+            {"from": "n1", "to": "n8", "label": "Rechte"},
+            {"from": "n8", "to": "n1", "label": "Verantwortlichkeit"},
+        ],
+    }
+
+
+def test_clean_links_verwirft_eltern_kind_selbst_und_doppelte_paare():
+    from ragapp.mindmap_render import clean_links
+    graph = _graph(links=[
+        {"from": "n3", "to": "n1", "label": "Kind->Eltern"},
+        {"from": "n1", "to": "n3", "label": "Eltern->Kind"},
+        {"from": "n3", "to": "n3", "label": "selbst"},
+        {"from": "n3", "to": "n5", "label": "Vergleich"},
+        {"from": "n5", "to": "n3", "label": "Rueckrichtung"},
+        {"from": "n3", "to": "n5", "label": "nochmal"},
+        {"from": "n4", "to": "weg", "label": "unbekannt"},
+        {"from": "n4", "to": "n2", "label": "Querbezug"},
+    ])
+    assert [lk["label"] for lk in clean_links(graph)] == ["Vergleich", "Querbezug"]
+
+
+def test_render_svg_stapelt_keine_link_beschriftungen():
+    graph = _gestapelter_graph()
+    svg = render_svg(graph, layout_tree(graph))
+    assert 'font-size="10"' not in svg      # keine Link-Beschriftung
+    assert "stroke-dasharray" not in svg    # keine gestrichelte Kurve
+
+
+def test_render_svg_link_beschriftungen_ueberdecken_weder_sich_noch_knoten():
+    import re
+    graph = _graph(links=[
+        {"from": "n3", "to": "n5", "label": "Vergleich"},
+        {"from": "n4", "to": "n5", "label": "Gegenstueck"},
+        {"from": "n3", "to": "n2", "label": "Bezug"},
+        {"from": "n1", "to": "n5", "label": "Anwendung"},
+    ])
+    layout = layout_tree(graph)
+    svg = render_svg(graph, layout)
+    labels = [(float(x), float(y), t) for x, y, t in re.findall(
+        r'<text x="([\d.]+)" y="([\d.]+)" text-anchor="middle"[^>]*font-size="10"[^>]*>([^<]+)</text>',
+        svg)]
+    assert sorted(t for _, _, t in labels) == ["Anwendung", "Bezug", "Gegenstueck", "Vergleich"]
+    boxes = [(x - len(t) * 5.6 / 2, y - 6, x + len(t) * 5.6 / 2, y + 6, t) for x, y, t in labels]
+    for i, (x0, y0, x1, y1, t) in enumerate(boxes):
+        for a0, b0, a1, b1, u in boxes[i + 1:]:
+            assert not (x0 < a1 and a0 < x1 and y0 < b1 and b0 < y1), (t, u)
+        for nid, n in layout["nodes"].items():
+            assert not (x0 < n["x"] + n["w"] and n["x"] < x1
+                        and y0 < n["y"] + n["h"] and n["y"] < y1), (t, nid)
+
+
+def test_render_svg_titel_tragen_ihre_verfuegbare_breite():
+    # Knoten sind bei NODE_MAX_WIDTH gedeckelt; die Seite misst im Browser nach
+    # und setzt nur zu lange Titel per textLength schmaler.
+    titel = "Zweckbindung und Datenminimierung"
+    graph = {"root": "R", "nodes": [{"id": "a", "title": titel, "parent": None,
+                                     "indices": [0]}], "links": []}
+    layout = layout_tree(graph)
+    svg = render_svg(graph, layout)
+    w = layout["nodes"]["a"]["w"]
+    assert f'data-fit-w="{w - 16:.1f}">{titel}</text>' in svg
+    assert "textLength" not in svg
+
+
+def test_mindmap_seite_passt_zu_lange_titel_an():
+    from pathlib import Path
+    src = Path("ragapp/ui/pages/14_🧠_Mindmap.py").read_text(encoding="utf-8")
+    assert "text[data-fit-w]" in src
+    assert "getComputedTextLength() > w" in src
