@@ -451,7 +451,8 @@ exam = st.session_state[EXAM]
 # --------------------------------------------------------------------------- #
 # Auswertung (nach Abgabe / Zeitablauf)
 # --------------------------------------------------------------------------- #
-if exam.get("done"):
+def _render_result() -> None:
+    """Ergebnis-Karte und Aufgabenliste einer abgegebenen Klausur."""
     res = exam["result"]
     with card("ergebnis"):
         st.subheader("📊 Ergebnis")
@@ -533,7 +534,7 @@ if exam.get("done"):
                 "limit": max(5, len(_wrong_cards) * 2) * 60, "done": False,
             }
         st.rerun()
-    st.stop()
+
 
 # --------------------------------------------------------------------------- #
 # Benotung (auch für die automatische Abgabe bei Zeitablauf)
@@ -604,27 +605,13 @@ def _remaining() -> float:
     return max(0.0, float(exam["limit"]) - (time.time() - exam["start"]))
 
 
-# Serverseitige Zeitkontrolle: ist die Zeit abgelaufen, wird die Klausur automatisch
-# abgegeben und ausgewertet – noch bevor die Eingabefelder in diesem Lauf gerendert
-# werden. Das erzwingt das Limit auch dann, wenn nur die Seite neu geladen wird.
-if _remaining() <= 0 and not exam.get("done"):
-    _sync_answers()
-    with st.status("Zeit abgelaufen – die Klausur wird automatisch abgegeben …",
-                   expanded=True) as _ab:
-        _auswerten()
-        _ab.update(label="Fertig", state="complete")
-    st.rerun()
-
-
 @st.fragment(run_every=1)
 def _countdown() -> None:
     """Sichtbarer Live-Countdown: aktualisiert sich jede Sekunde SERVERSEITIG (per
     Fragment-Polling, ohne die bereits getippten Antworten zu stören). Läuft die Zeit
     ab, wird die ganze Seite neu gerendert, sodass oben die Auto-Abgabe greift."""
-    # Nach der Abgabe kann noch ein Countdown-Tick aus dem Browser anstehen, der erst
-    # NACH dem Ergebnis-Lauf ausgefuehrt wird: dessen st.stop() raeumt das Fragment
-    # nicht ab. Er schrieb dann an seine alte Position, also ueber die Ergebnis-Karte
-    # ("Ergebnis fehlt, Countdown steht"). Deshalb nur fuer die laufende Klausur.
+    # Zweite Sicherung (die erste: der Ergebnis-Lauf endet ohne st.stop(), siehe
+    # unten): ein verspaeteter Tick gibt fuer eine abgegebene Klausur nichts aus.
     if exam.get("done") or st.session_state.get(EXAM) is not exam:
         return
     rem = _remaining()
@@ -641,22 +628,43 @@ def _countdown() -> None:
         st.caption("Weniger als eine Minute – bei Ablauf wird automatisch abgegeben.")
 
 
-_countdown()
-st.caption(f"{len(exam['cards'])} Aufgaben · schreibe deine Antworten, dann unten abgeben. "
-           "Der Countdown läuft automatisch weiter; bei Ablauf wird die Klausur "
-           "selbsttätig abgegeben und ausgewertet.")
+# --------------------------------------------------------------------------- #
+# Ablauf
+# --------------------------------------------------------------------------- #
+# Kein st.stop() nach dem Ergebnis: Nur ein NORMAL beendeter Lauf raeumt das
+# Countdown-Fragment ab. Ein Tick, den der Browser waehrend der Benotung noch
+# schickt, lief sonst NACH dem Ergebnis-Lauf und legte seinen Container ueber
+# die Ergebnis-Karte (Karte/Kennzahlen weg, Countdown stand still).
+if exam.get("done"):
+    _render_result()
+else:
+    # Serverseitige Zeitkontrolle: ist die Zeit abgelaufen, wird die Klausur
+    # automatisch abgegeben und ausgewertet – noch bevor die Eingabefelder in
+    # diesem Lauf gerendert werden. Das erzwingt das Limit auch beim Neuladen.
+    if _remaining() <= 0:
+        _sync_answers()
+        with st.status("Zeit abgelaufen – die Klausur wird automatisch abgegeben …",
+                       expanded=True) as _ab:
+            _auswerten()
+            _ab.update(label="Fertig", state="complete")
+        st.rerun()
 
-for i, card in enumerate(exam["cards"]):
-    st.markdown(f"**Aufgabe {i + 1}** · _{_fach(card.get('subject') or '')}_")
-    st.markdown(card.get("front") or "")
-    exam["answers"][card["card_id"]] = st.text_area(
-        f"Antwort {i + 1}", value=exam["answers"].get(card["card_id"], ""),
-        key=f"exam_ans_{i}", label_visibility="collapsed", height=110)
-    st.divider()
+    _countdown()
+    st.caption(f"{len(exam['cards'])} Aufgaben · schreibe deine Antworten, dann unten abgeben. "
+               "Der Countdown läuft automatisch weiter; bei Ablauf wird die Klausur "
+               "selbsttätig abgegeben und ausgewertet.")
 
-if st.button("✅ Abgeben & auswerten", type="primary", use_container_width=True):
-    from ragapp.ui._progress import LlmWait
-    with LlmWait("Werte die Klausur aus …") as wait:
-        _auswerten()
-        wait.done()
-    st.rerun()
+    for i, card in enumerate(exam["cards"]):
+        st.markdown(f"**Aufgabe {i + 1}** · _{_fach(card.get('subject') or '')}_")
+        st.markdown(card.get("front") or "")
+        exam["answers"][card["card_id"]] = st.text_area(
+            f"Antwort {i + 1}", value=exam["answers"].get(card["card_id"], ""),
+            key=f"exam_ans_{i}", label_visibility="collapsed", height=110)
+        st.divider()
+
+    if st.button("✅ Abgeben & auswerten", type="primary", use_container_width=True):
+        from ragapp.ui._progress import LlmWait
+        with LlmWait("Werte die Klausur aus …") as wait:
+            _auswerten()
+            wait.done()
+        st.rerun()

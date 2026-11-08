@@ -1,11 +1,12 @@
 """Countdown der Probeklausur (``_countdown`` in ``6_📝_Prüfung.py``).
 
 Nach "Abgeben & auswerten" konnte ein Countdown-Tick aus dem Browser erst NACH dem
-Ergebnis-Lauf ausgefuehrt werden (der endet mit ``st.stop()``, das raeumt das Fragment
-nicht ab). Das Fragment schrieb dann an seine alte Position, also ueber die
+Ergebnis-Lauf ausgefuehrt werden, solange dieser mit ``st.stop()`` endete (das raeumt das
+Fragment nicht ab). Das Fragment schrieb dann an seine alte Position, also ueber die
 Ergebnis-Karte: im Browser fehlte das Ergebnis und der Countdown blieb stehen.
-Das Fragment darf deshalb nur fuer die laufende, noch nicht abgegebene Klausur
-etwas ausgeben. Isoliert geladen (kein Streamlit-Server, kein Modell)."""
+Hauptkorrektur: der Ergebnis-Lauf endet normal (siehe ``test_pruefung_page.py``).
+Zweite Sicherung, hier geprueft: das Fragment gibt nur fuer die laufende, noch nicht
+abgegebene Klausur etwas aus. Isoliert geladen (kein Streamlit-Server, kein Modell)."""
 from __future__ import annotations
 
 import pytest
