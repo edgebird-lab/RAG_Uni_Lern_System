@@ -181,12 +181,19 @@ with card("eval"):
             f"{report.get('elapsed_seconds', '?')} s Laufzeit"
         )
 
-        # Balkendiagramm Hit@k über k
-        chart_df = pd.DataFrame(
-            {"Hit@k (%)": [hit_at_k[k] * 100 for k in k_sorted]},
-            index=[f"k={k}" for k in k_sorted],
+        # Balkendiagramm Hit@k über k. st.bar_chart sortiert die Kategorien alphabetisch
+        # (k=1, k=10, k=3, k=5) - deshalb Altair mit sort=None: Reihenfolge wie geliefert.
+        import altair as alt
+        from ragapp.eval.metrics import hit_at_k_series
+        chart_df = pd.DataFrame(hit_at_k_series(hit_at_k), columns=["k", "Hit@k (%)"])
+        st.altair_chart(
+            alt.Chart(chart_df).mark_bar().encode(
+                x=alt.X("k:N", sort=None, title=None, axis=alt.Axis(labelAngle=0)),
+                y=alt.Y("Hit@k (%):Q", scale=alt.Scale(domain=[0, 100])),
+                tooltip=["k", alt.Tooltip("Hit@k (%):Q", format=".1f")],
+            ),
+            use_container_width=True,
         )
-        st.bar_chart(chart_df)
 
         # Tabelle „Nach Fach"
         by_subject = metrics.get("by_subject", {})

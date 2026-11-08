@@ -25,6 +25,13 @@ def hit_at_k(retrieved_ids: list[str], gold_id: str, k: int) -> bool:
     return gold_id in retrieved_ids[:k]
 
 
+def hit_at_k_series(hit_at_k_by_k: dict) -> list[tuple[str, float]]:
+    """(Beschriftung, Prozent) je k fuer das Balkendiagramm, NUMERISCH nach k sortiert
+    (k=1, 3, 5, 10). Die Schluessel kommen als Strings ("1", "10", "3", "5")."""
+    return [(f"k={k}", float(hit_at_k_by_k[k]) * 100)
+            for k in sorted(hit_at_k_by_k, key=lambda x: int(x))]
+
+
 def aggregate(per_query: list[dict], k_values: Iterable[int]) -> dict:
     """per_query: Liste mit {'retrieved_ids', 'gold_id', 'subject'}."""
     n = len(per_query)
