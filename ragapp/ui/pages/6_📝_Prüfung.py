@@ -621,6 +621,12 @@ def _countdown() -> None:
     """Sichtbarer Live-Countdown: aktualisiert sich jede Sekunde SERVERSEITIG (per
     Fragment-Polling, ohne die bereits getippten Antworten zu stören). Läuft die Zeit
     ab, wird die ganze Seite neu gerendert, sodass oben die Auto-Abgabe greift."""
+    # Nach der Abgabe kann noch ein Countdown-Tick aus dem Browser anstehen, der erst
+    # NACH dem Ergebnis-Lauf ausgefuehrt wird: dessen st.stop() raeumt das Fragment
+    # nicht ab. Er schrieb dann an seine alte Position, also ueber die Ergebnis-Karte
+    # ("Ergebnis fehlt, Countdown steht"). Deshalb nur fuer die laufende Klausur.
+    if exam.get("done") or st.session_state.get(EXAM) is not exam:
+        return
     rem = _remaining()
     if rem <= 0:
         st.rerun()   # ganze Seite neu -> serverseitige Auto-Abgabe greift
